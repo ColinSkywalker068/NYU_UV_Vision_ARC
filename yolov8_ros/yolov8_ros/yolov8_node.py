@@ -35,7 +35,7 @@ class YOLOv8Node(Node):
 
         # Parameter declaration and retrieval with debug statements
         self.declare_parameter(
-            "model_path", "/home/ultraviolet/Downloads/yolo/model-opt.onnx"
+            "model_path", "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.engine"
         )
         model_path = self.get_parameter("model_path").get_parameter_value().string_value
         print(f"Model path: {model_path}")
@@ -45,7 +45,7 @@ class YOLOv8Node(Node):
         self.declare_parameter("type", "yolo")
         self.declare_parameter("half", True)
         self.declare_parameter("imgsz", 640)
-        self.declare_parameter("show", True)
+        self.declare_parameter("show", False)
         self.declare_parameter("conf", 0.5)
 
         # Retrieve parameter values with debug outputs
@@ -134,11 +134,11 @@ class YOLOv8Node(Node):
                     self.override.data = True
                     self.override_publisher.publish(self.override)
                     self.bbox_publisher.publish(self.bbox_msg)
-                else:
-                    self.bbox_msg.data = [320, 320, 320, 320]
-                    self.override.data = False
-                    self.override_publisher.publish(self.override)
-                    self.bbox_publisher.publish(self.bbox_msg)
+            if(len(bboxs)==0):
+                self.bbox_msg.data = [320, 320, 320, 320]
+                self.override.data = True
+                self.override_publisher.publish(self.override)
+                self.bbox_publisher.publish(self.bbox_msg)
 
     def id_listener_callback(self, msg):
         self.target_class = BLUE_CLASS if msg.data in RED_TEAM else RED_CLASS
