@@ -15,7 +15,8 @@ class flagger:
                                      'upper': np.array(blue_upper)
                                  },
                             }
-                                     
+                 
+    #Check if the robot in the frame is enemy robot or not. Returns true if it is enemy robot
     def check_enemy(self, frame):
         color = red_or_blue(self, frame)
         if color==opponent_color:
@@ -23,15 +24,26 @@ class flagger:
         else:
             return False
         
-    def red_or_blue(self, frame):
+        
+    #determines if the robot in the frame is of red or blue color
+    def red_or_blue(self, frame):     
+        
+        # Convert BGR format ot HSV format
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        
+        # Get Red masks 
         red_mask = cv2.inRange(hsv, self.color_ranges.red_lower, self.color_ranges.red_upper)
+        
+        # Get Blue masks
         blue_mask = cv2.inRange(hsv, self.color_ranges.blue_lower, self.color_ranges.blue_upper)
+        
+        #Get the contours of the red and blue regions
         _, red_contours, _ = cv2.findContours(
             red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         _, blue_contours, _ = cv2.findContours(
             blue_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+        # Determine which is greater 
         if len(red_contours) > 0 and len(blue_contours) > 0:
             r_area = 0
             b_area = 0
@@ -40,10 +52,10 @@ class flagger:
             for c in blue_contours:
                 b_area += cv2.contourArea(c)
             if r_area > b_area:
-                return 'r'
+                return 'RED'
             else:
-                return 'b'
+                return 'BLUE'
         elif len(red_contours) > 0:
-            return 'r'
+            return 'RED'
 
-        return 'b'
+        return 'BLUE'

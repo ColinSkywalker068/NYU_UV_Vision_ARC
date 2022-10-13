@@ -4,9 +4,15 @@ import os
 
 class plate_detector:
     
+    #Constructor
     def __init__(self, repo='ultralytics/yolov5', model='custom', model_file_path='./Algorithm/pt_files/best.pt', tracking=True):
+        
+        # Create object detection model
         self.model = torch.hub.load(repo, 'custom', path=model_file_path)  # or yolov5m, yolov5l, yolov5x, custom
+        
+        # Check if tracking is required
         if tracking:
+            # Create the tracker object
             self.tracking = True
             self.tracker = cv2.legacy.TrackerMedianFlow_create()
             self.tracker_initialized = False
@@ -35,32 +41,37 @@ class plate_detector:
         for i in range(len(top_k_detections)):
             # Get the bounding box of the first object (most confident)
             x_min, y_min, x_max, y_max, conf, cls, label = top_k_detections[i]
+            
+            
             if self.tracking:
+                
                 if not self.tracker_initialized:
+                    #Initialize the tracker
                     tracker_success = self.tracker.init(color_image, (x_min, y_min, x_max, y_max))
                     self.tracker_initialized = True
                 else:
                     
                     # Update tracker
                     tracker_success, bbox = self.tracker.update(color_image)
-                    bboxes.append(bbox)
-#                     x_min, y_min, w, h = bbox
-#                     x_max = x_min + w
-#                     y_max = y_min + h
+                    #bboxes.append(bbox)
+
+                    # Add bounding boxes to be drawn on the image
                     if tracker_success:
                         bboxes.append([x_min, y_min, x_max, y_max, conf, label])
                         messages.append("Tracking Success")
                     else:
                         print('Tracking Failure')
                         messages.append('Tracking failed for {}'.format(i))
-            else:
+                        
+            else:                
+                # Add bounding boxes to be drawn on the image
                 bbox = [x_min, y_min, x_max, y_max, conf, label]
                 bboxes.append(bbox)
                 messages.append("")
         
                 
             if debug:
-                print("Object {} detected at ({},{}) \n\n\n                     ({},{})".format(i, x_min, y_min, x_max, y_max))
+                print("Object {} detected at ({},{}) \n\n\n ({},{})".format(i, x_min, y_min, x_max, y_max))
                 os.system('cls')
                 os.system('clear')
                 

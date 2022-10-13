@@ -1,13 +1,14 @@
 #import pyrealsense2.pyrealsense2 as rs
 #import numpy as np
 import cv2
-# Configure depth and color streams
 
 
+#camera class to read in input from webcam
 class camera:
     def __init__(self, camera_index):
         self.cap = cv2.VideoCapture(camera_index)
         
+    #Get Color frame
     def get_frame(self):
         ret, frame = self.cap.read()
         depth_image = None
@@ -17,7 +18,8 @@ class camera:
     def release(self):
         self.cap.release()
 
-        
+
+#camera class to read in input from realsense depth camera
 class depth_camera:
 
     def __init__(self, frame_size=(640,480), frame_rate=30):
