@@ -3,6 +3,30 @@
 import cv2
 
 
+class imu:
+
+    def __init__(self):
+
+        # Make another pipeline via
+        self.pipeline = rs.pipeline()
+        imu_config = rs.config()
+        imu_config.enable_stream(rs.stream.accel, rs.format.motion_xyz32f, 200)
+        imu_config.enable_stream(rs.stream.gyro, rs.format.motion_xyz32f, 200)
+
+#        pipeline_wrapper = rs.pipeline_wrapper(self.pipeline)
+        self.pipeline.start(imu_config)
+
+    def get_frame(self):
+        try:
+            imu_frames = self.imu_pipeline.wait_for_frames()
+        except:
+            return False, None, None
+        acceleration = imu_frames.first_or_default(rs.stream.accel, rs.format.motion_xyz32f).as_motion_frame().get_motion_data()
+        gyroscope = imu_frames.first_or_default(rs.stream.gyro, rs.format.motion_xyz32f).as_motion_frame().get_motion_data() 
+
+        
+        return True, acceleration, gyroscope
+
 #camera class to read in input from webcam
 class camera:
     def __init__(self, camera_index):
