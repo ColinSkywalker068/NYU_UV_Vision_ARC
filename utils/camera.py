@@ -3,8 +3,7 @@
 import cv2
 
 
-class imu:
-
+class imu_sensor:
     def __init__(self):
 
         # Make another pipeline via
