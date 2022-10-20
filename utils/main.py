@@ -4,37 +4,47 @@ import camera
 import plate_detector
 import monitor
 import cv2
+import flagger
+
 
 def main():
-    
-    #Create camera object
+
+    # Create camera object
     if config.camera['DEPTH_CAPTURE']:
-        #creates depth camera object
-        cam = camera.depth_camera(config.camera['FRAME_SIZE'], config.camera['FRAME_RATE'])
+        # creates depth camera object
+        cam = camera.depth_camera(
+            config.camera['FRAME_SIZE'], config.camera['FRAME_RATE'])
     else:
         # creates vamera object (without depth capture)
         cam = camera.camera(config.camera['CAMERA_INDEX'])
-        
+
+    # create flagger object
+    flagger_obj = flagger.Flagger(
+        config.gameplay['OPPONENT_TEAM_COLOR'], config.gameplay['HSV_LOWER_RED'], config.gameplay['HSV_UPPER_RED'], config.gameplay['HSV_LOWER_BLUE'], config.gameplay['HSV_UPPER_BLUE'])
+
     # create detector object
-    detector = plate_detector.plate_detector(config.yolo['REPO_PATH'], config.yolo['MODEL_SOURCE'], config.yolo['MODEL_WEIGHTS_PATH'])
-    
+    detector = plate_detector.plate_detector(
+        config.yolo['REPO_PATH'], config.yolo['MODEL_SOURCE'], config.yolo['MODEL_WEIGHTS_PATH'], flagger=flagger_obj)
+
     # create monitor object to display annotated images
     mon = monitor.monitor()
-    
+
     while True:
-        #obtain frame
+        # obtain frame
         ret, depth_image, color_image = cam.get_frame()
         if ret:
             key = cv2.waitKey(1)
-            if key==27:
+            if key == 27:
                 break
 
             # process frame to obtain object detection predicitons
-            bboxes, messages = detector.process_frame(color_image, config.detection['DETECTION_CONFIDENCE_CUTOFF'], config.detection['NO_TO_DETECT'], config.general['DEBUG_LOGS'])
-            
+            bboxes, messages = detector.process_frame(
+                color_image, config.detection['DETECTION_CONFIDENCE_CUTOFF'], config.detection['NO_TO_DETECT'], config.general['DEBUG_LOGS'])
+
             # show detections on screen
             if config.detection['DISPLAY']:
-                mon.draw_on_image(color_image, bboxes, messages) 
+                mon.draw_on_image(color_image, bboxes, messages)
 
-if __name__=='__main__':
+
+if __name__ == '__main__':
     main()
