@@ -6,16 +6,31 @@ import cv2
 #camera class to read in input from webcam
 class camera:
     def __init__(self, camera_index):
+        """
+        Constructor.
+        Attributes:
+            cap = A VideoCapture object of cv2 module
+        """
         self.cap = cv2.VideoCapture(camera_index)
         
     #Get Color frame
     def get_frame(self):
+        """
+        Obtains a frame from the camera and returns it.
+        Returns:
+        ret = True if frame was successfully obtained.
+        depth_image = False always as this is class is for a normal camera.
+        frame = frame ectracted from the camera feed.
+        """
         ret, frame = self.cap.read()
         depth_image = None
         
         return ret, depth_image, frame
     
     def release(self):
+        """
+        Destructor for the VideoCapture
+        """
         self.cap.release()
 
 
@@ -23,6 +38,13 @@ class camera:
 class depth_camera:
 
     def __init__(self, frame_size=(640,480), frame_rate=30):
+        
+        """
+        Constructor. Intializes the depth camera object and prep it for capture the frames.
+        Parameters: 
+        frame_size: Frame size/ resoltuion specification for the the cam feed.
+        frame_rate: rate at which the camera should capture frames.
+        """
         
         # Configure depth and color streams
         self.pipeline = rs.pipeline()
@@ -47,6 +69,13 @@ class depth_camera:
 
     # Get Depth and Color Frame
     def get_frame(self):
+        """
+        Extracts depth and color frame from camera feed.
+        Returns:
+        ret = True if success in obtaining the frames
+        depth_image = Depth frame 
+        color_image = RGB image frame
+        """
         try:
             frames = self.pipeline.wait_for_frames()
         except:
@@ -64,4 +93,7 @@ class depth_camera:
         return True, depth_image, color_image
 
     def release(self):
+        """
+        Stops the capture pipeline.
+        """
         self.pipeline.stop()

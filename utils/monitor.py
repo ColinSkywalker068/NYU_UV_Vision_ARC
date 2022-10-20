@@ -6,9 +6,20 @@ class monitor:
     
     # Constructor
     def __init__(self):
+        """
+        Constructor. Following are the attributes of the class:
+        window_name: Name of the window of cv2.imshow 
+        """
         self.window_name = "MONITOR"
         
     def draw_on_image(self, image, bboxes, messages):
+        """
+        Displays the frames after drawing the bounding boxes and thhe text on the input image.
+        Parameters: 
+            image: Input image on which the annotations are to be drawn
+            bboxes: A list of tuples, each tuple containing the 6 specs of a bounding box
+            messages: List of strings that are to be printed on the image
+        """
         
         # Draw all bounding boxes on the image
         for bbox in bboxes:
@@ -24,6 +35,13 @@ class monitor:
              
              
     def write_bbx_frame(self, color_image, bbxs, label, conf):
+        """
+        Draws a bounding box on the input image
+        Parameters:
+            color_image: Input image on which the bbox is to be drawn
+            bbxs: List of size four indicating x_min, y_min, x_max, y_max of the bounding box to be drawn
+            label: Name of class of the object enclosed in the bounding box
+            conf: Confidence score of the prediction by the model"""
         # Display the bounding box
         x_min, y_min, x_max, y_max = bbxs
         cv2.rectangle(color_image, (int(x_min), int(y_min)), (int(

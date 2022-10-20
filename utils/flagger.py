@@ -3,6 +3,14 @@ import cv2
 class flagger:
     
     def __init__(self, opponent_color, red_lower, red_upper, blue_lower, blue_upper):
+        """
+        Constructor.
+        opponent_color: 'RED' or "BLUE' indicating the color of the opponent team.
+        red_lower: tuple indicating a HSV value indicating the lower limit of red color
+        red_upper: tuple indicating a HSV value indicating the upper limit of red color
+        blue_lower: tuple indicating a HSV value indicating the lower limit of blue color
+        blue_upper: tuple indicating a HSV value indicating the upper limit of blue color
+        """
         self.opponent_color = opponent_color
         self.color_ranges = {'red': 
                                  {
@@ -18,6 +26,15 @@ class flagger:
                  
     #Check if the robot in the frame is enemy robot or not. Returns true if it is enemy robot
     def check_enemy(self, frame):
+        """
+        Checks if the frame contains the robot of enemy team or ally.
+        Paramter:
+        frame = input image
+        
+        Returns:
+        True if enemy robot detected else False
+        """
+        
         color = red_or_blue(self, frame)
         if color==opponent_color:
             return True
@@ -27,6 +44,14 @@ class flagger:
         
     #determines if the robot in the frame is of red or blue color
     def red_or_blue(self, frame):     
+        """
+        Checks what is the color of the robot in the image.
+        Parameters:
+        frame = input image
+        
+        Returns:
+        "RED" if red is detected the most else "BLUE"
+        """
         
         # Convert BGR format ot HSV format
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
