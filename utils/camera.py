@@ -6,14 +6,13 @@ import cv2
 class imu_sensor:
     def __init__(self):
 
-        # Make another pipeline via
-        self.pipeline = rs.pipeline()
+        # Make another pipeline for IMU
+        self.imu_pipeline = rs.pipeline()
         imu_config = rs.config()
         imu_config.enable_stream(rs.stream.accel, rs.format.motion_xyz32f, 200)
         imu_config.enable_stream(rs.stream.gyro, rs.format.motion_xyz32f, 200)
 
-#        pipeline_wrapper = rs.pipeline_wrapper(self.pipeline)
-        self.pipeline.start(imu_config)
+        self.imu_pipeline.start(imu_config)
 
     def get_frame(self):
         try:
@@ -24,7 +23,7 @@ class imu_sensor:
         gyroscope = imu_frames.first_or_default(rs.stream.gyro, rs.format.motion_xyz32f).as_motion_frame().get_motion_data() 
 
         
-        return True, acceleration, gyroscope
+        return True, acceleration, gyroscope #TODO: potentially return time data along with accel/gyro value
 
 #camera class to read in input from webcam
 class camera:
