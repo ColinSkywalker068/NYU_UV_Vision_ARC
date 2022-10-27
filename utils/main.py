@@ -5,6 +5,7 @@ import plate_detector
 import monitor
 import cv2
 import flagger
+import
 
 
 def main():
@@ -24,7 +25,7 @@ def main():
 
     # create detector object
     detector = plate_detector.plate_detector(
-        config.yolo['REPO_PATH'], config.yolo['MODEL_SOURCE'], config.yolo['MODEL_WEIGHTS_PATH'], flagger=flagger_obj)
+        config.yolo['REPO_PATH'], config.yolo['MODEL_SOURCE'], config.yolo['MODEL_WEIGHTS_PATH'], flagger=flagger_obj, uart=config.detection['UART'])
 
     # create monitor object to display annotated images
     mon = monitor.monitor()

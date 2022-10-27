@@ -24,7 +24,8 @@ detection = {
     'DEBUG': True,
     'DISPLAY': True,
     'DETECTION_CONFIDENCE_CUTOFF': 0.25,
-    'NO_TO_DETECT': 1
+    'NO_TO_DETECT': 1,
+    'UART': True
 }
 
 # drawing specifications

@@ -2,12 +2,13 @@ import cv2
 import torch
 import os
 import flagger
+import uart_server
 
 
 class plate_detector:
 
     # Constructor
-    def __init__(self, repo='ultralytics/yolov5', model='custom', model_file_path='./Algorithm/pt_files/best.pt', tracking=True, flagger=None):
+    def __init__(self, repo='ultralytics/yolov5', model='custom', model_file_path='./Algorithm/pt_files/best.pt', tracking=True, flagger=None, uart=False):
         """
         Constructor. Initializes attributes. Uses torch.hub.load() of PyTorch module to load a pytorch model.
         Parameters:
@@ -38,6 +39,12 @@ class plate_detector:
 
         if flagger is not None:
             self.flagger = flagger
+
+        if uart:
+            # create a uart object to send/receive data
+            self.uart = uart_server.uart_server()
+        else:
+            self.uart = None
 
     # Process a color frame
     def process_frame(self, color_image, conf_thres=0.25, k=1, debug=False):
@@ -108,6 +115,10 @@ class plate_detector:
                 bbox = [x_min, y_min, x_max, y_max, conf, label]
                 bboxes.append(bbox)
                 messages.append("")
+
+            if self.uart is not None:
+                # @TODO: send data to uart server
+                self.uart.send_data("Plate detected")
 
             if debug:
                 print("Object {} detected at ({},{}) \n\n\n ({},{})".format(
