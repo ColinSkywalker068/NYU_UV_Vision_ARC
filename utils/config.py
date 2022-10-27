@@ -6,9 +6,9 @@ general = {
 # camera specifications
 camera = {
     'DEPTH_CAPTURE': True,
-    'CAMERA_INDEX': "./../../../Midterm/RMPlateDetection/vid.mp4",
+    'CAMERA_INDEX': 1,
     'FRAME_SIZE': (640, 360),
-    'FRAME_RATE': 30
+    'FRAME_RATE': 60
 }
 
 
@@ -21,7 +21,7 @@ yolo = {
 
 # specifications for detection
 detection = {
-    'DEBUG': False,
+    'DEBUG': True,
     'DISPLAY': True,
     'DETECTION_CONFIDENCE_CUTOFF': 0.25,
     'NO_TO_DETECT': 1
