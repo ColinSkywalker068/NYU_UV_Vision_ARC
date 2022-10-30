@@ -1,6 +1,8 @@
 import pyrealsense2.pyrealsense2 as rs
 import numpy as np
 import cv2
+import config
+import video_record
 
 
 class imu_sensor:
@@ -19,13 +21,17 @@ class imu_sensor:
             imu_frames = self.imu_pipeline.wait_for_frames()
         except:
             return False, None, None
-        acceleration = imu_frames.first_or_default(rs.stream.accel, rs.format.motion_xyz32f).as_motion_frame().get_motion_data()
-        gyroscope = imu_frames.first_or_default(rs.stream.gyro, rs.format.motion_xyz32f).as_motion_frame().get_motion_data() 
+        acceleration = imu_frames.first_or_default(
+            rs.stream.accel, rs.format.motion_xyz32f).as_motion_frame().get_motion_data()
+        gyroscope = imu_frames.first_or_default(
+            rs.stream.gyro, rs.format.motion_xyz32f).as_motion_frame().get_motion_data()
 
-        
-        return True, acceleration, gyroscope #TODO: potentially return time data along with accel/gyro value
+        # TODO: potentially return time data along with accel/gyro value
+        return True, acceleration, gyroscope
 
-#camera class to read in input from webcam
+# camera class to read in input from webcam
+
+
 class camera:
     def __init__(self, camera_index):
         """
@@ -101,7 +107,14 @@ class depth_camera:
         # Start streaming
         self.pipeline.start(config)
 
+        # video recorder
+        if config.camera['RECORD']:
+            self.video_recorder = video_record.VideoRecord()
+        else:
+            self.video_recorder = None
+
     # Get Depth and Color Frame
+
     def get_frame(self):
         """
         Extracts depth and color frame from camera feed.
@@ -120,6 +133,9 @@ class depth_camera:
 
         depth_image = np.asanyarray(depth_frame.get_data())
         color_image = np.asanyarray(color_frame.get_data())
+
+        if self.video_recorder is not None and color_frame:
+            self.video_recorder.process_frame(color_image)
 
         if not depth_frame or not color_frame:
             return False, None, None

@@ -8,7 +8,8 @@ camera = {
     'DEPTH_CAPTURE': True,
     'CAMERA_INDEX': 1,
     'FRAME_SIZE': (640, 360),
-    'FRAME_RATE': 60
+    'FRAME_RATE': 30,
+    'RECORD': False
 }
 
 
