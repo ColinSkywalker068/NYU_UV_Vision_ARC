@@ -1,7 +1,7 @@
 
 
 from typing import Tuple
-from utils.camera import imu_sensor
+from camera import imu_sensor
 
 
 # Class responsible for localization of our robot using IMU/encoders

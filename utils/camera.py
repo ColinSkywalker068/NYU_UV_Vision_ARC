@@ -1,7 +1,7 @@
 import pyrealsense2.pyrealsense2 as rs
 import numpy as np
 import cv2
-import config
+import config as cfg
 import video_record
 
 
@@ -11,7 +11,7 @@ class imu_sensor:
         # Make another pipeline for IMU
         self.imu_pipeline = rs.pipeline()
         imu_config = rs.config()
-        imu_config.enable_stream(rs.stream.accel, rs.format.motion_xyz32f, 200)
+        imu_config.enable_stream(rs.stream.accel, rs.format.motion_xyz32f, 250)
         imu_config.enable_stream(rs.stream.gyro, rs.format.motion_xyz32f, 200)
 
         self.imu_pipeline.start(imu_config)
@@ -108,7 +108,7 @@ class depth_camera:
         self.pipeline.start(config)
 
         # video recorder
-        if config.camera['RECORD']:
+        if cfg.camera['RECORD']:
             self.video_recorder = video_record.VideoRecord()
         else:
             self.video_recorder = None

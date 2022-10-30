@@ -7,7 +7,7 @@ general = {
 camera = {
     'DEPTH_CAPTURE': True,
     'CAMERA_INDEX': 1,
-    'FRAME_SIZE': (640, 360),
+    'FRAME_SIZE': (640, 480),
     'FRAME_RATE': 30,
     'RECORD': False
 }
@@ -26,7 +26,7 @@ detection = {
     'DISPLAY': True,
     'DETECTION_CONFIDENCE_CUTOFF': 0.25,
     'NO_TO_DETECT': 1,
-    'UART': True
+    'UART': False
 }
 
 # drawing specifications

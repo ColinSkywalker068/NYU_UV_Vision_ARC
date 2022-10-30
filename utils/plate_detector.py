@@ -42,7 +42,7 @@ class plate_detector:
 
         if uart:
             # create a uart object to send/receive data
-            self.uart = uart_server.uart_server()
+            self.uart = uart_server.Uart()
         else:
             self.uart = None
 

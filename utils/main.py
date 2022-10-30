@@ -4,11 +4,12 @@ import config
 import camera
 import plate_detector
 import monitor
-from localization.localization import *
+from localization import *
 import cv2
 import flagger
 
-from utils.localization.tracking import Tracker
+from tracking import Tracker
+
 
 def main():
 
@@ -30,17 +31,18 @@ def main():
         config.yolo['REPO_PATH'], config.yolo['MODEL_SOURCE'], config.yolo['MODEL_WEIGHTS_PATH'], flagger=flagger_obj, uart=config.detection['UART'])
 
     # create monitor object to display annotated images
-        
-    imu = camera.imu()
-    #Might need another file for encoder help, which we also pass into Localization
+
+    imu = camera.imu_sensor()
+    # Might need another file for encoder help, which we also pass into Localization
     localization = Localization(imu)
-    localizationThread = Thread(target = localization.main)
+    localizationThread = Thread(target=localization.main)
     localizationThread.start()
 
     tracker = Tracker(localization)
 
-    detector = plate_detector.plate_detector(config.yolo['REPO_PATH'], config.yolo['MODEL_SOURCE'], config.yolo['MODEL_WEIGHTS_PATH'])
-    
+    detector = plate_detector.plate_detector(
+        config.yolo['REPO_PATH'], config.yolo['MODEL_SOURCE'], config.yolo['MODEL_WEIGHTS_PATH'])
+
     mon = monitor.monitor()
 
     while True:
@@ -59,11 +61,11 @@ def main():
             if config.detection['DISPLAY']:
                 mon.draw_on_image(color_image, bboxes, messages)
 
-            #TODO: Waiting here for refactoring of main code:
+            # TODO: Waiting here for refactoring of main code:
             #      get_coordinates in the original main.py currently only returns one bounding box. We would be returning mulitple from it. Then, pass it onto process_frame() to get each of their depths
             #      With the coords. and the depth, we THEN pass those pairs onto the Tracker object to update its state
 
-            #tracker.updateTrackerState(coords_distances)
+            # tracker.updateTrackerState(coords_distances)
 
             # this is subject to change, but its just here to show potential structure of how things would be called
             closest_target = tracker.get_closest_tracked_robot()
@@ -72,5 +74,6 @@ def main():
 
     localizationThread.stop()
 
-if __name__=='__main__':
+
+if __name__ == '__main__':
     main()

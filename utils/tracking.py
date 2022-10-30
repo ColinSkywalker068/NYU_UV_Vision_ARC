@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple
 
 from numpy import double
 
-from utils.localization.localization import Localization
+from localization import Localization
 
 
 class TrackedRobot:
