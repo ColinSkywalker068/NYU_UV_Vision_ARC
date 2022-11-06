@@ -24,24 +24,21 @@ def main():
 
     # create flagger object
     flagger_obj = flagger.Flagger(
-        config.gameplay['OPPONENT_TEAM_COLOR'], config.gameplay['HSV_LOWER_RED'], config.gameplay['HSV_UPPER_RED'], config.gameplay['HSV_LOWER_BLUE'], config.gameplay['HSV_UPPER_BLUE'])
+        config.gameplay['OPPONENT_TEAM_COLOR'], config.gameplay['HSV_LOWER_RED'], config.gameplay['HSV_UPPER_RED'], config.gameplay['HSV_LOWER_RED_2'], config.gameplay['HSV_UPPER_RED_2'], config.gameplay['HSV_LOWER_BLUE'], config.gameplay['HSV_UPPER_BLUE'])
 
     # create detector object
     detector = plate_detector.plate_detector(
         config.yolo['REPO_PATH'], config.yolo['MODEL_SOURCE'], config.yolo['MODEL_WEIGHTS_PATH'], flagger=flagger_obj, uart=config.detection['UART'])
 
     # create monitor object to display annotated images
+    if config.detection['IMU']:
+        imu = camera.imu_sensor()
+        # Might need another file for encoder help, which we also pass into Localization
+        localization = Localization(imu)
+        localizationThread = Thread(target=localization.main)
+        localizationThread.start()
 
-    imu = camera.imu_sensor()
-    # Might need another file for encoder help, which we also pass into Localization
-    localization = Localization(imu)
-    localizationThread = Thread(target=localization.main)
-    localizationThread.start()
-
-    tracker = Tracker(localization)
-
-    detector = plate_detector.plate_detector(
-        config.yolo['REPO_PATH'], config.yolo['MODEL_SOURCE'], config.yolo['MODEL_WEIGHTS_PATH'])
+        tracker = Tracker(localization)
 
     mon = monitor.monitor()
 
@@ -68,11 +65,12 @@ def main():
             # tracker.updateTrackerState(coords_distances)
 
             # this is subject to change, but its just here to show potential structure of how things would be called
-            closest_target = tracker.get_closest_tracked_robot()
-            final_coords = tracker.get_coords_to_move(closest_target)
+            #closest_target = tracker.get_closest_tracked_robot()
+            #final_coords = tracker.get_coords_to_move(closest_target)
             # ---> Send final coords through serial
 
-    localizationThread.stop()
+    if config.detection['IMU']:
+        localizationThread.stop()
 
 
 if __name__ == '__main__':

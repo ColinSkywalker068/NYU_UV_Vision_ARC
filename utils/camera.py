@@ -40,6 +40,8 @@ class camera:
             cap = A VideoCapture object of cv2 module
         """
         self.cap = cv2.VideoCapture(camera_index)
+        # optimize camera capture for only compressed color frames
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
 
     # Get Color frame
     def get_frame(self):
@@ -107,6 +109,9 @@ class depth_camera:
         # Start streaming
         self.pipeline.start(config)
 
+        # algin depth frame to color frame
+        self.align = rs.align(rs.stream.color)
+
         # video recorder
         if cfg.camera['RECORD']:
             self.video_recorder = video_record.VideoRecord()
@@ -128,19 +133,23 @@ class depth_camera:
         except:
             return False, None, None
 
-        depth_frame = frames.get_depth_frame()
+        # Align the depth frame to color frame
+        # See https://dev.intelrealsense.com/docs/rs-align
+        frames = self.align.process(frames)
+
         color_frame = frames.get_color_frame()
+        depth_frame = frames.get_depth_frame()
 
         depth_image = np.asanyarray(depth_frame.get_data())
         color_image = np.asanyarray(color_frame.get_data())
 
-        if self.video_recorder is not None and color_frame:
-            self.video_recorder.process_frame(color_image)
+        # if self.video_recorder and color_frame:
+        # self.video_recorder.process_frame(color_image)
 
-        if not depth_frame or not color_frame:
-            return False, None, None
+        if depth_frame and color_frame:
+            return True, depth_image, color_image
 
-        return True, depth_image, color_image
+        return False, None, None
 
     def release(self):
         """
