@@ -4,7 +4,17 @@ import time
 import serial
 from threading import Thread
 from queue import Queue
+import struct
+import math
 
+
+HEADER_LENGTH = 5
+WAITING_FOR_HEADER = 0
+READING_HEADER = 1
+READING_DATA = 2
+
+
+# IMU structure
 
 # UART class to handle serial communication with type A board
 class Uart:
@@ -13,57 +23,143 @@ class Uart:
         self.ser = serial.Serial(
             port=port,
             baudrate=baudrate,
-            timeout=1
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE,
+            timeout=0
         )
 
+        # use USB serial port
+
+        self.HEADER = 0xE7
+
+        self.state = WAITING_FOR_HEADER
+        self.msg_len = 0
+        self.msg_type = 0
+
+        self.auto_aim_request_list = Queue.queue()
+
+        # mutex for robot id
+
+        self.robot_id = -1
+        self.robot_id_mutex = threading.Lock()
+
+        self.auto_aim_request = False
+        self.auto_aim_request_mutex = threading.Lock()
+
+        # IMU data
+        # ax, ay, az, roll, pitch, yaw, wx, wy, wz, rf_rpm, lf_rpm, rb_rpm, lb_rpm
+        self.imu_data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        self.imu_data_mutex = threading.Lock()
+
         # Queue of recieved messages (message_queue_size max)
-        self.recieved_message_queue = Queue(maxsize=message_queue_size)
-        self.message_queue_size = message_queue_size
+        # self.recieved_message_queue = Queue(maxsize=message_queue_size)
+        # self.message_queue_size = message_queue_size
 
         # Start thread to read data from serial (listener)
-        tr = Thread(target=self._read_data_thread)
-        tr.start()
+        # tr = Thread(target=self._read_data_thread)
+        # tr.start()
 
     # Send string of data to type A board
-    # @param data: string of data to send
-    def send_data(self, data: str):
-        self.ser.write(data.encode())
+    # @param data: byte string of data to send
+    def send_data(self, data):
+        self.ser.write(data)
 
-    # Get a message from the queue of recieved messages (thread safe)
-    def _get_data_queue_thread(self):
-        response = ""
-        if not self.recieved_message_queue.empty():
-            response = self.recieved_message_queue.get()
-        return response
+    # handlers
 
-    # Read data from type A board into internal queue as a thread
-    def _read_data_thread(self):
-        while True:
-            # handle full queue
-            if self.recieved_message_queue.full():
-                self.recieved_message_queue.get()
+    def handle_align_request(self, data):
+        # data = [x,y,r]
+        try:
+            data = struct.unpack("<B", data)
+        except:
+            print("Invalid Align Request Message")
+            return
 
-            if self.ser.inWaiting() != 0:
-                data = self.ser.readline()
-                # print(data)
-                self.recieved_message_queue.put_nowait(data)
+        request = []
+        request[0] = data[0]
+        self.auto_aim_request_list.put(request)
 
-    # Get a message from the queue of recieved messages
-    # @param amount: amount of messages to get from queue
-    def get_data(self, amount=1):
-        # tmp list to store messages
-        messages = []
+    def handle_robot_id(self, data):
+        # data = [id]
+        try:
+            data = struct.unpack("<B", data)
+        except:
+            print("Invalid Robot ID Message")
+            return
 
-        # pad amount to length of queue if amount is greater than queue length
-        if amount > self.recieved_message_queue.qsize():
-            amount = self.recieved_message_queue.qsize()
+        self.robot_id_mutex.acquire()
+        self.robot_id = data[0]
+        self.robot_id_mutex.release()
 
-        # get messages from queue
-        messages = [self._get_data_queue_thread() for i in range(amount)]
+    def handle_auto_aim_request(self, data):
+        # data = [enable]
+        try:
+            data = struct.unpack("<B", data)
+        except:
+            print("Invalid Auto Aim Request Message")
+            return
 
-        return messages
+        self.auto_aim_request_mutex.acquire()
+        self.auto_aim_request = data[0]
+        self.auto_aim_request_mutex.release()
 
-    # Close serial connection
+    def handle_imu_feedback(self, data):
+        try:
+            data = struct.unpack("<hhhhhhhhhhhhh", data)
+        except:
+            print("Invalid IMU Feedback Message")
+            return
 
-    def close(self):
+        self.imu_data_mutex.acquire()
+        self.imu_data[0] = float(data[0])/100
+        self.imu_data[1] = float(data[1])/100
+        self.imu_data[2] = float(data[2])/100
+        self.imu_data[3] = math.radians(float(data[3]/100))
+        self.imu_data[4] = math.radians(float(data[4]/100))
+        self.imu_data[5] = math.radians(float(data[5]/100))
+        self.imu_data[6] = float(data[6])/100
+        self.imu_data[7] = float(data[7])/100
+        self.imu_data[8] = float(data[8])/100
+        self.imu_data[9] = data[9]
+        self.imu_data[10] = data[10]
+        self.imu_data[11] = data[11]
+        self.imu_data[12] = data[12]
+        self.imu_data_mutex.release()
+
+    # listen for data from serial port
+
+    def listener(self):
+        if self.ser.in_waiting > 0:
+            if self.state = WAITING_FOR_HEADER:
+                data = struct.unpack("B", self.ser.read())[0]
+                if data == self.HEADER:
+                    self.state = READING_HEADER
+            elif self.state == READING_HEADER:
+                header_bytes = self.ser.read(HEADER_LENGTH-1)
+                if len(header_bytes) != HEADER_LENGTH-1:
+                    self.state = WAITING_FOR_HEADER
+                    return
+
+                header = struct.unpack("<BHBB", header_bytes)
+                self.msg_len = header[0]
+                self.msg_type = header[-1]
+                self.state = READING_DATA
+
+            elif self.state == READING_DATA:
+                self.reset_listener()
+                self.data = self.ser.read(self.msg_len)
+                if self.msg_type == 1:
+                    self.handle_align_request(self.data)
+                elif self.msg_type == 2:
+                    self.handle_robot_id(self.data)
+                elif self.msg_type == 3:
+                    self.handle_auto_aim_request(self.data)
+                elif self.msg_type == 4:
+                    self.handle_imu_feedback(self.data)
+
+    def reset_listener(self):
+        self.state = WAITING_FOR_HEADER
+        self.msg_len = 0
+        self.msg_type = 0
+
+    def __del__(self):
         self.ser.close()
