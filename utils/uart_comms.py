@@ -58,5 +58,11 @@ class Publisher_node:
 
         self.Uart.send_data(msg)
 
-    def __del__(self):
-        self.Uart.stop()
+    # def __del__(self):
+
+
+if __name__ == "__main__":
+    node = Publisher_node(None)
+    node.send_auto_aim([1, 2, 1])
+    node.send_align_request([1, 2, 3])
+    node.send_align_finish([1])

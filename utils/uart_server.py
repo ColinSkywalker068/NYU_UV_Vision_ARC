@@ -51,6 +51,11 @@ class Uart:
         self.imu_data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         self.imu_data_mutex = threading.Lock()
 
+        # Gimbal Feedback
+        # pitch, yaw
+        self.turret_feedback = [0, 0]
+        self.turret_feedback_mutex = threading.Lock()
+
         # Queue of recieved messages (message_queue_size max)
         # self.recieved_message_queue = Queue(maxsize=message_queue_size)
         # self.message_queue_size = message_queue_size
@@ -125,11 +130,21 @@ class Uart:
         self.imu_data[12] = data[12]
         self.imu_data_mutex.release()
 
+    def handle_turret_feedback(self, data):
+        try:
+            data = struct.unpack("<hh", data)
+        except:
+            print("Invalid Turret Feedback Message")
+            return
+        feedback = [float(data[0])/100, float(data[1])/100]
+        self.turret_feedback.lock()
+        self.turret_feedback = feedback
+        self.turret_feedback_mutex.release()
     # listen for data from serial port
 
     def listener(self):
         if self.ser.in_waiting > 0:
-            if self.state = WAITING_FOR_HEADER:
+            if self.state == WAITING_FOR_HEADER:
                 data = struct.unpack("B", self.ser.read())[0]
                 if data == self.HEADER:
                     self.state = READING_HEADER
@@ -155,6 +170,8 @@ class Uart:
                     self.handle_auto_aim_request(self.data)
                 elif self.msg_type == 4:
                     self.handle_imu_feedback(self.data)
+                elif self.msg_type == 5:
+                    self.handle_turret_feedback(self.data)
 
     def reset_listener(self):
         self.state = WAITING_FOR_HEADER
