@@ -178,5 +178,31 @@ class Uart:
         self.msg_len = 0
         self.msg_type = 0
 
+    # get functions
+
+    def get_robot_id(self):
+        self.robot_id_mutex.acquire()
+        robot_id = self.robot_id
+        self.robot_id_mutex.release()
+        return robot_id
+
+    def get_auto_aim_request(self):
+        self.auto_aim_request_mutex.acquire()
+        auto_aim_request = self.auto_aim_request
+        self.auto_aim_request_mutex.release()
+        return auto_aim_request
+
+    def get_imu_data(self):
+        self.imu_data_mutex.acquire()
+        imu_data = self.imu_data
+        self.imu_data_mutex.release()
+        return imu_data
+
+    def get_turret_feedback(self):
+        self.turret_feedback_mutex.acquire()
+        turret_feedback = self.turret_feedback
+        self.turret_feedback_mutex.release()
+        return turret_feedback
+
     def __del__(self):
         self.ser.close()

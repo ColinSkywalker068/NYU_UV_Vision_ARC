@@ -11,12 +11,18 @@ class Publisher_node:
         self.Uart = Uart_server
         if self.Uart is None:
             self.Uart = uart_server.Uart()
-        self.Uart.start()
         self.header = uart_server.HEADER_LENGTH
 
+        # start thread
+        self.thread = threading.Thread(target=self._start)
+        # while True:
+        #     self.Uart.listener()
+        # time.sleep(0.001)
+
+    # called as a thread
+    def _start(self):
         while True:
             self.Uart.listener()
-            # time.sleep(0.001)
 
     def send_auto_aim(self, msg):
         # msg = [pitch, yaw, has_target]
