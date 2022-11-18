@@ -28,11 +28,11 @@ class Publisher_node:
         # msg = [pitch, yaw, has_target]
         length = 0x05
         msg_type = 0x01
-        header = struct.pack('<BHBBH', self.header,
+        header = struct.pack(">BHBBH", self.header,
                              length, 0x00, 0x00, msg_type)
 
-        body = struct.pack("<HHB", int(msg[0]*100), int(msg[1]*100), msg[2])
-        footer = struct.pack("<H", 0x0)
+        body = struct.pack(">HHB", int(msg[0]*100), int(msg[1]*100), msg[2])
+        footer = struct.pack(">H", 0x0)
 
         msg = header+body+footer
         self.Uart.send_data(msg)
@@ -42,11 +42,11 @@ class Publisher_node:
         length = 0x06
         msg_type = 0x02
 
-        header = struct.pack("<BHBBH", self.header,
+        header = struct.pack(">BHBBH", self.header,
                              length, 0x00, 0x00, msg_type)
 
-        body = struct.pack("<HHH", msg[0], msg[1], msg[2])
-        footer = struct.pack("<H", 0x0)
+        body = struct.pack(">HHH", msg[0], msg[1], msg[2])
+        footer = struct.pack(">H", 0x0)
         msg = header+body+footer
         self.Uart.send_data(msg)
 
@@ -56,10 +56,10 @@ class Publisher_node:
 
         length = 0x01
         msg_type = 0x03
-        header = struct.pack("<BHBBH", self.header,
+        header = struct.pack(">BHBBH", self.header,
                              length, 0x00, 0x00, msg_type)
-        body = struct.pack("<B", 0x01)
-        footer = struct.pack("<H", 0x0)
+        body = struct.pack(">B", 0x01)
+        footer = struct.pack(">H", 0x0)
         msg = header+body+footer
 
         self.Uart.send_data(msg)

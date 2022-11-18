@@ -16,6 +16,7 @@ READING_DATA = 2
 
 # IMU structure
 
+
 # UART class to handle serial communication with type A board
 class Uart:
     # Constructor
@@ -74,7 +75,7 @@ class Uart:
     def handle_align_request(self, data):
         # data = [x,y,r]
         try:
-            data = struct.unpack("<B", data)
+            data = struct.unpack(">B", data)
         except:
             print("Invalid Align Request Message")
             return
@@ -86,7 +87,7 @@ class Uart:
     def handle_robot_id(self, data):
         # data = [id]
         try:
-            data = struct.unpack("<B", data)
+            data = struct.unpack(">B", data)
         except:
             print("Invalid Robot ID Message")
             return
@@ -98,7 +99,7 @@ class Uart:
     def handle_auto_aim_request(self, data):
         # data = [enable]
         try:
-            data = struct.unpack("<B", data)
+            data = struct.unpack(">B", data)
         except:
             print("Invalid Auto Aim Request Message")
             return
@@ -109,7 +110,7 @@ class Uart:
 
     def handle_imu_feedback(self, data):
         try:
-            data = struct.unpack("<hhhhhhhhhhhhh", data)
+            data = struct.unpack(">hhhhhhhhhhhhh", data)
         except:
             print("Invalid IMU Feedback Message")
             return
@@ -132,7 +133,7 @@ class Uart:
 
     def handle_turret_feedback(self, data):
         try:
-            data = struct.unpack("<hh", data)
+            data = struct.unpack(">hh", data)
         except:
             print("Invalid Turret Feedback Message")
             return
@@ -154,7 +155,7 @@ class Uart:
                     self.state = WAITING_FOR_HEADER
                     return
 
-                header = struct.unpack("<BHBB", header_bytes)
+                header = struct.unpack(">BHBB", header_bytes)
                 self.msg_len = header[0]
                 self.msg_type = header[-1]
                 self.state = READING_DATA
