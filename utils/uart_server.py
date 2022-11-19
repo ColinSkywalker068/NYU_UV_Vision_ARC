@@ -73,7 +73,7 @@ class Uart:
     # handlers
 
     def handle_align_request(self, data):
-        # data = [x,y,r]
+        # data = [enable]
         try:
             data = struct.unpack(">B", data)
         except:
@@ -119,9 +119,9 @@ class Uart:
         self.imu_data[0] = float(data[0])/100
         self.imu_data[1] = float(data[1])/100
         self.imu_data[2] = float(data[2])/100
-        self.imu_data[3] = math.radians(float(data[3]/100))
-        self.imu_data[4] = math.radians(float(data[4]/100))
-        self.imu_data[5] = math.radians(float(data[5]/100))
+        self.imu_data[3] = float(data[3]/100)
+        self.imu_data[4] = float(data[4]/100)
+        self.imu_data[5] = float(data[5]/100)
         self.imu_data[6] = float(data[6])/100
         self.imu_data[7] = float(data[7])/100
         self.imu_data[8] = float(data[8])/100
@@ -132,6 +132,7 @@ class Uart:
         self.imu_data_mutex.release()
 
     def handle_turret_feedback(self, data):
+        # data = [pitch, yaw]
         try:
             data = struct.unpack(">hh", data)
         except:
