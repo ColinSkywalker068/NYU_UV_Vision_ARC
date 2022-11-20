@@ -3,6 +3,11 @@ import torch
 import os
 import flagger
 import uart_server
+import torch.backends.cudnn as cudnn
+
+
+#  Autoselect kernel with best performance on current hardware
+cudnn.benchmark = True
 
 
 class plate_detector:
@@ -26,7 +31,16 @@ class plate_detector:
 
         # Create object detection model
         # or yolov5m, yolov5l, yolov5x, custom
-        self.model = torch.hub.load(repo, 'custom', path=model_file_path)
+        self.model = torch.hub.load(
+            repo, 'custom', path=model_file_path).eval()
+
+        if torch.cuda.is_available():
+            self.model = self.model.cuda()
+
+        # Deactivate Dropout layers
+        self.model.eval()  # set model to evaluation mode
+
+        # @TODO: convert to tensorrt
 
         # Check if tracking is required
         if tracking:
@@ -67,23 +81,30 @@ class plate_detector:
         results = self.model(color_image)
 
         # Post process bounding boxes
-        detections_rows = results.pandas().xyxy
+        #detections_rows = results.pandas().xyxy
 
-        for i in range(len(detections_rows)):
-            rows = detections_rows[i].to_numpy()
+        # use numpy (faster)
+        # x_min, y_min, x_max, y_max, conf, class (0 for plate)
+        # no cls (only in pandas)
 
-        # Go through all detections
-        top_k_detections = rows[:k]
+        # detections_rows = [results.xyxy[i].detach().cpu().numpy()
+        # for i in range(len(results.xyxy))]
+
+        # 4th column is confidence; for every row in the results (xyxy) that we
+        # copy to main memory
+        top_k_detections = [row[row[:, 4] >= conf_thres] for row in [
+            result.detach().cpu().numpy() for result in results.xyxy]][0][:k]
+        # use [0] bc tensor, [:k] bc top k
 
         bboxes = []
         messages = []
 
         for i in range(len(top_k_detections)):
             # Get the bounding box of the first object (most confident)
-            x_min, y_min, x_max, y_max, conf, cls, label = top_k_detections[i]
+            x_min, y_min, x_max, y_max, conf, label = top_k_detections[i]
 
             # check if plate is enemy plate
-            if label == 'plate' and self.flagger is not None:
+            if label == 0 and self.flagger is not None:
                 # (y_min, y_max, x_min, x_max)
                 if not self.flagger.check_enemy(color_image[int(y_min):int(y_max), int(x_min):int(x_max)]):
                     continue
@@ -104,7 +125,7 @@ class plate_detector:
                     # Add bounding boxes to be drawn on the image
                     if tracker_success:
                         bboxes.append(
-                            [x_min, y_min, x_max, y_max, conf, label])
+                            [x_min, y_min, x_max, y_max, conf, 'plate'])
                         messages.append("Tracking Success")
                     else:
                         print('Tracking Failure')

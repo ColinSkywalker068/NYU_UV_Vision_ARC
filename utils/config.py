@@ -5,8 +5,8 @@ general = {
 
 # camera specifications
 camera = {
-    'DEPTH_CAPTURE': True,
-    'CAMERA_INDEX': 1,
+    'DEPTH_CAPTURE': False,
+    'CAMERA_INDEX': './vid.mp4',
     'FRAME_SIZE': (640, 480),
     'FRAME_RATE': 30,
     'RECORD': False
@@ -25,8 +25,9 @@ detection = {
     'DEBUG': True,
     'DISPLAY': True,
     'DETECTION_CONFIDENCE_CUTOFF': 0.25,
-    'NO_TO_DETECT': 1,
-    'UART': False
+    'NO_TO_DETECT': 10,
+    'UART': False,
+    'IMU': False
 }
 
 # drawing specifications
@@ -38,11 +39,16 @@ draw = {
 }
 
 # gameplay specifications
+# note we could record the area of everything not red, then use bitwise
+# not to get the area of everything red, but our method is easier.
+
 gameplay = {
-    'ALLY_TEAM_COLOR': 'BLUE',
+    'ALLY_TEAM_COLOR': 'RED',
     'OPPONENT_TEAM_COLOR': 'BLUE',
-    'HSV_LOWER_RED': (0, 4, 226),
-    'HSV_UPPER_RED': (60, 255, 255),
-    'HSV_LOWER_BLUE': (68, 38, 131),
-    'HSV_UPPER_BLUE': (113, 255, 255)
+    'HSV_LOWER_RED': (0, 20, 228),
+    'HSV_UPPER_RED': (18, 255, 254),
+    'HSV_LOWER_RED_2': (134, 0, 0),
+    'HSV_UPPER_RED_2': (255, 255, 251),
+    'HSV_LOWER_BLUE': (60, 30, 131),
+    'HSV_UPPER_BLUE': (121, 255, 255)
 }
