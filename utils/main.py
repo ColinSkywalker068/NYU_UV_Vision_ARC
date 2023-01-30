@@ -28,7 +28,7 @@ def main():
 
     # create detector object
     detector = plate_detector.plate_detector(
-        config.yolo['REPO_PATH'], config.yolo['MODEL_SOURCE'], config.yolo['MODEL_WEIGHTS_PATH'], flagger=flagger_obj, uart=config.detection['UART'])
+        config.yolo_tensorrt['REPO_PATH'], config.yolo_tensorrt['MODEL_SOURCE'], config.yolo_tensorrt['MODEL_WEIGHTS_PATH'], flagger=flagger_obj, uart=config.detection['UART'])
 
     # create monitor object to display annotated images
     if config.detection['IMU']:

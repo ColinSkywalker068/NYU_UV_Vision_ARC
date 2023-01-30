@@ -13,7 +13,7 @@ cudnn.benchmark = True
 class plate_detector:
 
     # Constructor
-    def __init__(self, repo='ultralytics/yolov5', model='custom', model_file_path='./Algorithm/pt_files/best.pt', tracking=True, flagger=None, uart=False):
+    def __init__(self, repo='ultralytics/yolov5', model='custom', model_file_path='./Algorithm/pt_files/best.engine', tracking=True, flagger=None, uart=False):
         """
         Constructor. Initializes attributes. Uses torch.hub.load() of PyTorch module to load a pytorch model.
         Parameters:

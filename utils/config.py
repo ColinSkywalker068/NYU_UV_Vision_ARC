@@ -13,11 +13,18 @@ camera = {
 }
 
 
-# yolo model specification
+# yolo model specification 
 yolo = {
     'REPO_PATH': 'ultralytics/yolov5',
     'MODEL_SOURCE': 'custom',
     'MODEL_WEIGHTS_PATH': './../Algorithm/pt_files/best.pt',
+}
+
+# yolo model with tensorrt weights specification
+yolo_tensorrt = {
+    'REPO_PATH': 'ultralytics/yolov5',
+    'MODEL_SOURCE': 'custom',
+    'MODEL_WEIGHTS_PATH': './../Algorithm/pt_files/best.engine',
 }
 
 # specifications for detection
