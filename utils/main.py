@@ -27,8 +27,15 @@ def main():
         config.gameplay['OPPONENT_TEAM_COLOR'], config.gameplay['HSV_LOWER_RED'], config.gameplay['HSV_UPPER_RED'], config.gameplay['HSV_LOWER_RED_2'], config.gameplay['HSV_UPPER_RED_2'], config.gameplay['HSV_LOWER_BLUE'], config.gameplay['HSV_UPPER_BLUE'])
 
     # create detector object
+    # check if tensorrt is availabl
+    try:
+        import tensorrt as trt
+        model_weights_path = config.yolo_tensorrt['MODEL_WEIGHTS_PATH']
+    except:
+        model_weights_path = config.yolo['MODEL_WEIGHTS_PATH']
+
     detector = plate_detector.plate_detector(
-        config.yolo_tensorrt['REPO_PATH'], config.yolo_tensorrt['MODEL_SOURCE'], config.yolo_tensorrt['MODEL_WEIGHTS_PATH'], flagger=flagger_obj, uart=config.detection['UART'])
+        config.yolo_tensorrt['REPO_PATH'], config.yolo_tensorrt['MODEL_SOURCE'], model_weights_path, flagger=flagger_obj, uart=config.detection['UART'])
 
     # create monitor object to display annotated images
     if config.detection['IMU']:
