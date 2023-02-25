@@ -4,7 +4,9 @@ import os
 import flagger
 import uart_server
 import torch.backends.cudnn as cudnn
-
+import uart_comms
+import math
+import config
 
 #  Autoselect kernel with best performance on current hardware
 cudnn.benchmark = True
@@ -13,7 +15,7 @@ cudnn.benchmark = True
 class plate_detector:
 
     # Constructor
-    def __init__(self, repo='ultralytics/yolov5', model='custom', model_file_path='./Algorithm/pt_files/best.pt', tracking=True, flagger=None, uart=False):
+    def __init__(self, repo='ultralytics/yolov5', model='custom', model_file_path='./Algorithm/pt_files/best.engine', tracking=True, flagger=None, uart=False):
         """
         Constructor. Initializes attributes. Uses torch.hub.load() of PyTorch module to load a pytorch model.
         Parameters:
@@ -56,9 +58,17 @@ class plate_detector:
 
         if uart:
             # create a uart object to send/receive data
-            self.uart = uart_server.Uart()
+            self.uart = uart_comms.Publisher_node()
         else:
             self.uart = None
+
+        # Color FOV for Intel D400 Series cameras
+        HFOV = config.camera['HFOV']
+        VFOV = config.camera['VFOV']
+        self.camera_width = config.camera['FRAME_SIZE'][0]
+        self.center_x = self.camera_width / 2
+        self.camera_height = config.camera['FRAME_SIZE'][1]
+        self.center_y = self.camera_height / 2
 
     # Process a color frame
     def process_frame(self, color_image, conf_thres=0.25, k=1, debug=False):
@@ -137,9 +147,21 @@ class plate_detector:
                 bboxes.append(bbox)
                 messages.append("")
 
-            if self.uart is not None:
-                # @TODO: send data to uart server
-                self.uart.send_data("Plate detected")
+            # @TODO: only sends most confident plate
+            # update metric used
+            if self.uart is not None and i == 0:
+                # 1. Check get_auto_aim_request() in uart_server.py if we shold send data. if true then we send angle offsets
+
+                # @TODO this might block, test performance
+                if self.uart.Uart.get_auto_aim_request():
+                    # get the pitch and yaw offsets
+                    x_rad_offset, y_rad_offset = self.calculate_offset(
+                        ((x_max+x_min)//2, (y_max+y_min)//2))
+
+                    # 2. send the offsets to the uart server
+                    # pitch, yaw
+                    msg = [y_rad_offset, x_rad_offset, 1]
+                    self.uart.send_auto_aim(msg)
 
             if debug:
                 print("Object {} detected at ({},{}) \n\n\n ({},{})".format(
@@ -151,3 +173,28 @@ class plate_detector:
                     os.system('clear')
 
         return bboxes, messages
+
+    def calculate_angle_offsets(self, roi_center_offsets):
+        """
+        Returns the pitch and yaw offsets of the detected plate
+        Parameters:
+            bbox: bounding box of the detected plate
+        Returns:
+            pitch_offset: pitch offset of the detected plate
+            yaw_offset: yaw offset of the detected plate
+            returned values are in radians from the camera's center
+        """
+        x_roi, y_roi = roi_center_offsets
+        y_roi = self.camera_width - y_roi
+        move_x = x_roi - self.center_x
+        move_y = y_roi - self.center_y
+        if(move_x != 0):
+            move_x /= self.center_x
+        if(move_y != 0):
+            move_y /= self.center_y
+        move_x *= self.HFOV/2
+        move_y *= self.VFOV/2
+        move_x = math.radians(move_x)
+        move_y = math.radians(move_y)
+        #print("x angle offset %f y angle offset %f", move_x, move_y)
+        return (move_x, move_y)
