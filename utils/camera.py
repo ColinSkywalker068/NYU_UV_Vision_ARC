@@ -1,4 +1,7 @@
-import pyrealsense2.pyrealsense2 as rs
+try:
+    import pyrealsense2.pyrealsense2 as rs
+except:
+    import pyrealsense2 as rs
 import numpy as np
 import cv2
 import config as cfg

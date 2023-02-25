@@ -9,7 +9,9 @@ camera = {
     'CAMERA_INDEX': './vid.mp4',
     'FRAME_SIZE': (640, 480),
     'FRAME_RATE': 30,
-    'RECORD': False
+    'RECORD': False,
+    'HFOV': 69.4,
+    'VFOV': 42.5
 }
 
 
