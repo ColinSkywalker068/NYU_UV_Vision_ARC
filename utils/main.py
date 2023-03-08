@@ -8,7 +8,7 @@ from localization import *
 import cv2
 import flagger
 
-from tracking import Tracker
+# from tracking import Tracker
 
 
 def main():

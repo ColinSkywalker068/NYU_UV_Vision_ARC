@@ -36,7 +36,8 @@ detection = {
     'DETECTION_CONFIDENCE_CUTOFF': 0.25,
     'NO_TO_DETECT': 10,
     'UART': False,
-    'IMU': False
+    'IMU': False,
+    'TRACKING': True
 }
 
 # drawing specifications
