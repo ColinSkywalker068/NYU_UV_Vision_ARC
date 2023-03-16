@@ -8,6 +8,16 @@ import uart_comms
 import math
 import config
 
+# deep_sort
+from Sort import *
+from Detection import *
+import logging
+import matplotlib.pyplot as plt
+from pathlib import Path
+logger = logging.getLogger(Path(__file__).stem)
+logger.setLevel(logging.DEBUG)
+
+logger = logging.getLogger(__name__)
 #  Autoselect kernel with best performance on current hardware
 cudnn.benchmark = True
 
@@ -20,7 +30,7 @@ class plate_detector:
         Constructor. Initializes attributes. Uses torch.hub.load() of PyTorch module to load a pytorch model.
         Parameters:
             repo:  url of the repository that has the load scripts for the model
-            model: type of model 
+            model: type of model
             model_file_path: path to the weights of the model
             tracking: True if tracking is to be done else False
             flagger: flagger object (Default: None)
@@ -40,16 +50,19 @@ class plate_detector:
             self.model = self.model.cuda()
 
         # Deactivate Dropout layers
-        self.model.eval()  # set model to evaluation mode
+        # self.model.eval()  # set model to evaluation mode
 
         # @TODO: convert to tensorrt
 
         # Check if tracking is required
+        self.tracker_initialized = False
         if tracking:
             # Create the tracker object
             self.tracking = True
-            self.tracker = cv2.legacy.TrackerMedianFlow_create()
-            self.tracker_initialized = False
+
+            self.tracker = Sort(max_age=30, min_hits=1)
+            cmap = plt.get_cmap('tab20b')
+            self.colors = [cmap(i)[:3] for i in np.linspace(0, 1, 20)]
         else:
             self.tracking = False
 
@@ -63,8 +76,8 @@ class plate_detector:
             self.uart = None
 
         # Color FOV for Intel D400 Series cameras
-        HFOV = config.camera['HFOV']
-        VFOV = config.camera['VFOV']
+        self.HFOV = config.camera['HFOV']
+        self.VFOV = config.camera['VFOV']
         self.camera_width = config.camera['FRAME_SIZE'][0]
         self.center_x = self.camera_width / 2
         self.camera_height = config.camera['FRAME_SIZE'][1]
@@ -73,7 +86,7 @@ class plate_detector:
     # Process a color frame
     def process_frame(self, color_image, conf_thres=0.25, k=1, debug=False):
         """
-        Performs object detection on the input image. 
+        Performs object detection on the input image.
         Filters out predictions.
         Performs tracking.
         Paramters:
@@ -91,7 +104,6 @@ class plate_detector:
         results = self.model(color_image)
 
         # Post process bounding boxes
-        #detections_rows = results.pandas().xyxy
 
         # use numpy (faster)
         # x_min, y_min, x_max, y_max, conf, class (0 for plate)
@@ -109,6 +121,31 @@ class plate_detector:
         bboxes = []
         messages = []
 
+        if self.tracking:
+            dets = [bbox[:6] for bbox in top_k_detections
+                    # check only track enemy plates and label is 0
+                    # we have to use self.flagger.check_enemy_plate() to check
+                    if (self.flagger.check_enemy(color_image[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])]) and bbox[5] == 0)
+                    ]
+            dets = np.array(dets)
+            # ensure [[],] format
+            if len(dets) == 0:
+                dets = np.array([[]])
+            elif len(dets.shape) == 1:
+                dets = np.array([dets])
+
+            # if length of each row is not 7, append 0s
+            if len(dets.shape) == 2 and dets.shape[1] != 7:
+                dets = np.append(dets, np.zeros(
+                    (dets.shape[0], 7 - dets.shape[1])), axis=1)
+            # print(dets)
+            tracker_output = self.tracker.update(dets)
+            # print(tracker_output)
+            bboxes = [bbox[:5] for bbox in tracker_output
+                      # ensure no NaNs
+                      if not np.isnan(bbox).any()]
+
+        # @TODO: we currently only send and print detections that are only inferred by the model, not tracked by DeepSORT. We should send and print both. Code needs to be refactored.
         for i in range(len(top_k_detections)):
             # Get the bounding box of the first object (most confident)
             x_min, y_min, x_max, y_max, conf, label = top_k_detections[i]
@@ -116,35 +153,14 @@ class plate_detector:
             # check if plate is enemy plate
             if label == 0 and self.flagger is not None:
                 # (y_min, y_max, x_min, x_max)
-                if not self.flagger.check_enemy(color_image[int(y_min):int(y_max), int(x_min):int(x_max)]):
+                if not self.flagger.check_enemy(color_image[int(y_min): int(y_max), int(x_min): int(x_max)]):
                     continue
 
-            if self.tracking:
-
-                if not self.tracker_initialized:
-                    # Initialize the tracker
-                    tracker_success = self.tracker.init(
-                        color_image, (x_min, y_min, x_max, y_max))
-                    self.tracker_initialized = True
-                else:
-
-                    # Update tracker
-                    tracker_success, bbox = self.tracker.update(color_image)
-                    # bboxes.append(bbox)
-
-                    # Add bounding boxes to be drawn on the image
-                    if tracker_success:
-                        bboxes.append(
-                            [x_min, y_min, x_max, y_max, conf, 'plate'])
-                        messages.append("Tracking Success")
-                    else:
-                        print('Tracking Failure')
-                        messages.append('Tracking failed for {}'.format(i))
-
-            else:
+            if not self.tracking:
                 # Add bounding boxes to be drawn on the image
                 bbox = [x_min, y_min, x_max, y_max, conf, label]
-                bboxes.append(bbox)
+                bboxes = np.append(bboxes, bbox)
+                # bboxes.append(bbox)
                 messages.append("")
 
             # @TODO: only sends most confident plate
@@ -155,7 +171,7 @@ class plate_detector:
                 # @TODO this might block, test performance
                 if self.uart.Uart.get_auto_aim_request():
                     # get the pitch and yaw offsets
-                    x_rad_offset, y_rad_offset = self.calculate_offset(
+                    x_rad_offset, y_rad_offset = self.calculate_angle_offsets(
                         ((x_max+x_min)//2, (y_max+y_min)//2))
 
                     # 2. send the offsets to the uart server
@@ -196,5 +212,5 @@ class plate_detector:
         move_y *= self.VFOV/2
         move_x = math.radians(move_x)
         move_y = math.radians(move_y)
-        #print("x angle offset %f y angle offset %f", move_x, move_y)
+        # print("x angle offset %f y angle offset %f", move_x, move_y)
         return (move_x, move_y)
