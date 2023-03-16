@@ -169,7 +169,8 @@ class plate_detector:
                 # 1. Check get_auto_aim_request() in uart_server.py if we shold send data. if true then we send angle offsets
 
                 # @TODO this might block, test performance
-                if self.uart.Uart.get_auto_aim_request():
+                #if self.uart.Uart.get_auto_aim_request():
+                if True:
                     # get the pitch and yaw offsets
                     x_rad_offset, y_rad_offset = self.calculate_angle_offsets(
                         ((x_max+x_min)//2, (y_max+y_min)//2))

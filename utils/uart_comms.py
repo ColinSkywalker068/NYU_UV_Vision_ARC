@@ -31,6 +31,7 @@ class Publisher_node:
         header = struct.pack(">BHBBH", self.header,
                              length, 0x00, 0x00, msg_type)
 
+        msg = [abs(x) for x in msg]  # @TODO: fix signed serializing
         body = struct.pack(">HHB", int(msg[0]*100), int(msg[1]*100), msg[2])
         footer = struct.pack(">H", 0x0)
 
