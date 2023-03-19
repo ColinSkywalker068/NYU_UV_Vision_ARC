@@ -9,6 +9,7 @@ import cv2
 import flagger
 
 # from tracking import Tracker
+# from tracking.sort import Sort
 
 
 def main():
@@ -27,7 +28,7 @@ def main():
         config.gameplay['OPPONENT_TEAM_COLOR'], config.gameplay['HSV_LOWER_RED'], config.gameplay['HSV_UPPER_RED'], config.gameplay['HSV_LOWER_RED_2'], config.gameplay['HSV_UPPER_RED_2'], config.gameplay['HSV_LOWER_BLUE'], config.gameplay['HSV_UPPER_BLUE'])
 
     # create detector object
-    # check if tensorrt is availabl
+    # check if tensorrt is available
     try:
         import tensorrt as trt
         model_weights_path = config.yolo_tensorrt['MODEL_WEIGHTS_PATH']
@@ -35,7 +36,12 @@ def main():
         model_weights_path = config.yolo['MODEL_WEIGHTS_PATH']
 
     detector = plate_detector.plate_detector(
-        config.yolo_tensorrt['REPO_PATH'], config.yolo_tensorrt['MODEL_SOURCE'], model_weights_path, flagger=flagger_obj, uart=config.detection['UART'])
+        config.yolo_tensorrt['REPO_PATH'],
+        config.yolo_tensorrt['MODEL_SOURCE'],
+        model_weights_path,
+        tracking=config.detection['TRACKING'],
+        flagger=flagger_obj,
+        uart=config.detection['UART'])
 
     # create monitor object to display annotated images
     if config.detection['IMU']:
@@ -45,7 +51,8 @@ def main():
         localizationThread = Thread(target=localization.main)
         localizationThread.start()
 
-        tracker = Tracker(localization)
+        # tracker = Tracker(localization)
+        # tracker = Sort()
 
     mon = monitor.monitor()
 

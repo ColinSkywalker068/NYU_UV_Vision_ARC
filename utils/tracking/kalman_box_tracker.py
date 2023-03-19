@@ -32,7 +32,7 @@ class KalmanBoxTracker(object):
     self.hits = 0
     self.hit_streak = 0
     self.age = 0
-    self.objclass = bbox[6]
+    self.objclass = bbox[5]
 
   def update(self,bbox):
     """

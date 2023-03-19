@@ -1,12 +1,14 @@
-try:
-    import pyrealsense2.pyrealsense2 as rs
-except:
-    import pyrealsense2 as rs
+
 import numpy as np
 import cv2
 import config as cfg
 import video_record
 
+if cfg.camera['DEPTH_CAPTURE']:
+    try:
+        import pyrealsense2.pyrealsense2 as rs
+    except:
+        import pyrealsense2 as rs
 
 class imu_sensor:
     def __init__(self):
