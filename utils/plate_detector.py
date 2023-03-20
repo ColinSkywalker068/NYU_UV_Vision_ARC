@@ -1,17 +1,17 @@
-import cv2
+# import cv2 #unused
 import torch
 import os
-import flagger
-import uart_server
+# import flagger #unused
+# import uart_server #unused
 import torch.backends.cudnn as cudnn
 import uart_comms
 import math
 import config
-
-# deep_sort
-from Sort import *
-import logging
+import numpy as np
+from tracking.sort import Sort
 import matplotlib.pyplot as plt
+
+import logging
 from pathlib import Path
 logger = logging.getLogger(Path(__file__).stem)
 logger.setLevel(logging.DEBUG)
@@ -42,11 +42,25 @@ class plate_detector:
 
         # Create object detection model
         # or yolov5m, yolov5l, yolov5x, custom
-        self.model = torch.hub.load(
-            repo, 'custom', path=model_file_path).eval()
+        # self.model = torch.hub.load(
+        #     repo, 'custom', path=model_file_path).eval()
 
-        if torch.cuda.is_available():
-            self.model = self.model.cuda()
+        # TODO: start using python logging module
+        try:
+            if torch.backends.mps.is_available():
+                print("MPS available")
+                device = torch.device("mps")
+        except:
+            print("MPS not available")
+            if torch.cuda.is_available():
+                print("CUDA available")
+                device = torch.device("cuda:0")
+            else:
+                print("CUDA/MPS not available")
+                device = torch.device("cpu")
+
+        self.model = torch.hub.load(
+            repo, 'custom', path=model_file_path, device=device)
 
         # Deactivate Dropout layers
         self.model.eval()  # set model to evaluation mode
@@ -54,11 +68,12 @@ class plate_detector:
         # @TODO: convert to tensorrt
 
         # Check if tracking is required
-        if tracking:
-            # Create the tracker object
+        self.tracking = tracking
+        if self.tracking:
             self.tracker = Sort(max_age=5, min_hits=2)
         else:
             self.tracker = None
+       
 
         if flagger is not None:
             self.flagger = flagger
@@ -111,7 +126,7 @@ class plate_detector:
         top_k_detections = [row[row[:, 4] >= conf_thres] for row in [
             result.detach().cpu().numpy() for result in results.xyxy]][0][:k]
         # use [0] bc tensor, [:k] bc top k
-
+        # print(top_k_detections)
         bboxes = []
         messages = []
 

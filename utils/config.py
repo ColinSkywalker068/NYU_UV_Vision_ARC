@@ -6,7 +6,7 @@ general = {
 # camera specifications
 camera = {
     'DEPTH_CAPTURE': False,
-    'CAMERA_INDEX': './vid2.mp4',
+    'CAMERA_INDEX': '../example/vid.mp4',
     'FRAME_SIZE': (640, 480),
     'FRAME_RATE': 30,
     'RECORD': False,
@@ -36,7 +36,8 @@ detection = {
     'DETECTION_CONFIDENCE_CUTOFF': 0.25,
     'NO_TO_DETECT': 10,
     'UART': False,
-    'IMU': False
+    'IMU': False,
+    'TRACKING': True
 }
 
 # drawing specifications
