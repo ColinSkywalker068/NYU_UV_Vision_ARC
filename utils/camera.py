@@ -93,8 +93,8 @@ class depth_camera:
         config.enable_stream(
             rs.stream.color, frame_size[0], frame_size[1], rs.format.bgr8, frame_rate)
         # Disable laser
-        device = pipeline_profile.get_active_profile().get_device()
-        #device_product_line = str(device.get_info(rs.camera_info.product_line))
+        device = pipeline_profile.get_device()
+        device_product_line = str(device.get_info(rs.camera_info.product_line))
         depth_sensor = device.first_depth_sensor()
         depth_sensor.set_option(rs.option.laser_power, 0)
 
