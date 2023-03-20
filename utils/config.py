@@ -15,7 +15,7 @@ camera = {
 }
 
 
-# yolo model specification 
+# yolo model specification
 yolo = {
     'REPO_PATH': 'ultralytics/yolov5',
     'MODEL_SOURCE': 'custom',

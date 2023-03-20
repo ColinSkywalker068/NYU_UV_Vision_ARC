@@ -10,6 +10,13 @@ import config
 import numpy as np
 from tracking.sort import Sort
 import matplotlib.pyplot as plt
+
+import logging
+from pathlib import Path
+logger = logging.getLogger(Path(__file__).stem)
+logger.setLevel(logging.DEBUG)
+
+logger = logging.getLogger(__name__)
 #  Autoselect kernel with best performance on current hardware
 cudnn.benchmark = True
 
@@ -22,7 +29,7 @@ class plate_detector:
         Constructor. Initializes attributes. Uses torch.hub.load() of PyTorch module to load a pytorch model.
         Parameters:
             repo:  url of the repository that has the load scripts for the model
-            model: type of model 
+            model: type of model
             model_file_path: path to the weights of the model
             tracking: True if tracking is to be done else False
             flagger: flagger object (Default: None)
@@ -63,12 +70,10 @@ class plate_detector:
         # Check if tracking is required
         self.tracking = tracking
         if self.tracking:
-            self.tracker = Sort()
+            self.tracker = Sort(max_age=5, min_hits=2)
         else:
             self.tracker = None
-        
-        self.cmap = plt.get_cmap('tab20b')
-        self.colors = [self.cmap(i)[:3] for i in np.linspace(0, 1, 20)]
+       
 
         if flagger is not None:
             self.flagger = flagger
@@ -80,8 +85,8 @@ class plate_detector:
             self.uart = None
 
         # Color FOV for Intel D400 Series cameras
-        HFOV = config.camera['HFOV']
-        VFOV = config.camera['VFOV']
+        self.HFOV = config.camera['HFOV']
+        self.VFOV = config.camera['VFOV']
         self.camera_width = config.camera['FRAME_SIZE'][0]
         self.center_x = self.camera_width / 2
         self.camera_height = config.camera['FRAME_SIZE'][1]
@@ -90,7 +95,7 @@ class plate_detector:
     # Process a color frame
     def process_frame(self, color_image, conf_thres=0.25, k=1, debug=False):
         """
-        Performs object detection on the input image. 
+        Performs object detection on the input image.
         Filters out predictions.
         Performs tracking.
         Paramters:
@@ -108,7 +113,6 @@ class plate_detector:
         results = self.model(color_image)
 
         # Post process bounding boxes
-        #detections_rows = results.pandas().xyxy
 
         # use numpy (faster)
         # x_min, y_min, x_max, y_max, conf, class (0 for plate)
@@ -126,96 +130,60 @@ class plate_detector:
         bboxes = []
         messages = []
 
-        # TODO: 
-        # fix code duplication for UART comms and debugging. 
-        # could use a function to do this, more modular code
-        if self.tracking:
-            tracked_objects = self.tracker.update(top_k_detections)
-            for i, object in enumerate(tracked_objects):
-                x_min, y_min, x_max, y_max, obj_id, cls_pred = object
-                # TODO: need to play with sort / tracker_utils to make this efficient
-                x_min = int(x_min)
-                y_min = int(y_min)
-                x_max = int(x_max)
-                y_max = int(y_max)
-                obj_id = int(obj_id)
-                # check if plate is enemy plate
-                if cls_pred == 0 and self.flagger is not None:
-                    # (y_min, y_max, x_min, x_max)
-                    if not self.flagger.check_enemy(color_image[y_min:y_max, x_min:x_max]):
-                        continue # skip this detection
-                color = self.colors[obj_id % len(self.colors)]
-                color = [i * 255 for i in color]
-                bbox = [x_min, y_min, x_max, y_max, obj_id, cls_pred]
-                message = "plate-"+str(obj_id)
-                bboxes.append(bbox)
-                messages.append(message)
+        bboxes = [bbox[:6] for bbox in top_k_detections
+                  # check only track enemy plates and label is 0
+                  # we have to use self.flagger.check_enemy_plate() to check
+                  if (self.flagger.check_enemy(color_image[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])]) and bbox[5] == 0)
+                  ]
 
-                # @TODO: only sends most confident plate
-                # update metric used
-                if self.uart is not None and i == 0:
-                    # 1. Check get_auto_aim_request() in uart_server.py if we shold send data. if true then we send angle offsets
+        if self.tracker is not None:
+            dets = np.array(bboxes)
+            # ensure [[],] format
+            if len(dets) == 0:
+                dets = np.array([[]])
+            elif len(dets.shape) == 1:
+                dets = np.array([dets])
 
-                    # @TODO this might block, test performance
-                    if self.uart.Uart.get_auto_aim_request():
-                        # get the pitch and yaw offsets
-                        x_rad_offset, y_rad_offset = self.calculate_offset(
-                            ((x_max+x_min)//2, (y_max+y_min)//2))
+            # if length of each row is not 7, append 0s
+            if len(dets.shape) == 2 and dets.shape[1] != 7:
+                dets = np.append(dets, np.zeros(
+                    (dets.shape[0], 7 - dets.shape[1])), axis=1)
+            # print(dets)
+            tracker_output = self.tracker.update(dets)
+            # print(tracker_output)
+            # add label to each row
+            bboxes = [bbox.tolist()
+                      for bbox in tracker_output if not np.isnan(bbox).any()]
+            # print(bboxes)
 
-                        # 2. send the offsets to the uart server
-                        # pitch, yaw
-                        msg = [y_rad_offset, x_rad_offset, 1]
-                        self.uart.send_auto_aim(msg)
+        # @TODO: only sends most confident plate
+        # update metric used
+        # send bbox at beginning of frame
+        if len(bboxes) > 0:
+            x_min, y_min, x_max, y_max, conf, label = bboxes[0]
 
-                if debug:
-                    print("Object {} detected at ({},{}) \n\n\n ({},{})".format(
-                        i, x_min, y_min, x_max, y_max))
-                    # print for windows
-                    if os.name == 'nt':
-                        os.system('cls')
-                    else:
-                        os.system('clear')
-        # no tracking
-        else:
-            for i in range(len(top_k_detections)):
-                # Get the bounding box of the first object (most confident)
-                x_min, y_min, x_max, y_max, conf, label = top_k_detections[i]
+            # 1. Check get_auto_aim_request() in uart_server.py if we shold send data. if true then we send angle offsets
 
-                # check if plate is enemy plate
-                if label == 0 and self.flagger is not None:
-                    # (y_min, y_max, x_min, x_max)
-                    if not self.flagger.check_enemy(color_image[int(y_min):int(y_max), int(x_min):int(x_max)]):
-                        continue # skip this detection
+            # @TODO this might block, test performance
+            # if self.uart.Uart.get_auto_aim_request():
+            if self.uart is not None:
+                # get the pitch and yaw offsets
+                x_rad_offset, y_rad_offset = self.calculate_angle_offsets(
+                    ((x_max+x_min)//2, (y_max+y_min)//2))
 
-                    bbox = [x_min, y_min, x_max, y_max, conf, label]
-                    message = ""
-                bboxes.append(bbox)
-                messages.append(message)
+                # 2. send the offsets to the uart server
+                # pitch, yaw
+                msg = [y_rad_offset, x_rad_offset, 1]
+                self.uart.send_auto_aim(msg)
 
-                # @TODO: only sends most confident plate
-                # update metric used
-                if self.uart is not None and i == 0:
-                    # 1. Check get_auto_aim_request() in uart_server.py if we shold send data. if true then we send angle offsets
-
-                    # @TODO this might block, test performance
-                    if self.uart.Uart.get_auto_aim_request():
-                        # get the pitch and yaw offsets
-                        x_rad_offset, y_rad_offset = self.calculate_offset(
-                            ((x_max+x_min)//2, (y_max+y_min)//2))
-
-                        # 2. send the offsets to the uart server
-                        # pitch, yaw
-                        msg = [y_rad_offset, x_rad_offset, 1]
-                        self.uart.send_auto_aim(msg)
-
-                if debug:
-                    print("Object {} detected at ({},{}) \n\n\n ({},{})".format(
-                        i, x_min, y_min, x_max, y_max))
-                    # print for windows
-                    if os.name == 'nt':
-                        os.system('cls')
-                    else:
-                        os.system('clear')
+            if debug:
+                print("Plate detected at \n({:.3f},{:.3f})\n\n({:.3f},{:.3f})".format(
+                    x_min, y_min, x_max, y_max))
+                # print for windows
+                if os.name == 'nt':
+                    os.system('cls')
+                else:
+                    os.system('clear')
 
         return bboxes, messages
 
@@ -241,5 +209,5 @@ class plate_detector:
         move_y *= self.VFOV/2
         move_x = math.radians(move_x)
         move_y = math.radians(move_y)
-        #print("x angle offset %f y angle offset %f", move_x, move_y)
+        # print("x angle offset %f y angle offset %f", move_x, move_y)
         return (move_x, move_y)

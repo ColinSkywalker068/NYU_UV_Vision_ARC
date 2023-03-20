@@ -8,19 +8,17 @@ import struct
 import math
 
 
+# UART constants
 HEADER_LENGTH = 5
 WAITING_FOR_HEADER = 0
 READING_HEADER = 1
 READING_DATA = 2
 
 
-# IMU structure
-
-
 # UART class to handle serial communication with type A board
 class Uart:
     # Constructor
-    def __init__(self, port="/dev/ttyUSB0", baudrate=9600, message_queue_size=20):
+    def __init__(self, port="/dev/ttyUSB0", baudrate=115200):
         self.ser = serial.Serial(
             port=port,
             baudrate=baudrate,
@@ -57,20 +55,13 @@ class Uart:
         self.turret_feedback = [0, 0]
         self.turret_feedback_mutex = threading.Lock()
 
-        # Queue of recieved messages (message_queue_size max)
-        # self.recieved_message_queue = Queue(maxsize=message_queue_size)
-        # self.message_queue_size = message_queue_size
-
-        # Start thread to read data from serial (listener)
-        # tr = Thread(target=self._read_data_thread)
-        # tr.start()
-
     # Send string of data to type A board
     # @param data: byte string of data to send
+
     def send_data(self, data):
         self.ser.write(data)
 
-    # handlers
+    ### BEGIN MESSAGE HANDLERS ###
 
     def handle_align_request(self, data):
         # data = [enable]
@@ -142,6 +133,8 @@ class Uart:
         self.turret_feedback.lock()
         self.turret_feedback = feedback
         self.turret_feedback_mutex.release()
+
+    ### END MESSAGE HANDLERS ###
     # listen for data from serial port
 
     def listener(self):
@@ -182,6 +175,7 @@ class Uart:
 
     # get functions
 
+    ### BEGIN GET FUNCTIONS ###
     def get_robot_id(self):
         self.robot_id_mutex.acquire()
         robot_id = self.robot_id
@@ -206,5 +200,6 @@ class Uart:
         self.turret_feedback_mutex.release()
         return turret_feedback
 
+    ### END GET FUNCTIONS ###
     def __del__(self):
         self.ser.close()
