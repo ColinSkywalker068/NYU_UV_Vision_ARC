@@ -29,11 +29,13 @@ def main():
 
     # create detector object
     # check if tensorrt is available
-    try:
-        import tensorrt as trt
-        model_weights_path = config.yolo_tensorrt['MODEL_WEIGHTS_PATH']
-    except:
-        model_weights_path = config.yolo['MODEL_WEIGHTS_PATH']
+    if config.yolo_tensorrt['ENABLE']:
+        try:
+            import tensorrt as trt
+            model_weights_path = config.yolo_tensorrt['MODEL_WEIGHTS_PATH']
+        except:
+            print('TensorRT not available, using YOLOv5')
+            model_weights_path = config.yolo['MODEL_WEIGHTS_PATH']
 
     detector = plate_detector.plate_detector(
         config.yolo_tensorrt['REPO_PATH'],
