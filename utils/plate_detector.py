@@ -10,7 +10,6 @@ import config
 
 # deep_sort
 from Sort import *
-from Detection import *
 import logging
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -50,21 +49,16 @@ class plate_detector:
             self.model = self.model.cuda()
 
         # Deactivate Dropout layers
-        # self.model.eval()  # set model to evaluation mode
+        self.model.eval()  # set model to evaluation mode
 
         # @TODO: convert to tensorrt
 
         # Check if tracking is required
-        self.tracker_initialized = False
         if tracking:
             # Create the tracker object
-            self.tracking = True
-
-            self.tracker = Sort(max_age=30, min_hits=1)
-            cmap = plt.get_cmap('tab20b')
-            self.colors = [cmap(i)[:3] for i in np.linspace(0, 1, 20)]
+            self.tracker = Sort(max_age=5, min_hits=2)
         else:
-            self.tracking = False
+            self.tracker = None
 
         if flagger is not None:
             self.flagger = flagger
@@ -121,13 +115,14 @@ class plate_detector:
         bboxes = []
         messages = []
 
-        if self.tracking:
-            dets = [bbox[:6] for bbox in top_k_detections
-                    # check only track enemy plates and label is 0
-                    # we have to use self.flagger.check_enemy_plate() to check
-                    if (self.flagger.check_enemy(color_image[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])]) and bbox[5] == 0)
-                    ]
-            dets = np.array(dets)
+        bboxes = [bbox[:6] for bbox in top_k_detections
+                  # check only track enemy plates and label is 0
+                  # we have to use self.flagger.check_enemy_plate() to check
+                  if (self.flagger.check_enemy(color_image[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])]) and bbox[5] == 0)
+                  ]
+
+        if self.tracker is not None:
+            dets = np.array(bboxes)
             # ensure [[],] format
             if len(dets) == 0:
                 dets = np.array([[]])
@@ -141,48 +136,34 @@ class plate_detector:
             # print(dets)
             tracker_output = self.tracker.update(dets)
             # print(tracker_output)
-            bboxes = [bbox[:5] for bbox in tracker_output
-                      # ensure no NaNs
-                      if not np.isnan(bbox).any()]
+            # add label to each row
+            bboxes = [bbox.tolist()
+                      for bbox in tracker_output if not np.isnan(bbox).any()]
+            # print(bboxes)
 
-        # @TODO: we currently only send and print detections that are only inferred by the model, not tracked by DeepSORT. We should send and print both. Code needs to be refactored.
-        for i in range(len(top_k_detections)):
-            # Get the bounding box of the first object (most confident)
-            x_min, y_min, x_max, y_max, conf, label = top_k_detections[i]
+        # @TODO: only sends most confident plate
+        # update metric used
+        # send bbox at beginning of frame
+        if len(bboxes) > 0:
+            x_min, y_min, x_max, y_max, conf, label = bboxes[0]
 
-            # check if plate is enemy plate
-            if label == 0 and self.flagger is not None:
-                # (y_min, y_max, x_min, x_max)
-                if not self.flagger.check_enemy(color_image[int(y_min): int(y_max), int(x_min): int(x_max)]):
-                    continue
+            # 1. Check get_auto_aim_request() in uart_server.py if we shold send data. if true then we send angle offsets
 
-            if not self.tracking:
-                # Add bounding boxes to be drawn on the image
-                bbox = [x_min, y_min, x_max, y_max, conf, label]
-                bboxes = np.append(bboxes, bbox)
-                # bboxes.append(bbox)
-                messages.append("")
+            # @TODO this might block, test performance
+            # if self.uart.Uart.get_auto_aim_request():
+            if self.uart is not None:
+                # get the pitch and yaw offsets
+                x_rad_offset, y_rad_offset = self.calculate_angle_offsets(
+                    ((x_max+x_min)//2, (y_max+y_min)//2))
 
-            # @TODO: only sends most confident plate
-            # update metric used
-            if self.uart is not None and i == 0:
-                # 1. Check get_auto_aim_request() in uart_server.py if we shold send data. if true then we send angle offsets
-
-                # @TODO this might block, test performance
-                #if self.uart.Uart.get_auto_aim_request():
-                if True:
-                    # get the pitch and yaw offsets
-                    x_rad_offset, y_rad_offset = self.calculate_angle_offsets(
-                        ((x_max+x_min)//2, (y_max+y_min)//2))
-
-                    # 2. send the offsets to the uart server
-                    # pitch, yaw
-                    msg = [y_rad_offset, x_rad_offset, 1]
-                    self.uart.send_auto_aim(msg)
+                # 2. send the offsets to the uart server
+                # pitch, yaw
+                msg = [y_rad_offset, x_rad_offset, 1]
+                self.uart.send_auto_aim(msg)
 
             if debug:
-                print("Object {} detected at ({},{}) \n\n\n ({},{})".format(
-                    i, x_min, y_min, x_max, y_max))
+                print("Plate detected at \n({:.3f},{:.3f})\n\n({:.3f},{:.3f})".format(
+                    x_min, y_min, x_max, y_max))
                 # print for windows
                 if os.name == 'nt':
                     os.system('cls')

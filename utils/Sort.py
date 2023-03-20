@@ -1,18 +1,4 @@
-"""
-    SORT: A Simple, Online and Realtime Tracker
-    Copyright (C) 2016 Alex Bewley alex@dynamicdetection.com
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-"""
-from __future__ import print_function
+#from __future__ import print_function
 
 from numba import jit
 import os.path
@@ -25,6 +11,8 @@ import glob
 import time
 import argparse
 from filterpy.kalman import KalmanFilter
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 @jit
@@ -214,7 +202,7 @@ class Sort(object):
         for t in reversed(to_del):
             self.trackers.pop(t)
         matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(
-            dets, trks, iou_threshold=0.2)
+            dets, trks, iou_threshold=0.7)
 
         # update matched trackers with assigned detections
         for t, trk in enumerate(self.trackers):
@@ -223,7 +211,15 @@ class Sort(object):
                 # print(dets[d,:])
                 if len(dets[d, :]) != 0:
                     trk.update(dets[d, :][0])
-
+            # keep ghost of unmatched trackers for 15 frames
+            else:
+                if trk.time_since_update < 15:
+                    old_time_since_update = trk.time_since_update
+                    trk.update(trk.get_state()[0])
+                    if not ((trk.time_since_update < 1) and (trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits)):
+                        ret.append(np.concatenate(
+                            (trk.get_state()[0], [trk.id+1], [trk.objclass])).reshape(1, -1))
+                    trk.time_since_update = old_time_since_update
         # create and initialise new trackers for unmatched detections
         for i in unmatched_dets:
             trk = KalmanBoxTracker(dets[i, :])
