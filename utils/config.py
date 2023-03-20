@@ -24,6 +24,7 @@ yolo = {
 
 # yolo model with tensorrt weights specification
 yolo_tensorrt = {
+    'ENABLE': True,
     'REPO_PATH': 'ultralytics/yolov5',
     'MODEL_SOURCE': 'custom',
     'MODEL_WEIGHTS_PATH': './../Algorithm/pt_files/best.engine',

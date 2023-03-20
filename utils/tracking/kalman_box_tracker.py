@@ -3,6 +3,8 @@ from __future__ import print_function
 import numpy as np
 from filterpy.kalman import KalmanFilter
 from tracking.tracking_utils import convert_bbox_to_z, convert_x_to_bbox
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 class KalmanBoxTracker(object):
   """
