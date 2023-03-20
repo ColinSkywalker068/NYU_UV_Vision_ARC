@@ -7,7 +7,7 @@ import uart_server
 
 
 class Publisher_node:
-    def __init__(self, Uart_server):
+    def __init__(self, Uart_server=None):
         self.Uart = Uart_server
         if self.Uart is None:
             self.Uart = uart_server.Uart()
@@ -15,14 +15,14 @@ class Publisher_node:
 
         # start thread
         self.thread = threading.Thread(target=self._start)
-        # while True:
-        #     self.Uart.listener()
-        # time.sleep(0.001)
+        self.thread.start()
 
     # called as a thread
     def _start(self):
         while True:
             self.Uart.listener()
+            # delay to prevent cpu overload
+            time.sleep(0.01)
 
     def send_auto_aim(self, msg):
         # msg = [pitch, yaw, has_target]
@@ -31,6 +31,7 @@ class Publisher_node:
         header = struct.pack(">BHBBH", self.header,
                              length, 0x00, 0x00, msg_type)
 
+        msg = [abs(x) for x in msg]  # @TODO: fix signed serializing
         body = struct.pack(">HHB", int(msg[0]*100), int(msg[1]*100), msg[2])
         footer = struct.pack(">H", 0x0)
 

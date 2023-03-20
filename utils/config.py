@@ -6,7 +6,7 @@ general = {
 # camera specifications
 camera = {
     'DEPTH_CAPTURE': False,
-    'CAMERA_INDEX': './vid.mp4',
+    'CAMERA_INDEX': '../example/vid.mp4',
     'FRAME_SIZE': (640, 480),
     'FRAME_RATE': 30,
     'RECORD': False,
@@ -15,7 +15,7 @@ camera = {
 }
 
 
-# yolo model specification 
+# yolo model specification
 yolo = {
     'REPO_PATH': 'ultralytics/yolov5',
     'MODEL_SOURCE': 'custom',
@@ -24,6 +24,7 @@ yolo = {
 
 # yolo model with tensorrt weights specification
 yolo_tensorrt = {
+    'ENABLE': True,
     'REPO_PATH': 'ultralytics/yolov5',
     'MODEL_SOURCE': 'custom',
     'MODEL_WEIGHTS_PATH': './../Algorithm/pt_files/best.engine',
@@ -36,7 +37,8 @@ detection = {
     'DETECTION_CONFIDENCE_CUTOFF': 0.25,
     'NO_TO_DETECT': 10,
     'UART': False,
-    'IMU': False
+    'IMU': False,
+    'TRACKING': True
 }
 
 # drawing specifications
