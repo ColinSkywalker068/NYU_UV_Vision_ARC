@@ -129,9 +129,3 @@ dmypy.json
 .pyre/
 
 .DS_Store
-*.mp4
-.vscode
-*.pyc
-*.pyo
-.vscode/launch.json
-.vscode/settings.json
