@@ -67,19 +67,7 @@ class Flagger:
         blue_mask = cv2.inRange(
             hsv, self.blue_lower, self.blue_upper)
 
-        # Get the contours of the red and blue regions
-        red_contours, _ = cv2.findContours(
-            red_mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-        blue_contours, _ = cv2.findContours(
-            blue_mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        r_area = cv2.countNonZero(red_mask)
+        b_area = cv2.countNonZero(blue_mask)
 
-        r_area = np.sum([cv2.contourArea(
-            c) for c in red_contours if (cv2.contourArea(c)) != 0])
-        b_area = np.sum([cv2.contourArea(
-            c) for c in blue_contours if (cv2.contourArea(c)) != 0])
-
-        if r_area > b_area:
-            return "RED"
-        elif b_area > r_area:
-            return "BLUE"
-        return "NONE"
+        return "RED" if r_area > b_area else "BLUE" if b_area > r_area else "NONE"
