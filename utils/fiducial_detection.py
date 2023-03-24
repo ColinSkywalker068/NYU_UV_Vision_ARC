@@ -27,8 +27,6 @@ def getContourBits(im,cnt,bits):
   
   pixelLen = int(math.sqrt(bits))
 
-
-
   corners = np.array([[0,0],[bits,0],[bits,bits],[0,bits]],np.float32)
 
   M = cv2.getPerspectiveTransform(cnt, corners)
@@ -75,7 +73,7 @@ def loadMarkerDictionary(marker,bits):
   cnt = np.array([[0,0],[w,0],[w,h],[0,h]],np.float32)
   for i in range(4):
     sig = getContourBits(im_marker,cnt,bits)
-    sigs.append(sig)
+    sigs.append((sig,i))
     im_marker = cv2.rotate(im_marker, cv2.ROTATE_90_CLOCKWISE)
 
   return sigs
@@ -98,7 +96,7 @@ def findMarker(img, markers, threshold=0.5, bits=49, log=True):
   if len(contours)==0:
     cv2.imshow('ROBOMASTER', orig_img)
     cv2.waitKey(20)
-    return []
+    return [],[],-1,None
 
   for cnt in contours:
     poly_cnt = cv2.approxPolyDP(cnt, 0.01*cv2.arcLength(cnt,True), True)
@@ -115,7 +113,7 @@ def findMarker(img, markers, threshold=0.5, bits=49, log=True):
   if len(res_contours)==0:
     cv2.imshow('ROBOMASTER', orig_img)
     cv2.waitKey(20)
-    return []
+    return [],[],-1,None
 
   
   if log: 
@@ -127,23 +125,25 @@ def findMarker(img, markers, threshold=0.5, bits=49, log=True):
 
   image_sig = np.array(getContourBits(orig_img, res_contours, bits))
   hits = []
+
+  hits_index = []
   for marker in markers:
-    for sig in marker['sig']:
-      sig = np.array(sig)
+    for sig_ in marker['sig']:
+      sig = np.array(sig_[0])
       n_misses = np.abs(np.sum((sig-image_sig)*sig))
       #print("Total no. of correct bits:",sig.sum(),"Misses:",n_misses, "Threshold:",(int(threshold*sig.sum())))
 
       if (sig.sum()-n_misses)>=int(threshold*sig.sum()):
         hits.append((marker['marker_id'],sig.sum()-n_misses))
+        hits_index.append(sig_[1])
 
   detectedChar = ''
   if len(hits)==1:
     detectedChar = hits[0][0]
-  else:
+  elif len(hits)>1:
     hits.sort(key = lambda x: x[1]) 
     detectedChar = hits[-1][0]
   
-  print(res_contours)
   res_image = cv2.drawContours(orig_img, [np.int64(res_contours)],-1,(255,255,0),3)
   font = cv2.FONT_HERSHEY_SIMPLEX  
   fontScale = 10
@@ -152,11 +152,35 @@ def findMarker(img, markers, threshold=0.5, bits=49, log=True):
    
   res_image = cv2.putText(res_image,detectedChar,(200,250) ,font, fontScale, color, thickness, cv2.LINE_AA)
    
-  cv2.imshow('ROBOMASTER', res_image)
-  cv2.waitKey(20)
+  
 
-  return hits
+  return hits,res_contours,hits_index,res_image
 
+
+def draw_t_offset_line(rvec, tvec, camera_matrix,camera_dist_matrix, image):
+  dist = np.sqrt((tvec**2).sum())
+  print(dist)
+  im_width,im_height = image.shape[:2]
+  
+  start_point = (int(im_height/2), int(im_width/2))
+
+  end_point,_ = cv2.projectPoints(np.float32(np.array([[0,0,0]])), rvec, tvec, camera_matrix, camera_dist_matrix )
+  end_point=np.int32(end_point[0][0])
+
+  text_center = np.array(((start_point[0]+end_point[0])//2,(start_point[1]+end_point[1])//2))
+  offset = 30
+  text_center=text_center-30
+
+  font = cv2.FONT_HERSHEY_SIMPLEX  
+  fontScale = 0.5
+  color = (255, 0, 0)
+  thickness = 2
+
+  image = cv2.line(image, start_point, end_point, (0,0,255) , thickness=2)
+
+  text = str(dist.round(2))
+  image = cv2.putText(image, text, text_center, font, fontScale, color, thickness, cv2.LINE_AA)
+  return image
 
 
 def loadMarkers(markers):
@@ -187,10 +211,71 @@ if __name__=='__main__':
 
     
     ]
+
+    camera_focal_length_x = 1427.9641708247764
+    camera_center_x =  974.409732316623
+    camera_focal_length_y = 1434.9326534580543
+    camera_center_y =  571.1514876178345
+
+    # Distortion coefficients.
+    # See the OpenCV documentation on what this does before adjusting.
+    camera_dist_coeff_k1 = -0.07231168346387425
+    camera_dist_coeff_k2 = 0.054653045623148634
+    camera_dist_coeff_p1 = 0.013779335161555138
+    camera_dist_coeff_p2 = 0.005759852619212033
+    camera_dist_coeff_k3 = 0.15626401335130446
+
+    camera_matrix = np.array([camera_focal_length_x,0, camera_center_x,0, camera_focal_length_y, camera_center_y,0,0,1]).reshape(3,3)
+    camera_dist_matrix = np.array([[camera_dist_coeff_k1, camera_dist_coeff_k2, camera_dist_coeff_p1, camera_dist_coeff_p2] ])
+
     loadMarkers(markers) 
     vid_cap = cv2.VideoCapture(0)
+
+    marker_coords = {
+      0: np.float32(np.array([(0,0,0), (152.4,0,0), (152.4,152.4,0), (0,152.4,0)])) ,
+      1: np.float32(np.array([(0,152.4,0),(0,0,0), (152.4,0,0), (152.4,152.4,0)])),
+      2: np.float32(np.array([(152.4,152.4,0), (0,152.4,0), (0,0,0), (152.4,0,0) ])),
+      3: np.float32(np.array([(152.4,0,0), (152.4,152.4,0), (0,152.4,0), (0,0,0)]))
+
+    }
+    axis = np.float32(np.array([
+      (0,0,0),
+      (152.4,0,0),
+      (0,152.4,0),
+      (0,0,152.4)
+    ])) + np.array([-76.2,-76.2,0])
     while(True):
         ret,frame = vid_cap.read()
         if ret:
-            res = findMarker(frame, markers, threshold=1, bits=49, log=False)
-            print(res)
+            hits,res_contours,hits_index, res_image = findMarker(frame, markers, threshold=1, bits=49, log=False)
+
+            if len(hits)==0:
+              continue
+
+            _, rvec, tvec = cv2.solvePnP(marker_coords[hits_index[-1]] + np.array([-76.2,-76.2,0]) , res_contours, camera_matrix, camera_dist_matrix)
+            img_points,_ = cv2.projectPoints(axis, rvec, tvec, camera_matrix, camera_dist_matrix )
+
+            print(rvec)
+
+            img_points = np.int32(img_points.reshape((4,2)))
+
+            res_image = cv2.line(res_image, img_points[0],img_points[1],(255,0,0),2)
+            res_image = cv2.line(res_image, img_points[0],img_points[2],(0,255,0),2)
+            res_image = cv2.line(res_image, img_points[0],img_points[3],(0,0,255),2)
+
+            font = cv2.FONT_HERSHEY_SIMPLEX  
+            fontScale = 0.5
+            color = (255, 0, 0)
+            thickness = 2
+
+            text = str(tvec[0].round(2)) + ',' +str(tvec[1].round(2))+' '+str(tvec[2].round(2))
+            res_image = cv2.putText(res_image, text, (200,350) ,font, fontScale, color, thickness, cv2.LINE_AA)
+
+            res_image = draw_t_offset_line(rvec, tvec, camera_matrix,camera_dist_matrix, res_image)
+            rotM = cv2.Rodrigues(rvec)[0]
+            cameras_position = -np.matrix(rotM).T * np.matrix(tvec)
+            res_image = cv2.putText(res_image, str(cameras_position), (200,550) ,font, fontScale, color, thickness, cv2.LINE_AA)
+
+
+            cv2.imshow('ROBOMASTER', res_image)
+            cv2.waitKey(20)
