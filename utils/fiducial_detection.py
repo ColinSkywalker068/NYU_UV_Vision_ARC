@@ -1,6 +1,8 @@
 import cv2
 import math
 import numpy as np
+import flagger 
+import config
 
 def orderContour(cnt):
   cx = (cnt[0][0][0] + cnt[1][0][0] + cnt[2][0][0] + cnt[3][0][0])/4.0
@@ -62,7 +64,7 @@ def getContourBits(im,cnt,bits):
       else:
         res.append(0)
   
-  return res
+  return res, dst
 
 def loadMarkerDictionary(marker,bits):
   sigs = []
@@ -72,21 +74,23 @@ def loadMarkerDictionary(marker,bits):
   im_marker = marker.copy()
   cnt = np.array([[0,0],[w,0],[w,h],[0,h]],np.float32)
   for i in range(4):
-    sig = getContourBits(im_marker,cnt,bits)
+    sig,_ = getContourBits(im_marker,cnt,bits)
     sigs.append((sig,i))
     im_marker = cv2.rotate(im_marker, cv2.ROTATE_90_CLOCKWISE)
 
   return sigs
 
 
-def findMarker(img, markers, threshold=0.5, bits=49, log=True):
+def findMarker(img, markers, threshold=0.5, bits=49, log=True, flagger_obj=None):
   orig_img = img.copy()
   img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
   img_thresh = cv2.adaptiveThreshold(img_gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 11, 5)
+
   if log:
     print("After Thresholding")
     cv2.imshow(img_thresh)
   contours,_ = cv2.findContours(img_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
   if log:
     print("No. of contours:",len(contours))
     img_contours = cv2.drawContours(img, contours,-1,(255,255,0),3)
@@ -96,7 +100,8 @@ def findMarker(img, markers, threshold=0.5, bits=49, log=True):
   if len(contours)==0:
     cv2.imshow('ROBOMASTER', orig_img)
     cv2.waitKey(20)
-    return [],[],-1,None
+    return [],[],-1,None,''
+  
 
   for cnt in contours:
     poly_cnt = cv2.approxPolyDP(cnt, 0.01*cv2.arcLength(cnt,True), True)
@@ -113,7 +118,7 @@ def findMarker(img, markers, threshold=0.5, bits=49, log=True):
   if len(res_contours)==0:
     cv2.imshow('ROBOMASTER', orig_img)
     cv2.waitKey(20)
-    return [],[],-1,None
+    return [],[],-1,None,''
 
   
   if log: 
@@ -123,8 +128,12 @@ def findMarker(img, markers, threshold=0.5, bits=49, log=True):
   
   res_contours = np.float32(res_contours[0])
 
-  image_sig = np.array(getContourBits(orig_img, res_contours, bits))
+  image_sig, warped_image = getContourBits(orig_img, res_contours, bits)
+  image_sig = np.array(image_sig)
   hits = []
+
+  detected_color = flagger_obj.red_or_blue(warped_image)
+
 
   hits_index = []
   for marker in markers:
@@ -136,6 +145,7 @@ def findMarker(img, markers, threshold=0.5, bits=49, log=True):
       if (sig.sum()-n_misses)>=int(threshold*sig.sum()):
         hits.append((marker['marker_id'],sig.sum()-n_misses))
         hits_index.append(sig_[1])
+        
 
   detectedChar = ''
   if len(hits)==1:
@@ -154,7 +164,7 @@ def findMarker(img, markers, threshold=0.5, bits=49, log=True):
    
   
 
-  return hits,res_contours,hits_index,res_image
+  return hits,res_contours,hits_index,res_image,detected_color
 
 
 def draw_t_offset_line(rvec, tvec, camera_matrix,camera_dist_matrix, image):
@@ -212,6 +222,10 @@ if __name__=='__main__':
     
     ]
 
+    flagger_obj = flagger.Flagger(
+    config.gameplay['OPPONENT_TEAM_COLOR'], config.gameplay['HSV_LOWER_RED'], config.gameplay['HSV_UPPER_RED'], config.gameplay['HSV_LOWER_RED_2'], config.gameplay['HSV_UPPER_RED_2'], config.gameplay['HSV_LOWER_BLUE'], config.gameplay['HSV_UPPER_BLUE'])
+
+
     camera_focal_length_x = 1427.9641708247764
     camera_center_x =  974.409732316623
     camera_focal_length_y = 1434.9326534580543
@@ -247,7 +261,7 @@ if __name__=='__main__':
     while(True):
         ret,frame = vid_cap.read()
         if ret:
-            hits,res_contours,hits_index, res_image = findMarker(frame, markers, threshold=1, bits=49, log=False)
+            hits, res_contours, hits_index, res_image, detected_color= findMarker(frame, markers, threshold=1, bits=49, log=False, flagger_obj = flagger_obj)
 
             if len(hits)==0:
               continue
@@ -264,18 +278,30 @@ if __name__=='__main__':
             res_image = cv2.line(res_image, img_points[0],img_points[3],(0,0,255),2)
 
             font = cv2.FONT_HERSHEY_SIMPLEX  
-            fontScale = 0.5
+            fontScale = 1.5
             color = (255, 0, 0)
             thickness = 2
 
-            text = str(tvec[0].round(2)) + ',' +str(tvec[1].round(2))+' '+str(tvec[2].round(2))
+            text = "Translation: "+str(tvec[0].round(2)) + ',' +str(tvec[1].round(2))+' '+str(tvec[2].round(2))
             res_image = cv2.putText(res_image, text, (200,350) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
+            text = "Rotation: "+str(rvec[0].round(2)) + ',' +str(rvec[1].round(2))+' '+str(rvec[2].round(2))
+            res_image = cv2.putText(res_image, text, (200,450) ,font, fontScale, color, thickness, cv2.LINE_AA)
+
+            text = "Color: " + detected_color
+            res_image = cv2.putText(res_image, text, (200,550) ,font, fontScale, color, thickness, cv2.LINE_AA)
+
             res_image = draw_t_offset_line(rvec, tvec, camera_matrix,camera_dist_matrix, res_image)
-            rotM = cv2.Rodrigues(rvec)[0]
-            cameras_position = -np.matrix(rotM).T * np.matrix(tvec)
-            res_image = cv2.putText(res_image, str(cameras_position), (200,550) ,font, fontScale, color, thickness, cv2.LINE_AA)
+
+            # rotM = cv2.Rodrigues(rvec)[0]
+            # cameras_position = -np.matrix(rotM).T * np.matrix(tvec)
+            # res_image = cv2.putText(res_image, str(cameras_position), (200,550) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
 
             cv2.imshow('ROBOMASTER', res_image)
             cv2.waitKey(20)
+
+
+
+
+
