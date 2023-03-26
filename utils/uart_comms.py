@@ -11,7 +11,7 @@ class Publisher_node:
         self.Uart = Uart_server
         if self.Uart is None:
             self.Uart = uart_server.Uart()
-        self.header = uart_server.HEADER_LENGTH
+        self.header = 0xE7
 
         # start thread
         self.thread = threading.Thread(target=self._start)
@@ -22,7 +22,7 @@ class Publisher_node:
         while True:
             self.Uart.listener()
             # delay to prevent cpu overload
-            time.sleep(0.01)
+            time.sleep(0.1)
 
     def send_auto_aim(self, msg):
         # msg = [pitch, yaw, has_target]
@@ -31,8 +31,7 @@ class Publisher_node:
         header = struct.pack(">BHBBH", self.header,
                              length, 0x00, 0x00, msg_type)
 
-        
-        body = struct.pack(">hhB", int(msg[0]*100), int(msg[1]*100), msg[2])
+        body = struct.pack(">ffB", msg[0], msg[1], 1)
         footer = struct.pack(">H", 0x0)
 
         msg = header+body+footer
@@ -64,8 +63,6 @@ class Publisher_node:
         msg = header+body+footer
 
         self.Uart.send_data(msg)
-
-    # def __del__(self):
 
 
 if __name__ == "__main__":

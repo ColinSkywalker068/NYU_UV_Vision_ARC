@@ -9,6 +9,7 @@ if cfg.camera['DEPTH_CAPTURE']:
     except:
         import pyrealsense2 as rs
 
+
 class imu_sensor:
     def __init__(self):
 

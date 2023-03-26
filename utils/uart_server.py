@@ -18,13 +18,12 @@ READING_DATA = 2
 # UART class to handle serial communication with type A board
 class Uart:
     # Constructor
-    def __init__(self, port="/dev/ttyUSB0", baudrate=115200):
+    def __init__(self, port="/dev/ttyUSB0", baudrate=9600):
         self.ser = serial.Serial(
             port=port,
             baudrate=baudrate,
             parity=serial.PARITY_NONE,
-            stopbits=serial.STOPBITS_ONE,
-            timeout=0
+            stopbits=serial.STOPBITS_ONE
         )
 
         # use USB serial port
@@ -35,7 +34,7 @@ class Uart:
         self.msg_len = 0
         self.msg_type = 0
 
-        self.auto_aim_request_list = Queue.queue()
+        self.auto_aim_request_list = Queue()
 
         # mutex for robot id
 
@@ -130,7 +129,7 @@ class Uart:
             print("Invalid Turret Feedback Message")
             return
         feedback = [float(data[0])/100, float(data[1])/100]
-        self.turret_feedback.lock()
+        self.turret_feedback_mutex.acquire()
         self.turret_feedback = feedback
         self.turret_feedback_mutex.release()
 
