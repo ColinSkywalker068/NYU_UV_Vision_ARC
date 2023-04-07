@@ -18,7 +18,7 @@ READING_DATA = 2
 # UART class to handle serial communication with type A board
 class Uart:
     # Constructor
-    def __init__(self, port="/dev/ttyUSB0", baudrate=9600):
+    def __init__(self, port="/dev/ttyUSB0", baudrate=115200):
         self.ser = serial.Serial(
             port=port,
             baudrate=baudrate,

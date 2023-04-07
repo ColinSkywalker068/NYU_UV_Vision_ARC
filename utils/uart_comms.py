@@ -31,23 +31,25 @@ class Publisher_node:
         header = struct.pack("BHBBH", self.header,
                              length, 0x00, 0x00, msg_type)
 
-        body = struct.pack("iiB", int(msg[0]*100), int(msg[1]*100), int(msg[2]))
+        body = struct.pack("iiB", int(
+            msg[0]*100), int(msg[1]*100), int(msg[2]))
         footer = struct.pack("H", 0x0)
 
         msg = header+body+footer
-        print(msg)
-        # self.Uart.send_data(msg)
+        # print(msg)
+        self.Uart.send_data(msg)
 
     def send_align_request(self, msg):
         #msg = [x,y,r]
-        length = 0x06
+        length = 0x07
         msg_type = 0x02
 
-        header = struct.pack(">BHBBH", self.header,
+        header = struct.pack("BHBBH", self.header,
                              length, 0x00, 0x00, msg_type)
 
-        body = struct.pack(">HHH", msg[0], msg[1], msg[2])
-        footer = struct.pack(">H", 0x0)
+        body = struct.pack("HHH", int(
+            msg[0]*100), int(msg[1]*100), int(msg[2]))
+        footer = struct.pack("H", 0x0)
         msg = header+body+footer
         self.Uart.send_data(msg)
 
@@ -55,12 +57,12 @@ class Publisher_node:
         if not msg[0]:
             return
 
-        length = 0x01
+        length = 0x03
         msg_type = 0x03
-        header = struct.pack(">BHBBH", self.header,
+        header = struct.pack("BHBBH", self.header,
                              length, 0x00, 0x00, msg_type)
-        body = struct.pack(">B", 0x01)
-        footer = struct.pack(">H", 0x0)
+        body = struct.pack("B", 0x01)
+        footer = struct.pack("H", 0x0)
         msg = header+body+footer
 
         self.Uart.send_data(msg)
