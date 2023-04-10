@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 import config as cfg
-import video_record
+from video_record import VideoRecord
 
 if cfg.camera['DEPTH_CAPTURE']:
     try:
@@ -9,6 +9,7 @@ if cfg.camera['DEPTH_CAPTURE']:
     except:
         import pyrealsense2 as rs
 
+# imu class to get imu data from camera
 class imu_sensor:
     def __init__(self):
 
@@ -115,11 +116,6 @@ class depth_camera:
         # algin depth frame to color frame
         self.align = rs.align(rs.stream.color)
 
-        # video recorder
-        if cfg.camera['RECORD']:
-            self.video_recorder = video_record.VideoRecord()
-        else:
-            self.video_recorder = None
 
     # Get Depth and Color Frame
 
@@ -149,9 +145,6 @@ class depth_camera:
 
         depth_image = np.asarray(depth_frame.get_data())
         color_image = np.asarray(color_frame.get_data())
-
-        # if self.video_recorder:
-        # self.video_recorder.process_frame(color_image)
 
         return True, depth_image, color_image
 
