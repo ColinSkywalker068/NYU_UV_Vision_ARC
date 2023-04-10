@@ -7,6 +7,7 @@ import monitor
 from localization import *
 import cv2
 import flagger
+from video_record import VideoRecord
 
 # from tracking import Tracker
 # from tracking.sort import Sort
@@ -36,6 +37,8 @@ def main():
         except:
             print('TensorRT not available, using YOLOv5')
             model_weights_path = config.yolo['MODEL_WEIGHTS_PATH']
+    else:
+        model_weights_path = config.yolo['MODEL_WEIGHTS_PATH']
 
     detector = plate_detector.plate_detector(
         config.yolo_tensorrt['REPO_PATH'],
@@ -57,33 +60,35 @@ def main():
         # tracker = Sort()
 
     mon = monitor.monitor()
+    video_saver = VideoRecord()
 
     while True:
         # obtain frame
         ret, depth_image, color_image = cam.get_frame()
-        if ret:
-            key = cv2.waitKey(1)
-            if key == 27:
-                break
+        if not ret:
+            pass
+        video_saver.add_frame(color_image)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
-            # process frame to obtain object detection predicitons
-            bboxes, messages = detector.process_frame(
-                color_image, config.detection['DETECTION_CONFIDENCE_CUTOFF'], config.detection['NO_TO_DETECT'], config.general['DEBUG_LOGS'])
+        # process frame to obtain object detection predicitons
+        bboxes, messages = detector.process_frame(
+            color_image, config.detection['DETECTION_CONFIDENCE_CUTOFF'], config.detection['NO_TO_DETECT'], config.general['DEBUG_LOGS'])
 
-            # show detections on screen
-            if config.detection['DISPLAY']:
-                mon.draw_on_image(color_image, bboxes, messages)
+        # show detections on screen
+        if config.detection['DISPLAY']:
+            mon.draw_on_image(color_image, bboxes, messages)
 
-            # TODO: Waiting here for refactoring of main code:
-            #      get_coordinates in the original main.py currently only returns one bounding box. We would be returning mulitple from it. Then, pass it onto process_frame() to get each of their depths
-            #      With the coords. and the depth, we THEN pass those pairs onto the Tracker object to update its state
+        # TODO: Waiting here for refactoring of main code:
+        #      get_coordinates in the original main.py currently only returns one bounding box. We would be returning mulitple from it. Then, pass it onto process_frame() to get each of their depths
+        #      With the coords. and the depth, we THEN pass those pairs onto the Tracker object to update its state
 
-            # tracker.updateTrackerState(coords_distances)
+        # tracker.updateTrackerState(coords_distances)
 
-            # this is subject to change, but its just here to show potential structure of how things would be called
-            #closest_target = tracker.get_closest_tracked_robot()
-            #final_coords = tracker.get_coords_to_move(closest_target)
-            # ---> Send final coords through serial
+        # this is subject to change, but its just here to show potential structure of how things would be called
+        #closest_target = tracker.get_closest_tracked_robot()
+        #final_coords = tracker.get_coords_to_move(closest_target)
+        # ---> Send final coords through serial
 
     if config.detection['IMU']:
         localizationThread.stop()
