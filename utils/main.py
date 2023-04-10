@@ -66,8 +66,9 @@ def main():
         # obtain frame
         ret, depth_image, color_image = cam.get_frame()
         if not ret:
-            pass
-        video_saver.add_frame(color_image)
+            continue
+        # make deep copy of color image
+        video_saver.add_frame(color_image.copy())
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
