@@ -3,6 +3,8 @@ import math
 import numpy as np
 import flagger 
 import config
+import fid_locs
+import matplotlib.pyplot  as plt
 
 
 def order_contour(cnt):
@@ -170,7 +172,7 @@ def load_marker_dictionary(marker,bits):
 
 def draw_t_offset_line(rvec, tvec, camera_matrix,camera_dist_matrix, image):
   dist = np.sqrt((tvec**2).sum())
-  print(dist)
+
   im_width,im_height = image.shape[:2]
   
   start_point = (int(im_height/2), int(im_width/2))
@@ -250,6 +252,7 @@ class Fiducial_detector:
 
   def detectFiducial(self, frame, delta=1):
     hits, res_contours, res_image, detected_color= self.findMarker(frame, threshold=delta)
+    
 
     if len(hits) == 0:
       res = {
@@ -257,6 +260,8 @@ class Fiducial_detector:
       }
 
       return res
+
+    detected_marker_char = hits[-1][0]
 
     _, rvec, tvec = cv2.solvePnP(self.marker_coords_rw[hits[-1][2]] + np.array([-76.2,-76.2,0]) , res_contours, self.camera_matrix, self.camera_distortion_matrix)
     img_points,_ = cv2.projectPoints(self.axis_points, rvec, tvec, self.camera_matrix, self.camera_distortion_matrix)
@@ -274,24 +279,76 @@ class Fiducial_detector:
       color = (255, 0, 0)
       thickness = 2
 
-      text = "Translation: "+str(tvec[0].round(2)) + ',' +str(tvec[1].round(2))+' '+str(tvec[2].round(2))
+
+      rodM = cv2.Rodrigues(rvec)
+
+      rotM = np.hstack([rodM[0], tvec])
+      rotM = np.vstack([rotM, np.array([0,0,0,1])])
+
+      invRotM = np.linalg.inv(rotM)
+
+      # rotM = cv2.Rodrigues(rvec)[0]
+      # cameras_position = -np.matrix(rotM).T * np.matrix(tvec)
+      # res_image = cv2.putText(res_image, str(cameras_position), (200,550) ,font, fontScale, color, thickness, cv2.LINE_AA)
+
+
+      text = "Translation Cam: "+str(tvec[0].round(2)) + ',' +str(tvec[1].round(2))+' '+str(tvec[2].round(2))
       res_image = cv2.putText(res_image, text, (200,350) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
-      text = "Rotation: "+str(rvec[0].round(2)) + ',' +str(rvec[1].round(2))+' '+str(rvec[2].round(2))
-      res_image = cv2.putText(res_image, text, (200,450) ,font, fontScale, color, thickness, cv2.LINE_AA)
+      # #text = "Rotation: "+str(rvec[0].round(2)) + ',' +str(rvec[1].round(2))+' '+str(rvec[2].round(2))
+      # text = "Rotation: "+str(cameras_position[0].round(2)) + ',' +str(cameras_position[1].round(2))+' '+str(cameras_position[2].round(2))
+      # res_image = cv2.putText(res_image, text, (200,450) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
-      text = "Color: " + detected_color
+      text = "Translation RW: "+str(invRotM[:,3][0].round(2)) + ',' +str(invRotM[:,3][1].round(2))+' '+str(invRotM[:,3][2].round(2))
+      res_image = cv2.putText(res_image, text, (200,400) ,font, fontScale, color, thickness, cv2.LINE_AA)
+
+      R = invRotM[:3,:3]
+
+      # Extract the Euler angles from the rotation matrix
+      roll = np.arctan2(R[2, 1], R[2, 2])
+      pitch = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
+      yaw = np.arctan2(R[1, 0], R[0, 0])
+
+      text = "Rotation: " + str(roll.round(2)) + ',' +str(pitch.round(2)) + ',' + str(yaw.round(2))
       res_image = cv2.putText(res_image, text, (200,550) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
+
+      text = "Color: " + detected_color
+      res_image = cv2.putText(res_image, text, (200,650) ,font, fontScale, color, thickness, cv2.LINE_AA)
+
+      
       res_image = draw_t_offset_line(rvec, tvec, self.camera_matrix,self.camera_distortion_matrix, res_image)
+      # Invert the pose to obtain the pose of the camera relative to the fiducial marker
+
+      #rvec_camera_marker, tvec_camera_marker = =np.linalg.inv(cv2.Rodrigues(rvec)[0]), -np.dot(np.linalg.inv(rotM = cv2.Rodrigues(rvec)), tvec)
+
+      # print("RVec Camera", rvec_camera_marker, 'Shape', rvec_camera_marker.shape)
+      # print("TVec Camera Marker", tvec_camera_marker, 'Shape', tvec_camera_marker.shape)
+
+
+      # marker_loc_rw = fid_locs.locs[detected_marker_char]
+      # cam_loc_rw = np.array([marker_loc_rw['x'],marker_loc_rw['y'],marker_loc_rw['z']]) + invRotM[0:3,3]
+
+
+      # map_ = np.ones((500,500,3))*255
+      # cv2.line(map_, (0,0),(0,150), color=(255,0,0))
+      # cv2.line(map_, (0,150),(150,150), color=(255,0,0))
+      # cv2.line(map_, (150,150),(150,0), color=(255,0,0))
+      # cv2.line(map_, (150,0),(0,0), color=(255,0,0))
+
+      # cv2.line(map_, (150,0),(150,150), color=(0,0,255))
+      # cv2.line(map_, (150,150),(250,150), color=(0,0,255))
+      # cv2.line(map_, (250,150),(250,0), color=(0,0,255))
+      # cv2.line(map_, (250,0),(150,0), color=(0,0,255))
+
+      # cv2.circle(map_,(int(cam_loc_rw[:2][0]),int(cam_loc_rw[:2][0])), 2, (0,0,0), -1)
+
+      # #cv2.imshow('Map', map_)
 
       cv2.imshow('ROBOMASTER', res_image)
       cv2.waitKey(20)
 
-        # rotM = cv2.Rodrigues(rvec)[0]
-        # cameras_position = -np.matrix(rotM).T * np.matrix(tvec)
-        # res_image = cv2.putText(res_image, str(cameras_position), (200,550) ,font, fontScale, color, thickness, cv2.LINE_AA)
-
+    
     if len(hits)>0:
       detected_marker_char = hits[-1][0]
     else:
@@ -318,7 +375,8 @@ class Fiducial_detector:
         n_misses = np.abs(np.sum((m_signal-image_signal)*m_signal))
 
         if self.log:
-          print("Total no. of correct bits:",m_signal.sum(),"Misses:",n_misses, "Threshold:",(int(threshold*m_signal.sum())))
+          #print("Total no. of correct bits:",m_signal.sum(),"Misses:",n_misses, "Threshold:",(int(threshold*m_signal.sum())))
+          pass
 
         if (m_signal.sum()-n_misses)>=int(threshold*m_signal.sum()):
           hits.append((marker['marker_id'],m_signal.sum()-n_misses, m_orientation_index))
@@ -344,7 +402,8 @@ class Fiducial_detector:
     contours,_ = cv2.findContours(img_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     if self.log:
-      print("No. of contours:",len(contours))
+      #print("No. of contours:",len(contours))
+      pass
 
     res_contours = []
 
@@ -360,7 +419,7 @@ class Fiducial_detector:
 
       poly_cnt = cv2.approxPolyDP(cnt, 0.01*cv2.arcLength(cnt,True), True)
       
-      if(len(poly_cnt)!=4 or cv2.contourArea(poly_cnt)<int((1/16)*(img_thresh.shape[0]*img_thresh.shape[1]))):
+      if(len(poly_cnt)!=4 or not(cv2.isContourConvex(poly_cnt)) or cv2.contourArea(poly_cnt)<int((1/1024)*(img_thresh.shape[0]*img_thresh.shape[1])) ) :
         continue
 
       poly_cnt = np.float32(poly_cnt)
@@ -394,14 +453,15 @@ class Fiducial_detector:
     else:
       detected_marker_char = ''
 
+    res_image = img
+
     if self.log:
       res_image = cv2.drawContours(orig_img, [np.int64(res_contours)],-1,(255,255,0),3)
       font = cv2.FONT_HERSHEY_SIMPLEX  
       fontScale = 10
       color = (255, 0, 0)
       thickness = 2
-      
-      print(detected_marker_char)
+    
       res_image = cv2.putText(res_image,detected_marker_char,(200,250) ,font, fontScale, color, thickness, cv2.LINE_AA)
       
       
