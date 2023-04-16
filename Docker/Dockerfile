@@ -103,7 +103,7 @@ RUN apt-get install -y libglfw3-dev libgl1-mesa-dev libglu1-mesa-dev
 #	&& udevadm control --reload-rules && udevadm trigger \
 # First clone the repository
 RUN git clone https://github.com/IntelRealSense/librealsense.git && cd ./librealsense \
-	cp config/99-realsense-libusb.rules /etc/udev/rules.d/  && cp config/99-realsense-d4xx-mipi-dfu.rules /etc/udev/rules.d/ \
+	&& cp config/99-realsense-libusb.rules /etc/udev/rules.d/  && cp config/99-realsense-d4xx-mipi-dfu.rules /etc/udev/rules.d/ \
 	&& udevadm control --reload-rules && udevadm trigger \
 	&& mkdir build && cd build && pwd && cmake ../ -DBUILD_PYTHON_BINDINGS:bool=true && make uninstall && make clean && make -j$(nproc)  && make install
 
