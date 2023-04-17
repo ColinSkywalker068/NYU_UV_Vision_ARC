@@ -5,11 +5,11 @@ general = {
 
 # camera specifications
 camera = {
-    'DEPTH_CAPTURE': False,
-    'CAMERA_INDEX': './vid.mp4',
+    'DEPTH_CAPTURE': True,
+    'CAMERA_INDEX': '0',
     'FRAME_SIZE': (640, 480),
     'FRAME_RATE': 30,
-    'RECORD': True,
+    'RECORD': False,
     'HFOV': 69.4,
     'VFOV': 42.5
 }

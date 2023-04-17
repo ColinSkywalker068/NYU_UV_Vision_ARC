@@ -1,7 +1,6 @@
 import numpy as np
 import cv2
 import config as cfg
-from video_record import VideoRecord
 
 if cfg.camera['DEPTH_CAPTURE']:
     try:
