@@ -183,6 +183,6 @@ RUN mkdir opencv && \
 
 #RUN git clone https://github.com/ultralytics/yolov5 && cd yolov5 && pip3 install -r requirements.txt && cd /home/ultraviolet/Downloads
 RUN apt-get update && apt-get install -y python3-numpy python3-pillow python3-tk
-RUN pip3 install pyserial filterpy tk tqdm seaborn
+RUN pip3 install pyserial filterpy tk tqdm seaborn scikit-image
 
 #RUN cd /home/ultraviolet/Downloads
