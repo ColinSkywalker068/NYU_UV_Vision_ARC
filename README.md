@@ -19,7 +19,7 @@ docker/build.sh
 #### Run docker image
 
 ```shell
-docker/run.sh --volume ./Docker/:/jetson_interface
+docker/run.sh --volume ./Docker/:/jetson_interface -c nyuultraviolet.cv-dockerfile:xavier
 ```
 
 #### list current docker images
