@@ -9,8 +9,8 @@ import uart_server
 class Publisher_node:
     def __init__(self, Uart_server=None):
         self.Uart = Uart_server
-        # if self.Uart is None:
-        #     self.Uart = uart_server.Uart()
+        if self.Uart is None:
+            self.Uart = uart_server.Uart()
         self.header = 0xE7
 
         # start thread

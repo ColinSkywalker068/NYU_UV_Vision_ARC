@@ -144,9 +144,9 @@ class plate_detector:
                 dets = np.array([dets])
 
             # if length of each row is not 7, append 0s
-            if len(dets.shape) == 2 and dets.shape[1] != 7:
-                dets = np.append(dets, np.zeros(
-                    (dets.shape[0], 7 - dets.shape[1])), axis=1)
+            # if len(dets.shape) == 2 and dets.shape[1] != 7:
+            #    dets = np.append(dets, np.zeros(
+            #        (dets.shape[0], 7 - dets.shape[1])), axis=1)
             # print(dets)
             tracker_output = self.tracker.update(dets)
             # print(tracker_output)
@@ -173,10 +173,11 @@ class plate_detector:
                 # 2. send the offsets to the uart server
                 # pitch, yaw
                 # if the L2 norm of the offsets from 0 is <= 0.175 rad (+- 10 degrees x, y), start firing
-                has_target = np.linalg.norm(
-                    [x_rad_offset, y_rad_offset]) <= 0.175
-                msg = [y_rad_offset, x_rad_offset, has_target]
-                self.uart.send_auto_aim(msg)
+                has_target = 1 if np.linalg.norm(
+                    [x_rad_offset, y_rad_offset]) <= 0.175 else 0
+                msg = [y_rad_offset/3, -x_rad_offset/3, has_target]
+                for i in range(2):
+                    self.uart.send_auto_aim(msg)
 
             if debug:
                 print("Plate detected at \n({:.3f},{:.3f})\n\n({:.3f},{:.3f})".format(
@@ -200,7 +201,7 @@ class plate_detector:
             returned values are in radians from the camera's center
         """
         x_roi, y_roi = roi_center_offsets
-        y_roi = self.camera_width - y_roi
+        y_roi = self.camera_height - y_roi
         move_x = x_roi - self.center_x
         move_y = y_roi - self.center_y
         if(move_x != 0):

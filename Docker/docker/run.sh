@@ -8,7 +8,7 @@
 #     $ cd /path/to/your/jetson-inference
 #     $ docker/run.sh
 #
-
+DOCKER_IMAGE="nyuultraviolet/cv-dockerfile:xavier"
 show_help() {
     echo " "
     echo "usage: Starts the Docker container and runs a user-specified command"
