@@ -60,7 +60,7 @@ def main():
         # tracker = Sort()
 
     mon = monitor.monitor()
-    if config.detection['VIDEO_RECORD']:
+    if config.detection['RECORD']:
         video_saver = VideoRecord()
 
     while True:
@@ -69,7 +69,7 @@ def main():
         if not ret:
             continue
         # make deep copy of color image
-        if config.detection['VIDEO_RECORD']:
+        if config.detection['RECORD']:
             video_saver.add_frame(color_image.copy())
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
