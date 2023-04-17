@@ -73,7 +73,6 @@ class plate_detector:
             self.tracker = Sort(max_age=5, min_hits=2)
         else:
             self.tracker = None
-       
 
         if flagger is not None:
             self.flagger = flagger
@@ -173,7 +172,10 @@ class plate_detector:
 
                 # 2. send the offsets to the uart server
                 # pitch, yaw
-                msg = [y_rad_offset, x_rad_offset, 1]
+                # if the L2 norm of the offsets from 0 is <= 0.175 rad (+- 10 degrees x, y), start firing
+                has_target = np.linalg.norm(
+                    [x_rad_offset, y_rad_offset]) <= 0.175
+                msg = [y_rad_offset, x_rad_offset, has_target]
                 self.uart.send_auto_aim(msg)
 
             if debug:
