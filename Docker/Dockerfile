@@ -185,4 +185,4 @@ RUN mkdir opencv && \
 RUN apt-get update && apt-get install -y python3-numpy python3-pillow python3-tk
 RUN pip3 install pyserial filterpy tk tqdm seaborn
 
-RUN cd /home/ultraviolet/Downloads
+#RUN cd /home/ultraviolet/Downloads
