@@ -119,6 +119,7 @@ class plate_detector:
         """
 
         # Get bounding boxes
+        stop_shooting = True
         results = self.model(color_image)
         bboxes, messages = self.get_bboxes_from_results(
             color_image, results, conf_thres, k
@@ -130,17 +131,28 @@ class plate_detector:
         # @TODO: only sends most confident plate
         # update metric used
         # send bbox at beginning of frame
+        (
+            x_min,
+            y_min,
+            x_max,
+            y_max,
+        ) = [0, 0, 0, 0]
+
         if len(bboxes) > 0:
-            x_min, y_min, x_max, y_max, conf, label = bboxes[0]
+            x_min, y_min, x_max, y_max, _, _ = bboxes[0]
+            stop_shooting = False
+
             # 1. Check get_auto_aim_request() in uart_server.py if we shold send data. if true then we send angle offsets
 
             # @TODO this might block, test performance
             # if self.uart.Uart.get_auto_aim_request():
-            if self.uart is not None:
-                try:
-                    self.send_angles(x_min, x_max, y_min, y_max, debug=debug)
-                except Exception as e:
-                    print("Error sending angles: ", e)
+        if self.uart is not None:
+            try:
+                self.send_angles(
+                    x_min, x_max, y_min, y_max, stop=stop_shooting, debug=debug
+                )
+            except Exception as e:
+                print("Error sending angles: ", e)
 
         return bboxes, messages
 
@@ -209,27 +221,29 @@ class plate_detector:
         # print(bboxes)
         return bboxes
 
-    def send_angles(self, x_min, x_max, y_min, y_max, debug=False):
+    def send_angles(self, x_min, x_max, y_min, y_max, stop=False, debug=False):
         """
         Sends the pitch and yaw offsets to the uart server
         Parameters:
         """
-        # get the pitch and yaw offsets
-        x_rad_offset, y_rad_offset = self.calculate_angle_offsets(
-            ((x_max + x_min) // 2, (y_max + y_min) // 2)
-        )
+        if stop:
+            msg = [0, 0, 0]
+        else:
+            # get the pitch and yaw offsets
+            x_rad_offset, y_rad_offset = self.calculate_angle_offsets(
+                ((x_max + x_min) // 2, (y_max + y_min) // 2)
+            )
+            # 2. send the offsets to the uart server
+            # pitch, yaw
+            # if the L2 norm of the offsets from 0 is <= 0.175 rad (+- 10 degrees x, y), start firing
 
-        # 2. send the offsets to the uart server
-        # pitch, yaw
-        # if the L2 norm of the offsets from 0 is <= 0.175 rad (+- 10 degrees x, y), start firing
-
-        has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
-        msg = [y_rad_offset / 3, -x_rad_offset / 3, has_target]
+            has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
+            msg = [y_rad_offset / 3, -x_rad_offset / 3, has_target]
         assert self.uart is not None
         for i in range(2):
             self.uart.send_auto_aim(msg)
 
-        if debug:
+        if debug and not stop:
             print(
                 "Plate detected at \n({:.3f},{:.3f})\n\n({:.3f},{:.3f})".format(
                     x_min, y_min, x_max, y_max
