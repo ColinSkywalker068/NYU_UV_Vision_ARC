@@ -186,4 +186,6 @@ RUN apt-get update && apt-get install -y python3-numpy python3-pillow python3-tk
 RUN pip3 install pyserial filterpy tk tqdm seaborn scikit-image
 
 #RUN cd /home/ultraviolet/Downloads
-RUN wget https://github.com/ultralytics/yolov5/archive/master.zip -P /root/.cache/torch/hub/master.zip
+RUN wget https://github.com/ultralytics/yolov5/archive/master.zip -P /root/.cache/torch/hub
+
+RUN cd /root/.cache/torch/hub && unzip ./master.zip && rm ./master.zip
