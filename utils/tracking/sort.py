@@ -1,4 +1,3 @@
-
 """
     SORT: A Simple, Online and Realtime Tracker
     Copyright (C) 2016 Alex Bewley alex@dynamicdetection.com
@@ -19,7 +18,9 @@ import numpy as np
 from tracking.tracking_utils import associate_detections_to_trackers
 from tracking.kalman_box_tracker import KalmanBoxTracker
 import warnings
+
 warnings.filterwarnings("ignore", category=RuntimeWarning)
+
 
 class Sort(object):
     def __init__(self, max_age=1, min_hits=3):
@@ -47,29 +48,39 @@ class Sort(object):
         for t, trk in enumerate(trks):
             pos = self.trackers[t].predict()[0]
             trk[:] = [pos[0], pos[1], pos[2], pos[3], 0]
-            if(np.any(np.isnan(pos))):
+            if np.any(np.isnan(pos)):
                 to_del.append(t)
         trks = np.ma.compress_rows(np.ma.masked_invalid(trks))
         for t in reversed(to_del):
             self.trackers.pop(t)
         matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(
-            dets, trks, iou_threshold=0.7)
+            dets, trks, iou_threshold=0.7
+        )
 
         # update matched trackers with assigned detections
         for t, trk in enumerate(self.trackers):
-            if(t not in unmatched_trks):
+            if t not in unmatched_trks:
                 d = matched[np.where(matched[:, 1] == t)[0], 0]
                 # print(dets[d,:])
                 if len(dets[d, :]) != 0:
                     trk.update(dets[d, :][0])
             # keep ghost of unmatched trackers for 15 frames
             else:
-                if trk.time_since_update < 15:
+                if trk.time_since_update < 5:
                     old_time_since_update = trk.time_since_update
                     trk.update(trk.get_state()[0])
-                    if not ((trk.time_since_update < 1) and (trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits)):
-                        ret.append(np.concatenate(
-                            (trk.get_state()[0], [trk.id+1], [trk.objclass])).reshape(1, -1))
+                    if not (
+                        (trk.time_since_update < 1)
+                        and (
+                            trk.hit_streak >= self.min_hits
+                            or self.frame_count <= self.min_hits
+                        )
+                    ):
+                        ret.append(
+                            np.concatenate(
+                                (trk.get_state()[0], [trk.id + 1], [trk.objclass])
+                            ).reshape(1, -1)
+                        )
                     trk.time_since_update = old_time_since_update
         # create and initialise new trackers for unmatched detections
         for i in unmatched_dets:
@@ -78,15 +89,17 @@ class Sort(object):
         i = len(self.trackers)
         for trk in reversed(self.trackers):
             d = trk.get_state()[0]
-            if((trk.time_since_update < 1) and (trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits)):
+            if (trk.time_since_update < 1) and (
+                trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits
+            ):
                 # +1 as MOT benchmark requires positive
-                ret.append(np.concatenate(
-                    (d, [trk.id+1], [trk.objclass])).reshape(1, -1))
+                ret.append(
+                    np.concatenate((d, [trk.id + 1], [trk.objclass])).reshape(1, -1)
+                )
             i -= 1
             # remove dead tracklet
-            if(trk.time_since_update > self.max_age):
+            if trk.time_since_update > self.max_age:
                 self.trackers.pop(i)
-        if(len(ret) > 0):
+        if len(ret) > 0:
             return np.concatenate(ret)
         return np.empty((0, 5))
-
