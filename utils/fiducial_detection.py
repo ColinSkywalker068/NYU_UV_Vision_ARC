@@ -343,7 +343,7 @@ class Fiducial_detector:
 
       # cv2.circle(map_,(int(cam_loc_rw[:2][0]),int(cam_loc_rw[:2][0])), 2, (0,0,0), -1)
 
-      # #cv2.imshow('Map', map_)
+      # cv2.imshow('Map', map_)
 
       cv2.imshow('ROBOMASTER', res_image)
       cv2.waitKey(20)
@@ -384,9 +384,9 @@ class Fiducial_detector:
     if len(hits)==1:
       detectedChar = hits[0][0]
     elif len(hits)>1:
-      print("{} hits found, considering only the first".format(len(hits)))
+      #print("{} hits found, considering only the first".format(len(hits)))
       hits.sort(key = lambda x: x[1]) 
-    print('hits', hits)
+    #print('hits', hits)
     return hits
 
 
