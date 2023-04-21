@@ -189,3 +189,8 @@ RUN pip3 install pyserial filterpy tk tqdm seaborn scikit-image
 RUN wget https://github.com/ultralytics/yolov5/archive/master.zip -P /root/.cache/torch/hub
 
 RUN cd /root/.cache/torch/hub && unzip ./master.zip && rm ./master.zip
+
+# make sure the folder is CV_Detection and not anything else
+WORKDIR /home/ultraviolet/Downloads/CV_Detection/utils
+
+CMD python3 main.py
