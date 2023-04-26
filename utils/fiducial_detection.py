@@ -7,11 +7,14 @@ import fid_locs
 import matplotlib.pyplot  as plt
 from math import sin, cos
 
-
+# Takes in a countour (cnt) of 4 points and reorders them such that they form a rectangle 
+# Top-left point first and other points ordered clock-wise
 def order_contour(cnt):
+  # Calculates center point of contour through average of 4 points
   cx = (cnt[0][0][0] + cnt[1][0][0] + cnt[2][0][0] + cnt[3][0][0])/4.0
   cy = (cnt[0][0][1] + cnt[1][0][1] + cnt[2][0][1] + cnt[3][0][1])/4.0
 
+  # Orders the contour
   if(cnt[0][0][0] <= cx and cnt[0][0][1]<=cy):
     temp = cnt[3].copy()
     cnt[3] = cnt[1]
@@ -30,28 +33,38 @@ def order_contour(cnt):
 
 def get_contour_bits(im,cnt,bits):
 
-  
+  # Calculates pixel length
   pixelLen = int(math.sqrt(bits))
 
+  # Corners of square / fiducial marker
   corners = np.array([[0,0],[bits,0],[bits,bits],[0,bits]],np.float32)
 
+  # Transformation Matrix that maps the contour points to corners
   M = cv2.getPerspectiveTransform(cnt, corners)
+
+  # Apply transformation onto input image and store in variable
   dst = cv2.warpPerspective(im, M, (bits, bits),flags=cv2.INTER_LINEAR)
   #cv2.imshow(dst) 
 
+  # Converst dst to greyscale
   gs =  cv2.cvtColor(dst, cv2.COLOR_BGR2GRAY)
   ret, im_thres = cv2.threshold(gs, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
   #cv2.imshow(im_thres)
 
+  # Create rectangular structuring object
   element = cv2.getStructuringElement(cv2.MORPH_RECT,(3,3))
+
+  # Applies erosion element onto im_thres
   im_er = cv2.erode(im_thres,element)
   #cv2.imshow(im_er)
 
+  # Computes szie of im_er and size of each grid cell
   im_size=im_er.shape
   #print("Image Shape:",im_size)
   grid_cell_size = (im_size[0]//pixelLen, im_size[1]//pixelLen)
   #print("Grid Cell size:",grid_cell_size)
 
+  # Loop and calculate mean intensity of each cell
   res = []
   for r in range(pixelLen):
     for c in range(pixelLen):
@@ -71,15 +84,25 @@ def get_contour_bits(im,cnt,bits):
   return res, dst
 
 def load_marker_dictionary(marker,bits):
+  
+  # Variables to store binary signatature, width, and height of image
   sigs = []
   w = len(marker[0])
   h= len(marker)
+
   # im_marker = cv2.cvtColor(marker,cv2.COLOR_BGR2GRAY)
+  # Creates copy and defines corner coordinates of countour
   im_marker = marker.copy()
   cnt = np.array([[0,0],[w,0],[w,h],[0,h]],np.float32)
+
+  # Loops through each quandrant and calls "get_contour bits" function 
   for i in range(4):
     sig,_ = get_contour_bits(im_marker,cnt,bits)
+
+    # Adds binary signature to list
     sigs.append((sig,i))
+
+    # Rotates image 90°
     im_marker = cv2.rotate(im_marker, cv2.ROTATE_90_CLOCKWISE)
 
   return sigs
@@ -172,26 +195,32 @@ def load_marker_dictionary(marker,bits):
 
 
 def draw_t_offset_line(rvec, tvec, camera_matrix,camera_dist_matrix, image):
-  dist = np.sqrt((tvec**2).sum())
 
+  dist = np.sqrt((tvec**2).sum()) # Calculates Distance
+
+  # Calculate center point of input image
   im_width,im_height = image.shape[:2]
-  
   start_point = (int(im_height/2), int(im_width/2))
 
+  # Calculates 3D location of marker in camera and projects on 2D image plane
   end_point,_ = cv2.projectPoints(np.float32(np.array([[0,0,0]])), rvec, tvec, camera_matrix, camera_dist_matrix )
-  end_point=np.int32(end_point[0][0])
+  end_point=np.int32(end_point[0][0]) # Stores result as integer
 
+  # Calculate center point between start point and end point
   text_center = np.array(((start_point[0]+end_point[0])//2,(start_point[1]+end_point[1])//2))
   offset = 30
   text_center=text_center-30
 
+  # Defines font, font scale, color, and thickness of text displayed
   font = cv2.FONT_HERSHEY_SIMPLEX  
   fontScale = 0.5
   color = (255, 0, 0)
   thickness = 2
 
+  # Draws line on input image from center of image to marker
   image = cv2.line(image, start_point, end_point, (0,0,255) , thickness=2)
-
+  
+  # Puts text on image
   text = str(dist.round(2))
   image = cv2.putText(image, text, text_center, font, fontScale, color, thickness, cv2.LINE_AA)
   return image
@@ -206,12 +235,15 @@ def loadMarkers(markers):
 
 class Fiducial_detector:
   def __init__(self, log=True):
+    
+    # Flagger object
     self.fid_flagger = flagger.Flagger(
     config.gameplay['OPPONENT_TEAM_COLOR'], config.gameplay['HSV_LOWER_RED'], config.gameplay['HSV_UPPER_RED'], config.gameplay['HSV_LOWER_RED_2'], config.gameplay['HSV_UPPER_RED_2'], config.gameplay['HSV_LOWER_BLUE'], config.gameplay['HSV_UPPER_BLUE'])
 
     camera_intrinsic_matrix = config.fiducials['camera_intrinsic_matrix']
     camera_distortion_coefficients = config.fiducials['camera_distortion_coefficients']
 
+    # Matrices used for camera calibration
     self.camera_matrix = np.array([
       camera_intrinsic_matrix['camera_focal_length_x'],
       0,
@@ -229,6 +261,7 @@ class Fiducial_detector:
       camera_distortion_coefficients['camera_dist_coeff_p1'], 
       camera_distortion_coefficients['camera_dist_coeff_p2']] ])
     
+    # Extract markers and loads them
     self.markers = config.fiducials['markers']
     self.markers = self.loadMarkers(self.markers)
 
@@ -284,10 +317,14 @@ class Fiducial_detector:
 
     detected_marker_char = hits[-1][0]
 
+    # Estimate pose of marker in 3D space 
     _, rvec, tvec = cv2.solvePnP(self.marker_coords_rw[hits[-1][2]] + np.array([-76.2,-76.2,0]) , res_contours, self.camera_matrix, self.camera_distortion_matrix)
+    
+    # Projects 3D axis points onto image plane 
     img_points,_ = cv2.projectPoints(self.axis_points, rvec, tvec, self.camera_matrix, self.camera_distortion_matrix)
 
-
+    # Converts img_points to integer values and reshapes into 4x2 array. 
+    # Draws line between first point in img_points and the other three points 
     if self.log:
       img_points = np.int32(img_points.reshape((4,2)))
 
@@ -300,7 +337,7 @@ class Fiducial_detector:
       color = (255, 0, 0)
       thickness = 2
 
-
+      # Computes rotation matrix
       rodM = cv2.Rodrigues(rvec)
 
       rotM = np.hstack([rodM[0], tvec])
@@ -337,7 +374,7 @@ class Fiducial_detector:
       text = "Color: " + detected_color
       res_image = cv2.putText(res_image, text, (200,650) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
-      
+      # Draw Line
       res_image = draw_t_offset_line(rvec, tvec, self.camera_matrix,self.camera_distortion_matrix, res_image)
       # Invert the pose to obtain the pose of the camera relative to the fiducial marker
 
@@ -419,9 +456,14 @@ class Fiducial_detector:
     bits = 49
 
     orig_img = img.copy()
+
+    # Converts img to greyscale
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Binary Image with white regions for areas of interest
     img_thresh = cv2.adaptiveThreshold(img_gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 11, 5)
 
+    # Finds contours in binary image
     contours,_ = cv2.findContours(img_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     if self.log:
@@ -430,6 +472,7 @@ class Fiducial_detector:
 
     res_contours = []
 
+    # Displays original image if no contours found 
     if len(contours)==0:
       if self.log:
         cv2.imshow('ROBOMASTER', orig_img)
@@ -440,42 +483,59 @@ class Fiducial_detector:
 
     for cnt in contours:
 
+      # Simplify Contour
       poly_cnt = cv2.approxPolyDP(cnt, 0.01*cv2.arcLength(cnt,True), True)
       
+      # Checks if poly_cnt has 4 vertices, is convex, and has area greater than 1/1024
       if(len(poly_cnt)!=4 or not(cv2.isContourConvex(poly_cnt)) or cv2.contourArea(poly_cnt)<int((1/1024)*(img_thresh.shape[0]*img_thresh.shape[1])) ) :
         continue
-
+      
+      # Converts contoour points to float32 type
       poly_cnt = np.float32(poly_cnt)
 
+      # Specifies termination criteria
       criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_COUNT, 40, 0.01)
+
+      # Refine corner of contour 
       poly_cnt = cv2.cornerSubPix(img_thresh, poly_cnt, (5,5), (-1,-1),criteria)
 
+      # Orders countour points 
       poly_cnt = order_contour(poly_cnt)
 
+      # Adds to list
       res_contours.append(np.int32(poly_cnt.reshape((4,2))))
 
+    # Check if contour successfully detected
     if len(res_contours)==0:
       if self.log:
         cv2.imshow('ROBOMASTER', orig_img)
         cv2.waitKey(20)
       return [],[],None,''
     
+    # If multiple contour detected prints message that only first will be used
     if len(res_contours)>1:
       print('{} contours detected, considering only the first'.format(len(res_contours)))
     
+    # Converts to ordered and refined contour points of first contour as float32
     res_contours = np.float32(res_contours[0])
 
+    # Converts to NumPy array
     image_signal, warped_image = get_contour_bits(orig_img, res_contours, bits)
     image_signal = np.array(image_signal)
 
+    # Determine color of marker
     detected_color = self.fid_flagger.red_or_blue(warped_image)
+
+    # Compares marker to marker patterns
     hits = self.matchMarker(image_signal, threshold)
 
+    # Checks if any mathces
     if len(hits)>0:
       detected_marker_char = hits[-1][0]
     else:
       detected_marker_char = ''
 
+    # Set result image to the input image
     res_image = img
 
     if self.log:
@@ -487,8 +547,6 @@ class Fiducial_detector:
     
       res_image = cv2.putText(res_image,detected_marker_char,(200,250) ,font, fontScale, color, thickness, cv2.LINE_AA)
       
-      
-
     return hits, res_contours, res_image, detected_color
     
   def loadMarkers(self, markers):
