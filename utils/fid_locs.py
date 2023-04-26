@@ -1,18 +1,25 @@
+'''
+Marker locations in the real orld coordinate system
+Tx, Ty, Tz is the location of the marker's center from the origin
+o, p, k stand for omega, phi and kappa which are rotation of the markers plane about the X, Y and Z axes respectively
+'''
+
+
 locs = {
     'A':{
-    'x' : 75,
-    'y' : 75,
-    'z' : 0,
-    'xrot' : 0,
-    'yrot' : 0,
-    'zrot' :0
+        'Tx' : 75,
+        'Ty' : 75,
+        'Tz' : 0,
+        'o' : 0, 
+        'p' : 0,
+        'k' :0
     },
     'B' :{
-        'x' : 75,
-        'y' : 125,
-        'z' : 0,
-        'xrot' : 0,
-        'yrot' : 0,
-        'zrot' :0
+        'Tx' : 75,
+        'Ty' : 125,
+        'Tz' : 0,
+        'o' : 0, 
+        'p' : 0,
+        'k' :0
     }
 }

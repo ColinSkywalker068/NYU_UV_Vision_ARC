@@ -5,6 +5,7 @@ import flagger
 import config
 import fid_locs
 import matplotlib.pyplot  as plt
+from math import sin, cos
 
 
 def order_contour(cnt):
@@ -250,6 +251,26 @@ class Fiducial_detector:
 
     self.log = log
 
+    self.tx_matrices = self.getTxMatrices()
+
+  def transform(self, Tx, Ty, Tz, o, p, k):
+      R = np.array([
+          [cos(p)*cos(k), -cos(p)*sin(k), sin(p), Tx],
+          [cos(o)*sin(k) + cos(k)*sin(o)*sin(p), cos(o)*cos(k)-sin(o)*sin(p)*sin(k), -cos(p)*sin(o), Ty],
+          [sin(o)*sin(k)-cos(o)*cos(k)*sin(p), cos(k)*sin(o)+cos(o)*sin(p)*sin(k) , cos(o)*cos(p), Tz],
+          [0,0,0,1]
+      ])
+      
+      return R
+
+  def getTxMatrices(self):
+    txMatrices = {}
+
+    for marker in fid_locs.locs:
+      _matrix = self.transform(**fid_locs.locs[marker])
+      txMatrices[marker] = _matrix
+    return txMatrices
+  
   def detectFiducial(self, frame, delta=1):
     hits, res_contours, res_image, detected_color= self.findMarker(frame, threshold=delta)
     
@@ -292,22 +313,22 @@ class Fiducial_detector:
       # res_image = cv2.putText(res_image, str(cameras_position), (200,550) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
 
-      text = "Translation Cam: "+str(tvec[0].round(2)) + ',' +str(tvec[1].round(2))+' '+str(tvec[2].round(2))
+      text = "Translation Cam as origin: "+str(tvec[0].round(2)) + ',' +str(tvec[1].round(2))+' '+str(tvec[2].round(2))
       res_image = cv2.putText(res_image, text, (200,350) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
       # #text = "Rotation: "+str(rvec[0].round(2)) + ',' +str(rvec[1].round(2))+' '+str(rvec[2].round(2))
       # text = "Rotation: "+str(cameras_position[0].round(2)) + ',' +str(cameras_position[1].round(2))+' '+str(cameras_position[2].round(2))
       # res_image = cv2.putText(res_image, text, (200,450) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
-      text = "Translation RW: "+str(invRotM[:,3][0].round(2)) + ',' +str(invRotM[:,3][1].round(2))+' '+str(invRotM[:,3][2].round(2))
+      text = "Translation Marker as origin: "+str(invRotM[:,3][0].round(2)) + ',' +str(invRotM[:,3][1].round(2))+' '+str(invRotM[:,3][2].round(2))
       res_image = cv2.putText(res_image, text, (200,400) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
       R = invRotM[:3,:3]
 
       # Extract the Euler angles from the rotation matrix
-      roll = np.arctan2(R[2, 1], R[2, 2])
-      pitch = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
-      yaw = np.arctan2(R[1, 0], R[0, 0])
+      roll = np.degrees(np.arctan2(R[2, 1], R[2, 2]))
+      pitch = np.degrees(np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2)))
+      yaw =np.degrees( np.arctan2(R[1, 0], R[0, 0]))
 
       text = "Rotation: " + str(roll.round(2)) + ',' +str(pitch.round(2)) + ',' + str(yaw.round(2))
       res_image = cv2.putText(res_image, text, (200,550) ,font, fontScale, color, thickness, cv2.LINE_AA)
@@ -345,6 +366,9 @@ class Fiducial_detector:
 
       # cv2.imshow('Map', map_)
 
+      tx_matrix = self.tx_matrices[detected_marker_char]
+      rw_loc_cam = tx_matrix@tvec
+
       cv2.imshow('ROBOMASTER', res_image)
       cv2.waitKey(20)
 
@@ -356,8 +380,7 @@ class Fiducial_detector:
 
     res = {
       'success' : True,
-      'translation' : tvec,
-      'rotation' : rvec,
+      'rw_loc_cam' : rw_loc_cam,
       'detected_marker_char':detected_marker_char,
       'detected_color': detected_color
     }
@@ -476,7 +499,7 @@ class Fiducial_detector:
     return markers
 
 
-
+#https://www.tangramvision.com/blog/rotate-scale-translate-coordinate-frames-for-multi-sensor-systems-part-2
 
 
 
