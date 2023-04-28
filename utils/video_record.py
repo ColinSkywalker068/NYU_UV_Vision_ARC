@@ -3,7 +3,7 @@ import time
 import threading
 from queue import Queue
 from datetime import datetime
-
+import os
 
 class VideoRecord:
     def __init__(self, save_interval=10, file_prefix='output', file_extension='.mp4'):
@@ -18,8 +18,12 @@ class VideoRecord:
         self.saving_thread.start()
 
     def get_output_filename(self):
-        current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        return f"{self.file_prefix}_{current_time}{self.file_extension}"
+            video_dir = "~/Documents/video"
+            if not os.path.exists(video_dir):
+                os.makedirs(video_dir)
+
+            current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            return f"{video_dir}/{self.file_prefix}_{current_time}{self.file_extension}"
 
     def save_video(self, frames):
         if len(frames) == 0:
