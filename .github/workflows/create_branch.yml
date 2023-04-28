@@ -35,15 +35,12 @@ jobs:
         NEW_BRANCH_SPRINT_NUMBER="${{ steps.get_sprint_number.outputs.sprint_number }}"
         NEW_BRANCH=${NEW_BRANCH_PREFIX}${NEW_BRANCH_YEAR}/${NEW_BRANCH_SPRINT_NUMBER}
         echo "new_branch=${NEW_BRANCH}" >> $GITHUB_OUTPUT
-
-    - name: Create new branch
-      run: |
-        git checkout main
-        git pull origin main
-        git checkout -b ${NEW_BRANCH}
-
-    - name: Push new branch
-      uses: ad-m/github-push-action@master
-      with:
-        branch: ${{ steps.get_branch_name.outputs.new_branch }}
+    
+    - name: make new branch
+      id: make_new_branch
+      uses: peterjgrainger/action-create-branch@v2.3.0
+      env:
         github_token: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        branch: "refs/heads/${{ steps.get_branch_name.outputs.new_branch }}"
+        sha: '${{ github.event.pull_request.head.sha }}'
