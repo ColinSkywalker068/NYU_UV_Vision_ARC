@@ -6,14 +6,13 @@ from datetime import datetime
 import os
 
 class VideoRecord:
-    def __init__(self, save_interval=10, file_prefix='output', file_extension='.mp4'):
+    def __init__(self, save_interval=5, file_prefix='output', file_extension='.mp4'):
         self.save_interval = save_interval
         self.file_prefix = file_prefix
         self.file_extension = file_extension
         self.frame_queue = Queue()
         self.frame_counter = 0
-        self.saving_thread = threading.Thread(
-            target=self.save_video_periodically)
+        self.saving_thread = threading.Thread(target=self.save_video_periodically)
         self.saving_thread.daemon = True
         self.saving_thread.start()
 
@@ -45,7 +44,8 @@ class VideoRecord:
             frames_to_save.append(frame)
             self.frame_counter += 1
 
-            if self.frame_counter >= 300:
+            # Change the frame threshold to 150 (30 FPS * 5 seconds = 150 frames)
+            if self.frame_counter >= 150:
                 self.save_video(frames_to_save)
                 frames_to_save = []
                 self.frame_counter = 0
@@ -56,6 +56,18 @@ class VideoRecord:
 
 def main():
     cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+
+    # Preheat the camera by reading a few frames before recording
+    preheat_seconds = 1
+    preheat_frames = preheat_seconds * 30  # 1 seconds * 30 FPS = 150 frames
+    for _ in range(preheat_frames):
+        ret, frame = cap.read()
+        cv2.imshow('Webcam', frame)
+        cv2.waitKey(1)
+
     video_saver = VideoRecord()
 
     while True:
