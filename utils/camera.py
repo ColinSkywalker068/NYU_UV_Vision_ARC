@@ -2,16 +2,16 @@ import numpy as np
 import cv2
 import config as cfg
 
-if cfg.camera['DEPTH_CAPTURE']:
+if cfg.camera["DEPTH_CAPTURE"]:
     try:
         import pyrealsense2.pyrealsense2 as rs
     except:
         import pyrealsense2 as rs
 
+
 # imu class to get imu data from camera
 class imu_sensor:
     def __init__(self):
-
         # Make another pipeline for IMU
         self.imu_pipeline = rs.pipeline()
         imu_config = rs.config()
@@ -23,10 +23,10 @@ class imu_sensor:
     def get_frame(self):
         try:
             imu_frames = self.imu_pipeline.wait_for_frames()
-            acceleration = imu_frames[rs.stream.accel].as_motion_frame(
-            ).get_motion_data()
-            gyroscope = imu_frames[rs.stream.gyro].as_motion_frame(
-            ).get_motion_data()
+            acceleration = (
+                imu_frames[rs.stream.accel].as_motion_frame().get_motion_data()
+            )
+            gyroscope = imu_frames[rs.stream.gyro].as_motion_frame().get_motion_data()
         except (RuntimeError, ValueError) as e:
             return False, None, None
 
@@ -44,7 +44,7 @@ class camera:
         """
         self.cap = cv2.VideoCapture(camera_index)
         # optimize camera capture for only compressed color frames
-        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
 
     # Get Color frame
     def get_frame(self):
@@ -70,11 +70,10 @@ class camera:
 
 # camera class to read in input from realsense depth camera
 class depth_camera:
-
     def __init__(self, frame_size=(640, 480), frame_rate=30):
         """
         Constructor. Intializes the depth camera object and prep it for capture the frames.
-        Parameters: 
+        Parameters:
         frame_size: Frame size/ resoltuion specification for the the cam feed.
         frame_rate: rate at which the camera should capture frames.
         """
@@ -89,9 +88,11 @@ class depth_camera:
 
         # Init streams
         config.enable_stream(
-            rs.stream.depth, frame_size[0], frame_size[1], rs.format.z16, frame_rate)
+            rs.stream.depth, frame_size[0], frame_size[1], rs.format.z16, frame_rate
+        )
         config.enable_stream(
-            rs.stream.color, frame_size[0], frame_size[1], rs.format.bgr8, frame_rate)
+            rs.stream.color, frame_size[0], frame_size[1], rs.format.bgr8, frame_rate
+        )
         # Disable laser
         device = pipeline_profile.get_device()
         device_product_line = str(device.get_info(rs.camera_info.product_line))
@@ -115,7 +116,6 @@ class depth_camera:
         # algin depth frame to color frame
         self.align = rs.align(rs.stream.color)
 
-
     # Get Depth and Color Frame
 
     def get_frame(self):
@@ -123,7 +123,7 @@ class depth_camera:
         Extracts depth and color frame from camera feed.
         Returns:
         ret = True if success in obtaining the frames
-        depth_image = Depth frame 
+        depth_image = Depth frame
         color_image = RGB image frame
         """
         try:

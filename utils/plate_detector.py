@@ -84,14 +84,10 @@ class plate_detector:
 
         self.flagger = flagger
 
-        # if flagger is not None:
-        #     self.flagger = flagger
+        self.uart = uart_comms.Publisher_node() if uart else None
 
-        if uart:
-            # create a uart object to send/receive data
-            self.uart = uart_comms.Publisher_node()
-        else:
-            self.uart = None
+        # keep track of last offset (y_offset, x_offset)
+        self.last_rad_offset = (0, 0)
 
         # Color FOV for Intel D400 Series cameras
         self.HFOV = config.camera["HFOV"]
@@ -226,8 +222,17 @@ class plate_detector:
         Sends the pitch and yaw offsets to the uart server
         Parameters:
         """
-        if stop:
-            msg = [0, 0, 0]
+        msg = [0, 0, 0]
+        # @TODO see if norm is correct for already normalized values
+        if stop and np.linalg.norm(self.last_rad_offset) > 0.175:
+            # check if last_rad_offset was large (target went out of frame)
+            # then we should send the last rad offset to continue tracking
+            # send the last rad offset /2
+            msg = [
+                self.last_rad_offset[0],
+                self.last_rad_offset[1],
+                0,
+            ]
         else:
             # get the pitch and yaw offsets
             x_rad_offset, y_rad_offset = self.calculate_angle_offsets(
@@ -238,7 +243,10 @@ class plate_detector:
             # if the L2 norm of the offsets from 0 is <= 0.175 rad (+- 10 degrees x, y), start firing
 
             has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
-            msg = [y_rad_offset / 3, -x_rad_offset / 3, has_target]
+            y_rad_offset /= 3
+            x_rad_offset /= -3
+            msg = [y_rad_offset, x_rad_offset, has_target]
+            self.last_rad_offset = (y_rad_offset, x_rad_offset)
         assert self.uart is not None
         for i in range(2):
             self.uart.send_auto_aim(msg)
