@@ -23,7 +23,7 @@ class Uart:
             port=port,
             baudrate=baudrate,
             parity=serial.PARITY_NONE,
-            stopbits=serial.STOPBITS_ONE
+            stopbits=serial.STOPBITS_ONE,
         )
 
         # use USB serial port
@@ -106,15 +106,15 @@ class Uart:
             return
 
         self.imu_data_mutex.acquire()
-        self.imu_data[0] = float(data[0])/100
-        self.imu_data[1] = float(data[1])/100
-        self.imu_data[2] = float(data[2])/100
-        self.imu_data[3] = float(data[3]/100)
-        self.imu_data[4] = float(data[4]/100)
-        self.imu_data[5] = float(data[5]/100)
-        self.imu_data[6] = float(data[6])/100
-        self.imu_data[7] = float(data[7])/100
-        self.imu_data[8] = float(data[8])/100
+        self.imu_data[0] = float(data[0]) / 100
+        self.imu_data[1] = float(data[1]) / 100
+        self.imu_data[2] = float(data[2]) / 100
+        self.imu_data[3] = float(data[3] / 100)
+        self.imu_data[4] = float(data[4] / 100)
+        self.imu_data[5] = float(data[5] / 100)
+        self.imu_data[6] = float(data[6]) / 100
+        self.imu_data[7] = float(data[7]) / 100
+        self.imu_data[8] = float(data[8]) / 100
         self.imu_data[9] = data[9]
         self.imu_data[10] = data[10]
         self.imu_data[11] = data[11]
@@ -124,11 +124,11 @@ class Uart:
     def handle_turret_feedback(self, data):
         # data = [pitch, yaw]
         try:
-            data = struct.unpack(">hh", data)
+            data = struct.unpack(">ii", data)
         except:
             print("Invalid Turret Feedback Message")
             return
-        feedback = [float(data[0])/100, float(data[1])/100]
+        feedback = [data[0] / 100, data[1] / 100]
         self.turret_feedback_mutex.acquire()
         self.turret_feedback = feedback
         self.turret_feedback_mutex.release()
@@ -143,8 +143,8 @@ class Uart:
                 if data == self.HEADER:
                     self.state = READING_HEADER
             elif self.state == READING_HEADER:
-                header_bytes = self.ser.read(HEADER_LENGTH-1)
-                if len(header_bytes) != HEADER_LENGTH-1:
+                header_bytes = self.ser.read(HEADER_LENGTH - 1)
+                if len(header_bytes) != HEADER_LENGTH - 1:
                     self.state = WAITING_FOR_HEADER
                     return
 
