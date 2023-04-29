@@ -222,17 +222,20 @@ class plate_detector:
         Sends the pitch and yaw offsets to the uart server
         Parameters:
         """
-        msg = [0, 0, 0]
-        # @TODO see if norm is correct for already normalized values
-        if stop and np.linalg.norm(self.last_rad_offset) > 0.175:
-            # check if last_rad_offset was large (target went out of frame)
-            # then we should send the last rad offset to continue tracking
-            # send the last rad offset /2
-            msg = [
-                self.last_rad_offset[0],
-                self.last_rad_offset[1],
-                0,
-            ]
+        if stop:
+            msg = [0, 0, 0]
+
+            # @TODO see if norm is correct for already normalized values
+            if np.linalg.norm(self.last_rad_offset) > 1.5:
+                # check if last_rad_offset was large (target went out of frame)
+                # then we should send the last rad offset to continue tracking
+                # send the last rad offset /6
+                msg = [
+                    self.last_rad_offset[0] / 6,
+                    self.last_rad_offset[1] / 6,
+                    0,
+                ]
+                self.last_rad_offset = (0, 0)
         else:
             # get the pitch and yaw offsets
             x_rad_offset, y_rad_offset = self.calculate_angle_offsets(
