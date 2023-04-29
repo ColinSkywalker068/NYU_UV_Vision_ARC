@@ -82,9 +82,10 @@ class plate_detector:
 
         self.tracker = Sort(max_age=5, min_hits=1) if self.tracking else None
 
-        self.flagger = flagger
-
         self.uart = uart_comms.Publisher_node() if uart else None
+
+        # pass reference uart to flagger object
+        self.flagger = flagger(self.uart) if uart and flagger else None
 
         # keep track of last offset (y_offset, x_offset)
         self.last_rad_offset = (0, 0)

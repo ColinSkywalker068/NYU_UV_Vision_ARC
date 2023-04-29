@@ -15,15 +15,28 @@ class Publisher_node:
         self.header = 0xE7
 
         # start thread
-        # self.thread = threading.Thread(target=self._start)
-        # self.thread.start()
+        self.thread = threading.Thread(target=self._start)
+        self.thread.start()
 
     # called as a thread
-    # def _start(self):
-    #     while True:
-    #         self.Uart.listener()
-    #         # delay to prevent cpu overload
-    #         time.sleep(0.1)
+    def _start(self):
+        while True:
+            if self.Uart is None:
+                try:
+                    self.Uart = uart_server.Uart()
+                except:
+                    if config.detection["DEBUG"]:
+                        print("Uart not initialized")
+                    continue
+            try:
+                self.Uart.listener()
+            except:
+                if config.detection["DEBUG"]:
+                    print("Uart not initialized")
+
+            # self.Uart.listener()
+            # delay to prevent cpu overload
+            time.sleep(0.1)
 
     def send_auto_aim(self, msg):
         # msg = [pitch, yaw, has_target]
