@@ -8,7 +8,6 @@ import time
 class Flagger:
     def __init__(
         self,
-        uart_node,
         opponent_color,
         red_lower,
         red_upper,
@@ -36,29 +35,6 @@ class Flagger:
         self.red_upper_2 = np.array(red_upper, dtype=np.uint8)
         self.blue_lower = np.array(blue_lower, dtype=np.uint8)
         self.blue_upper = np.array(blue_upper, dtype=np.uint8)
-
-        self.uart_node = uart_node
-
-        # create a thread that reads from uart the enemy color
-        self.color_thread = Thread(target=self._read_color)
-        self.color_thread.start()
-
-    def _read_color(self):
-        """
-        Reads the color of the enemy robot from the uart
-        """
-        while True:
-            try:
-                id = self.uart_node.Uart.get_enemy_color()
-                self.opponent_color = (
-                    "RED" if id == 0 else "BLUE" if id == 1 else self.opponent_color
-                )
-                if id == 0 or id == 1:
-                    print("Enemy color changed to ", self.opponent_color)
-                    return
-            except:
-                pass
-            time.sleep(0.1)
 
     # Check if the robot in the frame is enemy robot or not. Returns true if it is enemy robot
     def check_enemy(self, frame):

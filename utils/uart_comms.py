@@ -26,17 +26,17 @@ class Publisher_node:
                     self.Uart = uart_server.Uart()
                 except:
                     if config.detection["DEBUG"]:
-                        print("Uart not initialized")
+                        print("Uart not initialized1")
                     continue
             try:
                 self.Uart.listener()
             except:
                 if config.detection["DEBUG"]:
-                    print("Uart not initialized")
+                    print("Uart not initialized2")
 
             # self.Uart.listener()
             # delay to prevent cpu overload
-            time.sleep(1.0)
+            # time.sleep(0.1)
 
     def send_auto_aim(self, msg):
         # msg = [pitch, yaw, has_target]
@@ -56,13 +56,13 @@ class Publisher_node:
                 self.Uart = uart_server.Uart()
             except:
                 if config.detection["DEBUG"]:
-                    print("Uart not initialized")
+                    print("Uart not initialized3")
                 return
         try:
             self.Uart.send_data(msg)
         except:
             if config.detection["DEBUG"]:
-                print("Uart not initialized")
+                print("Uart not initialized4")
 
     def send_align_request(self, msg):
         # msg = [x,y,r]
@@ -95,8 +95,10 @@ if __name__ == "__main__":
     while True:
         # print("ID: ", node.Uart.get_robot_id())
         pitch, yaw = node.Uart.get_turret_feedback()
-        print("(Pitch, Yaw): (", pitch, ", ", yaw, ")")
-        time.sleep(1.2)
+        print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
+        # print(node.Uart.handle_align_request())
+        # print(node.Uart.get_auto_aim_request())
+        # time.sleep(.2)
     # node.send_auto_aim([2, -1, 1])
     # node.send_align_request([1, 2, 3])
     # node.send_align_finish([1])

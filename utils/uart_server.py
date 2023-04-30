@@ -65,19 +65,21 @@ class Uart:
     def handle_align_request(self, data):
         # data = [enable]
         try:
-            data = struct.unpack(">B", data)
+            data = struct.unpack(">B", data)[0]
         except:
             print("Invalid Align Request Message")
             return
 
         request = []
-        request[0] = data[0]
-        self.auto_aim_request_list.put(request)
+        # print("DATA: ", data)
+        self.auto_aim_request_mutex.acquire()
+        self.auto_aim_request = data
+        self.auto_aim_request_mutex.release()
 
     def handle_robot_id(self, data):
         # data = [id]
         try:
-            print("DATA: ", data)
+            # print("DATA: ", data)
             data = struct.unpack(">B", data)
 
         except:
@@ -147,7 +149,7 @@ class Uart:
                     self.state = READING_HEADER
             elif self.state == READING_HEADER:
                 header_bytes = self.ser.read(HEADER_LENGTH + 2)
-                print("HEADER BYTES: ", header_bytes)
+                # print("HEADER BYTES: ", header_bytes)
                 if len(header_bytes) != HEADER_LENGTH + 2:
                     self.state = WAITING_FOR_HEADER
                     return
@@ -156,8 +158,8 @@ class Uart:
                 # print(header)
                 self.msg_len = header[1]
                 self.msg_type = header[-1]
-                print("Header: ", header)
-                print("MSG_TYPE: ", self.msg_type)
+                # print("Header: ", header)
+                # print("MSG_TYPE: ", self.msg_type)
                 self.state = READING_DATA
 
             if self.state == READING_DATA:
@@ -171,7 +173,7 @@ class Uart:
                 elif self.msg_type == 4:
                     self.handle_imu_feedback(self.data)
                 elif self.msg_type == 5:
-                    print("DATA: ", self.data)
+                    # print("DATA: ",self.data)
                     self.handle_turret_feedback(self.data)
                 self.reset_listener()
 

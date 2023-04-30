@@ -85,7 +85,7 @@ class plate_detector:
         self.uart = uart_comms.Publisher_node() if uart else None
 
         # pass reference uart to flagger object
-        self.flagger = flagger(self.uart) if uart and flagger else None
+        self.flagger = flagger
 
         # keep track of last offset (y_offset, x_offset)
         self.last_rad_offset = (0, 0)
@@ -114,6 +114,9 @@ class plate_detector:
             bboxes: A list of tuples, each tuple containing the 6 specs of each  bounding box that is predicted
             messages: List of strings that are to be printed on the image
         """
+        # print("ENABLE: ", self.uart.Uart.get_auto_aim_request())
+        if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
+            return [], []
 
         # Get bounding boxes
         stop_shooting = True
