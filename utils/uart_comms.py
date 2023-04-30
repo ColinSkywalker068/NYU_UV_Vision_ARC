@@ -93,7 +93,10 @@ class Publisher_node:
 if __name__ == "__main__":
     node = Publisher_node(None)
     while True:
-        print(node.Uart.get_robot_id())
+        # print("ID: ", node.Uart.get_robot_id())
+        pitch, yaw = node.Uart.get_turret_feedback()
+        print("(Pitch, Yaw): (", pitch, ", ", yaw, ")")
+        time.sleep(1.2)
     # node.send_auto_aim([2, -1, 1])
     # node.send_align_request([1, 2, 3])
     # node.send_align_finish([1])
