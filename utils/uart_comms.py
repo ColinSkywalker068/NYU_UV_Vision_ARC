@@ -36,7 +36,7 @@ class Publisher_node:
 
             # self.Uart.listener()
             # delay to prevent cpu overload
-            time.sleep(0.1)
+            time.sleep(1.0)
 
     def send_auto_aim(self, msg):
         # msg = [pitch, yaw, has_target]
@@ -92,6 +92,8 @@ class Publisher_node:
 
 if __name__ == "__main__":
     node = Publisher_node(None)
-    node.send_auto_aim([2, -1, 1])
+    while True:
+        print(node.Uart.get_robot_id())
+    # node.send_auto_aim([2, -1, 1])
     # node.send_align_request([1, 2, 3])
     # node.send_align_finish([1])

@@ -77,7 +77,9 @@ class Uart:
     def handle_robot_id(self, data):
         # data = [id]
         try:
+            print("DATA: ", data)
             data = struct.unpack(">B", data)
+
         except:
             print("Invalid Robot ID Message")
             return
@@ -138,23 +140,27 @@ class Uart:
 
     def listener(self):
         if self.ser.in_waiting > 0:
+            # print("STATE: ", self.state)
             if self.state == WAITING_FOR_HEADER:
                 data = struct.unpack("B", self.ser.read())[0]
                 if data == self.HEADER:
                     self.state = READING_HEADER
             elif self.state == READING_HEADER:
-                header_bytes = self.ser.read(HEADER_LENGTH - 1)
-                if len(header_bytes) != HEADER_LENGTH - 1:
+                header_bytes = self.ser.read(HEADER_LENGTH + 2)
+                print("HEADER BYTES: ", header_bytes)
+                if len(header_bytes) != HEADER_LENGTH + 2:
                     self.state = WAITING_FOR_HEADER
                     return
 
-                header = struct.unpack(">BHBB", header_bytes)
-                self.msg_len = header[0]
+                header = struct.unpack("<BHBBH", header_bytes)
+                # print(header)
+                self.msg_len = header[1]
                 self.msg_type = header[-1]
+                print("Header: ", header)
+                print("MSG_TYPE: ", self.msg_type)
                 self.state = READING_DATA
 
-            elif self.state == READING_DATA:
-                self.reset_listener()
+            if self.state == READING_DATA:
                 self.data = self.ser.read(self.msg_len)
                 if self.msg_type == 1:
                     self.handle_align_request(self.data)
@@ -166,6 +172,7 @@ class Uart:
                     self.handle_imu_feedback(self.data)
                 elif self.msg_type == 5:
                     self.handle_turret_feedback(self.data)
+                self.reset_listener()
 
     def reset_listener(self):
         self.state = WAITING_FOR_HEADER
