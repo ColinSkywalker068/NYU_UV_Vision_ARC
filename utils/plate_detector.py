@@ -88,7 +88,7 @@ class plate_detector:
         # Check if tracking is required
         self.tracking = tracking
 
-        self.tracker = Sort(max_age=5, min_hits=1) if self.tracking else None
+        self.tracker = Sort(max_age=10, min_hits=0) if self.tracking else None
 
         self.uart = uart_comms.Publisher_node() if uart else None
 
