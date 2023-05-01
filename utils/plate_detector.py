@@ -294,7 +294,7 @@ class plate_detector:
         return (move_x, move_y)
 
 
-@jit(nopython=True)
+@jit(nopython=True, parallel=True)
 def sort_bboxes_by_distance(bboxes, depth_image):
     """
     Sorts the bboxes by distance from the camera
