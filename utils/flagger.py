@@ -31,8 +31,8 @@ class Flagger:
 
         self.red_lower = np.array(red_lower, dtype=np.uint8)
         self.red_upper = np.array(red_upper, dtype=np.uint8)
-        self.red_lower_2 = np.array(red_lower, dtype=np.uint8)
-        self.red_upper_2 = np.array(red_upper, dtype=np.uint8)
+        self.red_lower_2 = np.array(red_lower_2, dtype=np.uint8)
+        self.red_upper_2 = np.array(red_upper_2, dtype=np.uint8)
         self.blue_lower = np.array(blue_lower, dtype=np.uint8)
         self.blue_upper = np.array(blue_upper, dtype=np.uint8)
 
