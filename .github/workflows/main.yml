@@ -55,5 +55,9 @@ jobs:
           tag: ${{ steps.tag_version.outputs.new_tag }}
           name: Release ${{ steps.tag_version.outputs.new_tag }}
           body: ${{ steps.tag_version.outputs.changelog }}
+      - name: publish
+        uses: pennsignals/publish_docker-compose@v0.2.6
+        with:
+          docker_compose: 'Docker/compose.yml' # required
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
 
-# This is a dummy commit to test cronjobs

@@ -44,3 +44,21 @@ jobs:
       with:
         branch: "refs/heads/${{ steps.get_branch_name.outputs.new_branch }}"
         sha: '${{ github.event.pull_request.head.sha }}'
+
+  sync_with_main:
+    runs-on: ubuntu-latest
+    needs: create_sprint_branch
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      with:
+        ref: ${{ needs.create_sprint_branch.outputs.new_branch }}
+    - name: Merge changes from main
+      run: |
+        git fetch 
+        git pull origin main
+      shell: bash
+    - name: Push changes to new branch
+      run: |
+        git push origin ${{ needs.create_sprint_branch.outputs.new_branch }}
+      shell: bash
