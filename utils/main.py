@@ -58,12 +58,17 @@ def main():
         uart=config.detection["UART"],
     )
     if config.detection["UART"]:
+        count = 0
         while detector.uart.Uart.get_robot_id() not in [0, 1]:
-            pass
-        flagger_obj.opponent_color = (
-            "RED" if detector.uart.Uart.get_robot_id() else "BLUE"
-        )
-        # print(flagger_obj.opponent_color)
+            count += 1
+            if count > 100:
+                break
+        if count <= 100:
+            flagger_obj.opponent_color = (
+                "RED" if detector.uart.Uart.get_robot_id() else "BLUE"
+            )
+            if config.general["DEBUG_LOGS"]:
+                print("opponent color: ", flagger_obj.opponent_color)
 
     # create monitor object to display annotated images
     if config.detection["IMU"]:
