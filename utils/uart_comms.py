@@ -4,53 +4,76 @@ import threading
 import struct
 import numpy as np
 import uart_server
+import config
 
 
 class Publisher_node:
     def __init__(self, Uart_server=None):
         self.Uart = Uart_server
-        # if self.Uart is None:
-        #     self.Uart = uart_server.Uart()
+        if self.Uart is None:
+            self.Uart = uart_server.Uart()
         self.header = 0xE7
 
         # start thread
-        #self.thread = threading.Thread(target=self._start)
-        # self.thread.start()
+        self.thread = threading.Thread(target=self._start)
+        self.thread.start()
 
     # called as a thread
-    # def _start(self):
-    #     while True:
-    #         self.Uart.listener()
-    #         # delay to prevent cpu overload
-    #         time.sleep(0.1)
+    def _start(self):
+        while True:
+            if self.Uart is None:
+                try:
+                    self.Uart = uart_server.Uart()
+                except:
+                    if config.detection["DEBUG"]:
+                        print("Uart not initialized1")
+                    continue
+            try:
+                self.Uart.listener()
+            except:
+                if config.detection["DEBUG"]:
+                    print("Uart not initialized2")
+
+            # self.Uart.listener()
+            # delay to prevent cpu overload
+            # time.sleep(0.1)
 
     def send_auto_aim(self, msg):
         # msg = [pitch, yaw, has_target]
         length = 0x11
         msg_type = 0x01
-        header = struct.pack("BHBBH", self.header,
-                             length, 0x00, 0x00, msg_type)
+        header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
 
-        body = struct.pack("iiB", int(
-            msg[0]*100), int(msg[1]*100), int(msg[2]))
+        body = struct.pack("iiB", int(msg[0] * 100), int(msg[1] * 100), int(msg[2]))
         footer = struct.pack("H", 0x0)
 
-        msg = header+body+footer
+        msg = header + body + footer
         # print(msg)
-        self.Uart.send_data(msg)
+        # check if uart is initialized
+        # if so send the message, if not try to initialize and then send the message
+        if self.Uart is None:
+            try:
+                self.Uart = uart_server.Uart()
+            except:
+                if config.detection["DEBUG"]:
+                    print("Uart not initialized3")
+                return
+        try:
+            self.Uart.send_data(msg)
+        except:
+            if config.detection["DEBUG"]:
+                print("Uart not initialized4")
 
     def send_align_request(self, msg):
-        #msg = [x,y,r]
+        # msg = [x,y,r]
         length = 0x07
         msg_type = 0x02
 
-        header = struct.pack("BHBBH", self.header,
-                             length, 0x00, 0x00, msg_type)
+        header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
 
-        body = struct.pack("HHH", int(
-            msg[0]*100), int(msg[1]*100), int(msg[2]))
+        body = struct.pack("HHH", int(msg[0] * 100), int(msg[1] * 100), int(msg[2]))
         footer = struct.pack("H", 0x0)
-        msg = header+body+footer
+        msg = header + body + footer
         self.Uart.send_data(msg)
 
     def send_align_finish(self, msg):
@@ -59,17 +82,23 @@ class Publisher_node:
 
         length = 0x03
         msg_type = 0x03
-        header = struct.pack("BHBBH", self.header,
-                             length, 0x00, 0x00, msg_type)
+        header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
         body = struct.pack("B", 0x01)
         footer = struct.pack("H", 0x0)
-        msg = header+body+footer
+        msg = header + body + footer
 
         self.Uart.send_data(msg)
 
 
 if __name__ == "__main__":
     node = Publisher_node(None)
-    node.send_auto_aim([2, -1, 1])
-    #node.send_align_request([1, 2, 3])
+    while True:
+        # print("ID: ", node.Uart.get_robot_id())
+        pitch, yaw = node.Uart.get_turret_feedback()
+        print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
+        # print(node.Uart.handle_align_request())
+        # print(node.Uart.get_auto_aim_request())
+        # time.sleep(.2)
+    # node.send_auto_aim([2, -1, 1])
+    # node.send_align_request([1, 2, 3])
     # node.send_align_finish([1])

@@ -1,11 +1,21 @@
 import cv2
 import numpy as np
 from threading import Thread
+from uart_comms import Publisher_node
+import time
 
 
 class Flagger:
-
-    def __init__(self, opponent_color, red_lower, red_upper, red_lower_2, red_upper_2, blue_lower, blue_upper):
+    def __init__(
+        self,
+        opponent_color,
+        red_lower,
+        red_upper,
+        red_lower_2,
+        red_upper_2,
+        blue_lower,
+        blue_upper,
+    ):
         """
         Constructor.
         opponent_color: 'RED' or "BLUE' indicating the color of the opponent team.
@@ -21,8 +31,8 @@ class Flagger:
 
         self.red_lower = np.array(red_lower, dtype=np.uint8)
         self.red_upper = np.array(red_upper, dtype=np.uint8)
-        self.red_lower_2 = np.array(red_lower, dtype=np.uint8)
-        self.red_upper_2 = np.array(red_upper, dtype=np.uint8)
+        self.red_lower_2 = np.array(red_lower_2, dtype=np.uint8)
+        self.red_upper_2 = np.array(red_upper_2, dtype=np.uint8)
         self.blue_lower = np.array(blue_lower, dtype=np.uint8)
         self.blue_upper = np.array(blue_upper, dtype=np.uint8)
 
@@ -37,7 +47,7 @@ class Flagger:
         True if enemy robot detected else False
         """
         color = self.red_or_blue(frame)
-        return color == self.opponent_color and color != 'NONE'
+        return color == self.opponent_color and color != "NONE"
 
     # determines if the robot in the frame is of red or blue color
 
@@ -55,20 +65,16 @@ class Flagger:
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
         # Get Red masks
-        red_mask = cv2.inRange(
-            hsv, self.red_lower, self.red_upper)
+        red_mask = cv2.inRange(hsv, self.red_lower, self.red_upper)
 
-        red_mask_2 = cv2.inRange(
-            hsv, self.red_lower_2, self.red_upper_2)
+        red_mask_2 = cv2.inRange(hsv, self.red_lower_2, self.red_upper_2)
 
         red_mask = cv2.bitwise_or(red_mask, red_mask_2)
 
         # Get Blue masks
-        blue_mask = cv2.inRange(
-            hsv, self.blue_lower, self.blue_upper)
+        blue_mask = cv2.inRange(hsv, self.blue_lower, self.blue_upper)
 
         r_area = cv2.countNonZero(red_mask)
         b_area = cv2.countNonZero(blue_mask)
 
         return "RED" if r_area > b_area else "BLUE" if b_area > r_area else "NONE"
-
