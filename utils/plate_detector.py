@@ -219,7 +219,10 @@ class plate_detector:
         tracker_output = self.tracker.update(dets)
         # print(tracker_output)
         # add label to each row
-        bboxes = [bbox.tolist() for bbox in tracker_output if not np.isnan(bbox).any()]
+        valid_mask = np.logical_not(np.isnan(tracker_output).any(axis=1))
+        valid_bboxes = tracker_output[valid_mask]
+        bboxes = valid_bboxes
+
         # print(bboxes)
         return bboxes
 
