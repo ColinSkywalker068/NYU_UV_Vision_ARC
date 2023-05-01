@@ -16,7 +16,15 @@ import logging
 from pathlib import Path
 
 # use jit
-import torch.jit as jit
+from numba import jit
+
+# ignore jit depreciation warning
+from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
+import warnings
+
+warnings.simplefilter("ignore", category=NumbaDeprecationWarning)
+warnings.simplefilter("ignore", category=NumbaPendingDeprecationWarning)
+
 
 logger = logging.getLogger(Path(__file__).stem)
 logger.setLevel(logging.DEBUG)
@@ -114,20 +122,17 @@ class plate_detector:
             bboxes: A list of tuples, each tuple containing the 6 specs of each  bounding box that is predicted
             messages: List of strings that are to be printed on the image
         """
-        # print("ENABLE: ", self.uart.Uart.get_auto_aim_request())
         if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
             return [], []
 
         # Get bounding boxes
-        stop_shooting = True
         results = self.model(color_image)
         bboxes, messages = self.get_bboxes_from_results(
             color_image, results, conf_thres, k
         )
+        return bboxes, messages
 
-        if self.tracker is not None:
-            bboxes = self.update_tracker(bboxes)
-
+    def send_msg(self, bboxes, messages, debug=False):
         # @TODO: only sends most confident plate
         # update metric used
         # send bbox at beginning of frame
@@ -138,14 +143,11 @@ class plate_detector:
             y_max,
         ) = [0, 0, 0, 0]
 
+        stop_shooting = True
         if len(bboxes) > 0:
             x_min, y_min, x_max, y_max, _, _ = bboxes[0]
             stop_shooting = False
 
-            # 1. Check get_auto_aim_request() in uart_server.py if we shold send data. if true then we send angle offsets
-
-            # @TODO this might block, test performance
-            # if self.uart.Uart.get_auto_aim_request():
         if self.uart is not None:
             try:
                 self.send_angles(
@@ -290,3 +292,30 @@ class plate_detector:
         move_y = math.radians(move_y)
         # print("x angle offset %f y angle offset %f", move_x, move_y)
         return (move_x, move_y)
+
+
+@jit(nopython=True)
+def sort_bboxes_by_distance(bboxes, depth_image):
+    """
+    Sorts the bboxes by distance from the camera
+    Parameters:
+        bboxes: list of bounding boxes
+        depth_image: depth image
+    Returns:
+        sorted_bboxes: sorted list of bounding boxes by median plate depth
+    """
+    num_bboxes = len(bboxes)
+    depth_values = np.zeros((num_bboxes,))
+    for i in range(num_bboxes):
+        bbox = bboxes[i]
+        x_min, y_min, x_max, y_max, _, _ = bbox
+        # get the depth values of the plate
+        depth_values[i] = np.median(
+            depth_image[int(y_min) : int(y_max), int(x_min) : int(x_max)].flatten()
+        )
+    # sort the bboxes by median depth
+    sorted_indices = np.argsort(depth_values)
+    sorted_bboxes = np.zeros((num_bboxes, 6))
+    for i in range(num_bboxes):
+        sorted_bboxes[i, :] = bboxes[sorted_indices[i]]
+    return sorted_bboxes

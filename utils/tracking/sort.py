@@ -65,23 +65,23 @@ class Sort(object):
                 if len(dets[d, :]) != 0:
                     trk.update(dets[d, :][0])
             # keep ghost of unmatched trackers for 15 frames
-            else:
-                if trk.time_since_update < 5:
-                    old_time_since_update = trk.time_since_update
-                    trk.update(trk.get_state()[0])
-                    if not (
-                        (trk.time_since_update < 1)
-                        and (
-                            trk.hit_streak >= self.min_hits
-                            or self.frame_count <= self.min_hits
-                        )
-                    ):
-                        ret.append(
-                            np.concatenate(
-                                (trk.get_state()[0], [trk.id + 1], [trk.objclass])
-                            ).reshape(1, -1)
-                        )
-                    trk.time_since_update = old_time_since_update
+            # else:
+            #     if trk.time_since_update < 5:
+            #         old_time_since_update = trk.time_since_update
+            #         trk.update(trk.get_state()[0])
+            #         if not (
+            #             (trk.time_since_update < 1)
+            #             and (
+            #                 trk.hit_streak >= self.min_hits
+            #                 or self.frame_count <= self.min_hits
+            #             )
+            #         ):
+            #             ret.append(
+            #                 np.concatenate(
+            #                     (trk.get_state()[0], [trk.id + 1], [trk.objclass])
+            #                 ).reshape(1, -1)
+            #             )
+            #         trk.time_since_update = old_time_since_update
         # create and initialise new trackers for unmatched detections
         for i in unmatched_dets:
             trk = KalmanBoxTracker(dets[i, :])

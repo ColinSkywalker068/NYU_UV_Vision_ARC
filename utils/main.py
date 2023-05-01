@@ -8,6 +8,7 @@ from localization import *
 import cv2
 import flagger
 from video_record import VideoRecord
+import numpy as np
 
 # from tracking import Tracker
 # from tracking.sort import Sort
@@ -98,20 +99,20 @@ def main():
             config.general["DEBUG_LOGS"],
         )
 
+        if detector.tracker is not None:
+            bboxes = detector.update_tracker(bboxes)
+
+        bboxes = np.array(bboxes)
+
+        # sort bboxes by median distance
+        if depth_image is not None and len(bboxes) > 0:
+            bboxes = plate_detector.sort_bboxes_by_distance(bboxes, depth_image)
+
+        bboxes, messages = detector.send_msg(bboxes, messages)
+
         # show detections on screen
         if config.detection["DISPLAY"]:
             mon.draw_on_image(color_image, bboxes, messages)
-
-        # TODO: Waiting here for refactoring of main code:
-        #      get_coordinates in the original main.py currently only returns one bounding box. We would be returning mulitple from it. Then, pass it onto process_frame() to get each of their depths
-        #      With the coords. and the depth, we THEN pass those pairs onto the Tracker object to update its state
-
-        # tracker.updateTrackerState(coords_distances)
-
-        # this is subject to change, but its just here to show potential structure of how things would be called
-        # closest_target = tracker.get_closest_tracked_robot()
-        # final_coords = tracker.get_coords_to_move(closest_target)
-        # ---> Send final coords through serial
 
     if config.detection["IMU"]:
         localizationThread.stop()
