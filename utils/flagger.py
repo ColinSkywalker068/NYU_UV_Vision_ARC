@@ -75,7 +75,7 @@ class Flagger:
         return color == self.opponent_color
 
 
-@cuda.jit
+@cuda.jit(fastmath=True)
 def mask_kernel(frame, blue_mask, blue_lower, blue_upper):
     x, y = cuda.grid(2)
     if x < frame.shape[0] and y < frame.shape[1]:
@@ -109,17 +109,9 @@ def red_or_blue_cuda(
     "RED" if red is detected the most else "BLUE"
     """
     # Get Blue masks
-    blue_mask = (
-        (frame[:, :, 0] >= blue_lower[0])
-        & (frame[:, :, 0] <= blue_upper[0])
-        & (frame[:, :, 1] >= blue_lower[1])
-        & (frame[:, :, 1] <= blue_upper[1])
-        & (frame[:, :, 2] >= blue_lower[2])
-        & (frame[:, :, 2] <= blue_upper[2])
-    )
     # Allocate device memory
     d_frame = cuda.to_device(frame)
-    # blue_mask = np.zeros_like(frame[:, :, 0], dtype=np.int32)
+    blue_mask = np.zeros_like(frame[:, :, 0], dtype=np.int32)
     d_blue_mask = cuda.to_device(blue_mask)
     # Define grid and block dimensions
     threads_per_block = (32, 24)

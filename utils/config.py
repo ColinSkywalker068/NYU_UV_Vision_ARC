@@ -32,7 +32,7 @@ yolo_tensorrt = {
 detection = {
     "DEBUG": False,
     "DISPLAY": True,
-    "DETECTION_CONFIDENCE_CUTOFF": 0.25,
+    "DETECTION_CONFIDENCE_CUTOFF": 0.2,
     "NO_TO_DETECT": 10,
     "UART": False,
     "IMU": False,
@@ -48,8 +48,8 @@ draw = {"bbox": {"COLOR": (255, 0, 0), "THICKNESS": 2}}
 # not to get the area of everything red, but our method is easier.
 
 gameplay = {
-    "ALLY_TEAM_COLOR": "BLUE",
-    "OPPONENT_TEAM_COLOR": "RED",
+    "ALLY_TEAM_COLOR": "RED",
+    "OPPONENT_TEAM_COLOR": "BLUE",
     "HSV_LOWER_RED": (0, 20, 228),
     "HSV_UPPER_RED": (18, 255, 254),
     "HSV_LOWER_RED_2": (134, 0, 0),

@@ -181,10 +181,11 @@ class plate_detector:
             if (
                 self.flagger.check_enemy(
                     color_image[
-                        int(bbox[1]) : int(bbox[3]), int(bbox[0]) : int(bbox[2])
+                        bbox[1].astype(int) : bbox[3].astype(int),
+                        bbox[0].astype(int) : bbox[2].astype(int),
                     ]
                 )
-                and bbox[5] == 0
+                # and bbox[5] == 0
             )
         ]
 
