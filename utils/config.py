@@ -48,8 +48,8 @@ draw = {"bbox": {"COLOR": (255, 0, 0), "THICKNESS": 2}}
 # not to get the area of everything red, but our method is easier.
 
 gameplay = {
-    "ALLY_TEAM_COLOR": "RED",
-    "OPPONENT_TEAM_COLOR": "BLUE",
+    "ALLY_TEAM_COLOR": "BLUE",
+    "OPPONENT_TEAM_COLOR": "RED",
     "HSV_LOWER_RED": (0, 20, 228),
     "HSV_UPPER_RED": (18, 255, 254),
     "HSV_LOWER_RED_2": (134, 0, 0),

@@ -40,8 +40,8 @@ class Publisher_node:
 
     def send_auto_aim(self, msg):
         # msg = [pitch, yaw, has_target]
-        length = 0x11
-        msg_type = 0x01
+        length = 11
+        msg_type = 1
         header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
 
         body = struct.pack("iiB", int(msg[0] * 100), int(msg[1] * 100), int(msg[2]))
@@ -65,13 +65,19 @@ class Publisher_node:
                 print("Uart not initialized4")
 
     def send_align_request(self, msg):
-        # msg = [x,y,r]
-        length = 0x07
-        msg_type = 0x02
+        # msg = [x,y,r, type]
+        length = 15
+        msg_type = 2
 
         header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
 
-        body = struct.pack("HHH", int(msg[0] * 100), int(msg[1] * 100), int(msg[2]))
+        body = struct.pack(
+            "iiiB",
+            int(msg[0] * 1000),
+            int(msg[1] * 1000),
+            int(msg[2] * 1000),
+            int(msg[3]),
+        )
         footer = struct.pack("H", 0x0)
         msg = header + body + footer
         self.Uart.send_data(msg)
@@ -89,16 +95,39 @@ class Publisher_node:
 
         self.Uart.send_data(msg)
 
+    def send_gimbal_movement(self, msg):
+        # msg = [gimbal_yaw, gimbal_pitch,mode= 0: base, 1: beyblade, 2: backward beyblade]
+        # yaw and pitch should be between -1 and 1
+        # yaw (x, + is anti-clockwise)
+        # pitch (y, + is up)
+        length = 11
+        msg_type = 4
+        header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
+        body = struct.pack("iiB", int(msg[0] * 1000), int(msg[1] * 1000), int(msg[2]))
+        footer = struct.pack("H", 0x0)
+        msg = header + body + footer
+        self.Uart.send_data(msg)
+
 
 if __name__ == "__main__":
     node = Publisher_node(None)
-    while True:
-        # print("ID: ", node.Uart.get_robot_id())
-        pitch, yaw = node.Uart.get_turret_feedback()
-        print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
-        # print(node.Uart.handle_align_request())
-        # print(node.Uart.get_auto_aim_request())
-        # time.sleep(.2)
+    count = 1
+    # for i in range(2*count):
+    #     #node.send_align_request([-0.3, -0.3, 0, 0])
+    #     node.send_gimbal_movement([0.00,0.0001,0])
+    for i in range(4):
+        # node.send_align_request([-0.3, -0.3, 0, 0])
+        node.send_gimbal_movement([0.1, -0.5, 0])
+    for i in range(2):
+        node.send_align_finish([1])
+    # # assert()
+    # # print("ID: ", node.Uart.get_robot_id())
+    # while True:
+    #     pitch, yaw = node.Uart.get_turret_feedback()
+    #     print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
+    # print(node.Uart.handle_align_request())
+    # print(node.Uart.get_auto_aim_request())
+    # time.sleep(.2)
     # node.send_auto_aim([2, -1, 1])
     # node.send_align_request([1, 2, 3])
     # node.send_align_finish([1])
