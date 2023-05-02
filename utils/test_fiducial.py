@@ -24,24 +24,29 @@ def main():
 
     # dummy real world for testing
     def plot_real_world(ax):
-        ax.plot3D([0,106,106,0,0],[0,0,150,150,0],[0,106,106,0,0],c='black')
-        ax.plot3D([0,53,106],[0,150,0],[0,53,106],c='black')
-        #ax.plot3D([(106,0,106),(0,0,212)])
+        # ax.plot3D([0,106,106,0,0],[0,0,150,150,0],[0,106,106,0,0],c='black')
+        # ax.plot3D([0,53,106],[0,150,0],[0,53,106],c='black')
+
+        ax.plot3D(xs=[0,150,150,0,0],ys=[0,0,150,150,0],zs=[0,0,0,0,0],c='black')
+        #ax.plot3D(xs=[0,0,0],ys=[0,150,0],zs=[0,75,150],c='black')
         
 
 
     while(ret):
         ret_dict = fid_detector.detectFiducial(frame)
-        plot_real_world(ax)
         plt.pause(0.05)
-
+        ax.clear()
+        plot_real_world(ax)
         
+
+
         if ret_dict['success']:
             loc = ret_dict['rw_loc_cam'][:3].reshape(3,1)
             camera_plane_rw = ret_dict['camera_plane_rw']
-            print(camera_plane_rw)
+            #print(camera_plane_rw)
 
-            camera_plane_rw = np.concat(camera_plane_rw, camera_plane_rw[:0,:],axis=0)
+            camera_plane_rw = np.append(camera_plane_rw, camera_plane_rw[:1,:],axis=0)
+            print(camera_plane_rw)
             #ax.scatter(xs=loc[0], ys=loc[1], zs=loc[2], c='red', s=2)
             ax.plot3D(xs=camera_plane_rw[:,0], ys=camera_plane_rw[:,1], zs=camera_plane_rw[:,2], c='red')
 
