@@ -46,11 +46,13 @@ class Flagger:
         Returns:
         True if enemy robot detected else False
         """
-        color = self.red_or_blue(frame)
+        if cv2.cuda.getCudaEnabledDeviceCount() != 0:
+            color = self.red_or_blue_cuda(frame)
+        else:
+            color = self.red_or_blue(frame)
         return color == self.opponent_color and color != "NONE"
 
     # determines if the robot in the frame is of red or blue color
-
     def red_or_blue(self, frame):
         """
         Checks what is the color of the robot in the image.
@@ -76,5 +78,40 @@ class Flagger:
 
         r_area = cv2.countNonZero(red_mask)
         b_area = cv2.countNonZero(blue_mask)
+
+        return "RED" if r_area > b_area else "BLUE" if b_area > r_area else "NONE"
+
+    def red_or_blue_cuda(self, frame):
+        """
+        Checks what is the color of the robot in the image. Requires OpenCV CUDA
+        Parameters:
+        frame = input image
+
+        Returns:
+        "RED" if red is detected the most else "BLUE"
+        """
+
+        if cv2.cuda.getCudaEnabledDeviceCount() == 0:
+            return self.red_or_blue(frame)
+
+        # upload frame to GPU
+        gpu_frame = cv2.cuda_GpuMat()
+        gpu_frame.upload(frame)
+
+        # Convert BGR format ot HSV format
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+        # Get Red masks
+        red_mask = cv2.cuda.inRange(hsv, self.red_lower, self.red_upper)
+
+        red_mask_2 = cv2.cuda.inRange(hsv, self.red_lower_2, self.red_upper_2)
+
+        red_mask = cv2.cuda.bitwise_or(red_mask, red_mask_2)
+
+        # Get Blue masks
+        blue_mask = cv2.cuda.inRange(hsv, self.blue_lower, self.blue_upper)
+
+        r_area = cv2.cuda.countNonZero(red_mask)
+        b_area = cv2.cuda.countNonZero(blue_mask)
 
         return "RED" if r_area > b_area else "BLUE" if b_area > r_area else "NONE"

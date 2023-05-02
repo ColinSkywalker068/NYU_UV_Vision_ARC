@@ -271,6 +271,7 @@ class plate_detector:
                 end="\r",
             )
 
+    # @jit(nopython=True, parallel=True)
     def calculate_angle_offsets(self, roi_center_offsets):
         """
         Returns the pitch and yaw offsets of the detected plate
