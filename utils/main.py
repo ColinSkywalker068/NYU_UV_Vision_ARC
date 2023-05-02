@@ -107,7 +107,7 @@ def main():
         if detector.tracker is not None:
             bboxes = detector.update_tracker(bboxes)
 
-        bboxes = np.array(bboxes)
+        # bboxes = np.array(bboxes)
 
         # sort bboxes by median distance
         if depth_image is not None and len(bboxes) > 0:
