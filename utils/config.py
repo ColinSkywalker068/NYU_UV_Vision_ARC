@@ -1,10 +1,10 @@
 # general specifications
-general = {"DEBUG_LOGS": True}
+general = {"DEBUG_LOGS": False}
 
 # camera specifications
 camera = {
-    "DEPTH_CAPTURE": False,
-    "CAMERA_INDEX": "./vid2.mp4",
+    "DEPTH_CAPTURE": True,
+    "CAMERA_INDEX": 0,
     "FRAME_SIZE": (640, 480),
     "FRAME_RATE": 30,
     "RECORD": False,
@@ -31,12 +31,12 @@ yolo_tensorrt = {
 # specifications for detection
 detection = {
     "DEBUG": False,
-    "DISPLAY": True,
-    "DETECTION_CONFIDENCE_CUTOFF": 0.2,
+    "DISPLAY": False,
+    "DETECTION_CONFIDENCE_CUTOFF": 0.25,
     "NO_TO_DETECT": 10,
-    "UART": False,
+    "UART": True,
     "IMU": False,
-    "TRACKING": True,
+    "TRACKING": False,
     "USE_CUDA_FLAGGER": False,
 }
 
@@ -48,8 +48,8 @@ draw = {"bbox": {"COLOR": (255, 0, 0), "THICKNESS": 2}}
 # not to get the area of everything red, but our method is easier.
 
 gameplay = {
-    "ALLY_TEAM_COLOR": "BLUE",
-    "OPPONENT_TEAM_COLOR": "RED",
+    "ALLY_TEAM_COLOR": "RED",
+    "OPPONENT_TEAM_COLOR": "BLUE",
     "HSV_LOWER_RED": (0, 20, 228),
     "HSV_UPPER_RED": (18, 255, 254),
     "HSV_LOWER_RED_2": (134, 0, 0),

@@ -40,6 +40,7 @@ class Publisher_node:
 
     def send_auto_aim(self, msg):
         # msg = [pitch, yaw, has_target]
+        # [y,x]
         length = 11
         msg_type = 1
         header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
@@ -109,17 +110,19 @@ class Publisher_node:
         self.Uart.send_data(msg)
 
 
+import sys
+
 if __name__ == "__main__":
     node = Publisher_node(None)
-    count = 1
+    # count=1
     # for i in range(2*count):
     #     #node.send_align_request([-0.3, -0.3, 0, 0])
     #     node.send_gimbal_movement([0.00,0.0001,0])
-    for i in range(4):
-        # node.send_align_request([-0.3, -0.3, 0, 0])
-        node.send_gimbal_movement([0.1, -0.5, 0])
-    for i in range(2):
-        node.send_align_finish([1])
+    # for i in range(4):
+    #     #node.send_align_request([-0.3, -0.3, 0, 0])
+    #     node.send_gimbal_movement([0.1,-0.5,0])
+    # for i in range(2):
+    #     node.send_align_finish([1])
     # # assert()
     # # print("ID: ", node.Uart.get_robot_id())
     # while True:
@@ -128,6 +131,11 @@ if __name__ == "__main__":
     # print(node.Uart.handle_align_request())
     # print(node.Uart.get_auto_aim_request())
     # time.sleep(.2)
-    # node.send_auto_aim([2, -1, 1])
+    while True:
+        node.send_auto_aim([-0.1, 0, 0])
+        time.sleep(0.25)
+        node.send_auto_aim([0.1, 0, 0])
+        time.sleep(0.25)
+
     # node.send_align_request([1, 2, 3])
     # node.send_align_finish([1])

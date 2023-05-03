@@ -254,13 +254,21 @@ class plate_detector:
             # if the L2 norm of the offsets from 0 is <= 0.175 rad (+- 10 degrees x, y), start firing
 
             has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
-            y_rad_offset /= 3
-            x_rad_offset /= -3
-            msg = [y_rad_offset, x_rad_offset, has_target]
-            self.last_rad_offset = (y_rad_offset, x_rad_offset)
+            if y_rad_offset < -0.1:
+                y_rad_offset = -0.1
+            elif y_rad_offset > 0.1:
+                y_rad_offset = 0.1
+
+            if x_rad_offset < -0.1:
+                x_rad_offset = -0.1
+            elif x_rad_offset > 0.1:
+                x_rad_offset = 0.1
+            # bound x and y offset each by 0.1
+            msg = [y_rad_offset / 1.5, x_rad_offset / -1.5, has_target]
+
+            self.last_rad_offset = (y_rad_offset, -x_rad_offset)
         assert self.uart is not None
-        for i in range(2):
-            self.uart.send_auto_aim(msg)
+        self.uart.send_auto_aim(msg)
 
         if debug and not stop:
             print(
@@ -270,34 +278,8 @@ class plate_detector:
                 end="\r",
             )
 
-    # @jit(nopython=True, parallel=True)
-    # def calculate_angle_offsets(self, roi_center_offsets):
-    #     """
-    #     Returns the pitch and yaw offsets of the detected plate
-    #     Parameters:
-    #         bbox: bounding box of the detected plate
-    #     Returns:
-    #         pitch_offset: pitch offset of the detected plate
-    #         yaw_offset: yaw offset of the detected plate
-    #         returned values are in radians from the camera's center
-    #     """
-    #     x_roi, y_roi = roi_center_offsets
-    #     y_roi = self.camera_height - y_roi
-    #     move_x = x_roi - self.center_x
-    #     move_y = y_roi - self.center_y
-    #     if move_x != 0:
-    #         move_x /= self.center_x
-    #     if move_y != 0:
-    #         move_y /= self.center_y
-    #     move_x *= self.HFOV / 2
-    #     move_y *= self.VFOV / 2
-    #     move_x = math.radians(move_x)
-    #     move_y = math.radians(move_y)
-    #     # print("x angle offset %f y angle offset %f", move_x, move_y)
-    #     return (move_x, move_y)
 
-
-@njit(parallel=True, fastmath=True)
+@njit()
 def calculate_angle_offsets(
     roi_center_offsets, center_x, center_y, camera_height, HFOV, VFOV
 ):
@@ -313,7 +295,7 @@ def calculate_angle_offsets(
     x_roi, y_roi = roi_center_offsets
     y_roi = camera_height - y_roi
     move_x = x_roi - center_x
-    move_y = y_roi - center_y
+    move_y = y_roi - (center_y * 0.8)
     if move_x != 0:
         move_x /= center_x
     if move_y != 0:
@@ -326,7 +308,7 @@ def calculate_angle_offsets(
     return (move_x, move_y)
 
 
-@njit(parallel=True)
+@njit()
 def sort_bboxes_by_distance(bboxes, depth_image):
     """
     Sorts the bboxes by distance from the camera
