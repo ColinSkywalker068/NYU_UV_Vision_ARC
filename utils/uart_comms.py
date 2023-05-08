@@ -6,6 +6,14 @@ import numpy as np
 import uart_server
 import config
 
+from pathlib import Path
+import logging
+logging.basicConfig(
+    filename=config.general["LOG_PATH"],
+    filemode='a',
+    level = logging.DEBUG)
+logger = logging.getLogger(Path(__file__).stem)
+
 
 class Publisher_node:
     def __init__(self, Uart_server=None):
@@ -26,13 +34,13 @@ class Publisher_node:
                     self.Uart = uart_server.Uart()
                 except:
                     if config.detection["DEBUG"]:
-                        print("Uart not initialized1")
+                        logger.debug("Uart not initialized1")
                     continue
             try:
                 self.Uart.listener()
             except:
                 if config.detection["DEBUG"]:
-                    print("Uart not initialized2")
+                    logger.debug("Uart not initialized2")
 
             # self.Uart.listener()
             # delay to prevent cpu overload
@@ -57,13 +65,13 @@ class Publisher_node:
                 self.Uart = uart_server.Uart()
             except:
                 if config.detection["DEBUG"]:
-                    print("Uart not initialized3")
+                    logger.debug("Uart not initialized3")
                 return
         try:
             self.Uart.send_data(msg)
         except:
             if config.detection["DEBUG"]:
-                print("Uart not initialized4")
+                logger.debug("Uart not initialized4")
 
     def send_align_request(self, msg):
         # msg = [x,y,r, type]

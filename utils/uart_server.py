@@ -6,6 +6,15 @@ from threading import Thread
 from queue import Queue
 import struct
 import math
+import config
+
+from pathlib import Path
+import logging
+logging.basicConfig(
+    filename=config.general["LOG_PATH"],
+    filemode='a',
+    level = logging.DEBUG)
+logger = logging.getLogger(Path(__file__).stem)
 
 
 # UART constants
@@ -67,7 +76,7 @@ class Uart:
         try:
             data = struct.unpack(">B", data)[0]
         except:
-            print("Invalid Align Request Message")
+            logger.debug("Invalid Align Request Message")
             return
 
         request = []
@@ -95,7 +104,7 @@ class Uart:
         try:
             data = struct.unpack(">B", data)
         except:
-            print("Invalid Auto Aim Request Message")
+            logger.debug("Invalid Auto Aim Request Message")
             return
 
         self.auto_aim_request_mutex.acquire()
@@ -106,7 +115,7 @@ class Uart:
         try:
             data = struct.unpack(">hhhhhhhhhhhhh", data)
         except:
-            print("Invalid IMU Feedback Message")
+            logger.debug("Invalid IMU Feedback Message")
             return
 
         self.imu_data_mutex.acquire()

@@ -1,9 +1,11 @@
 # general specifications
-general = {"DEBUG_LOGS": False}
+general = {
+    "DEBUG_LOGS": False,
+    "LOG_PATH": "../logs/logs.log"}
 
 # camera specifications
 camera = {
-    "DEPTH_CAPTURE": True,
+    "DEPTH_CAPTURE": False,
     "CAMERA_INDEX": 0,
     "FRAME_SIZE": (640, 480),
     "FRAME_RATE": 30,
@@ -31,10 +33,10 @@ yolo_tensorrt = {
 # specifications for detection
 detection = {
     "DEBUG": False,
-    "DISPLAY": False,
+    "DISPLAY": True,
     "DETECTION_CONFIDENCE_CUTOFF": 0.25,
     "NO_TO_DETECT": 10,
-    "UART": True,
+    "UART": False,
     "IMU": False,
     "TRACKING": False,
     "USE_CUDA_FLAGGER": False,

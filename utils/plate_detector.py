@@ -18,11 +18,14 @@ from pathlib import Path
 # use njit
 from numba import njit
 
-
+from pathlib import Path
+import logging
+logging.basicConfig(
+    filename=config.general["LOG_PATH"],
+    filemode='a',
+    level = logging.DEBUG)
 logger = logging.getLogger(Path(__file__).stem)
-logger.setLevel(logging.DEBUG)
 
-logger = logging.getLogger(__name__)
 #  Autoselect kernel with best performance on current hardware
 cudnn.benchmark = True
 
@@ -63,15 +66,15 @@ class plate_detector:
 
         try:
             if torch.backends.mps.is_available():
-                print("MPS available")
+                logger.debug("MPS available")
                 device = torch.device("mps")
         except:
-            print("MPS not available")
+            logger.debug("MPS not available")
             if torch.cuda.is_available():
-                print("CUDA available")
+                logger.debug("CUDA available")
                 device = torch.device("cuda:0")
             else:
-                print("CUDA/MPS not available")
+                logger.debug("CUDA/MPS not available")
 
         self.model = torch.hub.load(repo, "custom", path=model_file_path, device=device)
 
@@ -147,7 +150,7 @@ class plate_detector:
                     x_min, x_max, y_min, y_max, stop=stop_shooting, debug=debug
                 )
             except Exception as e:
-                print("Error sending angles: ", e)
+                logger.debug("Error sending angles: ", e)
 
         return bboxes, messages
 
@@ -271,7 +274,7 @@ class plate_detector:
         self.uart.send_auto_aim(msg)
 
         if debug and not stop:
-            print(
+            logger.debug(
                 "Plate detected at \n({:.3f},{:.3f})\n\n({:.3f},{:.3f})".format(
                     x_min, y_min, x_max, y_max
                 ),
