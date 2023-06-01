@@ -48,12 +48,12 @@ jobs:
     - name: Merge changes from main
       run: |
         git fetch 
-        git switch ${{ needs.create_sprint_branch.outputs.new_branch }}
+        git switch ${{ steps.get_branch_name.outputs.new_branch }}
         git pull origin main
       shell: bash
     - name: Push changes to new branch
       run: |
-        git push origin ${{ needs.create_sprint_branch.outputs.new_branch }}
+        git push origin ${{ steps.get_branch_name.outputs.new_branch }}
       shell: bash
 
   # sync_with_main:
