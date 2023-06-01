@@ -75,7 +75,7 @@ class Flagger:
         return color == self.opponent_color
 
 
-@cuda.jit(fastmath=True)
+@cuda.jit(fastmath=True, cache=True)
 def mask_kernel(frame, blue_mask, blue_lower, blue_upper):
     x, y = cuda.grid(2)
     if x < frame.shape[0] and y < frame.shape[1]:
@@ -133,7 +133,7 @@ def red_or_blue_cuda(
     return "BLUE" if b_area > 15 else "RED"
 
 
-@njit(fastmath=True)
+@njit(fastmath=True, cache=True)
 def red_or_blue(
     frame: np.ndarray,
     blue_lower,
