@@ -279,7 +279,7 @@ class plate_detector:
             )
 
 
-@njit()
+@njit(cache=True)
 def calculate_angle_offsets(
     roi_center_offsets, center_x, center_y, camera_height, HFOV, VFOV
 ):
@@ -308,7 +308,7 @@ def calculate_angle_offsets(
     return (move_x, move_y)
 
 
-@njit()
+@njit(cache=True)
 def sort_bboxes_by_distance(bboxes, depth_image):
     """
     Sorts the bboxes by distance from the camera
