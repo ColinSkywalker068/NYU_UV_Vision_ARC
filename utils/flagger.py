@@ -74,58 +74,40 @@ class Flagger:
             return False
         return color == self.opponent_color
 
-
-@cuda.jit(fastmath=True, cache=True)
+@cuda.jit
 def mask_kernel(frame, blue_mask, blue_lower, blue_upper):
     x, y = cuda.grid(2)
     if x < frame.shape[0] and y < frame.shape[1]:
-        if (
-            frame[x, y, 0] >= blue_lower[0]
-            and frame[x, y, 0] <= blue_upper[0]
-            and frame[x, y, 1] >= blue_lower[1]
-            and frame[x, y, 1] <= blue_upper[1]
-            and frame[x, y, 2] >= blue_lower[2]
-            and frame[x, y, 2] <= blue_upper[2]
-        ):
-            blue_mask[x, y] = 1
-        else:
-            blue_mask[x, y] = 0
+        pixel = frame[x, y]
+        blue_mask_value = (
+            (blue_lower[0] <= pixel[0] <= blue_upper[0]) and
+            (blue_lower[1] <= pixel[1] <= blue_upper[1]) and
+            (blue_lower[2] <= pixel[2] <= blue_upper[2])
+        )
+        blue_mask[x, y] = blue_mask_value
 
-
-# determines if the robot in the frame is of red or blue color
-# @TODO: This is not fast because of the for loop, we need to find a way to vectorize this
-# @TODO: finetune threads_per_block and blocks_per_grid
-def red_or_blue_cuda(
-    frame: np.ndarray,
-    blue_lower,
-    blue_upper,
-):
+def red_or_blue_cuda(frame: np.ndarray, blue_lower, blue_upper):
     """
-    Checks what is the color of the robot in the image using cuda.
+    Checks what is the color of the robot in the image using CUDA.
     Parameters:
     frame = input image
 
     Returns:
     "RED" if red is detected the most else "BLUE"
     """
-    # Get Blue masks
     # Allocate device memory
     d_frame = cuda.to_device(frame)
-    blue_mask = np.zeros_like(frame[:, :, 0], dtype=np.int32)
-    d_blue_mask = cuda.to_device(blue_mask)
+    d_blue_mask = cuda.device_array_like(frame[:, :, 0], dtype=np.int32)
+
     # Define grid and block dimensions
-    threads_per_block = (32, 24)
-    blocks_per_grid_x = (
-        frame.shape[0] + threads_per_block[0] - 1
-    ) // threads_per_block[0]
-    blocks_per_grid_y = (
-        frame.shape[1] + threads_per_block[1] - 1
-    ) // threads_per_block[1]
+    threads_per_block = (32, 32)
+    blocks_per_grid_x = (frame.shape[0] + threads_per_block[0] - 1) // threads_per_block[0]
+    blocks_per_grid_y = (frame.shape[1] + threads_per_block[1] - 1) // threads_per_block[1]
     blocks_per_grid = (blocks_per_grid_x, blocks_per_grid_y)
+
     # Launch kernel
-    mask_kernel[blocks_per_grid, threads_per_block](
-        d_frame, d_blue_mask, blue_lower, blue_upper
-    )
+    mask_kernel[blocks_per_grid, threads_per_block](d_frame, d_blue_mask, blue_lower, blue_upper)
+
     # Copy results from device to host
     blue_mask = d_blue_mask.copy_to_host()
 
@@ -134,11 +116,7 @@ def red_or_blue_cuda(
 
 
 @njit(fastmath=True, cache=True)
-def red_or_blue(
-    frame: np.ndarray,
-    blue_lower,
-    blue_upper,
-):
+def red_or_blue(frame: np.ndarray, blue_lower, blue_upper):
     """
     Checks what is the color of the robot in the image.
     Parameters:
@@ -147,14 +125,17 @@ def red_or_blue(
     Returns:
     "RED" if red is detected the most else "BLUE"
     """
-    # Get Blue masks
-    blue_mask = (
-        (frame[:, :, 0] >= blue_lower[0])
-        & (frame[:, :, 0] <= blue_upper[0])
-        & (frame[:, :, 1] >= blue_lower[1])
-        & (frame[:, :, 1] <= blue_upper[1])
-        & (frame[:, :, 2] >= blue_lower[2])
-        & (frame[:, :, 2] <= blue_upper[2])
-    )
+    # Calculate the blue mask
+    blue_mask = np.logical_and.reduce((
+        frame[:, :, 0] >= blue_lower[0],
+        frame[:, :, 0] <= blue_upper[0],
+        frame[:, :, 1] >= blue_lower[1],
+        frame[:, :, 1] <= blue_upper[1],
+        frame[:, :, 2] >= blue_lower[2],
+        frame[:, :, 2] <= blue_upper[2],
+    ))
+
+    # Count the number of blue pixels
     b_area = np.count_nonzero(blue_mask)
+
     return "BLUE" if b_area > 15 else "RED"

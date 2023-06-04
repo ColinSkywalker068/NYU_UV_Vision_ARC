@@ -49,6 +49,7 @@ jobs:
       run: |
         git fetch 
         git switch ${{ steps.get_branch_name.outputs.new_branch }}
+        git config --global  pull.ff true
         git pull origin main
       shell: bash
     - name: Push changes to new branch
