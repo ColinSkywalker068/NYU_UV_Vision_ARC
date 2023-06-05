@@ -75,7 +75,7 @@ class Flagger:
         return color == self.opponent_color
 
 
-@cuda.jit(fastmath=True)
+@cuda.jit(fastmath=True, cache=True)
 def mask_kernel(frame, blue_mask, blue_lower, blue_upper):
     x, y = cuda.grid(2)
     if x < frame.shape[0] and y < frame.shape[1]:
@@ -97,9 +97,9 @@ def mask_kernel(frame, blue_mask, blue_lower, blue_upper):
 # @TODO: finetune threads_per_block and blocks_per_grid
 def red_or_blue_cuda(
     frame: np.ndarray,
-    blue_lower,
-    blue_upper,
-):
+    blue_lower: np.ndarray,
+    blue_upper: np.ndarray,
+) -> str:
     """
     Checks what is the color of the robot in the image using cuda.
     Parameters:
@@ -133,12 +133,12 @@ def red_or_blue_cuda(
     return "BLUE" if b_area > 15 else "RED"
 
 
-@njit(fastmath=True)
+@njit(fastmath=True, cache=True)
 def red_or_blue(
     frame: np.ndarray,
-    blue_lower,
-    blue_upper,
-):
+    blue_lower: np.ndarray,
+    blue_upper: np.ndarray,
+) -> str:
     """
     Checks what is the color of the robot in the image.
     Parameters:
