@@ -5,7 +5,7 @@ general = {
 
 # camera specifications
 camera = {
-    "DEPTH_CAPTURE": False,
+    "DEPTH_CAPTURE": True,
     "CAMERA_INDEX": 0,
     "FRAME_SIZE": (640, 480),
     "FRAME_RATE": 30,
@@ -33,10 +33,10 @@ yolo_tensorrt = {
 # specifications for detection
 detection = {
     "DEBUG": False,
-    "DISPLAY": True,
+    "DISPLAY": False,
     "DETECTION_CONFIDENCE_CUTOFF": 0.25,
     "NO_TO_DETECT": 10,
-    "UART": False,
+    "UART": True,
     "IMU": False,
     "TRACKING": False,
     "USE_CUDA_FLAGGER": False,
