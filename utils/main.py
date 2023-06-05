@@ -1,17 +1,30 @@
+import os
+from pathlib import Path
+import logging
+import config
+if not os.path.exists('../logs/'):
+    os.makedirs('../logs/')
+
+# check if the file exists, create it if it doesn't
+if not os.path.exists(config.general["LOG_PATH"]):
+    open(config.general["LOG_PATH"], 'a').close()
+logging.basicConfig(
+    filename=config.general["LOG_PATH"],
+    filemode='a',
+    level = logging.DEBUG)
+logger = logging.getLogger(Path(__file__).stem)
+
 import json
 from threading import Thread
-import config
+
 import camera
 import plate_detector
 import monitor
-from localization import *
 import cv2
 import flagger
 from video_record import VideoRecord
 import numpy as np
 
-# from tracking import Tracker
-# from tracking.sort import Sort
 
 
 def main():
@@ -44,7 +57,7 @@ def main():
 
             model_weights_path = config.yolo_tensorrt["MODEL_WEIGHTS_PATH"]
         except:
-            print("TensorRT not available, using YOLOv5")
+            logger.debug("TensorRT not available, using YOLOv5")
             model_weights_path = config.yolo["MODEL_WEIGHTS_PATH"]
     else:
         model_weights_path = config.yolo["MODEL_WEIGHTS_PATH"]

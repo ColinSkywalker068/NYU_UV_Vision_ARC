@@ -4,6 +4,14 @@ import threading
 from queue import Queue
 from datetime import datetime
 import os
+import config
+from pathlib import Path
+import logging
+logging.basicConfig(
+    filename=config.general["LOG_PATH"],
+    filemode='a',
+    level = logging.DEBUG)
+logger = logging.getLogger(Path(__file__).stem)
 
 class VideoRecord:
     def __init__(self, save_interval=5, file_prefix='output', file_extension='.mp4'):
@@ -34,8 +42,8 @@ class VideoRecord:
         for frame in frames:
             out.write(frame)
         out.release()
-        print(f"Video saved as {filename}")
-        print(f"Video duration: {len(frames) / 30.0:.2f} seconds")
+        logger.debug(f"Video saved as {filename}")
+        logger.debug(f"Video duration: {len(frames) / 30.0:.2f} seconds")
 
     def save_video_periodically(self):
         frames_to_save = []

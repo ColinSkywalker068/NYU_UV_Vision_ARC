@@ -2,6 +2,14 @@ import numpy as np
 import cv2
 import config as cfg
 
+from pathlib import Path
+import logging
+logging.basicConfig(
+    filename=cfg.general["LOG_PATH"],
+    filemode='a',
+    level = logging.DEBUG)
+logger = logging.getLogger(Path(__file__).stem)
+
 if cfg.camera["DEPTH_CAPTURE"]:
     try:
         import pyrealsense2.pyrealsense2 as rs
@@ -28,6 +36,7 @@ class imu_sensor:
             )
             gyroscope = imu_frames[rs.stream.gyro].as_motion_frame().get_motion_data()
         except (RuntimeError, ValueError) as e:
+            logger.debug("IMU error: {}".format(e))
             return False, None, None
 
         # TODO: potentially return time data along with accel/gyro value

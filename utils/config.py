@@ -1,5 +1,7 @@
 # general specifications
-general = {"DEBUG_LOGS": False}
+general = {
+    "DEBUG_LOGS": False,
+    "LOG_PATH": "../logs/logs.log"}
 
 # camera specifications
 camera = {
