@@ -1,133 +1,97 @@
-import errno
 import cv2
-import os
-import numpy as np
-from threading import Thread
-import re
-import config
-from queue import Queue
 import time
-
-# definitions
-
-SAVE_DIR = "/home/ultraviolet/recordings"
-SAVE_NAME = "video"
-
+import threading
+from queue import Queue
+from datetime import datetime
+import os
+import config
+from pathlib import Path
+import logging
+logging.basicConfig(
+    filename=config.general["LOG_PATH"],
+    filemode='a',
+    level = logging.DEBUG)
+logger = logging.getLogger(Path(__file__).stem)
 
 class VideoRecord:
-    def __init__(self):
-        self.dim = config.camera['FRAME_SIZE']  # (640, 480)
+    def __init__(self, save_interval=5, file_prefix='output', file_extension='.mp4'):
+        self.save_interval = save_interval
+        self.file_prefix = file_prefix
+        self.file_extension = file_extension
+        self.frame_queue = Queue()
+        self.frame_counter = 0
+        self.saving_thread = threading.Thread(target=self.save_video_periodically)
+        self.saving_thread.daemon = True
+        self.saving_thread.start()
 
-        # Do not run if we are on windows
-        if os.name == 'nt':
-            print("Video recording is not supported on Windows")
-            self.running = False
+    def get_output_filename(self):
+            video_dir = "~/Documents/video"
+            if not os.path.exists(video_dir):
+                os.makedirs(video_dir)
+
+            current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            return f"{video_dir}/{self.file_prefix}_{current_time}{self.file_extension}"
+
+    def save_video(self, frames):
+        if len(frames) == 0:
             return
+        filename = self.get_output_filename()
+        height, width, _ = frames[0].shape
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(filename, fourcc, 30.0, (width, height))
+        for frame in frames:
+            out.write(frame)
+        out.release()
+        logger.debug(f"Video saved as {filename}")
+        logger.debug(f"Video duration: {len(frames) / 30.0:.2f} seconds")
 
-        self.vid_idx = 0
-        self.new_dir = ""
-        self.running = True
-        self.create_save_dir()
-        self.create_video_dir()
+    def save_video_periodically(self):
+        frames_to_save = []
+        while True:
+            frame = self.frame_queue.get()
+            frames_to_save.append(frame)
+            self.frame_counter += 1
 
-        # 100 MB max size
-        self.FREE_SPACE_BUFFER_KB = 1000000
+            # Change the frame threshold to 150 (30 FPS * 5 seconds = 150 frames)
+            if self.frame_counter >= 150:
+                self.save_video(frames_to_save)
+                frames_to_save = []
+                self.frame_counter = 0
 
-        if self.running:
-            self._init_writer()
-            self.frame_queue = Queue()
-            self.start_time = time.time()
-            self.save_thread = Thread(target=self._write_thread)
-            self.save_thread.start()
+    def add_frame(self, frame):
+        self.frame_queue.put(frame)
 
-    # create_save_dir:
-    # create save directory (SAVE_DIR) if it doesn't exist
-    def create_save_dir(self):
-        try:
-            os.makedirs(SAVE_DIR)
-        except OSError as e:
-            if e.errno == errno.EEXIST:
-                print("Video save Directory already exists")
-            else:
-                print(e)
-                self.running = False
 
-    # create_video_dir: Create a new video subdirectory in main save directory
-    # according to SAVE_DIR and SAVE_NAME, we increment the name of the
-    # directory according to the previous max index
-    def create_video_dir(self):
-        vid_idx = [int(x.group(1)) for x in [re.search('recording_(\\d+)', x)
-                                             for x in os.listdir(SAVE_DIR)] if x is not None]
+def main():
+    cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, 30)
 
-        # in case vid_idx is empty
-        vid_idx.append(0)
+    # Preheat the camera by reading a few frames before recording
+    preheat_seconds = 1
+    preheat_frames = preheat_seconds * 30  # 1 seconds * 30 FPS = 150 frames
+    for _ in range(preheat_frames):
+        ret, frame = cap.read()
+        cv2.imshow('Webcam', frame)
+        cv2.waitKey(1)
 
-        self.new_dir = SAVE_DIR + "/recording_" + str(max(vid_idx) + 1)
+    video_saver = VideoRecord()
 
-        try:
-            os.makedirs(self.new_dir)
-            print("Created new video directory: " + self.new_dir)
-        except OSError as e:
-            self.running = False
-            print(e)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-    # _init_writer: Initialize the video writer according to the current
-    # video index
+        video_saver.add_frame(frame)
+        cv2.imshow('Webcam', frame)
 
-    def _init_writer(self):
-        self.vid_idx += 1
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
-        codec = cv2.VideoWriter_fourcc(*'XVID')
+    cap.release()
+    cv2.destroyAllWindows()
 
-        path = self.new_dir + "/" + str(self.vid_idx) + "_.avi"
-        print("Creating new video file: " + path)
 
-        self.writer = cv2.VideoWriter(path, codec, min(
-            30, config.camera['FRAME_RATE']), self.dim, True)
-
-    # _write_thread: Thread that writes frames to the video file
-    # according to the current video index. If the video file is
-    # larger than 100 MB or 30s has elapsed, we create a new video file and
-    # increment the video index.
-    def _write_thread(self):
-        while self.running:
-            os_info = os.statvfs(SAVE_DIR)
-            free_space = os_info.f_bavail * os_info.f_frsize / 1024
-
-            if free_space < self.FREE_SPACE_BUFFER_KB:
-                self.running = False
-                print("Device is out of space, stopping recording")
-                break
-
-            # nparray
-            next_frame = self.frame_queue.get()
-            if next_frame:
-                self.writer.write(next_frame)
-
-            c_time = time.time()
-
-            # start a new video file if the current one is too large
-            if c_time - self.start_time > 30:
-                self.writer.release()
-                self.start_time = c_time
-                self._init_writer()
-        self.writer.release()
-
-    # process a new set of frames
-    # called when getting a new camera frame
-    def process_frame(self, frames):
-        if not self.running:
-            return
-
-        if self.frame_queue.qsize() > 1:
-            print("Video queue is full, dropping frame")
-            self.frame_queue.get_nowait()
-
-        self.frame_queue.put(frames)
-
-    def __del__(self):
-        if not self.running:
-            return
-        self.running = False
-        self.frame_queue.put_nowait(None)
-        self.save_thread.join(5)
+if __name__ == "__main__":
+    main()
