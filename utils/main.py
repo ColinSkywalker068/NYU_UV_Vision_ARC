@@ -24,6 +24,7 @@ import cv2
 import flagger
 from video_record import VideoRecord
 import numpy as np
+from fiducial_detection import Fiducial_detector
 
 
 
@@ -63,6 +64,7 @@ def main():
         model_weights_path = config.yolo["MODEL_WEIGHTS_PATH"]
 
     detector = plate_detector.plate_detector(
+
         config.yolo_tensorrt["REPO_PATH"],
         config.yolo_tensorrt["MODEL_SOURCE"],
         model_weights_path,
@@ -82,6 +84,12 @@ def main():
             )
             if config.general["DEBUG_LOGS"]:
                 print("opponent color: ", flagger_obj.opponent_color)
+#         unsure what this line is doing, keeping for now
+#         config.yolo_tensorrt['REPO_PATH'], config.yolo_tensorrt['MODEL_SOURCE'], model_weights_path, flagger=flagger_obj, uart=config.detection['UART'])
+    
+    fiducial_detector = Fiducial_detector(log=False)
+
+
 
     # create monitor object to display annotated images
     if config.detection["IMU"]:
@@ -132,7 +140,38 @@ def main():
         if config.detection["DISPLAY"]:
             mon.draw_on_image(color_image, bboxes, messages)
 
-    if config.detection["IMU"]:
+# commenting this code for now as it seems outdated, fiducial is being called only in line159
+#     if config.detection["IMU"]:
+#         if ret:
+#             key = cv2.waitKey(1)
+#             if key == 27:
+#                 break
+
+#             # process frame to obtain object detection predicitons
+#             bboxes, messages = detector.process_frame(
+#                 color_image,
+#                 config.detection['DETECTION_CONFIDENCE_CUTOFF'],
+#                 config.detection['NO_TO_DETECT'],
+#                 config.general['DEBUG_LOGS'])
+            
+#             fid_detection_res = fiducial_detector.detectFiducial(color_image)
+
+#             # show detections on screen
+#             if config.detection['DISPLAY']:
+#                 mon.draw_on_image(color_image, bboxes, messages)
+
+            # TODO: Waiting here for refactoring of main code:
+            #      get_coordinates in the original main.py currently only returns one bounding box. We would be returning mulitple from it. Then, pass it onto process_frame() to get each of their depths
+            #      With the coords. and the depth, we THEN pass those pairs onto the Tracker object to update its state
+
+            # tracker.updateTrackerState(coords_distances)
+
+            # this is subject to change, but its just here to show potential structure of how things would be called
+            #closest_target = tracker.get_closest_tracked_robot()
+            #final_coords = tracker.get_coords_to_move(closest_target)
+            # ---> Send final coords through serial
+
+    if config.detection['IMU']:
         localizationThread.stop()
 
 

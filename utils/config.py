@@ -59,3 +59,48 @@ gameplay = {
     "HSV_LOWER_BLUE": (60, 30, 131),
     "HSV_UPPER_BLUE": (121, 255, 255),
 }
+
+fiducials = {
+
+    'camera_intrinsic_matrix' : {    
+        'camera_focal_length_x' : 1427.9641708247764,
+        'camera_center_x' :  974.409732316623,
+        'camera_focal_length_y' : 1434.9326534580543,
+        'camera_center_y' :  571.1514876178345
+    },
+
+    'camera_distortion_coefficients' :{
+        'camera_dist_coeff_k1' : -0.07231168346387425,
+        'camera_dist_coeff_k2' : 0.054653045623148634,
+        'camera_dist_coeff_p1' : 0.013779335161555138,
+        'camera_dist_coeff_p2' : 0.005759852619212033,
+        'camera_dist_coeff_k3' : 0.15626401335130446
+    },
+
+
+    'markers' :[
+        {
+            'marker_id' : 'A',
+            'marker_file' : './../fiducial_markers/marker_A.png'
+        },
+        {
+            'marker_id' : 'B',
+            'marker_file' : './../fiducial_markers/marker_B.png'
+        },
+            {
+            'marker_id' : 'C',
+            'marker_file' : './../fiducial_markers/marker_C.png'
+        },
+            {
+            'marker_id' : 'D',
+            'marker_file' : './../fiducial_markers/marker_D.png'
+        }
+    ],
+
+    'marker_size' : {
+        'height' : 150,
+        'width' : 150,
+        'metric' : 'mm'
+    }
+
+}

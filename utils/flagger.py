@@ -158,3 +158,4 @@ def red_or_blue(
     )
     b_area = np.count_nonzero(blue_mask)
     return "BLUE" if b_area > 15 else "RED"
+
