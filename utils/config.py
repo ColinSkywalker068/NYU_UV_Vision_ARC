@@ -40,6 +40,7 @@ detection = {
     "IMU": False,
     "TRACKING": False,
     "USE_CUDA_FLAGGER": False,
+    "FIDUCIAL": False
 }
 
 # drawing specifications
