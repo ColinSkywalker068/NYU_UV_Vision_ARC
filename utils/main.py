@@ -87,7 +87,8 @@ def main():
 #         unsure what this line is doing, keeping for now
 #         config.yolo_tensorrt['REPO_PATH'], config.yolo_tensorrt['MODEL_SOURCE'], model_weights_path, flagger=flagger_obj, uart=config.detection['UART'])
     
-    fiducial_detector = Fiducial_detector(log=False)
+    if config.detection['FIDUCIAL']:
+        fiducial_detector = Fiducial_detector(log=False)
 
 
 
@@ -95,6 +96,7 @@ def main():
     if config.detection["IMU"]:
         imu = camera.imu_sensor()
         # Might need another file for encoder help, which we also pass into Localization
+        # Localization seems to be UNDEFINED HERE?????
         localization = Localization(imu)
         localizationThread = Thread(target=localization.main)
         localizationThread.start()
@@ -153,8 +155,8 @@ def main():
 #                 config.detection['DETECTION_CONFIDENCE_CUTOFF'],
 #                 config.detection['NO_TO_DETECT'],
 #                 config.general['DEBUG_LOGS'])
-            
-#             fid_detection_res = fiducial_detector.detectFiducial(color_image)
+            if config.detection['FIDUCIAL']:
+                fid_detection_res = fiducial_detector.detectFiducial(color_image)
 
 #             # show detections on screen
 #             if config.detection['DISPLAY']:

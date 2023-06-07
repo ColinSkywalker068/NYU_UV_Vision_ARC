@@ -245,10 +245,10 @@ class Fiducial_detector:
       res_image = cv2.line(res_image, img_points[0],img_points[2],(0,255,0),2)
       res_image = cv2.line(res_image, img_points[0],img_points[3],(0,0,255),2)
 
-      font = cv2.FONT_HERSHEY_SIMPLEX  
-      fontScale = 1.5
-      color = (255, 0, 0)
-      thickness = 2
+    font = cv2.FONT_HERSHEY_SIMPLEX  
+    fontScale = 1.5
+    color = (255, 0, 0)
+    thickness = 2
 
     # Computes rotation matrix
     rodM = cv2.Rodrigues(rvec)

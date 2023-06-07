@@ -46,10 +46,11 @@ class Flagger:
         self.red_upper_2 = np.array(red_upper_2, dtype=np.uint8)
         self.blue_lower = np.array(blue_lower, dtype=np.uint8)
         self.blue_upper = np.array(blue_upper, dtype=np.uint8)
-
-        self.red_or_blue = (
-            red_or_blue_cuda if detection["USE_CUDA_FLAGGER"] else red_or_blue
-        )
+        
+        # breaks with fiducials code, new implementation below
+        # self.red_or_blue = (
+        #     red_or_blue_cuda if detection["USE_CUDA_FLAGGER"] else red_or_blue
+        # )
 
     # Check if the robot in the frame is enemy robot or not. Returns true if it is enemy robot
     def check_enemy(self, frame):
@@ -63,16 +64,22 @@ class Flagger:
         """
         # Convert BGR format ot HSV format
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        color = self.red_or_blue(
-            frame,
-            self.blue_lower,
-            self.blue_upper,
-        )
+        color = self.red_or_blue(frame)
 
         # @TODO: fix short circuiting
         if self.opponent_color == "NONE":
             return False
         return color == self.opponent_color
+    
+    def red_or_blue(self, frame):
+        if detection["USE_CUDA_FLAGGER"]:
+            return red_or_blue_cuda(
+                frame,
+                self.blue_lower,
+                self.blue_upper,
+            )
+        return red_or_blue(frame, self.blue_lower, self.blue_upper)
+
 
 
 @cuda.jit(fastmath=True, cache=True)
