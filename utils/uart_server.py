@@ -1,11 +1,8 @@
-from pyexpat.errors import messages
 import threading
-import time
 import serial
-from threading import Thread
 from queue import Queue
 import struct
-import math
+
 import config
 
 from pathlib import Path
@@ -28,6 +25,9 @@ READING_DATA = 2
 class Uart:
     # Constructor
     def __init__(self, port="/dev/ttyUSB0", baudrate=115200):
+        # get serial port
+        port =serial.tools.list_ports.comports()[0].device
+        logger.debug("Using port: " + port)
         self.ser = serial.Serial(
             port=port,
             baudrate=baudrate,

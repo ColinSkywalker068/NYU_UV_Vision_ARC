@@ -1,8 +1,5 @@
 import cv2
 import numpy as np
-from threading import Thread
-from uart_comms import Publisher_node
-import time
 from numba import njit, cuda
 from config import detection
 
@@ -11,7 +8,6 @@ import logging
 from numba.core.errors import NumbaPerformanceWarning
 
 warnings.simplefilter("ignore", category=NumbaPerformanceWarning)
-
 numba_logger = logging.getLogger("numba")
 numba_logger.setLevel(logging.WARNING)
 
@@ -36,9 +32,6 @@ class Flagger:
         blue_upper: tuple indicating a HSV value indicating the upper limit of blue color
         """
         self.opponent_color = opponent_color
-
-        # we will use bitwise or to combine the two masks
-        # (there is a better way to do this, we will refactor later)
 
         self.red_lower = np.array(red_lower, dtype=np.uint8)
         self.red_upper = np.array(red_upper, dtype=np.uint8)
@@ -66,9 +59,6 @@ class Flagger:
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         color = self.red_or_blue(frame)
 
-        # @TODO: fix short circuiting
-        if self.opponent_color == "NONE":
-            return False
         return color == self.opponent_color
     
     def red_or_blue(self, frame):
@@ -140,7 +130,7 @@ def red_or_blue_cuda(
     return "BLUE" if b_area > 15 else "RED"
 
 
-@njit(fastmath=True, cache=True)
+@njit(fastmath=True, cache=True, nogil=True)
 def red_or_blue(
     frame: np.ndarray,
     blue_lower: np.ndarray,
@@ -165,4 +155,3 @@ def red_or_blue(
     )
     b_area = np.count_nonzero(blue_mask)
     return "BLUE" if b_area > 15 else "RED"
-

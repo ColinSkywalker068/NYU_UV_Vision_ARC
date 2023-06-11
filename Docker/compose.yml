@@ -7,6 +7,7 @@ services:
       - /dev/bus/usb:/dev/bus/usb
       - /tmp/argus_socket:/tmp/argus_socket
     network_mode: host
+    ipc: host
     privileged: true
     environment:
       DISPLAY: :1
@@ -16,10 +17,9 @@ services:
     volumes:
       - /etc/enctune.conf:/etc/enctune.conf
       - /etc/nv_tegra_release:/etc/nv_tegra_release
-      - /tmp/nv_jetson_model:/tmp/nv_jetson_model
       - /home/ultraviolet:/home/ultraviolet
       - /dev:/dev
       - /tmp/.xX11-unix/:/tmp/.X11-unix
       - /root/.cache/:/root/.cache
-    working_dir: /home/ultraviolet/Downloads/CV_Detection-sprint-s23-6/utils
+    working_dir: /home/ultraviolet/Downloads/CV_Detection-sprint-s23-7/utils
     command: python3 ./main.py

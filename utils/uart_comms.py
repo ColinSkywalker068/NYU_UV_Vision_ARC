@@ -2,7 +2,6 @@ import uart_server
 import time
 import threading
 import struct
-import numpy as np
 import uart_server
 import config
 
