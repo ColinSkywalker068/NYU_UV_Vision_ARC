@@ -2,6 +2,7 @@
 import cv2
 import numpy as np
 import time
+
 # A required callback method that goes into the trackbar function.
 
 
@@ -10,7 +11,7 @@ def nothing(x):
 
 
 # Initializing the webcam feed.
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture("../utils/vid2.mp4")
 
 
 # Create a window named trackbars.
@@ -28,7 +29,6 @@ cv2.createTrackbar("U - S", "Trackbars", 255, 255, nothing)
 cv2.createTrackbar("U - V", "Trackbars", 255, 255, nothing)
 
 while True:
-
     # Start reading the webcam feed frame by frame.
     ret, frame = cap.read()
     if not ret:
@@ -68,7 +68,7 @@ while True:
     stacked = np.hstack((mask_3, frame, res))
 
     # Show this stacked frame at 40% of the size.
-    cv2.imshow('Trackbars', cv2.resize(stacked, None, fx=0.4, fy=0.4))
+    cv2.imshow("Trackbars", cv2.resize(stacked, None, fx=0.4, fy=0.4))
 
     # If the user presses ESC then exit the program
     key = cv2.waitKey(1)
@@ -76,13 +76,12 @@ while True:
         break
 
     # If the user presses `s` then print this array.
-    if key == ord('s'):
-
+    if key == ord("s"):
         thearray = [[l_h, l_s, l_v], [u_h, u_s, u_v]]
         print(thearray)
 
         # Also save this array as penval.npy
-        np.save('hsv_value', thearray)
+        np.save("hsv_value", thearray)
         break
 
 # Release the camera & destroy the windows.
