@@ -30,8 +30,11 @@ def order_contour(cnt):
 
   return cnt
 
+
+
 def orientWRTaxes(coords):
   """
+  reorders the list of coordinates of a quadrilateral in the order [p1, p2, p3, p4] as shown below
   expect coords to contain 4 points (x,y,z) representing a square
   p2------p3
   |        |
@@ -67,8 +70,16 @@ def orientWRTaxes(coords):
   res = [angle1,angle2,angle3]
   return res, n
 
-def get_contour_bits(im,cnt,bits):
 
+
+def get_contour_bits(im,cnt,bits):
+  """ 
+  bits = total number of bits in the fiducial. For RM it is 49 bits in total arranged in a 7x7 grid
+  img = camera feed frame that contains the fiducial
+  cnt = contour of the detected fiducial
+  This function takes in the image, extracts the detected fiducial, coverts it into a rectangular image
+  and gives out the signature of the detected fiducial
+  """
   # Calculates pixel length
   pixelLen = int(math.sqrt(bits))
 
@@ -183,6 +194,8 @@ def loadMarkers(markers):
 
 
 class Fiducial_detector:
+  # Class for foducial detector object that can be used to analyze image frames to give the camera offset and distance from the origin
+
   def __init__(self, log=True):
     
     # Flagger object
@@ -224,6 +237,8 @@ class Fiducial_detector:
 
     }
 
+    #orgin and three points along three different axes(X,Y,Z) system of axes(and thus the orgin of this system) 
+    #thus produced would be located at the centre of the fiducial. 
     self.axis_points = np.float32(np.array([
       (-ms['width']/2,-ms['height']/2,0),
       (ms['width']/2,-ms['height']/2,0),
@@ -231,10 +246,15 @@ class Fiducial_detector:
       (-ms['width']/2,-ms['height']/2,ms['height'])
     ]))
 
+    #flag to log and visualize feed 
     self.log = log
 
+    #These are transformation matrices. A transform matrix for a particular marker is used to get a point's coordinates in the real world coordinate
+    #system from the coordinate system located at the center of the marker
     self.tx_matrices = self.getTxMatrices()
 
+  #generates the transformation matrix based on the location of the markers in the real world coordinate system
+  # math is base on the article written here: https://www.tangramvision.com/blog/rotate-scale-translate-coordinate-frames-for-multi-sensor-systems-part-2
   def transform(self, Tx, Ty, Tz, o, p, k):
       R = np.array([
           [cos(p)*cos(k), -cos(p)*sin(k), sin(p), Tx],
@@ -245,6 +265,7 @@ class Fiducial_detector:
       
       return R
 
+  #obtains transformation matrices for all markers
   def getTxMatrices(self):
     txMatrices = {}
 
@@ -253,6 +274,8 @@ class Fiducial_detector:
       txMatrices[marker] = _matrix
     return txMatrices
   
+
+
   def detectFiducial(self, frame, delta=1):
     print("--------------")
     hits, res_contours, res_image, detected_color= self.findMarker(frame, threshold=delta)
@@ -377,6 +400,7 @@ class Fiducial_detector:
     
 
 
+  #given the signature of the detected fiducial, a match is found among the dictionary of established fiducials
   def matchMarker(self, image_signal, threshold):
     hits = []
     for marker in self.markers:
