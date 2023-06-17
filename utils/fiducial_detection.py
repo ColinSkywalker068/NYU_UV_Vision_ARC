@@ -6,6 +6,8 @@ import config
 import fid_locs
 from math import sin, cos
 
+#Detection of fiducial tutorial is present here: https://colab.research.google.com/drive/1Ic91IODIZCoPxRoc4GIr7LsZ5K0lVVv_#scrollTo=tIlGwYb2V5W1
+
 
 # Takes in a countour (cnt) of 4 points and reorders them such that they form a rectangle 
 # Top-left point first and other points ordered clock-wise
