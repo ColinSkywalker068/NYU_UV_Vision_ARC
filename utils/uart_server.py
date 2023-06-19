@@ -24,9 +24,9 @@ READING_DATA = 2
 # UART class to handle serial communication with type A board
 class Uart:
     # Constructor
-    def __init__(self, port="/dev/ttyUSB0", baudrate=115200):
+    def __init__(self, port="/dev/ttyUSB1", baudrate=115200):
         # get serial port
-        port =serial.tools.list_ports.comports()[0].device
+        #port =serial.tools.list_ports.comports()[0].device
         logger.debug("Using port: " + port)
         self.ser = serial.Serial(
             port=port,
@@ -151,24 +151,24 @@ class Uart:
 
     def listener(self):
         if self.ser.in_waiting > 0:
-            # print("STATE: ", self.state)
+            #print("STATE: ", self.state)
             if self.state == WAITING_FOR_HEADER:
                 data = struct.unpack("B", self.ser.read())[0]
                 if data == self.HEADER:
                     self.state = READING_HEADER
             elif self.state == READING_HEADER:
                 header_bytes = self.ser.read(HEADER_LENGTH + 2)
-                # print("HEADER BYTES: ", header_bytes)
+                #print("HEADER BYTES: ", header_bytes)
                 if len(header_bytes) != HEADER_LENGTH + 2:
                     self.state = WAITING_FOR_HEADER
                     return
 
                 header = struct.unpack("<BHBBH", header_bytes)
-                # print(header)
+                #print(header)
                 self.msg_len = header[1]
                 self.msg_type = header[-1]
-                # print("Header: ", header)
-                # print("MSG_TYPE: ", self.msg_type)
+                #print("Header: ", header)
+                #print("MSG_TYPE: ", self.msg_type)
                 self.state = READING_DATA
 
             if self.state == READING_DATA:
@@ -182,7 +182,7 @@ class Uart:
                 elif self.msg_type == 4:
                     self.handle_imu_feedback(self.data)
                 elif self.msg_type == 5:
-                    # print("DATA: ",self.data)
+                    #print("DATA: ",self.data)
                     self.handle_turret_feedback(self.data)
                 self.reset_listener()
 

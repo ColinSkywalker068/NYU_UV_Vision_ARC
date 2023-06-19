@@ -11,7 +11,7 @@ def nothing(x):
 
 
 # Initializing the webcam feed.
-cap = cv2.VideoCapture("../utils/vid2.mp4")
+cap = cv2.VideoCapture(9)
 
 
 # Create a window named trackbars.

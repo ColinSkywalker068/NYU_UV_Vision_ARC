@@ -79,6 +79,7 @@ fi
 
 # generate mount commands
 DATA_VOLUME="\
+--volume $PWD/data \
 --volume $PWD/data:$DOCKER_ROOT/data \
 --volume $PWD/$CLASSIFY_DIR/data:$DOCKER_ROOT/$CLASSIFY_DIR/data \
 --volume $PWD/$CLASSIFY_DIR/models:$DOCKER_ROOT/$CLASSIFY_DIR/models \
@@ -188,6 +189,7 @@ if [ $ARCH = "aarch64" ]; then
 		$DATA_VOLUME $USER_VOLUME \
 		-v /home/ultraviolet:/home/ultraviolet \
 		-v /dev:/dev \
+        -v /root/.cache:/root/.cache \
 		--device /dev/video0  \
 		$CONTAINER_IMAGE $USER_COMMAND
     

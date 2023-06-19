@@ -52,7 +52,7 @@ class Publisher_node:
         msg_type = 1
         header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
 
-        body = struct.pack("iiB", int(msg[0] * 100), int(msg[1] * 100), int(msg[2]))
+        body = struct.pack("iiB", int(msg[0] * 10000), int(msg[1] * 10000), int(msg[2]))
         footer = struct.pack("H", 0x0)
 
         msg = header + body + footer
@@ -132,17 +132,18 @@ if __name__ == "__main__":
     #     node.send_align_finish([1])
     # # assert()
     # # print("ID: ", node.Uart.get_robot_id())
-    # while True:
-    #     pitch, yaw = node.Uart.get_turret_feedback()
-    #     print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
+    while True:
+        pitch, yaw = node.Uart.get_turret_feedback()
+        print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
+        #time.sleep(0.2)
     # print(node.Uart.handle_align_request())
     # print(node.Uart.get_auto_aim_request())
     # time.sleep(.2)
-    while True:
-        node.send_auto_aim([-0.1, 0, 0])
-        time.sleep(0.25)
-        node.send_auto_aim([0.1, 0, 0])
-        time.sleep(0.25)
+    #while True:
+    #    node.send_auto_aim([-0.1, 0, 0])
+    #    time.sleep(0.25)
+    #    node.send_auto_aim([0.1, 0, 0])
+    #    time.sleep(0.25)
 
     # node.send_align_request([1, 2, 3])
     # node.send_align_finish([1])

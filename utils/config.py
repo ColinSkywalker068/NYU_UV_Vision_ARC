@@ -3,13 +3,13 @@ general = {"DEBUG_LOGS": False, "LOG_PATH": "../logs/logs.log"}
 
 # camera specifications
 camera = {
-    "DEPTH_CAPTURE": False,
-    "CAMERA_INDEX": "./vid2.mp4",
+    "DEPTH_CAPTURE": True,
+    "CAMERA_INDEX": 0,
     "FRAME_SIZE": (640, 480),
     "FRAME_RATE": 30,
     "RECORD": False,
-    "HFOV": 69.4,
-    "VFOV": 42.5,
+    "HFOV": 79.03,
+    "VFOV": 63.62,
 }
 
 
@@ -32,11 +32,11 @@ yolo_tensorrt = {
 detection = {
     "DEBUG": True,
     "DISPLAY": True,
-    "DETECTION_CONFIDENCE_CUTOFF": 0.5,
-    "NO_TO_DETECT": 10,
-    "UART": False,
+    "DETECTION_CONFIDENCE_CUTOFF": 0.25,
+    "NO_TO_DETECT": 1,
+    "UART": True,
     "IMU": False,
-    "TRACKING": False,
+    "TRACKING": True,
     "USE_CUDA_FLAGGER": False,
     "FIDUCIAL": False,
 }
@@ -55,16 +55,16 @@ gameplay = {
     "HSV_UPPER_RED": (18, 255, 254),
     "HSV_LOWER_RED_2": (134, 0, 0),
     "HSV_UPPER_RED_2": (255, 255, 251),
-    "HSV_LOWER_BLUE": (60, 30, 131),
-    "HSV_UPPER_BLUE": (121, 255, 255),
+    "HSV_LOWER_BLUE": (60, 45, 131),
+    "HSV_UPPER_BLUE": (121, 250, 255),
 }
 
 fiducials = {
     "camera_intrinsic_matrix": {
-        "camera_focal_length_x": 1427.9641708247764,
-        "camera_center_x": 974.409732316623,
-        "camera_focal_length_y": 1434.9326534580543,
-        "camera_center_y": 571.1514876178345,
+        "camera_focal_length_x": 387.909576416016,
+        "camera_center_x": 326.653747558594,
+        "camera_focal_length_y": 386.904052734375,
+        "camera_center_y": 237.997650146484,
     },
     "camera_distortion_coefficients": {
         "camera_dist_coeff_k1": -0.07231168346387425,

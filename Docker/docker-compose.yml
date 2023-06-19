@@ -21,5 +21,5 @@ services:
       - /dev:/dev
       - /tmp/.xX11-unix/:/tmp/.X11-unix
       - /root/.cache/:/root/.cache
-    working_dir: /home/ultraviolet/Downloads/CV_Detection-sprint-s23-7/utils
+    working_dir: /home/ultraviolet/CV_Detection/utils
     command: python3 ./main.py

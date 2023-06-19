@@ -1,4 +1,4 @@
-# import cv2 #unused
+#import cv2 #unused
 import torch
 torch.no_grad()
 import os
@@ -96,9 +96,9 @@ class plate_detector:
         self.HFOV = config.camera["HFOV"]
         self.VFOV = config.camera["VFOV"]
         self.camera_width = config.camera["FRAME_SIZE"][0]
-        self.center_x = self.camera_width / 2
+        self.center_x = self.camera_width / 2#326.653747558594#
         self.camera_height = config.camera["FRAME_SIZE"][1]
-        self.center_y = self.camera_height / 2
+        self.center_y = self.camera_height / 2#237.997650146484#
 
     # Process a color frame
     def process_frame(self, color_image, conf_thres=0.25, k=1, debug=False):
@@ -116,8 +116,8 @@ class plate_detector:
             bboxes: A list of tuples, each tuple containing the 6 specs of each  bounding box that is predicted
             messages: List of strings that are to be printed on the image
         """
-        if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
-            return [], []
+        #if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
+        #    return [], []
 
         # Get bounding boxes
         results = self.model(color_image)
@@ -157,8 +157,8 @@ class plate_detector:
         # if the L2 norm of the offsets from 0 is <= 0.175 rad (+- 10 degrees x, y), start firing
 
         has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
-        print("XRAD: ", x_rad_offset)
-        print("YRAD: ", y_rad_offset)
+        #print("XRAD: ", x_rad_offset)
+        #print("YRAD: ", y_rad_offset)
         logger.debug(
                 "x= {}, y= {}, target= {} ".format( -x_rad_offset, y_rad_offset, has_target)
             )
@@ -249,23 +249,24 @@ class plate_detector:
         Parameters:
         """
         if stop:
+            return
             msg = [0, 0, 0]
 
             # @TODO see if norm is correct for already normalized values
-            if np.linalg.norm(self.last_rad_offset) > 1.5:
+            #if np.linalg.norm(self.last_rad_offset) > 1.5:
                 # check if last_rad_offset was large (target went out of frame)
                 # then we should send the last rad offset to continue tracking
                 # send the last rad offset /6
-                msg = [
-                    self.last_rad_offset[0] / 6,
-                    self.last_rad_offset[1] / 6,
-                    0,
-                ]
-                self.last_rad_offset = (0, 0)
+                #msg = [
+                #    self.last_rad_offset[0] / 6,
+                #    self.last_rad_offset[1] / 6,
+                #    0,
+                #]
+                #self.last_rad_offset = (0, 0)
         else:
             # get the pitch and yaw offsets
             x_rad_offset, y_rad_offset = calculate_angle_offsets(
-                ((x_max + x_min) // 2, (y_max + y_min) // 2),
+                ((x_max + x_min) / 2, (y_max + y_min) / 2),
                 self.center_x,
                 self.center_y,
                 self.camera_height,
@@ -278,22 +279,23 @@ class plate_detector:
 
             has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
             
-            if y_rad_offset < -0.1:
-                y_rad_offset = -0.1
-            elif y_rad_offset > 0.1:
-                y_rad_offset = 0.1
+            if y_rad_offset < -0.5:
+                y_rad_offset = -0.5
+            elif y_rad_offset > 0.5:
+                y_rad_offset = 0.5
 
-            if x_rad_offset < -0.1:
-                x_rad_offset = -0.1
-            elif x_rad_offset > 0.1:
-                x_rad_offset = 0.1
+            if x_rad_offset < -0.5:
+                x_rad_offset = -0.5
+            elif x_rad_offset > 0.5:
+                x_rad_offset = 0.5
             # bound x and y offset each by 0.1
-            msg = [y_rad_offset / 3, x_rad_offset / -3, has_target]
+            msg = [y_rad_offset/3, -x_rad_offset/3, has_target]
 
             self.last_rad_offset = (y_rad_offset, -x_rad_offset)
         assert self.uart is not None
-        for i in range(2):
-            self.uart.send_auto_aim(msg)
+        print("MSG: ", msg)
+        #for i in range(2):
+        self.uart.send_auto_aim(msg)
 
         if debug and not stop:
             logger.debug(
@@ -328,7 +330,6 @@ def calculate_angle_offsets(
     move_x *= HFOV / 2
     move_y *= VFOV / 2
     move_x, move_y = math.radians(move_x), math.radians(move_y)
-    # print("x angle offset %f y angle offset %f", move_x, move_y)
     return move_x, move_y
 
 
