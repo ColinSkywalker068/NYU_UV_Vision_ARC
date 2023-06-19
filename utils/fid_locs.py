@@ -7,12 +7,12 @@ o, p, k stand for omega, phi and kappa which are rotation of the markers plane a
 
 locs = {
     'A':{
-        'Tx' : 0,
+        'Tx' : 75,
         'Ty' : 75,
-        'Tz' : 75,
+        'Tz' : 0,
         'o' : 0, 
         'p' : 0,
-        'k' :0
+        'k' : 0
     },
     'B' :{
         'Tx' : 53,
@@ -20,7 +20,7 @@ locs = {
         'Tz' : 159,
         'o' : 0, 
         'p' : 0,
-        'k' :0
+        'k' :45
     },
     'C' :{
         'Tx' : 53,

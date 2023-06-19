@@ -6,6 +6,8 @@ import config
 import fid_locs
 from math import sin, cos
 
+#Detection of fiducial tutorial is present here: https://colab.research.google.com/drive/1Ic91IODIZCoPxRoc4GIr7LsZ5K0lVVv_#scrollTo=tIlGwYb2V5W1
+
 
 # Takes in a countour (cnt) of 4 points and reorders them such that they form a rectangle 
 # Top-left point first and other points ordered clock-wise
@@ -31,8 +33,55 @@ def order_contour(cnt):
   return cnt
 
 
-def get_contour_bits(im,cnt,bits):
 
+def orientWRTaxes(coords):
+  """
+  reorders the list of coordinates of a quadrilateral in the order [p1, p2, p3, p4] as shown below
+  expect coords to contain 4 points (x,y,z) representing a square
+  p2------p3
+  |        |
+  |        |
+  |        |
+  p1------p4
+  """
+  p1 = coords[0]
+  p2 = coords[1]
+  p3 = coords[2]
+  p4 = coords[3]
+
+  # Accept two 3D vectors
+
+  v1 = p3-p2
+  v2 = p1-p2
+
+  # Check if the two vectors are orthogonal
+  # if np.dot(v1, v2) != 0:
+  #     print("The two vectors are not orthogonal.",np.dot(v1,v2))
+
+  # Compute an orthogonal vector (o) to both input vectors
+  o = np.cross(v2, v1)
+
+  # Normalize the vector o
+  n = o / np.linalg.norm(o)
+
+  # Compute the angle between n and [0,0,1], [0,1,0], and [1,0,0] in degrees
+  angle1 = math.degrees(math.acos(np.dot(n, np.array([1,0,0]))))
+  angle2 = math.degrees(math.acos(np.dot(n, np.array([0,1,0]))))
+  angle3 = math.degrees(math.acos(np.dot(n, np.array([0,0,1]))))
+
+  res = [angle1,angle2,angle3]
+  return res, n
+
+
+
+def get_contour_bits(im,cnt,bits):
+  """ 
+  bits = total number of bits in the fiducial. For RM it is 49 bits in total arranged in a 7x7 grid
+  img = camera feed frame that contains the fiducial
+  cnt = contour of the detected fiducial
+  This function takes in the image, extracts the detected fiducial, coverts it into a rectangular image
+  and gives out the signature of the detected fiducial
+  """
   # Calculates pixel length
   pixelLen = int(math.sqrt(bits))
 
@@ -147,6 +196,8 @@ def loadMarkers(markers):
 
 
 class Fiducial_detector:
+  # Class for foducial detector object that can be used to analyze image frames to give the camera offset and distance from the origin
+
   def __init__(self, log=True):
     
     # Flagger object
@@ -188,6 +239,8 @@ class Fiducial_detector:
 
     }
 
+    #orgin and three points along three different axes(X,Y,Z) system of axes(and thus the orgin of this system) 
+    #thus produced would be located at the centre of the fiducial. 
     self.axis_points = np.float32(np.array([
       (-ms['width']/2,-ms['height']/2,0),
       (ms['width']/2,-ms['height']/2,0),
@@ -195,10 +248,15 @@ class Fiducial_detector:
       (-ms['width']/2,-ms['height']/2,ms['height'])
     ]))
 
+    #flag to log and visualize feed 
     self.log = log
 
+    #These are transformation matrices. A transform matrix for a particular marker is used to get a point's coordinates in the real world coordinate
+    #system from the coordinate system located at the center of the marker
     self.tx_matrices = self.getTxMatrices()
 
+  #generates the transformation matrix based on the location of the markers in the real world coordinate system
+  # math is base on the article written here: https://www.tangramvision.com/blog/rotate-scale-translate-coordinate-frames-for-multi-sensor-systems-part-2
   def transform(self, Tx, Ty, Tz, o, p, k):
       R = np.array([
           [cos(p)*cos(k), -cos(p)*sin(k), sin(p), Tx],
@@ -209,6 +267,7 @@ class Fiducial_detector:
       
       return R
 
+  #obtains transformation matrices for all markers
   def getTxMatrices(self):
     txMatrices = {}
 
@@ -217,7 +276,10 @@ class Fiducial_detector:
       txMatrices[marker] = _matrix
     return txMatrices
   
+
+
   def detectFiducial(self, frame, delta=1):
+    print("--------------")
     hits, res_contours, res_image, detected_color= self.findMarker(frame, threshold=delta)
     
 
@@ -235,6 +297,9 @@ class Fiducial_detector:
     
     # Projects 3D axis points onto image plane 
     img_points,_ = cv2.projectPoints(self.axis_points, rvec, tvec, self.camera_matrix, self.camera_distortion_matrix)
+
+    print("Camera Coordinate System (After solvePNP)")
+    print("TVEC:",tvec,"RVEC:",rvec)
 
     # Converts img_points to integer values and reshapes into 4x2 array. 
     # Draws line between first point in img_points and the other three points 
@@ -266,6 +331,8 @@ class Fiducial_detector:
 
     R = invRotM[:3,:3]
 
+    translation_cm_wrt_marker_vector = invRotM[:,3]
+    
 
     camera_plane = np.array([
       [-10,-10,0, 1],
@@ -281,6 +348,10 @@ class Fiducial_detector:
     pitch = np.degrees(np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2)))
     yaw =np.degrees( np.arctan2(R[1, 0], R[0, 0]))
 
+    print("Marker Coordinate System(After inversion)")
+    print("tvec", translation_cm_wrt_marker_vector, "Roll {}, Pitch {}, Yaw {}".format(roll, pitch, yaw))
+    print("camera_plane",camera_plane_wrt_marker)
+
     text = "Rotation: " + str(roll.round(2)) + ',' +str(pitch.round(2)) + ',' + str(yaw.round(2))
     res_image = cv2.putText(res_image, text, (200,550) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
@@ -295,12 +366,16 @@ class Fiducial_detector:
       tvec = np.append(tvec,np.array([[1]]))
       
       tx_matrix = self.tx_matrices[detected_marker_char]
-      rw_loc_cam = tx_matrix@tvec
-      camera_plane_rw = (tx_matrix@camera_plane_wrt_marker)[:3,:].T
+      rw_loc_cam = tx_matrix@translation_cm_wrt_marker_vector
+      camera_lane_rw = tx_matrix*camera_plane_wrt_marker
+
+      print("Real World Coordinate System")
+      print("Cam Loc", rw_loc_cam)
+      print("Camera RW", camera_lane_rw)
     except Exception as e:
       print(e)
       print(tx_matrix)
-      print(tvec)
+      print(translation_cm_wrt_marker_vector)
       
 
 
@@ -313,18 +388,21 @@ class Fiducial_detector:
     else:
       detected_marker_char = ''
 
+    #rw_orient_cam, n = orientWRTaxes(camera_plane_rw)
+
     res = {
       'success' : True,
       'rw_loc_cam' : rw_loc_cam,
+      'mark_orient_cam': [roll, pitch, yaw],
       'detected_marker_char':detected_marker_char,
-      'detected_color': detected_color,
-      'camera_plane_rw' : camera_plane_rw
+      'detected_color': detected_color
     }
 
     return res
     
 
 
+  #given the signature of the detected fiducial, a match is found among the dictionary of established fiducials
   def matchMarker(self, image_signal, threshold):
     hits = []
     for marker in self.markers:
