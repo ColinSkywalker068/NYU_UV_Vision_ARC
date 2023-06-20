@@ -1,5 +1,9 @@
 # general specifications
-general = {"DEBUG_LOGS": False, "LOG_PATH": "../logs/logs.log"}
+general = {
+    "USE_V_DRIVER": False,
+    "DEBUG_LOGS": False, 
+    "LOG_PATH": "../logs/logs.log"
+    }
 
 # camera specifications
 camera = {
@@ -31,9 +35,9 @@ yolo_tensorrt = {
 # specifications for detection
 detection = {
     "DEBUG": True,
-    "DISPLAY": True,
+    "DISPLAY":False,
     "DETECTION_CONFIDENCE_CUTOFF": 0.25,
-    "NO_TO_DETECT": 1,
+    "NO_TO_DETECT": 3,
     "UART": True,
     "IMU": False,
     "TRACKING": True,
