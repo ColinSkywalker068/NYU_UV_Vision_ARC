@@ -34,7 +34,7 @@ yolo_tensorrt = {
 
 # specifications for detection
 detection = {
-    "CLASSIC": True,
+    "CLASSIC": False,
     "DEBUG": True,
     "DISPLAY": True,
     "DETECTION_CONFIDENCE_CUTOFF": 0.25,
