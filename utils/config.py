@@ -57,6 +57,8 @@ gameplay = {
     "HSV_UPPER_RED_2": (255, 255, 251),
     "HSV_LOWER_BLUE": (60, 45, 131),
     "HSV_UPPER_BLUE": (121, 250, 255),
+    "HSV_LOWER_BLUE_C": (65, 160, 170),
+    "HSV_UPPER_BLUE_C": (122, 255, 205),
 }
 
 fiducials = {

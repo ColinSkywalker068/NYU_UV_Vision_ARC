@@ -293,7 +293,7 @@ class plate_detector:
 
             self.last_rad_offset = (y_rad_offset, -x_rad_offset)
         assert self.uart is not None
-        print("MSG: ", msg)
+        logger.debug(f"MSG: {msg}")
         #for i in range(2):
         self.uart.send_auto_aim(msg)
 

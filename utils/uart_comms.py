@@ -134,7 +134,7 @@ if __name__ == "__main__":
     # # print("ID: ", node.Uart.get_robot_id())
     while True:
         pitch, yaw = node.Uart.get_turret_feedback()
-        print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
+        logger.debug(f"(Yaw, Pitch): ({yaw}, {pitch})")
         #time.sleep(0.2)
     # print(node.Uart.handle_align_request())
     # print(node.Uart.get_auto_aim_request())
