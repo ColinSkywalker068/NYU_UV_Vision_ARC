@@ -96,7 +96,8 @@ class classic_plate_detector:
         # Return the new bounding box.
         return np.int0((min_x, min_y, (max_x - min_x), (max_y - min_y)))
 
-    def process_frame(self, color_image, k=1, debug=False):
+    # keeping variables to maintain interface
+    def process_frame(self, color_image, conf_thres=0.25, k=1, debug=False):
         messages = []
 
         lab= cv2.cvtColor(color_image, cv2.COLOR_BGR2LAB)
@@ -125,8 +126,8 @@ class classic_plate_detector:
         # Define the lower and upper bounds of the blue color range
         # lower_blue = np.array([70, 200, 190])
         # upper_blue = np.array([140, 255, 200])
-        lower_blue = config.gameplay.HSV_LOWER_BLUE_C
-        upper_blue = config.gameplay.HSV_UPPER_BLUE_C
+        lower_blue = config.gameplay["HSV_LOWER_BLUE_C"]
+        upper_blue = config.gameplay["HSV_UPPER_BLUE_C"]
 
         # Create a mask to identify blue pixels
         mask = cv2.inRange(hsv, lower_blue, upper_blue)
@@ -141,7 +142,7 @@ class classic_plate_detector:
         for contour in contours:
             # Find the bounding box of the contour
             (x, y, w, h) = cv2.boundingRect(contour)
-
+            # x, y, w, h = x/self.camera_width, y/self.camera_height, w/self.camera_width, h/self.camera_height
             # Add the rectangle to the list of blue rectangles
             #   if abs( w/h - 1.8) <= 0.001:
             #   if w >= 3 and w <= 650 and h >= 1 and h <= 450:
@@ -151,7 +152,12 @@ class classic_plate_detector:
             #   blue_rectangles = remove_overlapping_boxes(blue_rectangles)
             # print(len(blue_rectangles))
             # Draw the blue rectangles on the frame
-            bboxes = self.merge_boxes(bboxes, x_val=200, y_val=20)
+            bboxes = self.merge_boxes(bboxes, x_val=100, y_val=10)
+        
+        # print(type(bboxes))
+        # maintain the interface
+        dummy = np.array([1,1])
+        bboxes = [np.append(sublist, dummy, axis=0) for sublist in bboxes]
         return bboxes, messages
 
         # used to print bbox and center of bbox
@@ -234,3 +240,48 @@ class classic_plate_detector:
                 ),
                 end="\r",
             )
+
+    def send_msg(self, bboxes, messages, debug=False):
+        # @TODO: only sends most confident plate
+        # update metric used
+        # send bbox at beginning of frame
+        (
+            x_min,
+            y_min,
+            x_max,
+            y_max,
+        ) = [0, 0, 0, 0]
+
+        stop_shooting = True
+        if len(bboxes) > 0:
+            x_min, y_min, x_max, y_max, _, _ = bboxes[0]
+            stop_shooting = False
+
+
+        #@TODO: will refactor this later
+        (x_rad_offset, y_rad_offset) = calculate_angle_offsets(
+            ((x_max + x_min) // 2, (y_max + y_min) // 2),
+            self.center_x,
+            self.center_y,
+            self.camera_height,
+            self.HFOV,
+            self.VFOV,
+        )
+        # 2. send the offsets to the uart server
+        # pitch, yaw
+        # if the L2 norm of the offsets from 0 is <= 0.175 rad (+- 10 degrees x, y), start firing
+
+        has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
+        #print("XRAD: ", x_rad_offset)
+        #print("YRAD: ", y_rad_offset)
+        logger.debug(f"x= {-x_rad_offset}, y= {y_rad_offset}, target= {has_target} ")
+
+        #if self.uart is not None:
+        try:
+            self.send_angles(
+                x_min, x_max, y_min, y_max, stop=stop_shooting, debug=debug
+            )
+        except Exception as e:
+            logger.debug(f"Error sending angles: {e}")
+
+        return bboxes, messages

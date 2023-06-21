@@ -4,6 +4,7 @@ import logging
 import config
 import camera
 import plate_detector
+import classic_plate_detector
 import monitor
 import cv2
 import flagger
@@ -56,21 +57,30 @@ def main():
     else:
         model_weights_path = config.yolo["MODEL_WEIGHTS_PATH"]
 
-    detector = plate_detector.plate_detector(
-        config.yolo_tensorrt["REPO_PATH"],
-        config.yolo_tensorrt["MODEL_SOURCE"],
-        model_weights_path,
-        tracking=config.detection["TRACKING"],
-        flagger=flagger_obj,
-        uart=config.detection["UART"],
-    )
+    if config.detection["CLASSIC"]:
+        # read class for more info, tracking and flagger are not used.
+        detector = classic_plate_detector.classic_plate_detector(
+            tracking=config.detection["TRACKING"],
+            flagger=flagger_obj,
+            uart=config.detection["UART"],
+        )
+    else:
+        detector = plate_detector.plate_detector(
+            config.yolo_tensorrt["REPO_PATH"],
+            config.yolo_tensorrt["MODEL_SOURCE"],
+            model_weights_path,
+            tracking=config.detection["TRACKING"],
+            flagger=flagger_obj,
+            uart=config.detection["UART"],
+        )
+    #@TODO: refactor - what is this?
     if config.detection["UART"]:
         count = 0
         while detector.uart.Uart.get_robot_id() not in [0, 1]:
             count += 1
             if count > 100:
                 logger.debug("Robot ID not found")
-                break
+                break 
         if count <= 100:
             flagger_obj.opponent_color = (
                 "RED" if detector.uart.Uart.get_robot_id() else "BLUE"
@@ -112,7 +122,7 @@ def main():
             config.general["DEBUG_LOGS"],
         )
 
-        if detector.tracker is not None:
+        if config.detection["TRACKING"] and detector.tracker is not None:
             bboxes = detector.update_tracker(bboxes)
 
 
