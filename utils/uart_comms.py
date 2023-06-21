@@ -189,9 +189,9 @@ if __name__ == "__main__":
     # # assert()
     # # print("ID: ", node.Uart.get_robot_id())
     # while True:
-    #     pitch, yaw = node.Uart.get_turret_feedback()
-    #     print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
-        # time.sleep(0.2)
+    #   pitch, yaw = node.Uart.get_turret_feedback()
+    #   debugger.log(f"(Yaw, Pitch): ({yaw} , {pitch})")
+    #   time.sleep(0.2)
     # print(node.Uart.handle_align_request())
     # print(node.Uart.get_auto_aim_request())
     # time.sleep(.2)

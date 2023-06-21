@@ -3,8 +3,8 @@ import torch
 torch.no_grad()
 import os
 
-# import flagger #unused
-# import uart_server #unused
+import flagger 
+import uart_server 
 import torch.backends.cudnn as cudnn
 import uart_comms
 import math
@@ -159,9 +159,7 @@ class plate_detector:
         has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
         #print("XRAD: ", x_rad_offset)
         #print("YRAD: ", y_rad_offset)
-        logger.debug(
-                "x= {}, y= {}, target= {} ".format( -x_rad_offset, y_rad_offset, has_target)
-            )
+        logger.debug(f"x= {-x_rad_offset}, y= {y_rad_offset}, target= {has_target} ")
 
         #if self.uart is not None:
         try:
@@ -169,7 +167,7 @@ class plate_detector:
                 x_min, x_max, y_min, y_max, stop=stop_shooting, debug=debug
             )
         except Exception as e:
-            logger.debug("Error sending angles: ", e)
+            logger.debug(f"Error sending angles: {e}")
 
         return bboxes, messages
     
@@ -293,7 +291,7 @@ class plate_detector:
 
             self.last_rad_offset = (y_rad_offset, -x_rad_offset)
         assert self.uart is not None
-        print("MSG: ", msg)
+        logger.debug(f"MSG: {msg}")
         #for i in range(2):
         self.uart.send_auto_aim(msg)
 
