@@ -182,7 +182,6 @@ class Uart:
                 elif self.msg_type == 4:
                     self.handle_imu_feedback(self.data)
                 elif self.msg_type == 5:
-                    #print("DATA: ",self.data)
                     self.handle_turret_feedback(self.data)
                 self.reset_listener()
 

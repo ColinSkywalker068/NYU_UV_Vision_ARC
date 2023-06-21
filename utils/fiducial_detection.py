@@ -5,12 +5,14 @@ import flagger
 import config
 import fid_locs
 from math import sin, cos
+from numba import njit
 
 #Detection of fiducial tutorial is present here: https://colab.research.google.com/drive/1Ic91IODIZCoPxRoc4GIr7LsZ5K0lVVv_#scrollTo=tIlGwYb2V5W1
 
 
 # Takes in a countour (cnt) of 4 points and reorders them such that they form a rectangle 
 # Top-left point first and other points ordered clock-wise
+@njit(fastmath=True,nogil=True, cache=True, parallel=True)
 def order_contour(cnt):
   # Calculates center point of contour through average of 4 points
   cx = (cnt[0][0][0] + cnt[1][0][0] + cnt[2][0][0] + cnt[3][0][0])/4.0
@@ -33,7 +35,7 @@ def order_contour(cnt):
   return cnt
 
 
-
+@njit(fastmath=True,nogil=True, cache=True,parallel=True)
 def orientWRTaxes(coords):
   """
   reorders the list of coordinates of a quadrilateral in the order [p1, p2, p3, p4] as shown below
