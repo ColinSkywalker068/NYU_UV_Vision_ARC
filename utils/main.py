@@ -1,17 +1,26 @@
-import json
-from threading import Thread
+import os
+from pathlib import Path
+import logging
 import config
 import camera
 import plate_detector
+import classic_plate_detector
 import monitor
-from localization import *
 import cv2
 import flagger
 from video_record import VideoRecord
-import numpy as np
+from fiducial_detection import Fiducial_detector
 
-# from tracking import Tracker
-# from tracking.sort import Sort
+if not os.path.exists("../logs/"):
+    os.makedirs("../logs/")
+
+# check if the file exists, create it if it doesn't
+if not os.path.exists(config.general["LOG_PATH"]):
+    open(config.general["LOG_PATH"], "a").close()
+logging.basicConfig(
+    filename=config.general["LOG_PATH"], filemode="a", level=logging.DEBUG
+)
+logger = logging.getLogger(Path(__file__).stem)
 
 
 def main():
@@ -41,28 +50,37 @@ def main():
     if config.yolo_tensorrt["ENABLE"]:
         try:
             import tensorrt as trt
-
             model_weights_path = config.yolo_tensorrt["MODEL_WEIGHTS_PATH"]
-        except:
-            print("TensorRT not available, using YOLOv5")
+        except ImportError:
+            logger.debug("TensorRT not available, using YOLOv5")
             model_weights_path = config.yolo["MODEL_WEIGHTS_PATH"]
     else:
         model_weights_path = config.yolo["MODEL_WEIGHTS_PATH"]
 
-    detector = plate_detector.plate_detector(
-        config.yolo_tensorrt["REPO_PATH"],
-        config.yolo_tensorrt["MODEL_SOURCE"],
-        model_weights_path,
-        tracking=config.detection["TRACKING"],
-        flagger=flagger_obj,
-        uart=config.detection["UART"],
-    )
+    if config.detection["CLASSIC"]:
+        # read class for more info, tracking and flagger are not used.
+        detector = classic_plate_detector.classic_plate_detector(
+            tracking=config.detection["TRACKING"],
+            flagger=flagger_obj,
+            uart=config.detection["UART"],
+        )
+    else:
+        detector = plate_detector.plate_detector(
+            config.yolo_tensorrt["REPO_PATH"],
+            config.yolo_tensorrt["MODEL_SOURCE"],
+            model_weights_path,
+            tracking=config.detection["TRACKING"],
+            flagger=flagger_obj,
+            uart=config.detection["UART"],
+        )
+    #@TODO: refactor - what is this?
     if config.detection["UART"]:
         count = 0
         while detector.uart.Uart.get_robot_id() not in [0, 1]:
             count += 1
             if count > 100:
-                break
+                logger.debug("Robot ID not found")
+                break 
         if count <= 100:
             flagger_obj.opponent_color = (
                 "RED" if detector.uart.Uart.get_robot_id() else "BLUE"
@@ -70,16 +88,16 @@ def main():
             if config.general["DEBUG_LOGS"]:
                 print("opponent color: ", flagger_obj.opponent_color)
 
+    if config.detection["FIDUCIAL"]:
+        fiducial_detector = Fiducial_detector(log=False)
+
     # create monitor object to display annotated images
     if config.detection["IMU"]:
         imu = camera.imu_sensor()
         # Might need another file for encoder help, which we also pass into Localization
-        localization = Localization(imu)
-        localizationThread = Thread(target=localization.main)
-        localizationThread.start()
-
-        # tracker = Tracker(localization)
-        # tracker = Sort()
+        # localization = Localization(imu)
+        # localizationThread = Thread(target=localization.main)
+        # localizationThread.start()
 
     mon = monitor.monitor()
     if config.camera["RECORD"]:
@@ -104,10 +122,9 @@ def main():
             config.general["DEBUG_LOGS"],
         )
 
-        if detector.tracker is not None:
+        if config.detection["TRACKING"] and detector.tracker is not None:
             bboxes = detector.update_tracker(bboxes)
 
-        # bboxes = np.array(bboxes)
 
         # sort bboxes by median distance
         if depth_image is not None and len(bboxes) > 0:
@@ -118,9 +135,12 @@ def main():
         # show detections on screen
         if config.detection["DISPLAY"]:
             mon.draw_on_image(color_image, bboxes, messages)
+            if config.detection["FIDUCIAL"]:
+                fid_detection_res = fiducial_detector.detectFiducial(color_image)
 
-    if config.detection["IMU"]:
-        localizationThread.stop()
+    # if config.detection["IMU"]:
+    #     localizationThread.stop()
+
 
 
 if __name__ == "__main__":

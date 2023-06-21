@@ -1,31 +1,32 @@
-# import cv2 #unused
+#import cv2 #unused
 import torch
+torch.no_grad()
 import os
 
-# import flagger #unused
-# import uart_server #unused
+import flagger 
+import uart_server 
 import torch.backends.cudnn as cudnn
 import uart_comms
 import math
 import config
 import numpy as np
 from tracking.sort import Sort
-import matplotlib.pyplot as plt
 
 import logging
 from pathlib import Path
 
 # use njit
-from numba import njit
+from numba import njit,prange
+from pathlib import Path
+import logging
 
-
+logging.basicConfig(
+    filename=config.general["LOG_PATH"], filemode="a", level=logging.DEBUG
+)
 logger = logging.getLogger(Path(__file__).stem)
-logger.setLevel(logging.DEBUG)
 
-logger = logging.getLogger(__name__)
 #  Autoselect kernel with best performance on current hardware
 cudnn.benchmark = True
-
 
 class plate_detector:
     # Constructor
@@ -63,15 +64,15 @@ class plate_detector:
 
         try:
             if torch.backends.mps.is_available():
-                print("MPS available")
+                logger.debug("MPS available")
                 device = torch.device("mps")
         except:
-            print("MPS not available")
+            logger.debug("MPS not available")
             if torch.cuda.is_available():
-                print("CUDA available")
+                logger.debug("CUDA available")
                 device = torch.device("cuda:0")
             else:
-                print("CUDA/MPS not available")
+                logger.debug("CUDA/MPS not available")
 
         self.model = torch.hub.load(repo, "custom", path=model_file_path, device=device)
 
@@ -95,9 +96,9 @@ class plate_detector:
         self.HFOV = config.camera["HFOV"]
         self.VFOV = config.camera["VFOV"]
         self.camera_width = config.camera["FRAME_SIZE"][0]
-        self.center_x = self.camera_width / 2
+        self.center_x = self.camera_width / 2#326.653747558594#
         self.camera_height = config.camera["FRAME_SIZE"][1]
-        self.center_y = self.camera_height / 2
+        self.center_y = self.camera_height / 2#237.997650146484#
 
     # Process a color frame
     def process_frame(self, color_image, conf_thres=0.25, k=1, debug=False):
@@ -115,8 +116,8 @@ class plate_detector:
             bboxes: A list of tuples, each tuple containing the 6 specs of each  bounding box that is predicted
             messages: List of strings that are to be printed on the image
         """
-        if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
-            return [], []
+        #if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
+        #    return [], []
 
         # Get bounding boxes
         results = self.model(color_image)
@@ -141,16 +142,35 @@ class plate_detector:
             x_min, y_min, x_max, y_max, _, _ = bboxes[0]
             stop_shooting = False
 
-        if self.uart is not None:
-            try:
-                self.send_angles(
-                    x_min, x_max, y_min, y_max, stop=stop_shooting, debug=debug
-                )
-            except Exception as e:
-                print("Error sending angles: ", e)
+
+        #@TODO: will refactor this later
+        (x_rad_offset, y_rad_offset) = calculate_angle_offsets(
+            ((x_max + x_min) // 2, (y_max + y_min) // 2),
+            self.center_x,
+            self.center_y,
+            self.camera_height,
+            self.HFOV,
+            self.VFOV,
+        )
+        # 2. send the offsets to the uart server
+        # pitch, yaw
+        # if the L2 norm of the offsets from 0 is <= 0.175 rad (+- 10 degrees x, y), start firing
+
+        has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
+        #print("XRAD: ", x_rad_offset)
+        #print("YRAD: ", y_rad_offset)
+        logger.debug(f"x= {-x_rad_offset}, y= {y_rad_offset}, target= {has_target} ")
+
+        #if self.uart is not None:
+        try:
+            self.send_angles(
+                x_min, x_max, y_min, y_max, stop=stop_shooting, debug=debug
+            )
+        except Exception as e:
+            logger.debug(f"Error sending angles: {e}")
 
         return bboxes, messages
-
+    
     def get_bboxes_from_results(self, color_image, results, conf_thres=0.25, k=1):
         """
         Returns bounding boxes from the results of the model
@@ -170,7 +190,8 @@ class plate_detector:
             row[row[:, 4] >= conf_thres]
             for row in [result.detach().cpu().numpy() for result in results.xyxy]
         ][0][:k]
-        # use [0] bc tensor, [:k] bc top k
+
+
         # print(top_k_detections)
         assert self.flagger is not None, "Flagger not initialized"
         bboxes = [
@@ -190,7 +211,7 @@ class plate_detector:
         ]
 
         return bboxes, messages
-
+    
     def update_tracker(self, bboxes):
         """
         Updates the tracker with the new bounding boxes and returns the updated bounding boxes
@@ -220,29 +241,30 @@ class plate_detector:
         # print(bboxes)
         return bboxes
 
-    def send_angles(self, x_min, x_max, y_min, y_max, stop=False, debug=False):
+    def send_angles(self, x_min, x_max, y_min, y_max, stop=False, debug=True):
         """
         Sends the pitch and yaw offsets to the uart server
         Parameters:
         """
         if stop:
+            return
             msg = [0, 0, 0]
 
             # @TODO see if norm is correct for already normalized values
-            if np.linalg.norm(self.last_rad_offset) > 1.5:
+            #if np.linalg.norm(self.last_rad_offset) > 1.5:
                 # check if last_rad_offset was large (target went out of frame)
                 # then we should send the last rad offset to continue tracking
                 # send the last rad offset /6
-                msg = [
-                    self.last_rad_offset[0] / 6,
-                    self.last_rad_offset[1] / 6,
-                    0,
-                ]
-                self.last_rad_offset = (0, 0)
+                #msg = [
+                #    self.last_rad_offset[0] / 6,
+                #    self.last_rad_offset[1] / 6,
+                #    0,
+                #]
+                #self.last_rad_offset = (0, 0)
         else:
             # get the pitch and yaw offsets
             x_rad_offset, y_rad_offset = calculate_angle_offsets(
-                ((x_max + x_min) // 2, (y_max + y_min) // 2),
+                ((x_max + x_min) / 2, (y_max + y_min) / 2),
                 self.center_x,
                 self.center_y,
                 self.camera_height,
@@ -254,24 +276,27 @@ class plate_detector:
             # if the L2 norm of the offsets from 0 is <= 0.175 rad (+- 10 degrees x, y), start firing
 
             has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
-            if y_rad_offset < -0.1:
-                y_rad_offset = -0.1
-            elif y_rad_offset > 0.1:
-                y_rad_offset = 0.1
+            
+            if y_rad_offset < -0.5:
+                y_rad_offset = -0.5
+            elif y_rad_offset > 0.5:
+                y_rad_offset = 0.5
 
-            if x_rad_offset < -0.1:
-                x_rad_offset = -0.1
-            elif x_rad_offset > 0.1:
-                x_rad_offset = 0.1
+            if x_rad_offset < -0.5:
+                x_rad_offset = -0.5
+            elif x_rad_offset > 0.5:
+                x_rad_offset = 0.5
             # bound x and y offset each by 0.1
-            msg = [y_rad_offset / 1.5, x_rad_offset / -1.5, has_target]
+            msg = [y_rad_offset/3, -x_rad_offset/3, has_target]
 
             self.last_rad_offset = (y_rad_offset, -x_rad_offset)
         assert self.uart is not None
+        logger.debug(f"MSG: {msg}")
+        #for i in range(2):
         self.uart.send_auto_aim(msg)
 
         if debug and not stop:
-            print(
+            logger.debug(
                 "Plate detected at \n({:.3f},{:.3f})\n\n({:.3f},{:.3f})".format(
                     x_min, y_min, x_max, y_max
                 ),
@@ -302,10 +327,8 @@ def calculate_angle_offsets(
         move_y /= center_y
     move_x *= HFOV / 2
     move_y *= VFOV / 2
-    move_x = math.radians(move_x)
-    move_y = math.radians(move_y)
-    # print("x angle offset %f y angle offset %f", move_x, move_y)
-    return (move_x, move_y)
+    move_x, move_y = math.radians(move_x), math.radians(move_y)
+    return move_x, move_y
 
 
 @njit(cache=True)
@@ -320,6 +343,8 @@ def sort_bboxes_by_distance(bboxes, depth_image):
     """
     num_bboxes = len(bboxes)
     depth_values = np.zeros((num_bboxes,))
+    sorted_bboxes = np.zeros((num_bboxes, 6))
+
     for i in range(num_bboxes):
         bbox = bboxes[i]
         x_min, y_min, x_max, y_max, _, _ = bbox
@@ -329,7 +354,7 @@ def sort_bboxes_by_distance(bboxes, depth_image):
         )
     # sort the bboxes by median depth
     sorted_indices = np.argsort(depth_values)
-    sorted_bboxes = np.zeros((num_bboxes, 6))
+    
     for i in range(num_bboxes):
         sorted_bboxes[i, :] = bboxes[sorted_indices[i]]
     return sorted_bboxes

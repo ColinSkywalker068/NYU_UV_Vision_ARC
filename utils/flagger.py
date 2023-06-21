@@ -1,8 +1,5 @@
 import cv2
 import numpy as np
-from threading import Thread
-from uart_comms import Publisher_node
-import time
 from numba import njit, cuda
 from config import detection
 
@@ -11,7 +8,6 @@ import logging
 from numba.core.errors import NumbaPerformanceWarning
 
 warnings.simplefilter("ignore", category=NumbaPerformanceWarning)
-
 numba_logger = logging.getLogger("numba")
 numba_logger.setLevel(logging.WARNING)
 
@@ -37,19 +33,17 @@ class Flagger:
         """
         self.opponent_color = opponent_color
 
-        # we will use bitwise or to combine the two masks
-        # (there is a better way to do this, we will refactor later)
-
         self.red_lower = np.array(red_lower, dtype=np.uint8)
         self.red_upper = np.array(red_upper, dtype=np.uint8)
         self.red_lower_2 = np.array(red_lower_2, dtype=np.uint8)
         self.red_upper_2 = np.array(red_upper_2, dtype=np.uint8)
         self.blue_lower = np.array(blue_lower, dtype=np.uint8)
         self.blue_upper = np.array(blue_upper, dtype=np.uint8)
-
-        self.red_or_blue = (
-            red_or_blue_cuda if detection["USE_CUDA_FLAGGER"] else red_or_blue
-        )
+        
+        # breaks with fiducials code, new implementation below
+        # self.red_or_blue = (
+        #     red_or_blue_cuda if detection["USE_CUDA_FLAGGER"] else red_or_blue
+        # )
 
     # Check if the robot in the frame is enemy robot or not. Returns true if it is enemy robot
     def check_enemy(self, frame):
@@ -63,19 +57,22 @@ class Flagger:
         """
         # Convert BGR format ot HSV format
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        color = self.red_or_blue(
-            frame,
-            self.blue_lower,
-            self.blue_upper,
-        )
+        color = self.red_or_blue(frame)
 
-        # @TODO: fix short circuiting
-        if self.opponent_color == "NONE":
-            return False
         return color == self.opponent_color
+    
+    def red_or_blue(self, frame):
+        if detection["USE_CUDA_FLAGGER"]:
+            return red_or_blue_cuda(
+                frame,
+                self.blue_lower,
+                self.blue_upper,
+            )
+        return red_or_blue(frame, self.blue_lower, self.blue_upper)
 
 
-@cuda.jit(fastmath=True, cache=True)
+
+@cuda.jit(fastmath=True)
 def mask_kernel(frame, blue_mask, blue_lower, blue_upper):
     x, y = cuda.grid(2)
     if x < frame.shape[0] and y < frame.shape[1]:
@@ -97,9 +94,9 @@ def mask_kernel(frame, blue_mask, blue_lower, blue_upper):
 # @TODO: finetune threads_per_block and blocks_per_grid
 def red_or_blue_cuda(
     frame: np.ndarray,
-    blue_lower,
-    blue_upper,
-):
+    blue_lower: np.ndarray,
+    blue_upper: np.ndarray,
+) -> str:
     """
     Checks what is the color of the robot in the image using cuda.
     Parameters:
@@ -133,12 +130,12 @@ def red_or_blue_cuda(
     return "BLUE" if b_area > 15 else "RED"
 
 
-@njit(fastmath=True, cache=True)
+@njit(cache=True)
 def red_or_blue(
     frame: np.ndarray,
-    blue_lower,
-    blue_upper,
-):
+    blue_lower: np.ndarray,
+    blue_upper: np.ndarray,
+) -> str:
     """
     Checks what is the color of the robot in the image.
     Parameters:
