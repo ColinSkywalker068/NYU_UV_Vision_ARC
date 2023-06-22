@@ -1,4 +1,8 @@
 import os
+# make sure the logs directory exists before importing anything
+if not os.path.exists("../logs/"):
+    os.makedirs("../logs/")
+
 from pathlib import Path
 import logging
 import config
@@ -10,9 +14,6 @@ import cv2
 import flagger
 from video_record import VideoRecord
 from fiducial_detection import Fiducial_detector
-
-if not os.path.exists("../logs/"):
-    os.makedirs("../logs/")
 
 # check if the file exists, create it if it doesn't
 if not os.path.exists(config.general["LOG_PATH"]):
