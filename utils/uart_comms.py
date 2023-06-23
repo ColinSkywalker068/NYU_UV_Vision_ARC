@@ -4,7 +4,7 @@ import threading
 import struct
 import uart_server
 import config
-
+import os
 from pathlib import Path
 import logging
 logging.basicConfig(
@@ -189,9 +189,17 @@ if __name__ == "__main__":
     # # assert()
     # # print("ID: ", node.Uart.get_robot_id())
     # while True:
-    #   pitch, yaw = node.Uart.get_turret_feedback()
-    #   debugger.log(f"(Yaw, Pitch): ({yaw} , {pitch})")
-    #   time.sleep(0.2)
+    #     pitch, yaw = node.Uart.get_turret_feedback()
+    #     #print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
+    #     print("(FB m/s,  LR m/s): (", pitch/100, ", ", yaw/100, ")",end='\r')
+    #     #time.sleep(0.01)
+    #     os.system('clear') 
+    while True:
+        referee_feedback_data = node.Uart.get_referee_feedback()
+        print(referee_feedback_data, end='\r')
+        os.system('clear')
+        # time.sleep(0.01)
+        
     # print(node.Uart.handle_align_request())
     # print(node.Uart.get_auto_aim_request())
     # time.sleep(.2)

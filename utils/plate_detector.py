@@ -3,8 +3,8 @@ import torch
 torch.no_grad()
 import os
 
-import flagger 
-import uart_server 
+# import flagger #unused
+# import uart_server #unused
 import torch.backends.cudnn as cudnn
 import uart_comms
 import math
@@ -96,9 +96,9 @@ class plate_detector:
         self.HFOV = config.camera["HFOV"]
         self.VFOV = config.camera["VFOV"]
         self.camera_width = config.camera["FRAME_SIZE"][0]
-        self.center_x = self.camera_width / 2#326.653747558594#
+        self.center_x = 316.750549316406#self.camera_width / 2#326.653747558594#
         self.camera_height = config.camera["FRAME_SIZE"][1]
-        self.center_y = self.camera_height / 2#237.997650146484#
+        self.center_y = 235.639846801758#self.camera_height / 2#237.997650146484#
 
     # Process a color frame
     def process_frame(self, color_image, conf_thres=0.25, k=1, debug=False):
@@ -159,7 +159,9 @@ class plate_detector:
         has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
         #print("XRAD: ", x_rad_offset)
         #print("YRAD: ", y_rad_offset)
-        logger.debug(f"x= {-x_rad_offset}, y= {y_rad_offset}, target= {has_target} ")
+        logger.debug(
+                "x= {}, y= {}, target= {} ".format( -x_rad_offset, y_rad_offset, has_target)
+            )
 
         #if self.uart is not None:
         try:
@@ -167,7 +169,7 @@ class plate_detector:
                 x_min, x_max, y_min, y_max, stop=stop_shooting, debug=debug
             )
         except Exception as e:
-            logger.debug(f"Error sending angles: {e}")
+            logger.debug("Error sending angles: ", e)
 
         return bboxes, messages
     
@@ -278,20 +280,20 @@ class plate_detector:
             has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
             
             if y_rad_offset < -0.5:
-                y_rad_offset = -0.5
+                y_rad_offset = -0.1
             elif y_rad_offset > 0.5:
-                y_rad_offset = 0.5
+                y_rad_offset = 0.1
 
             if x_rad_offset < -0.5:
-                x_rad_offset = -0.5
+                x_rad_offset = -0.1
             elif x_rad_offset > 0.5:
-                x_rad_offset = 0.5
+                x_rad_offset = 0.1
             # bound x and y offset each by 0.1
-            msg = [y_rad_offset/3, -x_rad_offset/3, has_target]
+            msg = [y_rad_offset/3, -x_rad_offset/2.5, has_target]
 
             self.last_rad_offset = (y_rad_offset, -x_rad_offset)
         assert self.uart is not None
-        logger.debug(f"MSG: {msg}")
+        #print("MSG: ", msg)
         #for i in range(2):
         self.uart.send_auto_aim(msg)
 

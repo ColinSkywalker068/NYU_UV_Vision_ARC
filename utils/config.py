@@ -7,13 +7,15 @@ general = {
 
 # camera specifications
 camera = {
-    "DEPTH_CAPTURE": False,
-    "CAMERA_INDEX": '../example/vid.mp4',
+    "DEPTH_CAPTURE": True,
+    "CAMERA_INDEX": 0,
     "FRAME_SIZE": (640, 480),
     "FRAME_RATE": 30,
     "RECORD": False,
-    "HFOV": 79.03,
-    "VFOV": 63.62,
+    "HFOV": 55.47,
+    "VFOV": 43.04,
+    "D455_HFOV": 79.03,
+    "D455_VFOV": 43.04,
 }
 
 
@@ -26,22 +28,21 @@ yolo = {
 
 # yolo model with tensorrt weights specification
 yolo_tensorrt = {
-    "ENABLE": False,
+    "ENABLE": True,
     "REPO_PATH": "ultralytics/yolov5",
     "MODEL_SOURCE": "custom",
-    "MODEL_WEIGHTS_PATH": "./../Algorithm/pt_files/best.engine",
+    "MODEL_WEIGHTS_PATH": "./../Algorithm/pt_files/better_yolo.engine",
 }
 
 # specifications for detection
 detection = {
-    "CLASSIC": False,
     "DEBUG": True,
-    "DISPLAY": True,
+    "DISPLAY":True,
     "DETECTION_CONFIDENCE_CUTOFF": 0.25,
-    "NO_TO_DETECT": 3,
+    "NO_TO_DETECT": 1,
     "UART": False,
     "IMU": False,
-    "TRACKING": False,
+    "TRACKING": True,
     "USE_CUDA_FLAGGER": False,
     "FIDUCIAL": False,
 }
@@ -62,8 +63,6 @@ gameplay = {
     "HSV_UPPER_RED_2": (255, 255, 251),
     "HSV_LOWER_BLUE": (60, 45, 131),
     "HSV_UPPER_BLUE": (121, 250, 255),
-    "HSV_LOWER_BLUE_C": (65, 160, 170),
-    "HSV_UPPER_BLUE_C": (122, 255, 205),
 }
 
 fiducials = {
