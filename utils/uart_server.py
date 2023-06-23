@@ -255,7 +255,7 @@ class Uart:
         # lastReceivedWarningRobotTime (time since last warning in ms)
         # ]
         try:
-            print(data[-8:])
+            #print(data[-8:])
             # Don't question it, it works
             data_int=struct.unpack("<xxHxxH", data[-8:])
             #print("DATA_INT: ", data_int)

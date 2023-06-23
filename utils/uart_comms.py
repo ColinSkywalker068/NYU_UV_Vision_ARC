@@ -52,7 +52,7 @@ class Publisher_node:
         msg_type = 1
         header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
 
-        body = struct.pack("iiB", int(msg[0] * 10000), int(msg[1] * 10000), int(msg[2]))
+        body = struct.pack("iiB", int(msg[0] * 1000000), int(msg[1] * 1000000), int(msg[2]))
         footer = struct.pack("H", 0x0)
 
         msg = header + body + footer
@@ -188,17 +188,17 @@ if __name__ == "__main__":
     #     node.send_align_finish([1])
     # # assert()
     # # print("ID: ", node.Uart.get_robot_id())
-    # while True:
-    #     pitch, yaw = node.Uart.get_turret_feedback()
-    #     #print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
-    #     print("(FB m/s,  LR m/s): (", pitch/100, ", ", yaw/100, ")",end='\r')
-    #     #time.sleep(0.01)
-    #     os.system('clear') 
     while True:
-        referee_feedback_data = node.Uart.get_referee_feedback()
-        print(referee_feedback_data, end='\r')
-        os.system('clear')
-        # time.sleep(0.01)
+        pitch, yaw = node.Uart.get_turret_feedback()
+        #print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
+        print("(FB m/s,  LR m/s): (", pitch/100, ", ", yaw/100, ")",end='\r')
+        #time.sleep(0.01)
+        os.system('clear') 
+    # while True:
+    #     referee_feedback_data = node.Uart.get_referee_feedback()
+    #     print(referee_feedback_data, end='\r')
+    #     os.system('clear')
+    #     # time.sleep(0.01)
         
     # print(node.Uart.handle_align_request())
     # print(node.Uart.get_auto_aim_request())

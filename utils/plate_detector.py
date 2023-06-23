@@ -93,12 +93,18 @@ class plate_detector:
         self.last_rad_offset = (0, 0)
 
         # Color FOV for Intel D400 Series cameras
-        self.HFOV = config.camera["HFOV"]
-        self.VFOV = config.camera["VFOV"]
-        self.camera_width = config.camera["FRAME_SIZE"][0]
-        self.center_x = 316.750549316406#self.camera_width / 2#326.653747558594#
-        self.camera_height = config.camera["FRAME_SIZE"][1]
-        self.center_y = 235.639846801758#self.camera_height / 2#237.997650146484#
+        self.HFOV = config.camera_intrinsics[config.camera['CameraVersion']]['HFOV']
+        self.VFOV = config.camera_intrinsics[config.camera['CameraVersion']]['VFOV'] 
+
+        self.camera_width = config.camera_intrinsics[config.camera['CameraVersion']]['Width']
+        self.center_x = config.camera_intrinsics[config.camera['CameraVersion']]['PPX'] 
+        #316.750549316406#self.camera_width / 2#326.653747558594#
+        self.camera_height = config.camera_intrinsics[config.camera['CameraVersion']]['Height']
+        self.center_y = config.camera_intrinsics[config.camera['CameraVersion']]['PPY'] 
+        #235.639846801758#self.camera_height / 2#237.997650146484#
+
+        self.H_OFFSET = config.camera_intrinsics[config.camera['CameraVersion']]['H_OFFSET']
+        self.V_OFFSET = config.camera_intrinsics[config.camera['CameraVersion']]['V_OFFSET']
 
     # Process a color frame
     def process_frame(self, color_image, conf_thres=0.25, k=1, debug=False):
@@ -289,11 +295,11 @@ class plate_detector:
             elif x_rad_offset > 0.5:
                 x_rad_offset = 0.1
             # bound x and y offset each by 0.1
-            msg = [y_rad_offset/3, -x_rad_offset/2.5, has_target]
+            msg = [y_rad_offset/3+self.V_OFFSET, -x_rad_offset/2.5+self.H_OFFSET, has_target]
 
             self.last_rad_offset = (y_rad_offset, -x_rad_offset)
         assert self.uart is not None
-        #print("MSG: ", msg)
+        print("MSG: ", msg)
         #for i in range(2):
         self.uart.send_auto_aim(msg)
 
@@ -322,7 +328,7 @@ def calculate_angle_offsets(
     x_roi, y_roi = roi_center_offsets
     y_roi = camera_height - y_roi
     move_x = x_roi - center_x
-    move_y = y_roi - (center_y * 0.8)
+    move_y = y_roi - center_y#(center_y * 0.8)
     if move_x != 0:
         move_x /= center_x
     if move_y != 0:
