@@ -141,6 +141,6 @@ camera_intrinsics = {
         "HFOV":  79.2,
         "VFOV": 63.78,
         "H_OFFSET": 0.007487,
-        "V_OFFSET": -0.014,
+        "V_OFFSET": 0.004,
     }
 }
