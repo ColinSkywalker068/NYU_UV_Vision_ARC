@@ -144,3 +144,8 @@ camera_intrinsics = {
         "V_OFFSET": 0.004,
     }
 }
+uart_ultrasonic = {
+    "UART_PORT": "/dev/ttyACM0",
+    "UART_BAUDRATE": 9600,
+    "MAPPER": [0, 1, 2, 3]
+}
