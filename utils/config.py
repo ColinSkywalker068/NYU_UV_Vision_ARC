@@ -33,10 +33,10 @@ yolo_tensorrt = {
 
 # specifications for detection
 detection = {
-    "DEBUG": True,
-    "DISPLAY":True,
+    "DEBUG": False,
+    "DISPLAY":False,
     "DETECTION_CONFIDENCE_CUTOFF": 0.5,
-    "NO_TO_DETECT": 1,
+    "NO_TO_DETECT": 2,
     "UART": True,
     "IMU": False,
     "TRACKING": True,
@@ -52,6 +52,7 @@ draw = {"bbox": {"COLOR": (255, 0, 0), "THICKNESS": 2}}
 # not to get the area of everything red, but our method is easier.
 
 gameplay = {
+    "Autonomous": True,
     "ALLY_TEAM_COLOR": "BLUE",
     "OPPONENT_TEAM_COLOR": "RED",
     "HSV_LOWER_RED": (0, 20, 228),
@@ -144,8 +145,10 @@ camera_intrinsics = {
         "V_OFFSET": 0.004,
     }
 }
+
 uart_ultrasonic = {
     "UART_PORT": "/dev/ttyACM0",
     "UART_BAUDRATE": 9600,
-    "MAPPER": [0, 1, 2, 3]
+    "MAPPER": [0, 1, 2, 3],
+    "MIN_DISTANCE": 75,
 }

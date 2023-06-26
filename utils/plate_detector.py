@@ -122,8 +122,9 @@ class plate_detector:
             bboxes: A list of tuples, each tuple containing the 6 specs of each  bounding box that is predicted
             messages: List of strings that are to be printed on the image
         """
-        # if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
-        #    return [], []
+        # return [],[]
+        if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
+           return [], []
 
         # Get bounding boxes
         results = self.model(color_image)
@@ -316,7 +317,7 @@ class plate_detector:
 
             self.last_rad_offset = (y_rad_offset, -x_rad_offset)
         assert self.uart is not None
-        print("MSG: ", msg)
+        # print("MSG: ", msg)
         #for i in range(2):
         self.uart.send_auto_aim(msg)
 

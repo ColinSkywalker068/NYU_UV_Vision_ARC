@@ -9,6 +9,7 @@ import cv2
 import flagger
 from video_record import VideoRecord
 from fiducial_detection import Fiducial_detector
+from uart_distance import UartDistance
 
 if not os.path.exists("../logs/"):
     os.makedirs("../logs/")
@@ -64,19 +65,19 @@ def main():
         flagger=flagger_obj,
         uart=config.detection["UART"],
     )
-    if config.detection["UART"]:
-       count = 0
-       while detector.uart.Uart.get_robot_id() not in [0, 1]:
-           count += 1
-           if count > 100:
-               logger.debug("Robot ID not found")
-               break
-       if count <= 100:
-           flagger_obj.opponent_color = (
-               "RED" if detector.uart.Uart.get_robot_id() else "BLUE"
-           )
-           if config.general["DEBUG_LOGS"]:
-               print("opponent color: ", flagger_obj.opponent_color)
+    # if config.detection["UART"]:
+    #    count = 0
+    #    while detector.uart.Uart.get_robot_id() not in [0, 1]:
+    #        count += 1
+    #        if count > 100:
+    #            logger.debug("Robot ID not found")
+    #            break
+    #    if count <= 100:
+    #        flagger_obj.opponent_color = (
+    #            "RED" if detector.uart.Uart.get_robot_id() else "BLUE"
+    #        )
+    #        if config.general["DEBUG_LOGS"]:
+    #            print("opponent color: ", flagger_obj.opponent_color)
 
     if config.detection["FIDUCIAL"]:
         fiducial_detector = Fiducial_detector(log=False)
@@ -92,6 +93,8 @@ def main():
     mon = monitor.monitor()
     if config.camera["RECORD"]:
         video_saver = VideoRecord()
+
+
 
     while True:
         # obtain frame
