@@ -27,10 +27,19 @@ class Publisher_node:
         # Autonomous
         if config.gameplay['Autonomous']: 
             self.UD = UartDistance()
+            self.thread_ultrasonic = threading.Thread(target=self._start_ultrasonic)
+            self.thread_ultrasonic.start()
 
         # start thread
         self.thread = threading.Thread(target=self._start)
         self.thread.start()
+
+    def _start_ultrasonic(self):
+        while True:
+            if(self.UD.connection.in_waiting >0):
+                self.UD.read_sensor()
+                self.ultrasonic_callback(self.UD.distance)
+            
 
     # called as a thread
     def _start(self):
@@ -40,16 +49,14 @@ class Publisher_node:
                     self.Uart = uart_server.Uart()
                 except:
                     if config.detection["DEBUG"]:
+
                         logger.debug("Uart not initialized1")
                     continue
             try:
-                self.Uart.listener()
 
-                if config.gameplay['Autonomous']:
-                    self.UD.read_sensor()
-                    self.ultrasonic_callback(self.UD.distance)
+                self.Uart.listener()
             except:
-                print("Uart not initialized2")
+                # print("Uart not initialized2")
                 if config.detection["DEBUG"]:
                     logger.debug("Uart not initialized2")
 
@@ -68,8 +75,12 @@ class Publisher_node:
 
         obsticals= [x < config.uart_ultrasonic["MIN_DISTANCE"] for x in msg]
         power = 0.1
-        r_power=0.6
+        r_power=0.8
         time_s=0.3
+
+        # random 0.2 chance to turn left only
+        if np.random.rand() < 0.05:
+            r_power = -r_power
 
         
 
@@ -83,7 +94,7 @@ class Publisher_node:
             # obstical in front, right, and not left => turn left
             elif obsticals[2] and not obsticals[1]:
                 for i in range(2):
-                    self.send_align_request([0, 0,-r_power,0])
+                    self.send_align_request([0, 0,r_power,0])
                 # time.sleep(time_s*2)
             # obstical in front, left, and right => turn around
             elif obsticals[2] and obsticals[1]:
@@ -94,13 +105,13 @@ class Publisher_node:
                 # obstical in front and not left or right
                 # turn right
                 for i in range(2):
-                    self.send_align_request([power, 0,0,0])
+                    self.send_align_request([0, 0,r_power,0])
                 # time.sleep(time_s*2)
         else:
             # no obstical in front
             # go forward
             for i in range(2):
-                self.send_align_request([0,power*2,0,0])
+                self.send_align_request([0,power*4,0,0])
 
         # if obstical in front, left, and not right then turn right
         # if obsticals[0] and obsticals[1] and not obsticals[2]:
