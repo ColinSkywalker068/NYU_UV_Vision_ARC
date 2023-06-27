@@ -9,6 +9,7 @@ import cv2
 import flagger
 from video_record import VideoRecord
 from fiducial_detection import Fiducial_detector
+from uart_distance import UartDistance
 
 if not os.path.exists("../logs/"):
     os.makedirs("../logs/")
@@ -64,19 +65,19 @@ def main():
         flagger=flagger_obj,
         uart=config.detection["UART"],
     )
-    if config.detection["UART"]:
-        count = 0
-        while detector.uart.Uart.get_robot_id() not in [0, 1]:
-            count += 1
-            if count > 100:
-                logger.debug("Robot ID not found")
-                break
-        if count <= 100:
-            flagger_obj.opponent_color = (
-                "RED" if detector.uart.Uart.get_robot_id() else "BLUE"
-            )
-            if config.general["DEBUG_LOGS"]:
-                print("opponent color: ", flagger_obj.opponent_color)
+    # if config.detection["UART"]:
+    #    count = 0
+    #    while detector.uart.Uart.get_robot_id() not in [0, 1]:
+    #        count += 1
+    #        if count > 100:
+    #            logger.debug("Robot ID not found")
+    #            break
+    #    if count <= 100:
+    #        flagger_obj.opponent_color = (
+    #            "RED" if detector.uart.Uart.get_robot_id() else "BLUE"
+    #        )
+    #        if config.general["DEBUG_LOGS"]:
+    #            print("opponent color: ", flagger_obj.opponent_color)
 
     if config.detection["FIDUCIAL"]:
         fiducial_detector = Fiducial_detector(log=False)
@@ -92,6 +93,8 @@ def main():
     mon = monitor.monitor()
     if config.camera["RECORD"]:
         video_saver = VideoRecord()
+
+
 
     while True:
         # obtain frame
@@ -124,6 +127,13 @@ def main():
 
         # show detections on screen
         if config.detection["DISPLAY"]:
+           
+            # draw line of center
+            center_x = int(config.camera_intrinsics[config.camera['CameraVersion']]['PPX'] )
+            center_y = int(config.camera_intrinsics[config.camera['CameraVersion']]['PPY'])
+            c_size=40
+            cv2.line( color_image, (center_x-c_size, center_y), (center_x+c_size, center_y), (0,255,0), 2)
+            cv2.line( color_image, (center_x, center_y-c_size), (center_x, center_y+c_size), (0,255,0), 2)
             mon.draw_on_image(color_image, bboxes, messages)
             if config.detection["FIDUCIAL"]:
                 fid_detection_res = fiducial_detector.detectFiducial(color_image)

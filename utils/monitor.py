@@ -1,5 +1,5 @@
 import cv2
-
+import config
 GREEN_COLOR = (0, 255, 0)
 import os
 os.environ['GDK_SYNCHRONIZE'] = '1'
@@ -64,10 +64,15 @@ class monitor:
         for bbx, label, conf in zip(bbxs, labels, confs):
             # Convert coordinates to integers
             x_min, y_min, x_max, y_max = map(int, bbx)
-
             # Display the bounding box
-            cv2.rectangle(color_image, (x_min, y_min), (x_max, y_max), GREEN_COLOR, 2)
-
+            if config.detection["CLASSIC"]:
+                cv2.rectangle(color_image, bbx, GREEN_COLOR, 2)
+                cv2.circle(color_image, (x_min+x_max//2,y_min+y_max//2), radius=3, color=(0, 0, 255), thickness=-1)
+                
+            else:
+                cv2.rectangle(color_image, (x_min, y_min), (x_max, y_max), GREEN_COLOR, 2)
+                cv2.circle(color_image, ((x_min+x_max)//2,(y_min+y_max)//2), radius=3, color=(0, 0, 255), thickness=-1)
+            
             # Add label with the confidence
             label_conf = f"{label} {conf:.2f}"
             cv2.putText(color_image, label_conf, (x_min, y_min - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, GREEN_COLOR, 2, cv2.LINE_AA)
