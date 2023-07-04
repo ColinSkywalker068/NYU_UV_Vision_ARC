@@ -123,7 +123,7 @@ class plate_detector:
             messages: List of strings that are to be printed on the image
         """
         # print(self.uart.Uart.get_auto_aim_request())
-        if not self.uart.Uart.get_auto_aim_request():
+        if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
         #    print("Not auto aiming")
            return [], []
 
