@@ -133,7 +133,7 @@ class plate_detector:
         )
         return bboxes, messages
 
-    def send_msg(self, bboxes, messages, debug=False):
+    def send_msg(self, bboxes, messages, depth_values, debug=False):
         # @TODO: only sends most confident plate
         # update metric used
         # send bbox at beginning of frame
@@ -157,7 +157,8 @@ class plate_detector:
             self.center_y,
             self.camera_height,
             self.HFOV,
-            self.VFOV,
+            self.VFOV,  
+            depth_values[0] # sending only the first depth value
         )
         # 2. send the offsets to the uart server
         # pitch, yaw
@@ -330,9 +331,9 @@ class plate_detector:
             )
 
 
-@njit(cache=True)
+# @njit(cache=True)
 def calculate_angle_offsets(
-    roi_center_offsets, center_x, center_y, camera_height, HFOV, VFOV
+    roi_center_offsets, center_x, center_y, camera_height, HFOV, VFOV, depth_value=1
 ):
     """
     Returns the pitch and yaw offsets of the detected plate
@@ -354,8 +355,24 @@ def calculate_angle_offsets(
     move_x *= HFOV / 2
     move_y *= VFOV / 2
     move_x, move_y = math.radians(move_x), math.radians(move_y)
-    return move_x, move_y
 
+    bullet_drop = config.detection["BULLET_DROP"]
+    #untested bullet drop code - divine inspiration
+    if config.detection["ENABLE_BULLET_DROP"]:
+        try:
+            depth_int = int(math.floor(depth_value))
+            angle_adjustment = 0
+            if depth_int in bullet_drop:
+                angle_adjustment = bullet_drop[depth_int]
+            # else: # more than 5 meters
+            if depth_value > 5:
+                angle_adjustment = -(depth_value+38)/100 # negative is aiming higher, 38 was hand-tuned and needs to be re-tuned
+            
+            print(f'angle_adjustment = {angle_adjustment:.4f}')
+            move_y += angle_adjustment
+        except Exception as error:
+            print(error)
+    return move_x, move_y
 
 @njit(cache=True)
 def sort_bboxes_by_distance(bboxes, depth_image):
@@ -380,27 +397,65 @@ def sort_bboxes_by_distance(bboxes, depth_image):
         )
     # sort the bboxes by median depth
     sorted_indices = np.argsort(depth_values)
-
-    '''
-    bullet_drop = config.detection["BULLET_DROP"]
-    untested stolen bullet drop code
-    if config.detection["ENABLE_BULLET_DROP"]:
-        try:
-            depth_int = int(math.floor(depth_amount))
-            angle_adjustment = 0
-            if depth_int in bullet_drop:
-                angle_adjustment = bullet_drop[depth_int]
-            # else: # more than 5 meters
-            if depth_amount > 5:
-                angle_adjustment = -(depth_amount+38)/100 # negative is aiming higher, 38 was hand-tuned and needs to be re-tuned
-            
-            print(f'angle_adjustment = {angle_adjustment:.4f}')
-            vertical_angle += angle_adjustment
-        except Exception as error:
-            print(error)
-    '''
-
     
     for i in range(num_bboxes):
         sorted_bboxes[i, :] = bboxes[sorted_indices[i]]
-    return sorted_bboxes
+    return sorted_bboxes, depth_values
+
+# Thank Actual Members for Using numba to speed up the code
+# @njit(cache=True)
+def get_distance_from_array(depth_image, bbox, x_min, x_max, y_min, y_max):
+
+    grid_size = 9
+    if depth_image is None:
+        return 1
+    try:
+        # this is used to add to the current_x and current_y so that we can get the different points in the grid
+        x_interval = len(bbox)  / grid_size
+        y_interval = len(bbox[0]) / grid_size
+        # stores the x and y of the last point in the grid we got the distance from
+        curr_x = 0
+        curr_y = 0
+        distances = np.array([])
+        # double for loop to go through 2D array of 9x9 grid
+        for _ in range(grid_size):
+            curr_x += x_interval # add the interval you calculated to traverse through the 9x9 grid
+            # print(curr_x)
+            if x_min+curr_x >= len(depth_image[0]):
+                break
+            for _ in range(grid_size):
+                curr_y += y_interval # add the interval you calculated to traverse through the 9x9 grid
+                # gets the distance of the point from the depth frame on the grid and appends to the array
+                # print(curr_y)
+                if y_min+curr_y >= len(depth_image):
+                    break
+                    
+                depth_y = int(y_max+curr_y)
+                depth_x = int(x_max+curr_x)
+                distances = np.append(
+                    distances, 
+                    depth_image[depth_y][depth_x]  /  1000,
+                )
+            curr_y = 0
+        
+        distances = distances[distances!=0.0]   # removes all occurances of 0.0 (areas where there is not enough data return 0.0 as depth)
+        median = np.median(distances)           # gets the median from the array
+        std = np.std(distances)                 # gets the standard deviation from the array
+        modified_distances = []                  # initializes a new array for removing outlier numbers
+        # goes through distances array and adds any values that are less than X*standard deviations and ignores the rest
+        for i in range(np.size(distances)):
+            if abs(distances[i] - median) < 1.5 * std: # tune the standard deviation range for better results
+                modified_distances = np.append(modified_distances,distances[i])
+
+        distance = (np.mean(modified_distances)+np.median(modified_distances))/2
+        return distance if (distance and distance>0 and distance<10) else 1
+    except Exception as error:
+        print(f'[aiming:get_distance_from_array] error/warning = {error}')
+        return 1
+
+# Thank Actual Members for Using numba
+# @njit(cache=True)
+def distance(point_1: tuple, point_2: tuple):
+
+    distance = (sum((p1 - p2) ** 2.0 for p1, p2 in zip(point_1, point_2))) ** (1 / 2)
+    return distance
