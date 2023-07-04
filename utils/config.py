@@ -42,6 +42,9 @@ detection = {
     "TRACKING": True,
     "USE_CUDA_FLAGGER": False,
     "FIDUCIAL": False,
+    # at <= __ meter (key), adjust the angle by __ in radians (value)
+    "BULLET_DROP": [0.02, 0.01, -0.01, -0.08, -0.20], #4 - # 0.3 , 5 - 0.4
+    "ENABLE_BULLET_DROP": False
 }
 
 # drawing specifications

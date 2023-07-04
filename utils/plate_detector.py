@@ -380,6 +380,26 @@ def sort_bboxes_by_distance(bboxes, depth_image):
         )
     # sort the bboxes by median depth
     sorted_indices = np.argsort(depth_values)
+
+    '''
+    bullet_drop = config.detection["BULLET_DROP"]
+    untested stolen bullet drop code
+    if config.detection["ENABLE_BULLET_DROP"]:
+        try:
+            depth_int = int(math.floor(depth_amount))
+            angle_adjustment = 0
+            if depth_int in bullet_drop:
+                angle_adjustment = bullet_drop[depth_int]
+            # else: # more than 5 meters
+            if depth_amount > 5:
+                angle_adjustment = -(depth_amount+38)/100 # negative is aiming higher, 38 was hand-tuned and needs to be re-tuned
+            
+            print(f'angle_adjustment = {angle_adjustment:.4f}')
+            vertical_angle += angle_adjustment
+        except Exception as error:
+            print(error)
+    '''
+
     
     for i in range(num_bboxes):
         sorted_bboxes[i, :] = bboxes[sorted_indices[i]]
