@@ -33,7 +33,7 @@ yolo_tensorrt = {
 
 # specifications for detection
 detection = {
-    "DEBUG": False,
+    "DEBUG": True,
     "DISPLAY":False,
     "DETECTION_CONFIDENCE_CUTOFF": 0.5,
     "NO_TO_DETECT": 2,
@@ -154,5 +154,5 @@ uart_ultrasonic = {
     "UART_PORT": "/dev/ttyACM0",
     "UART_BAUDRATE": 9600,
     "MAPPER": [0, 1, 2, 3],
-    "MIN_DISTANCE": 75,
+    "MIN_DISTANCE": 125,
 }

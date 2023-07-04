@@ -9,6 +9,7 @@ from pathlib import Path
 import logging
 from uart_distance import UartDistance
 import numpy as np
+
 logging.basicConfig(
     filename=config.general["LOG_PATH"],
     filemode='a',
@@ -29,10 +30,20 @@ class Publisher_node:
             self.UD = UartDistance()
             self.thread_ultrasonic = threading.Thread(target=self._start_ultrasonic)
             self.thread_ultrasonic.start()
-
+        
         # start thread
         self.thread = threading.Thread(target=self._start)
         self.thread.start()
+        
+
+    def _start_ultrasonic(self):
+        
+        while True:
+            if(self.UD.connection.in_waiting >0):
+                self.UD.read_sensor()
+                self.ultrasonic_callback(self.UD.distance)
+            
+            
 
     def _start_ultrasonic(self):
         while True:
@@ -55,6 +66,7 @@ class Publisher_node:
             try:
 
                 self.Uart.listener()
+
             except:
                 # print("Uart not initialized2")
                 if config.detection["DEBUG"]:
@@ -62,10 +74,10 @@ class Publisher_node:
 
             # self.Uart.listener()
             # delay to prevent cpu overload
-            # time.sleep(0.1)
     # AI-powered autonomous driving (it's just if-statements, give me a break)
     def ultrasonic_callback(self, msg):
-        # print("Ultrasonic: ", msg)
+        # msg=[50 if number > 1200 else number for number in msg]
+        print("Ultrasonic: ", msg)
         # return
         # msg = [front, left, right, back]
         # we send an align request as appropriate depending on the distance
@@ -74,13 +86,15 @@ class Publisher_node:
 
 
         obsticals= [x < config.uart_ultrasonic["MIN_DISTANCE"] for x in msg]
-        power = 0.1
-        r_power=0.8
+        power = 0.2
+        r_power=0.7
         time_s=0.3
+        # 0: no-bayblade, 1: bayblade, 2: reverse-bayblade
+        beyblade=1
 
         # random 0.2 chance to turn left only
-        if np.random.rand() < 0.05:
-            r_power = -r_power
+        # if np.random.rand() < 0.01:
+        #     r_power = -1
 
         
 
@@ -89,29 +103,33 @@ class Publisher_node:
             # obstical in front, left, and not right => turn right
             if obsticals[1] and not obsticals[2]:
                 for i in range(2):
-                    self.send_align_request([0, 0,r_power,0])
+                    # self.send_align_request([power, 0,0,beyblade])
+                    self.send_align_request([0, 0,r_power,beyblade])
                 # time.sleep(time_s*2)
             # obstical in front, right, and not left => turn left
             elif obsticals[2] and not obsticals[1]:
                 for i in range(2):
-                    self.send_align_request([0, 0,r_power,0])
+                    self.send_align_request([-power, 0,0,beyblade])
+                    # self.send_align_request([0, 0,r_power,beyblade])
                 # time.sleep(time_s*2)
             # obstical in front, left, and right => turn around
             elif obsticals[2] and obsticals[1]:
                 for i in range(2):
-                    self.send_align_request([ 0,0,r_power,0])
+                    # self.send_align_request([ 0,-power,0,beyblade])
+                    self.send_align_request([ 0,0,r_power,beyblade])
                 # time.sleep(time_s*4)
             else:
                 # obstical in front and not left or right
                 # turn right
                 for i in range(2):
-                    self.send_align_request([0, 0,r_power,0])
+                    # self.send_align_request([power, 0,0,beyblade])
+                    self.send_align_request([0, 0,r_power,beyblade])
                 # time.sleep(time_s*2)
         else:
             # no obstical in front
             # go forward
             for i in range(2):
-                self.send_align_request([0,power*4,0,0])
+                self.send_align_request([0,power,0,beyblade])
 
         # if obstical in front, left, and not right then turn right
         # if obsticals[0] and obsticals[1] and not obsticals[2]:
@@ -284,14 +302,15 @@ if __name__ == "__main__":
     # while True:
     #     pitch, yaw = node.Uart.get_turret_feedback()
     #     #print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
-    #     print("(FB m/s,  LR m/s): (", pitch/100, ", ", yaw/100, ")",end='\r')
+    #     print("(Pitch deg,  Yaw deg): (", pitch, ", ", yaw, ")",end='\r')
     #     #time.sleep(0.01)
     #     os.system('clear') 
     # while True:
     #     referee_feedback_data = node.Uart.get_referee_feedback()
-    #     print(referee_feedback_data, end='\r')
     #     os.system('clear')
-    #     # time.sleep(0.01)
+    #     print(referee_feedback_data, end='\r')
+        
+        # time.sleep(0.01)
         
     # print(node.Uart.handle_align_request())
     # print(node.Uart.get_auto_aim_request())

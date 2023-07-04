@@ -20,17 +20,20 @@ class UartDistance:
         # front, left, right, back
         self.distance = [0, 0, 0]
         self.distance_mapper = distance_mapper(config.uart_ultrasonic["MAPPER"])
-        while i < 5:
-            try:
-                self.connection = serial.Serial(port=port, baudrate=baudrate)
-            except:
-                if i == 0:
-                    logger.debug(f"uart distance failed port ACM{i}")
-                elif i == 5:
-                    logger.debug(f"uart distance failed to connect")
-                    raise Exception("uart distance failed to connect")
-                i+=1
-                port = '/dev/ttyACM' + str(i)
+        self.connection = serial.Serial(port='/dev/ttyACM0', baudrate=baudrate)
+        self.max_value=1000000
+        self.read_sensor()
+        # read the sensor until we get values that make sense, if any are aboute 10,000, we re-initialize the sensor
+        while self.distance[0] > self.max_value or self.distance[1] > self.max_value or self.distance[2] > self.max_value:
+            self.connection = serial.Serial(port='/dev/ttyACM0', baudrate=baudrate)
+            self.read_sensor()
+
+            i += 1
+            if i > 10:
+                print("uart distance failed to initialize sensor")
+                # logger.debug("uart distance failed to initialize sensor")
+                break
+
     
     def read_sensor(self):
         try:
@@ -38,12 +41,12 @@ class UartDistance:
             raw_bytes = self.connection.read(3*2)
             # print("Raw bytes: ", raw_bytes)
             if raw_bytes:
-                self.read_mutex.acquire()
+                # self.read_mutex.acquire()
                 distance = struct.unpack("<HHH", raw_bytes)
                 self.distance[0] = distance[self.distance_mapper.front]
                 self.distance[1] = distance[self.distance_mapper.left]
                 self.distance[2] = distance[self.distance_mapper.right]
-                self.read_mutex.release()
+                # self.read_mutex.release()
         except:
             print("uart distance failed to read sensor")
             # logger.debug("uart distance failed to read sensor")

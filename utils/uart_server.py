@@ -176,7 +176,7 @@ class Uart:
         except:
             print("Invalid Turret Feedback Message")
             return
-        feedback = [data[0] / 100, data[1] / 100]
+        feedback = [data[0] / 1000000, data[1] / 1000000]
         self.turret_feedback_mutex.acquire()
         self.turret_feedback = feedback
         self.turret_feedback_mutex.release()

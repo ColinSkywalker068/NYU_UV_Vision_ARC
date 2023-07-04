@@ -10,8 +10,6 @@ class distance_mapper:
     def get_left_distance(self):
         return self.left
     def get_right_distance(self):
-        return self.right
-    def get_back_distance(self):
-        return self.back   
+        return self.right 
     def get_all_distances(self):
         return [self.front, self.left, self.right, self.back]
