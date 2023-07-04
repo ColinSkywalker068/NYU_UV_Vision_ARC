@@ -65,19 +65,24 @@ def main():
         flagger=flagger_obj,
         uart=config.detection["UART"],
     )
-    # if config.detection["UART"]:
-    #    count = 0
-    #    while detector.uart.Uart.get_robot_id() not in [0, 1]:
-    #        count += 1
-    #        if count > 100:
-    #            logger.debug("Robot ID not found")
-    #            break
-    #    if count <= 100:
-    #        flagger_obj.opponent_color = (
-    #            "RED" if detector.uart.Uart.get_robot_id() else "BLUE"
-    #        )
-    #        if config.general["DEBUG_LOGS"]:
-    #            print("opponent color: ", flagger_obj.opponent_color)
+    if config.detection["UART"]:
+       count = 0
+       while detector.uart.Uart.get_referee_feedback()['robotID'] in [0, -1] and count <= 100:
+           os.system('clear')   
+           count += 1
+           logger.debug("Robot ID not found")
+           if count > 100:
+               logger.debug("Robot ID not found")
+               break
+       if count <= 100:
+           flagger_obj.opponent_color = (
+            "RED" if detector.uart.Uart.get_referee_feedback()['robotID'] > 100 else "BLUE"
+            #    "RED" if detector.uart.Uart.get_robot_id() else "BLUE"
+           )
+           if config.general["DEBUG_LOGS"]:
+               print("opponent color: ", flagger_obj.opponent_color)
+       else:
+            flagger_obj.opponent_color = config.gameplay["OPPONENT_TEAM_COLOR"]
 
     if config.detection["FIDUCIAL"]:
         fiducial_detector = Fiducial_detector(log=False)
