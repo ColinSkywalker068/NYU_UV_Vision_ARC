@@ -8,9 +8,7 @@ import monitor
 import cv2
 import flagger
 from video_record import VideoRecord
-from fiducial_detection import Fiducial_detector
 from uart_distance import UartDistance
-
 if not os.path.exists("../logs/"):
     os.makedirs("../logs/")
 
@@ -84,9 +82,6 @@ def main():
        else:
             flagger_obj.opponent_color = config.gameplay["OPPONENT_TEAM_COLOR"]
 
-    if config.detection["FIDUCIAL"]:
-        fiducial_detector = Fiducial_detector(log=False)
-
     # create monitor object to display annotated images
     if config.detection["IMU"]:
         imu = camera.imu_sensor()
@@ -140,8 +135,6 @@ def main():
             cv2.line( color_image, (center_x-c_size, center_y), (center_x+c_size, center_y), (0,255,0), 2)
             cv2.line( color_image, (center_x, center_y-c_size), (center_x, center_y+c_size), (0,255,0), 2)
             mon.draw_on_image(color_image, bboxes, messages)
-            if config.detection["FIDUCIAL"]:
-                fid_detection_res = fiducial_detector.detectFiducial(color_image)
 
     # if config.detection["IMU"]:
     #     localizationThread.stop()
