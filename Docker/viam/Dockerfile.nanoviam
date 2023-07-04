@@ -1,0 +1,5 @@
+FROM python:3.11.4
+RUN apt-get update && apt-get -y upgrade && apt-get install -y git
+RUN pip3 install viam-sdk pyserial 
+
+
