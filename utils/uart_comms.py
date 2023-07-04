@@ -9,7 +9,7 @@ from pathlib import Path
 import logging
 from uart_distance import UartDistance
 import numpy as np
-import multiprocessing as mp
+
 logging.basicConfig(
     filename=config.general["LOG_PATH"],
     filemode='a',
@@ -31,7 +31,6 @@ class Publisher_node:
             self.thread_ultrasonic = threading.Thread(target=self._start_ultrasonic)
             self.thread_ultrasonic.start()
         
-
         # start thread
         self.thread = threading.Thread(target=self._start)
         self.thread.start()
@@ -46,6 +45,13 @@ class Publisher_node:
             
             
 
+    def _start_ultrasonic(self):
+        while True:
+            if(self.UD.connection.in_waiting >0):
+                self.UD.read_sensor()
+                self.ultrasonic_callback(self.UD.distance)
+            
+
     # called as a thread
     def _start(self):
         while True:
@@ -58,6 +64,7 @@ class Publisher_node:
                         logger.debug("Uart not initialized1")
                     continue
             try:
+
                 self.Uart.listener()
 
             except:
