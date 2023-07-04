@@ -6,7 +6,7 @@ import numpy as np
 
 def main():
 
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(2)
     # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
@@ -14,9 +14,9 @@ def main():
 
     fid_detector = fiducial_detection.Fiducial_detector()
 
-    fig = plt.figure()
-    ax = plt.axes(projection='3d')
-    ax.view_init(vertical_axis='y')
+    # fig = plt.figure()
+    # ax = plt.axes(projection='3d')
+    # ax.view_init(vertical_axis='y')
 
     # dummy real world for testing
     def plot_real_world(ax):
@@ -24,25 +24,25 @@ def main():
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
-        ax.set_xlim3d(left=-500, right=400)
-        ax.set_ylim3d(bottom=-500, top=400)
-        ax.set_zlim3d(bottom=400, top=-500)
+        ax.set_xlim3d(left=-125, right=12125)
+        ax.set_ylim3d(bottom=-125, top=925)
+        ax.set_zlim3d(bottom=0, top=250)
 
         # ax.plot3D(xs=[0,106,106,0,0],ys=[0,0,150,150,0],zs=[0,106,106,0,0],c='black')
         # ax.plot3D(xs=[0,53,106],ys=[0,150,0],zs=[0,53,106],c='black')
         
         # ax.plot3D(xs =[106,0,0,106,106],ys=[0,0,150,150,0],zs=[106,212,212,106,106],c='black')
 
-        ax.plot3D(xs=[0,150,150,0,0],ys=[0,0,150,150,0],zs=[0,0,0,0,0],c='black')
+        # ax.plot3D(xs=[0,150,150,0,0],ys=[0,0,150,150,0],zs=[0,0,0,0,0],c='black')
         #ax.plot3D(xs=[0,0,0],ys=[0,150,0],zs=[0,75,150],c='black')
         
 
 
     while(ret):
         ret_dict = fid_detector.detectFiducial(frame)
-        plt.pause(0.05)
-        ax.clear()
-        plot_real_world(ax)
+        # plt.pause(0.05)
+        # ax.clear()
+        # plot_real_world(ax)
         
 
 
@@ -59,13 +59,13 @@ def main():
             # cam_normal = ret_dict['n']
             # ax.plot3D(xs=[0,cam_normal[0]], ys=[0,cam_normal[1]], zs=[0,cam_normal[2]])
 
-            ax.scatter3D(xs=loc[0], ys=loc[1], zs=loc[2], c='red', s=2)
+            # ax.scatter3D(xs=loc[0], ys=loc[1], zs=loc[2], c='red', s=2)
 
         ret, frame = cap.read()
 
-    plt.show()
+    # plt.show()
 
 
 
-if __name__=='__main__':
+if __name__=="__main__":
     main()

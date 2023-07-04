@@ -69,17 +69,17 @@ gameplay = {
 
 fiducials = {
     "camera_intrinsic_matrix": {
-        "camera_focal_length_x": 387.909576416016,
+        "camera_focal_length_x": 386.750671386719,
         "camera_center_x": 326.653747558594,
-        "camera_focal_length_y": 386.904052734375,
+        "camera_focal_length_y":  385.748138427734,
         "camera_center_y": 237.997650146484,
     },
     "camera_distortion_coefficients": {
-        "camera_dist_coeff_k1": -0.07231168346387425,
-        "camera_dist_coeff_k2": 0.054653045623148634,
-        "camera_dist_coeff_p1": 0.013779335161555138,
-        "camera_dist_coeff_p2": 0.005759852619212033,
-        "camera_dist_coeff_k3": 0.15626401335130446,
+        "camera_dist_coeff_k1": -0.0544583909213543,
+        "camera_dist_coeff_k2": 0.0612407959997654,
+        "camera_dist_coeff_p1":-0.00126419449225068,
+        "camera_dist_coeff_p2": 0.000465608172817156,
+        "camera_dist_coeff_k3": -0.0198560617864132,
     },
     "markers": [
         {"marker_id": "A", "marker_file": "./../fiducial_markers/marker_A.png"},

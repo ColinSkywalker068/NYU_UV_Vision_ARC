@@ -143,7 +143,6 @@ def get_contour_bits(im,cnt,bits):
   res = getRes(im_er ,pixelLen)
 
   return res, dst
-
 # def get_contour_bits(im,cnt,bits):
 #   """ 
 #   bits = total number of bits in the fiducial. For RM it is 49 bits in total arranged in a 7x7 grid
@@ -254,7 +253,7 @@ def draw_t_offset_line(rvec, tvec, camera_matrix,camera_dist_matrix, image):
   
   # Puts text on image
   text = str(dist.round(2))
-  image = cv2.putText(image, text, text_center, font, fontScale, color, thickness, cv2.LINE_AA)
+  # image = cv2.putText(image, text, text_center, font, fontScale, color, thickness, cv2.LINE_AA)
   return image
 
 
@@ -264,6 +263,34 @@ def loadMarkers(markers):
     marker['sig'] = load_marker_dictionary(marker_img, bits=49)
 
 
+@njit(cache=True)
+def getMarkerMatch(image_signal,m_signal_tuple, threshold) -> tuple:
+    m_signal = np.array(m_signal_tuple[0])
+    m_orientation_index = m_signal_tuple[1]
+    n_misses = np.abs(np.sum((m_signal-image_signal)*m_signal))
+    if (m_signal.sum()-n_misses)>=int(threshold*m_signal.sum()):
+      return (m_signal.sum()-n_misses, m_orientation_index)
+    else:
+      return (0,0)
+  
+
+@njit(cache=True)
+def sortHits(hits):
+    hits.sort(key = lambda x: x[1]) 
+    return hits
+
+
+def matchMarker(markers, image_signal, threshold):
+    hits = []
+    for marker in markers:
+      for m_signal_tuple in marker['sig']:
+         sum_,index= getMarkerMatch(image_signal,m_signal_tuple, threshold)
+         if sum_ >0:
+           hits.append((marker['marker_id'],sum_, index))
+    if len(hits)>0:
+      hits = sortHits(hits)
+    #print('hits', hits)
+    return hits
 
 class Fiducial_detector:
   # Class for foducial detector object that can be used to analyze image frames to give the camera offset and distance from the origin
@@ -351,6 +378,7 @@ class Fiducial_detector:
   def detectFiducial(self, frame, delta=1):
     print("--------------")
     hits, res_contours, res_image, detected_color= self.findMarker(frame, threshold=delta)
+
     
 
     if len(hits) == 0:
@@ -360,7 +388,7 @@ class Fiducial_detector:
 
       return res
 
-    detected_marker_char = hits[-1][0]
+    detected_marker_char = 'R_' + hits[-1][0] if detected_color[0] is 'R' else 'BL_' + hits[-1][0]
 
     # Estimate pose of marker in 3D space 
     _, rvec, tvec = cv2.solvePnP(self.marker_coords_rw[hits[-1][2]] + np.array([-76.2,-76.2,0]) , res_contours, self.camera_matrix, self.camera_distortion_matrix)
@@ -373,12 +401,12 @@ class Fiducial_detector:
 
     # Converts img_points to integer values and reshapes into 4x2 array. 
     # Draws line between first point in img_points and the other three points 
-    if self.log:
-      img_points = np.int32(img_points.reshape((4,2)))
+    # if self.log:
+    #   img_points = np.int32(img_points.reshape((4,2)))
 
-      res_image = cv2.line(res_image, img_points[0],img_points[1],(255,0,0),2)
-      res_image = cv2.line(res_image, img_points[0],img_points[2],(0,255,0),2)
-      res_image = cv2.line(res_image, img_points[0],img_points[3],(0,0,255),2)
+    #   res_image = cv2.line(res_image, img_points[0],img_points[1],(255,0,0),2)
+    #   res_image = cv2.line(res_image, img_points[0],img_points[2],(0,255,0),2)
+    #   res_image = cv2.line(res_image, img_points[0],img_points[3],(0,0,255),2)
 
     font = cv2.FONT_HERSHEY_SIMPLEX  
     fontScale = 1.5
@@ -394,10 +422,10 @@ class Fiducial_detector:
     invRotM = np.linalg.inv(rotM)
 
     text = "Translation Cam as origin: "+str(tvec[0].round(2)) + ',' +str(tvec[1].round(2))+' '+str(tvec[2].round(2))
-    res_image = cv2.putText(res_image, text, (200,350) ,font, fontScale, color, thickness, cv2.LINE_AA)
+    # res_image = cv2.putText(res_image, text, (200,350) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
     text = "Translation Marker as origin: "+str(invRotM[:,3][0].round(2)) + ',' +str(invRotM[:,3][1].round(2))+' '+str(invRotM[:,3][2].round(2))
-    res_image = cv2.putText(res_image, text, (200,400) ,font, fontScale, color, thickness, cv2.LINE_AA)
+    # res_image = cv2.putText(res_image, text, (200,400) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
     R = invRotM[:3,:3]
 
@@ -423,18 +451,18 @@ class Fiducial_detector:
     print("camera_plane",camera_plane_wrt_marker)
 
     text = "Rotation: " + str(roll.round(2)) + ',' +str(pitch.round(2)) + ',' + str(yaw.round(2))
-    res_image = cv2.putText(res_image, text, (200,550) ,font, fontScale, color, thickness, cv2.LINE_AA)
+    # res_image = cv2.putText(res_image, text, (200,550) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
 
     text = "Color: " + detected_color
-    res_image = cv2.putText(res_image, text, (200,650) ,font, fontScale, color, thickness, cv2.LINE_AA)
+    # print(text)
+    # res_image = cv2.putText(res_image, text, (200,650) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
     # Draw Line
-    res_image = draw_t_offset_line(rvec, tvec, self.camera_matrix,self.camera_distortion_matrix, res_image)
+    # res_image = draw_t_offset_line(rvec, tvec, self.camera_matrix,self.camera_distortion_matrix, res_image)
     
     try:
       tvec = np.append(tvec,np.array([[1]]))
-      
       tx_matrix = self.tx_matrices[detected_marker_char]
       rw_loc_cam = tx_matrix@translation_cm_wrt_marker_vector
       camera_lane_rw = tx_matrix*camera_plane_wrt_marker
@@ -449,12 +477,12 @@ class Fiducial_detector:
       
 
 
-    cv2.imshow('ROBOMASTER', res_image)
-    cv2.waitKey(20)
+    # cv2.imshow('ROBOMASTER', res_image)
+    # cv2.waitKey(20)
 
     
     if len(hits)>0:
-      detected_marker_char = hits[-1][0]
+      detected_marker_char = 'R_' + hits[-1][0] if detected_color[0] is 'R' else 'BL_' + hits[-1][0]
     else:
       detected_marker_char = ''
 
@@ -472,8 +500,7 @@ class Fiducial_detector:
     
 
 
-  #given the signature of the detected fiducial, a match is found among the dictionary of established fiducials
-
+  # #given the signature of the detected fiducial, a match is found among the dictionary of established fiducials
   # def matchMarker(self, image_signal, threshold):
   #   hits = []
   #   for marker in self.markers:
@@ -523,7 +550,7 @@ class Fiducial_detector:
     # Displays original image if no contours found 
     if len(contours)==0:
       if self.log:
-        cv2.imshow('ROBOMASTER', orig_img)
+        # cv2.imshow('ROBOMASTER', orig_img)
         cv2.waitKey(20)
 
       return [],[],None,''
@@ -556,7 +583,7 @@ class Fiducial_detector:
     # Check if contour successfully detected
     if len(res_contours)==0:
       if self.log:
-        cv2.imshow('ROBOMASTER', orig_img)
+        # cv2.imshow('ROBOMASTER', orig_img)
         cv2.waitKey(20)
       return [],[],None,''
     
@@ -575,11 +602,13 @@ class Fiducial_detector:
     detected_color = self.fid_flagger.red_or_blue(warped_image)
 
     # Compares marker to marker patterns
-    hits = self.matchMarker(image_signal, threshold)
+    hits = matchMarker(self.markers,image_signal, threshold)
+    # hits = self.matchMarker(image_signal, threshold)
 
     # Checks if any mathces
     if len(hits)>0:
-      detected_marker_char = hits[-1][0]
+      # assert(detected_color[0] is 'R' or detected_color[0] is 'B'), print('Invalid color detected: ', detected_color)
+      detected_marker_char = 'R_' + hits[-1][0] if detected_color[0] is 'R' else 'BL_' + hits[-1][0]
     else:
       detected_marker_char = ''
 
@@ -593,7 +622,7 @@ class Fiducial_detector:
       color = (255, 0, 0)
       thickness = 2
     
-      res_image = cv2.putText(res_image,detected_marker_char,(200,250) ,font, fontScale, color, thickness, cv2.LINE_AA)
+      # res_image = cv2.putText(res_image,detected_marker_char,(200,250) ,font, fontScale, color, thickness, cv2.LINE_AA)
       
     return hits, res_contours, res_image, detected_color
     

@@ -9,6 +9,9 @@ from pathlib import Path
 import logging
 from uart_distance import UartDistance
 import numpy as np
+from fiducial_detection import Fiducial_detector
+#mutex
+from threading import Lock
 
 logging.basicConfig(
     filename=config.general["LOG_PATH"],
@@ -30,27 +33,47 @@ class Publisher_node:
             self.UD = UartDistance()
             self.thread_ultrasonic = threading.Thread(target=self._start_ultrasonic)
             self.thread_ultrasonic.start()
+        if config.detection["FIDUCIAL"]:
+            self.fiducial_detector = Fiducial_detector(log=False)
+            self.fiducial_result = None
+            self.fiducial_lock=Lock()
+            self.threading_fiducial = threading.Thread(target=self._start_fiducial)
+            self.threading_fiducial.start()
         
         # start thread
         self.thread = threading.Thread(target=self._start)
         self.thread.start()
-        
+
+    
+    def _start_fiducial(self):
+        while True:
+            if not self.Uart.get_auto_aim_request():
+                continue
+            if self.fiducial_lock.locked():
+                continue
+            self.fiducial_lock.acquire()
+            #@TODO: add frame
+            self.fiducial_result = self.fiducial_detector.detectFiducial()
+            self.fiducial_lock.release()
+            time.sleep(0.1)
+    def _get_current_position_from_fiducial(self):
+        self.fiducial_lock.acquire()
+        result = self.fiducial_result
+        self.fiducial_lock.release()
+        if result['success']:
+            return result
+        else:
+            return None
+            
+            
 
     def _start_ultrasonic(self):
-        
         while True:
             if(self.UD.connection.in_waiting >0):
                 self.UD.read_sensor()
                 self.ultrasonic_callback(self.UD.distance)
             
-            
 
-    def _start_ultrasonic(self):
-        while True:
-            if(self.UD.connection.in_waiting >0):
-                self.UD.read_sensor()
-                self.ultrasonic_callback(self.UD.distance)
-            
 
     # called as a thread
     def _start(self):

@@ -123,9 +123,9 @@ class plate_detector:
             messages: List of strings that are to be printed on the image
         """
         # print(self.uart.Uart.get_auto_aim_request())
-        # if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
-        # #    print("Not auto aiming")
-        #    return [], []
+        if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
+        #    print("Not auto aiming")
+           return [], []
 
         # Get bounding boxes
         results = self.model(color_image)
