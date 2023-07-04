@@ -6,7 +6,7 @@ import numpy as np
 
 def main():
 
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(3)
     # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
@@ -24,9 +24,9 @@ def main():
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
-        ax.set_xlim3d(left=-500, right=400)
-        ax.set_ylim3d(bottom=-500, top=400)
-        ax.set_zlim3d(bottom=400, top=-500)
+        ax.set_xlim3d(left=-125, right=12125)
+        ax.set_ylim3d(bottom=-125, top=925)
+        ax.set_zlim3d(bottom=0, top=250)
 
         # ax.plot3D(xs=[0,106,106,0,0],ys=[0,0,150,150,0],zs=[0,106,106,0,0],c='black')
         # ax.plot3D(xs=[0,53,106],ys=[0,150,0],zs=[0,53,106],c='black')
@@ -67,5 +67,5 @@ def main():
 
 
 
-if __name__=='__main__':
+if __name__=="__main__":
     main()

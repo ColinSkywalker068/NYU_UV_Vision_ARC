@@ -75,40 +75,16 @@ def orientWRTaxes(coords):
   return res, n
 
 
-
-def get_contour_bits(im,cnt,bits):
-  """ 
-  bits = total number of bits in the fiducial. For RM it is 49 bits in total arranged in a 7x7 grid
-  img = camera feed frame that contains the fiducial
-  cnt = contour of the detected fiducial
-  This function takes in the image, extracts the detected fiducial, coverts it into a rectangular image
-  and gives out the signature of the detected fiducial
-  """
+@njit(cache=True)
+def getPixelLen_Corners(bits):
   # Calculates pixel length
   pixelLen = int(math.sqrt(bits))
 
   # Corners of square / fiducial marker
   corners = np.array([[0,0],[bits,0],[bits,bits],[0,bits]],np.float32)
-
-  # Transformation Matrix that maps the contour points to corners
-  M = cv2.getPerspectiveTransform(cnt, corners)
-
-  # Apply transformation onto input image and store in variable
-  dst = cv2.warpPerspective(im, M, (bits, bits),flags=cv2.INTER_LINEAR)
-  #cv2.imshow(dst) 
-
-  # Converst dst to greyscale
-  gs =  cv2.cvtColor(dst, cv2.COLOR_BGR2GRAY)
-  ret, im_thres = cv2.threshold(gs, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-  #cv2.imshow(im_thres)
-
-  # Create rectangular structuring object
-  element = cv2.getStructuringElement(cv2.MORPH_RECT,(3,3))
-
-  # Applies erosion element onto im_thres
-  im_er = cv2.erode(im_thres,element)
-  #cv2.imshow(im_er)
-
+  return pixelLen, corners
+@njit(cache=True)
+def getRes(im_er ,pixelLen):
   # Computes szie of im_er and size of each grid cell
   im_size=im_er.shape
   #print("Image Shape:",im_size)
@@ -131,8 +107,99 @@ def get_contour_bits(im,cnt,bits):
         res.append(1)
       else:
         res.append(0)
-  
+  return res
+
+
+def get_contour_bits(im,cnt,bits):
+  """ 
+  bits = total number of bits in the fiducial. For RM it is 49 bits in total arranged in a 7x7 grid
+  img = camera feed frame that contains the fiducial
+  cnt = contour of the detected fiducial
+  This function takes in the image, extracts the detected fiducial, coverts it into a rectangular image
+  and gives out the signature of the detected fiducial
+  """
+
+  pixelLen,corners = getPixelLen_Corners(bits) 
+
+  # Transformation Matrix that maps the contour points to corners
+  M = cv2.getPerspectiveTransform(cnt, corners)
+
+  # Apply transformation onto input image and store in variable
+  dst = cv2.warpPerspective(im, M, (bits, bits),flags=cv2.INTER_LINEAR)
+  #cv2.imshow(dst) 
+
+  # Converst dst to greyscale
+  gs =  cv2.cvtColor(dst, cv2.COLOR_BGR2GRAY)
+  ret, im_thres = cv2.threshold(gs, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+  #cv2.imshow(im_thres)
+
+  # Create rectangular structuring object
+  element = cv2.getStructuringElement(cv2.MORPH_RECT,(3,3))
+
+  # Applies erosion element onto im_thres
+  im_er = cv2.erode(im_thres,element)
+  #cv2.imshow(im_er)
+
+  res = getRes(im_er ,pixelLen)
+
   return res, dst
+# def get_contour_bits(im,cnt,bits):
+#   """ 
+#   bits = total number of bits in the fiducial. For RM it is 49 bits in total arranged in a 7x7 grid
+#   img = camera feed frame that contains the fiducial
+#   cnt = contour of the detected fiducial
+#   This function takes in the image, extracts the detected fiducial, coverts it into a rectangular image
+#   and gives out the signature of the detected fiducial
+#   """
+#   # Calculates pixel length
+#   pixelLen = int(math.sqrt(bits))
+
+#   # Corners of square / fiducial marker
+#   corners = np.array([[0,0],[bits,0],[bits,bits],[0,bits]],np.float32)
+
+#   # Transformation Matrix that maps the contour points to corners
+#   M = cv2.getPerspectiveTransform(cnt, corners)
+
+#   # Apply transformation onto input image and store in variable
+#   dst = cv2.warpPerspective(im, M, (bits, bits),flags=cv2.INTER_LINEAR)
+#   #cv2.imshow(dst) 
+
+#   # Converst dst to greyscale
+#   gs =  cv2.cvtColor(dst, cv2.COLOR_BGR2GRAY)
+#   ret, im_thres = cv2.threshold(gs, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+#   #cv2.imshow(im_thres)
+
+#   # Create rectangular structuring object
+#   element = cv2.getStructuringElement(cv2.MORPH_RECT,(3,3))
+
+#   # Applies erosion element onto im_thres
+#   im_er = cv2.erode(im_thres,element)
+#   #cv2.imshow(im_er)
+
+#   # Computes szie of im_er and size of each grid cell
+#   im_size=im_er.shape
+#   #print("Image Shape:",im_size)
+#   grid_cell_size = (im_size[0]//pixelLen, im_size[1]//pixelLen)
+#   #print("Grid Cell size:",grid_cell_size)
+
+#   # Loop and calculate mean intensity of each cell
+#   res = []
+#   for r in range(pixelLen):
+#     for c in range(pixelLen):
+#       y_1 = int(r * pixelLen )
+#       x_1 = int(c * pixelLen )
+#       y_2 = y_1 + grid_cell_size[1]
+#       x_2 = x_1 + grid_cell_size[0]
+#       cell = im_er[y_1:y_2,x_1:x_2]
+#       #cv2_imshow(cell)
+#       cell_val = cell.mean()/255
+
+#       if cell_val>0.3:
+#         res.append(1)
+#       else:
+#         res.append(0)
+  
+#   return res, dst
 
 def load_marker_dictionary(marker,bits):
   
@@ -196,6 +263,34 @@ def loadMarkers(markers):
     marker['sig'] = load_marker_dictionary(marker_img, bits=49)
 
 
+@njit(cache=True)
+def getMarkerMatch(image_signal,m_signal_tuple, threshold) -> tuple:
+    m_signal = np.array(m_signal_tuple[0])
+    m_orientation_index = m_signal_tuple[1]
+    n_misses = np.abs(np.sum((m_signal-image_signal)*m_signal))
+    if (m_signal.sum()-n_misses)>=int(threshold*m_signal.sum()):
+      return (m_signal.sum()-n_misses, m_orientation_index)
+    else:
+      return (0,0)
+  
+
+@njit(cache=True)
+def sortHits(hits):
+    hits.sort(key = lambda x: x[1]) 
+    return hits
+
+
+def matchMarker(markers, image_signal, threshold):
+    hits = []
+    for marker in markers:
+      for m_signal_tuple in marker['sig']:
+         sum_,index= getMarkerMatch(image_signal,m_signal_tuple, threshold)
+         if sum_ >0:
+           hits.append((marker['marker_id'],sum_, index))
+    if len(hits)>0:
+      hits = sortHits(hits)
+    #print('hits', hits)
+    return hits
 
 class Fiducial_detector:
   # Class for foducial detector object that can be used to analyze image frames to give the camera offset and distance from the origin
@@ -283,6 +378,7 @@ class Fiducial_detector:
   def detectFiducial(self, frame, delta=1):
     print("--------------")
     hits, res_contours, res_image, detected_color= self.findMarker(frame, threshold=delta)
+
     
 
     if len(hits) == 0:
@@ -292,7 +388,7 @@ class Fiducial_detector:
 
       return res
 
-    detected_marker_char = hits[-1][0]
+    detected_marker_char = 'R_' + hits[-1][0] if detected_color[0] is 'R' else 'BL_' + hits[-1][0]
 
     # Estimate pose of marker in 3D space 
     _, rvec, tvec = cv2.solvePnP(self.marker_coords_rw[hits[-1][2]] + np.array([-76.2,-76.2,0]) , res_contours, self.camera_matrix, self.camera_distortion_matrix)
@@ -359,6 +455,7 @@ class Fiducial_detector:
 
 
     text = "Color: " + detected_color
+    # print(text)
     res_image = cv2.putText(res_image, text, (200,650) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
     # Draw Line
@@ -366,7 +463,6 @@ class Fiducial_detector:
     
     try:
       tvec = np.append(tvec,np.array([[1]]))
-      
       tx_matrix = self.tx_matrices[detected_marker_char]
       rw_loc_cam = tx_matrix@translation_cm_wrt_marker_vector
       camera_lane_rw = tx_matrix*camera_plane_wrt_marker
@@ -386,7 +482,7 @@ class Fiducial_detector:
 
     
     if len(hits)>0:
-      detected_marker_char = hits[-1][0]
+      detected_marker_char = 'R_' + hits[-1][0] if detected_color[0] is 'R' else 'BL_' + hits[-1][0]
     else:
       detected_marker_char = ''
 
@@ -404,29 +500,29 @@ class Fiducial_detector:
     
 
 
-  #given the signature of the detected fiducial, a match is found among the dictionary of established fiducials
-  def matchMarker(self, image_signal, threshold):
-    hits = []
-    for marker in self.markers:
-      for m_signal_tuple in marker['sig']:
-        m_signal = np.array(m_signal_tuple[0])
-        m_orientation_index = m_signal_tuple[1]
-        n_misses = np.abs(np.sum((m_signal-image_signal)*m_signal))
+  # #given the signature of the detected fiducial, a match is found among the dictionary of established fiducials
+  # def matchMarker(self, image_signal, threshold):
+  #   hits = []
+  #   for marker in self.markers:
+  #     for m_signal_tuple in marker['sig']:
+  #       m_signal = np.array(m_signal_tuple[0])
+  #       m_orientation_index = m_signal_tuple[1]
+  #       n_misses = np.abs(np.sum((m_signal-image_signal)*m_signal))
 
-        if self.log:
-          #print("Total no. of correct bits:",m_signal.sum(),"Misses:",n_misses, "Threshold:",(int(threshold*m_signal.sum())))
-          pass
+  #       if self.log:
+  #         #print("Total no. of correct bits:",m_signal.sum(),"Misses:",n_misses, "Threshold:",(int(threshold*m_signal.sum())))
+  #         pass
 
-        if (m_signal.sum()-n_misses)>=int(threshold*m_signal.sum()):
-          hits.append((marker['marker_id'],m_signal.sum()-n_misses, m_orientation_index))
+  #       if (m_signal.sum()-n_misses)>=int(threshold*m_signal.sum()):
+  #         hits.append((marker['marker_id'],m_signal.sum()-n_misses, m_orientation_index))
           
-    if len(hits)==1:
-      detectedChar = hits[0][0]
-    elif len(hits)>1:
-      #print("{} hits found, considering only the first".format(len(hits)))
-      hits.sort(key = lambda x: x[1]) 
-    #print('hits', hits)
-    return hits
+  #   if len(hits)==1:
+  #     detectedChar = hits[0][0]
+  #   elif len(hits)>1:
+  #     #print("{} hits found, considering only the first".format(len(hits)))
+  #     hits.sort(key = lambda x: x[1]) 
+  #   #print('hits', hits)
+  #   return hits
 
 
 
@@ -506,11 +602,13 @@ class Fiducial_detector:
     detected_color = self.fid_flagger.red_or_blue(warped_image)
 
     # Compares marker to marker patterns
-    hits = self.matchMarker(image_signal, threshold)
+    hits = matchMarker(self.markers,image_signal, threshold)
+    # hits = self.matchMarker(image_signal, threshold)
 
     # Checks if any mathces
     if len(hits)>0:
-      detected_marker_char = hits[-1][0]
+      # assert(detected_color[0] is 'R' or detected_color[0] is 'B'), print('Invalid color detected: ', detected_color)
+      detected_marker_char = 'R_' + hits[-1][0] if detected_color[0] is 'R' else 'BL_' + hits[-1][0]
     else:
       detected_marker_char = ''
 

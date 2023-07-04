@@ -69,10 +69,10 @@ gameplay = {
 
 fiducials = {
     "camera_intrinsic_matrix": {
-        "camera_focal_length_x": 387.909576416016,
-        "camera_center_x": 326.653747558594,
-        "camera_focal_length_y": 386.904052734375,
-        "camera_center_y": 237.997650146484,
+        "camera_focal_length_x": 321.325225830078,
+        "camera_center_x": 321.325225830078,
+        "camera_focal_length_y": 246.889373779297,
+        "camera_center_y": 246.889373779297,
     },
     "camera_distortion_coefficients": {
         "camera_dist_coeff_k1": -0.07231168346387425,
