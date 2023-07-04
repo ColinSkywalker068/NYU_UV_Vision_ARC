@@ -83,7 +83,7 @@ class Publisher_node:
         r_power=0.7
         time_s=0.3
         # 0: no-bayblade, 1: bayblade, 2: reverse-bayblade
-        beyblade=1
+        beyblade=2
 
         # random 0.2 chance to turn left only
         # if np.random.rand() < 0.01:
@@ -102,8 +102,8 @@ class Publisher_node:
             # obstical in front, right, and not left => turn left
             elif obsticals[2] and not obsticals[1]:
                 for i in range(2):
-                    self.send_align_request([-power, 0,0,beyblade])
-                    # self.send_align_request([0, 0,r_power,beyblade])
+                    # self.send_align_request([-power, 0,0,beyblade])
+                    self.send_align_request([0, 0,r_power,beyblade])
                 # time.sleep(time_s*2)
             # obstical in front, left, and right => turn around
             elif obsticals[2] and obsticals[1]:
@@ -115,14 +115,23 @@ class Publisher_node:
                 # obstical in front and not left or right
                 # turn right
                 for i in range(2):
-                    # self.send_align_request([power, 0,0,beyblade])
-                    self.send_align_request([0, 0,r_power,beyblade])
+                    self.send_align_request([power, 0,0,beyblade])
+                    # self.send_align_request([0, 0,r_power,beyblade])
                 # time.sleep(time_s*2)
         else:
             # no obstical in front
             # go forward
-            for i in range(2):
-                self.send_align_request([0,power,0,beyblade])
+            if obsticals[1] and not obsticals[2]:
+                # move right
+                for i in range(2):
+                    self.send_align_request([power/2, power/2,0,beyblade])
+            elif obsticals[2] and not obsticals[1]:
+                # move left
+                for i in range(2):
+                    self.send_align_request([-power, -power/2,0,beyblade])
+            else:
+                for i in range(2):
+                    self.send_align_request([0,power,0,beyblade])
 
         # if obstical in front, left, and not right then turn right
         # if obsticals[0] and obsticals[1] and not obsticals[2]:
@@ -288,8 +297,8 @@ if __name__ == "__main__":
     #     node.send_align_request([0.2, 0.0, 0, 0])
     # time.sleep(2.3)
     #     # node.send_gimbal_movement([0.1,-0.1,0])
-    # for i in range(2):
-    #     node.send_align_finish([1])
+    for i in range(2):
+        node.send_align_finish([1])
     # # assert()
     # # print("ID: ", node.Uart.get_robot_id())
     # while True:
