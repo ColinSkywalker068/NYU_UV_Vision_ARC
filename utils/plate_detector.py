@@ -123,9 +123,9 @@ class plate_detector:
             messages: List of strings that are to be printed on the image
         """
         # print(self.uart.Uart.get_auto_aim_request())
-        if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
-        #    print("Not auto aiming")
-           return [], []
+        # if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
+        # #    print("Not auto aiming")
+        #    return [], []
 
         # Get bounding boxes
         results = self.model(color_image)
@@ -172,10 +172,10 @@ class plate_detector:
             self.center_x > x_min
             and self.center_x < x_max
             and self.center_y > y_min
-            and self.center_y < y_max
+            # and self.center_y < y_max
         )
-        #print("XRAD: ", x_rad_offset)
-        #print("YRAD: ", y_rad_offset)
+        # print("XRAD: ", x_rad_offset)
+        # print("YRAD: ", y_rad_offset)
         logger.debug(
                 "x= {}, y= {}, target= {} ".format( -x_rad_offset, y_rad_offset, has_target)
             )
@@ -313,13 +313,13 @@ class plate_detector:
             elif x_rad_offset > 0.5:
                 x_rad_offset = 0.1
             # bound x and y offset each by 0.1
-            msg = [y_rad_offset/1.0+self.V_OFFSET, 
+            msg = [y_rad_offset/1.0,#+self.V_OFFSET, 
             -x_rad_offset/1.0,#+self.H_OFFSET, 
             has_target]
 
             self.last_rad_offset = (y_rad_offset, -x_rad_offset)
         assert self.uart is not None
-        # print("MSG: ", msg)
+        print("MSG: ", msg)
         #for i in range(2):
         self.uart.send_auto_aim(msg)
 
@@ -348,7 +348,7 @@ def calculate_angle_offsets(
     x_roi, y_roi = roi_center_offsets
     y_roi = camera_height - y_roi
     move_x = x_roi - center_x
-    move_y = y_roi - center_y#(center_y * 0.8)
+    move_y = y_roi - center_y#*0.8#(center_y * 0.8)
     if move_x != 0:
         move_x /= center_x
     if move_y != 0:
@@ -362,20 +362,25 @@ def calculate_angle_offsets(
     if config.detection["ENABLE_BULLET_DROP"]:
         try:
             depth_int = int(math.floor(depth_value))
+            # print(f'depth_int = {depth_int}')
             angle_adjustment = 0
-            if depth_int in bullet_drop:
+            if depth_int < len(bullet_drop):
+            # if depth_int in bullet_drop:
                 angle_adjustment = bullet_drop[depth_int]
             # else: # more than 5 meters
+            # Regression Polynomial: y = 0.0113995972 x 3 − 0.0743127751 x 2 + 0.1227149043 x + 0.0217867933
             if depth_value > 5:
-                angle_adjustment = -(depth_value+38)/100 # negative is aiming higher, 38 was hand-tuned and needs to be re-tuned
+                angle_adjustment -= (0.0113995972 * depth_value ** 3 - 0.0743127751 * depth_value ** 2 + 0.1227149043 * depth_value + 0.0217867933)
+                #angle_adjustment = -depth_value/100#-(depth_value+38)/100# negative is aiming higher, 38 was hand-tuned and needs to be re-tuned
             
-            print(f'angle_adjustment = {angle_adjustment:.4f}')
+            print(f'angle_adjustment = {angle_adjustment:.4f}, depth_value = {depth_value:.4f}')
             move_y += angle_adjustment
+            #limit the angle adjustment to 0.5 radians
         except Exception as error:
             print(error)
     return move_x, move_y
 
-@njit(cache=True)
+# @njit(cache=True)
 def sort_bboxes_by_distance(bboxes, depth_image):
     """
     Sorts the bboxes by distance from the camera
@@ -393,11 +398,17 @@ def sort_bboxes_by_distance(bboxes, depth_image):
         bbox = bboxes[i]
         x_min, y_min, x_max, y_max, _, _ = bbox
         # get the depth values of the plate
-        depth_values[i] = np.median(
-            depth_image[int(y_min) : int(y_max), int(x_min) : int(x_max)].flatten()
+        depth_values[i] = get_distance_from_array(
+            depth_image, bbox, x_min, x_max, y_min, y_max
         )
+        # depth_values[i] = np.median(
+        #     depth_image[int(y_min) : int(y_max), int(x_min) : int(x_max)].flatten()
+        # )
     # sort the bboxes by median depth
-    sorted_indices = np.argsort(depth_values)
+    if num_bboxes > 1:
+        sorted_indices = np.argsort(depth_values)
+    else:
+        sorted_indices = np.array([0])
     
     for i in range(num_bboxes):
         sorted_bboxes[i, :] = bboxes[sorted_indices[i]]
@@ -412,8 +423,10 @@ def get_distance_from_array(depth_image, bbox, x_min, x_max, y_min, y_max):
         return 1
     try:
         # this is used to add to the current_x and current_y so that we can get the different points in the grid
-        x_interval = len(bbox)  / grid_size
-        y_interval = len(bbox[0]) / grid_size
+        x_interval = (x_max - x_min) / grid_size
+        y_interval = (y_max - y_min) / grid_size
+        #x_interval = len(bbox)  / grid_size
+        #y_interval = len(bbox[0]) / grid_size
         # stores the x and y of the last point in the grid we got the distance from
         curr_x = 0
         curr_y = 0
