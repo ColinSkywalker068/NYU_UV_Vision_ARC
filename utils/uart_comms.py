@@ -109,11 +109,11 @@ class Publisher_node:
 
 
         obsticals= [x < config.uart_ultrasonic["MIN_DISTANCE"] for x in msg]
-        power = 0.2
-        r_power=0.7
+        power = 0.1
+        r_power=-1.57/2
         time_s=0.3
         # 0: no-bayblade, 1: bayblade, 2: reverse-bayblade
-        beyblade=2
+        beyblade=1
 
         # random 0.2 chance to turn left only
         # if np.random.rand() < 0.01:
@@ -125,43 +125,47 @@ class Publisher_node:
         if obsticals[0]:
             # obstical in front, left, and not right => turn right
             if obsticals[1] and not obsticals[2]:
-                for i in range(2):
+                for i in range(1):
                     # self.send_align_request([power, 0,0,beyblade])
-                    self.send_align_request([0, 0,r_power,beyblade])
+                    self.send_auto_aim([0,r_power,0])
+                    # self.send_align_request([0, 0,r_power,beyblade])
                 # time.sleep(time_s*2)
             # obstical in front, right, and not left => turn left
             elif obsticals[2] and not obsticals[1]:
-                for i in range(2):
+                for i in range(1):
                     # self.send_align_request([-power, 0,0,beyblade])
-                    self.send_align_request([0, 0,r_power,beyblade])
+                    self.send_auto_aim([0,r_power,0])
+                    # self.send_align_request([0, 0,r_power,beyblade])
                 # time.sleep(time_s*2)
             # obstical in front, left, and right => turn around
-            elif obsticals[2] and obsticals[1]:
-                for i in range(2):
-                    # self.send_align_request([ 0,-power,0,beyblade])
-                    self.send_align_request([ 0,0,r_power,beyblade])
-                # time.sleep(time_s*4)
+            # elif obsticals[2] and obsticals[1]:
             else:
-                # obstical in front and not left or right
-                # turn right
-                for i in range(2):
-                    self.send_align_request([power, 0,0,beyblade])
+                for i in range(1):
+                    # self.send_align_request([ 0,-power,0,beyblade])
+                    self.send_auto_aim([0,r_power,0])
+                    # self.send_align_request([ 0,0,r_power,beyblade])
+                # time.sleep(time_s*4)
+            # else:
+            #     # obstical in front and not left or right
+            #     # turn right
+            #     for i in range(2):
+            #         self.send_align_request([power, 0,0,beyblade])
                     # self.send_align_request([0, 0,r_power,beyblade])
                 # time.sleep(time_s*2)
         else:
             # no obstical in front
             # go forward
-            if obsticals[1] and not obsticals[2]:
-                # move right
-                for i in range(2):
-                    self.send_align_request([power/2, power/2,0,beyblade])
-            elif obsticals[2] and not obsticals[1]:
-                # move left
-                for i in range(2):
-                    self.send_align_request([-power, -power/2,0,beyblade])
-            else:
-                for i in range(2):
-                    self.send_align_request([0,power,0,beyblade])
+            # if obsticals[1] and not obsticals[2]:
+            #     # move right
+            #     for i in range(2):
+            #         self.send_align_request([power/2, power/2,0,beyblade])
+            # elif obsticals[2] and not obsticals[1]:
+            #     # move left
+            #     for i in range(2):
+            #         self.send_align_request([-power, -power/2,0,beyblade])
+            # else:
+            for i in range(2):
+                self.send_align_request([0,power,0,0])
 
         # if obstical in front, left, and not right then turn right
         # if obsticals[0] and obsticals[1] and not obsticals[2]:
@@ -327,8 +331,8 @@ if __name__ == "__main__":
     #     node.send_align_request([0.2, 0.0, 0, 0])
     # time.sleep(2.3)
     #     # node.send_gimbal_movement([0.1,-0.1,0])
-    for i in range(2):
-        node.send_align_finish([1])
+    # for i in range(2):
+    #     node.send_align_finish([1])
     # # assert()
     # # print("ID: ", node.Uart.get_robot_id())
     # while True:
