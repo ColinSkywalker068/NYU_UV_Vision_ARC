@@ -83,6 +83,7 @@ def main():
                print("opponent color: ", flagger_obj.opponent_color)
        else:
             flagger_obj.opponent_color = config.gameplay["OPPONENT_TEAM_COLOR"]
+            logger.debug("Robot ID not found, using default color")
 
     if config.detection["FIDUCIAL"]:
         fiducial_detector = Fiducial_detector(log=False)
@@ -105,6 +106,7 @@ def main():
         # obtain frame
         ret, depth_image, color_image = cam.get_frame()
         if not ret:
+            logger.debug("No frame received")
             continue
         # make deep copy of color image
         if config.camera["RECORD"]:

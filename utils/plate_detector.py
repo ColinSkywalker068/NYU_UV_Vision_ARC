@@ -123,9 +123,9 @@ class plate_detector:
             messages: List of strings that are to be printed on the image
         """
         # print(self.uart.Uart.get_auto_aim_request())
-        if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
-        #    print("Not auto aiming")
-           return [], []
+        # if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
+        # #    print("Not auto aiming")
+        #    return [], []
 
         # Get bounding boxes
         results = self.model(color_image)
@@ -297,8 +297,8 @@ class plate_detector:
             has_target =  (
                 self.center_x > x_min
                 and self.center_x < x_max
-                and self.center_y < y_min # y is flipped for camera coordinates
-                #and self.center_y < y_max
+                # and self.center_y < y_min # y is flipped for camera coordinates
+                and self.center_y < y_max
             )
             if debug:
                 print(f"X: {x_min} {x_max} Y: {y_min} {y_max}\nCenter: {self.center_x} {self.center_y}, has_target: {has_target}")
@@ -313,8 +313,8 @@ class plate_detector:
             elif x_rad_offset > 0.5:
                 x_rad_offset = 0.1
             # bound x and y offset each by 0.1
-            msg = [y_rad_offset/1.0,#+self.V_OFFSET, 
-            -x_rad_offset/1.0,#+self.H_OFFSET, 
+            msg = [y_rad_offset/10.0,#+self.V_OFFSET, 
+            -x_rad_offset/10.0,#+self.H_OFFSET, 
             has_target]
 
             self.last_rad_offset = (y_rad_offset, -x_rad_offset)
@@ -448,7 +448,7 @@ def get_distance_from_array(depth_image, bbox, x_min, x_max, y_min, y_max):
                 depth_x = int(x_max+curr_x)
                 distances = np.append(
                     distances, 
-                    depth_image[depth_y][depth_x]  /  1000,
+                    depth_image[depth_x][depth_y]  /  1000,
                 )
             curr_y = 0
         
