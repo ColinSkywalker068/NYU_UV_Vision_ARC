@@ -4,7 +4,7 @@ import threading
 import struct
 import uart_server
 import config
-
+import os
 from pathlib import Path
 import logging
 logging.basicConfig(
@@ -52,7 +52,7 @@ class Publisher_node:
         msg_type = 1
         header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
 
-        body = struct.pack("iiB", int(msg[0] * 10000), int(msg[1] * 10000), int(msg[2]))
+        body = struct.pack("iiB", int(msg[0] * 1000000), int(msg[1] * 1000000), int(msg[2]))
         footer = struct.pack("H", 0x0)
 
         msg = header + body + footer
@@ -74,13 +74,13 @@ class Publisher_node:
 
     def send_align_request(self, msg):
         # msg = [x,y,r, type]
-        length = 15
+        length = 9
         msg_type = 2
 
         header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
 
         body = struct.pack(
-            "iiiB",
+            "hhhB",
             int(msg[0] * 1000),
             int(msg[1] * 1000),
             int(msg[2] * 1000),
@@ -108,10 +108,63 @@ class Publisher_node:
         # yaw and pitch should be between -1 and 1
         # yaw (x, + is anti-clockwise)
         # pitch (y, + is up)
-        length = 11
+        length = 7
         msg_type = 4
         header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
-        body = struct.pack("iiB", int(msg[0] * 1000), int(msg[1] * 1000), int(msg[2]))
+        body = struct.pack("hhB", int(msg[0] * 1000), int(msg[1] * 1000), int(msg[2]))
+        footer = struct.pack("H", 0x0)
+        msg = header + body + footer
+        self.Uart.send_data(msg)
+
+# 5: move straight
+    def send_move_straight(self,msg):
+        # [int distance (mm), int velocity*1000 (m/s)]
+
+        length = 6
+        msg_type=5
+        header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
+        body = struct.pack("Hh", int(msg[0]), int(msg[1] * 1000))
+        footer = struct.pack("H", 0x0)
+        msg = header + body + footer
+        self.Uart.send_data(msg)
+
+# 6: spin chasis
+    def send_spin_chassis(self,msg):
+        # [angle (deg), velocity *1000(deg/s)]
+        length = 6
+        msg_type=6
+        header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
+        body = struct.pack("hh", int(msg[0]), int(msg[1] * 1000))
+        footer = struct.pack("H", 0x0)
+        msg = header + body + footer
+        self.Uart.send_data(msg)
+# 7: set power
+    def send_set_power(self,msg):
+        # [xLinearPower*100, yLinearPower*100, xAnglePower*100, yAnglePower*100], all in range 0-100
+        length = 10
+        msg_type=7
+        header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
+        body = struct.pack("HHHH", int(msg[0]*100), int(msg[1]*100),int(msg[2]*100),int(msg[3]*100))
+        footer = struct.pack("H", 0x0)
+        msg = header + body + footer
+        self.Uart.send_data(msg)
+
+# 8: set_velocity
+    def send_set_velocity(self,msg):
+        # [xVelocity,yVelocity,yawVelocity,pitchVelocity]
+        length = 10
+        msg_type=8
+        header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
+        body = struct.pack("hhhh", int(msg[0]*100), int(msg[1]*100),int(msg[2]*100),int(msg[3]*100))
+        footer = struct.pack("H", 0x0)
+        msg = header + body + footer
+        self.Uart.send_data(msg)
+# 9: stop
+    def send_stop_chassis(self,msg):
+        length = 3
+        msg_type=9
+        header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
+        body = struct.pack("?", 1)
         footer = struct.pack("H", 0x0)
         msg = header + body + footer
         self.Uart.send_data(msg)
@@ -126,16 +179,27 @@ if __name__ == "__main__":
     #     #node.send_align_request([-0.3, -0.3, 0, 0])
     #     node.send_gimbal_movement([0.00,0.0001,0])
     # for i in range(4):
-    #     #node.send_align_request([-0.3, -0.3, 0, 0])
-    #     node.send_gimbal_movement([0.1,-0.5,0])
+    #     node.send_align_request([-0.3, -0.3, 0, 0])
+    #     time.sleep(0.5)
+    # for i in range(4):
+    #     node.send_align_request([0.0, 0.0, 0, 0])
+        #node.send_gimbal_movement([0.1,-0.1,0])
     # for i in range(2):
     #     node.send_align_finish([1])
     # # assert()
     # # print("ID: ", node.Uart.get_robot_id())
     while True:
         pitch, yaw = node.Uart.get_turret_feedback()
-        print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
-        #time.sleep(0.2)
+        #print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
+        print("(FB m/s,  LR m/s): (", pitch/100, ", ", yaw/100, ")",end='\r')
+        #time.sleep(0.01)
+        os.system('clear') 
+    # while True:
+    #     referee_feedback_data = node.Uart.get_referee_feedback()
+    #     print(referee_feedback_data, end='\r')
+    #     os.system('clear')
+    #     # time.sleep(0.01)
+        
     # print(node.Uart.handle_align_request())
     # print(node.Uart.get_auto_aim_request())
     # time.sleep(.2)

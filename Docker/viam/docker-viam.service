@@ -1,0 +1,12 @@
+[Unit]
+Description=Viam Container
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=/usr/bin/docker-compose -f /home/ultraviolet/CV_Detection/Docker/viam/docker-compose.yml up
+WorkingDirectory=/home/ultraviolet/CV_Detection/Docker/viam
+[Install]
+WantedBy=multi-user.target

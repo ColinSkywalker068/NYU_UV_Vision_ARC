@@ -93,12 +93,18 @@ class plate_detector:
         self.last_rad_offset = (0, 0)
 
         # Color FOV for Intel D400 Series cameras
-        self.HFOV = config.camera["HFOV"]
-        self.VFOV = config.camera["VFOV"]
-        self.camera_width = config.camera["FRAME_SIZE"][0]
-        self.center_x = self.camera_width / 2#326.653747558594#
-        self.camera_height = config.camera["FRAME_SIZE"][1]
-        self.center_y = self.camera_height / 2#237.997650146484#
+        self.HFOV = config.camera_intrinsics[config.camera['CameraVersion']]['HFOV']
+        self.VFOV = config.camera_intrinsics[config.camera['CameraVersion']]['VFOV'] 
+
+        self.camera_width = config.camera_intrinsics[config.camera['CameraVersion']]['Width']
+        self.center_x = config.camera_intrinsics[config.camera['CameraVersion']]['PPX'] 
+        #316.750549316406#self.camera_width / 2#326.653747558594#
+        self.camera_height = config.camera_intrinsics[config.camera['CameraVersion']]['Height']
+        self.center_y = config.camera_intrinsics[config.camera['CameraVersion']]['PPY'] 
+        #235.639846801758#self.camera_height / 2#237.997650146484#
+
+        self.H_OFFSET = config.camera_intrinsics[config.camera['CameraVersion']]['H_OFFSET']
+        self.V_OFFSET = config.camera_intrinsics[config.camera['CameraVersion']]['V_OFFSET']
 
     # Process a color frame
     def process_frame(self, color_image, conf_thres=0.25, k=1, debug=False):
@@ -116,7 +122,7 @@ class plate_detector:
             bboxes: A list of tuples, each tuple containing the 6 specs of each  bounding box that is predicted
             messages: List of strings that are to be printed on the image
         """
-        #if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
+        # if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
         #    return [], []
 
         # Get bounding boxes
@@ -156,20 +162,28 @@ class plate_detector:
         # pitch, yaw
         # if the L2 norm of the offsets from 0 is <= 0.175 rad (+- 10 degrees x, y), start firing
 
-        has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
+        # see if center_x and center_y are within the bounding_box
+        # if so, then we have a target
+        
+        has_target =  (
+            self.center_x > x_min
+            and self.center_x < x_max
+            and self.center_y > y_min
+            and self.center_y < y_max
+        )
         #print("XRAD: ", x_rad_offset)
         #print("YRAD: ", y_rad_offset)
         logger.debug(
                 "x= {}, y= {}, target= {} ".format( -x_rad_offset, y_rad_offset, has_target)
             )
 
-        #if self.uart is not None:
-        try:
-            self.send_angles(
-                x_min, x_max, y_min, y_max, stop=stop_shooting, debug=debug
-            )
-        except Exception as e:
-            logger.debug("Error sending angles: ", e)
+        if self.uart is not None:
+            try:
+                self.send_angles(
+                    x_min, x_max, y_min, y_max, stop=stop_shooting, debug=debug
+                )
+            except Exception as e:
+                logger.debug("Error sending angles: ", e)
 
         return bboxes, messages
     
@@ -277,19 +291,28 @@ class plate_detector:
             # pitch, yaw
             # if the L2 norm of the offsets from 0 is <= 0.175 rad (+- 10 degrees x, y), start firing
 
-            has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
+            has_target =  (
+                self.center_x > x_min
+                and self.center_x < x_max
+                and self.center_y < y_min # y is flipped for camera coordinates
+                #and self.center_y < y_max
+            )
+            if debug:
+                print(f"X: {x_min} {x_max} Y: {y_min} {y_max}\nCenter: {self.center_x} {self.center_y}, has_target: {has_target}")
             
             if y_rad_offset < -0.5:
-                y_rad_offset = -0.5
+                y_rad_offset = -0.1
             elif y_rad_offset > 0.5:
-                y_rad_offset = 0.5
+                y_rad_offset = 0.1
 
             if x_rad_offset < -0.5:
-                x_rad_offset = -0.5
+                x_rad_offset = -0.1
             elif x_rad_offset > 0.5:
-                x_rad_offset = 0.5
+                x_rad_offset = 0.1
             # bound x and y offset each by 0.1
-            msg = [y_rad_offset/3, -x_rad_offset/3, has_target]
+            msg = [y_rad_offset/1.0+self.V_OFFSET, 
+            -x_rad_offset/1.0,#+self.H_OFFSET, 
+            has_target]
 
             self.last_rad_offset = (y_rad_offset, -x_rad_offset)
         assert self.uart is not None
@@ -322,7 +345,7 @@ def calculate_angle_offsets(
     x_roi, y_roi = roi_center_offsets
     y_roi = camera_height - y_roi
     move_x = x_roi - center_x
-    move_y = y_roi - (center_y * 0.8)
+    move_y = y_roi - center_y#(center_y * 0.8)
     if move_x != 0:
         move_x /= center_x
     if move_y != 0:
