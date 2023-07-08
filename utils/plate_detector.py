@@ -269,8 +269,8 @@ class plate_detector:
         Parameters:
         """
         if stop:
-            #return
-            msg = [0, 0, 0]
+            return #do nothing
+            # msg = [0, 0, 0] #Embedded does not want to receive non target messages right now
 
             # @TODO see if norm is correct for already normalized values
             #if np.linalg.norm(self.last_rad_offset) > 1.5:
