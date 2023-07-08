@@ -145,7 +145,7 @@ class plate_detector:
             y_max,
         ) = [0, 0, 0, 0]
 
-        stop_shooting = True
+        stop_shooting = True #hard code to false now
         if len(bboxes) > 0:
             x_min, y_min, x_max, y_max, _, _ = bboxes[0]
             stop_shooting = False
@@ -174,6 +174,9 @@ class plate_detector:
             and self.center_y > y_min
             # and self.center_y < y_max
         )
+        # has_target = 1 #hard coding the target for now
+        x_rad_offset = 0
+        y_rad_offset = 0
         # print("XRAD: ", x_rad_offset)
         # print("YRAD: ", y_rad_offset)
         logger.debug(
@@ -266,7 +269,7 @@ class plate_detector:
         Parameters:
         """
         if stop:
-            return
+            #return
             msg = [0, 0, 0]
 
             # @TODO see if norm is correct for already normalized values
@@ -300,6 +303,7 @@ class plate_detector:
                 # and self.center_y < y_min # y is flipped for camera coordinates
                 and self.center_y < y_max
             )
+            # has_target = 0 #hard code as random sentry movement
             if debug:
                 print(f"X: {x_min} {x_max} Y: {y_min} {y_max}\nCenter: {self.center_x} {self.center_y}, has_target: {has_target}")
             

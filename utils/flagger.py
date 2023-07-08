@@ -68,7 +68,7 @@ class Flagger:
                 self.blue_lower,
                 self.blue_upper,
             )
-        return red_or_blue(frame, self.blue_lower, self.blue_upper)
+        return red_or_blue(frame, self.blue_lower, self.blue_upper,self.red_lower,self.red_upper, self.red_lower_2,self.red_upper_2)
 
 
 
@@ -160,18 +160,28 @@ def red_or_blue(
     )
     b_area = np.count_nonzero(blue_mask)
 
-    red_mask = (
-        (frame[:, :, 0] >= red_lower[0])
-        & (frame[:, :, 0] <= red_upper[0])
-        & (frame[:, :, 1] >= red_lower[1])
-        & (frame[:, :, 1] <= red_upper[1])
-        & (frame[:, :, 2] >= red_lower[2])
-        & (frame[:, :, 2] <= red_upper[2])
-    )
-    r_area = np.count_nonzero(red_mask)
-    if b_area > 15 and b_area > r_area:
+    # red_mask = (
+    #     (frame[:, :, 0] >= red_lower[0])
+    #     & (frame[:, :, 0] <= red_upper[0])
+    #     & (frame[:, :, 1] >= red_lower[1])
+    #     & (frame[:, :, 1] <= red_upper[1])
+    #     & (frame[:, :, 2] >= red_lower[2])
+    #     & (frame[:, :, 2] <= red_upper[2])
+    # )
+    # r_area = np.count_nonzero(red_mask)
+    # if b_area > r_area:
+    #     return "BLUE"
+    # elif r_area > b_area:
+    #     return "RED"
+    # else: return "NULL"
+    
+    # if b_area > 15 and b_area > r_area:
+    #     return "BLUE"
+    # elif r_area > 15 and r_area > b_area:
+    #     return "RED"
+    # else: return "NULL"
+    if b_area > 15:
         return "BLUE"
-    elif r_area > 15 and r_area > b_area:
-        return "RED"
-    else: return "NULL"
+    return "RED"
+
 

@@ -1,7 +1,7 @@
 # general specifications
 general = {
     "USE_V_DRIVER": False,
-    "DEBUG_LOGS": False, 
+    "DEBUG_LOGS": True, 
     "LOG_PATH": "../logs/logs.log"
     }
 
@@ -35,16 +35,16 @@ yolo_tensorrt = {
 detection = {
     "DEBUG": True,
     "DISPLAY":False,
-    "DETECTION_CONFIDENCE_CUTOFF": 0.5,
+    "DETECTION_CONFIDENCE_CUTOFF": 0.6,
     "NO_TO_DETECT": 2,
     "UART": True,
     "IMU": False,
-    "TRACKING": True,
+    "TRACKING": False,
     "USE_CUDA_FLAGGER": False,
     "FIDUCIAL": False,
     # at <= __ meter (key), adjust the angle by __ in radians (value)
     "BULLET_DROP": [0.02, 0.1, 0.029, 0.0432, 0.05],#[0.02, 0.1, -0.09, -0.15, -0.20], #4 - # 0.3 , 5 - 0.4
-    "ENABLE_BULLET_DROP": True,
+    "ENABLE_BULLET_DROP": False,
     "CLASSIC": False
 }
 
@@ -56,7 +56,7 @@ draw = {"bbox": {"COLOR": (255, 0, 0), "THICKNESS": 2}}
 # not to get the area of everything red, but our method is easier.
 
 gameplay = {
-    "Autonomous": True,
+    "Autonomous": False,
     "ALLY_TEAM_COLOR": "BLUE",
     "OPPONENT_TEAM_COLOR": "RED",
     "HSV_LOWER_RED": (0, 20, 228),

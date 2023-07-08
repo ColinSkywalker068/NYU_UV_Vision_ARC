@@ -77,7 +77,7 @@ def main():
        if count <= 100:
            flagger_obj.opponent_color = (
             "RED" if detector.uart.Uart.get_referee_feedback()['robotID'] > 100 else "BLUE"
-            #    "RED" if detector.uart.Uart.get_robot_id() else "BLUE"
+                #"RED" if detector.uart.Uart.get_robot_id() else "BLUE"
            )
            if config.general["DEBUG_LOGS"]:
                print("opponent color: ", flagger_obj.opponent_color)
