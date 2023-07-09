@@ -109,7 +109,7 @@ class Publisher_node:
 
 
         obsticals= [x < config.uart_ultrasonic["MIN_DISTANCE"] for x in msg]
-        power = 0.1
+        power = 0.3
         r_power=-1.57/2
         time_s=0.3
         # 0: no-bayblade, 1: bayblade, 2: reverse-bayblade

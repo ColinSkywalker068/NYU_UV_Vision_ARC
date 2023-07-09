@@ -20,12 +20,12 @@ class UartDistance:
         # front, left, right, back
         self.distance = [0, 0, 0]
         self.distance_mapper = distance_mapper(config.uart_ultrasonic["MAPPER"])
-        self.connection = serial.Serial(port='/dev/ttyACM1', baudrate=baudrate)
+        self.connection = serial.Serial(port='/dev/ttyACM0', baudrate=baudrate)
         self.max_value=10000
         self.read_sensor()
         # read the sensor until we get values that make sense, if any are aboute 10,000, we re-initialize the sensor
-        while self.distance[0] > self.max_value or self.distance[1] > self.max_value or self.distance[2] > self.max_value:
-            self.connection = serial.Serial(port='/dev/ttyACM1', baudrate=baudrate)
+        while self.distance[0] > self.max_value and self.distance[1] > self.max_value and self.distance[2] > self.max_value:
+            self.connection = serial.Serial(port='/dev/ttyACM0', baudrate=baudrate)
             self.read_sensor()
 
             i += 1
