@@ -122,6 +122,7 @@ class plate_detector:
             bboxes: A list of tuples, each tuple containing the 6 specs of each  bounding box that is predicted
             messages: List of strings that are to be printed on the image
         """
+        # if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
         # print(self.uart.Uart.get_auto_aim_request())
         # if self.uart is not None and not self.uart.Uart.get_auto_aim_request():
         # #    print("Not auto aiming")
@@ -172,8 +173,12 @@ class plate_detector:
             self.center_x > x_min
             and self.center_x < x_max
             and self.center_y > y_min
-            # and self.center_y < y_max
+            and self.center_y < y_max
         )
+        #print("XRAD: ", x_rad_offset)
+        #print("YRAD: ", y_rad_offset)
+            # and self.center_y < y_max
+        # ) 
         # has_target = 1 #hard coding the target for now
         x_rad_offset = 0
         y_rad_offset = 0
