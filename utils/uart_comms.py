@@ -4,9 +4,15 @@ import threading
 import struct
 import uart_server
 import config
-
+import os
 from pathlib import Path
 import logging
+from uart_distance import UartDistance
+import numpy as np
+from fiducial_detection import Fiducial_detector
+#mutex
+from threading import Lock
+
 logging.basicConfig(
     filename=config.general["LOG_PATH"],
     filemode='a',
@@ -21,9 +27,53 @@ class Publisher_node:
             self.Uart = uart_server.Uart()
         self.header = 0xE7
 
+
+        # Autonomous
+        if config.gameplay['Autonomous']: 
+            self.UD = UartDistance()
+            self.thread_ultrasonic = threading.Thread(target=self._start_ultrasonic)
+            self.thread_ultrasonic.start()
+        if config.detection["FIDUCIAL"]:
+            self.fiducial_detector = Fiducial_detector(log=False)
+            self.fiducial_result = None
+            self.fiducial_lock=Lock()
+            self.threading_fiducial = threading.Thread(target=self._start_fiducial)
+            self.threading_fiducial.start()
+        
         # start thread
         self.thread = threading.Thread(target=self._start)
         self.thread.start()
+
+    
+    def _start_fiducial(self):
+        while True:
+            if not self.Uart.get_auto_aim_request():
+                continue
+            if self.fiducial_lock.locked():
+                continue
+            self.fiducial_lock.acquire()
+            #@TODO: add frame
+            self.fiducial_result = self.fiducial_detector.detectFiducial()
+            self.fiducial_lock.release()
+            time.sleep(0.1)
+    def _get_current_position_from_fiducial(self):
+        self.fiducial_lock.acquire()
+        result = self.fiducial_result
+        self.fiducial_lock.release()
+        if result['success']:
+            return result
+        else:
+            return None
+            
+            
+
+    def _start_ultrasonic(self):
+        while True:
+            if(self.UD.connection.in_waiting >0):
+                self.UD.read_sensor()
+                self.ultrasonic_callback(self.UD.distance)
+            
+
 
     # called as a thread
     def _start(self):
@@ -33,17 +83,113 @@ class Publisher_node:
                     self.Uart = uart_server.Uart()
                 except:
                     if config.detection["DEBUG"]:
+
                         logger.debug("Uart not initialized1")
                     continue
             try:
+
                 self.Uart.listener()
+
             except:
+                # print("Uart not initialized2")
                 if config.detection["DEBUG"]:
                     logger.debug("Uart not initialized2")
 
             # self.Uart.listener()
             # delay to prevent cpu overload
-            # time.sleep(0.1)
+    # AI-powered autonomous driving (it's just if-statements, give me a break)
+    def ultrasonic_callback(self, msg):
+        # msg=[50 if number > 1200 else number for number in msg]
+        print("Ultrasonic: ", msg)
+        # return
+        # msg = [front, left, right, back]
+        # we send an align request as appropriate depending on the distance
+        # we can send 1 message at a time, each with the forward and backward velocity, then we send a message 0.2 seconds later to stop the motors
+
+
+
+        obsticals= [x < config.uart_ultrasonic["MIN_DISTANCE"] for x in msg]
+        power = 0.3
+        r_power=-1.57/2
+        time_s=0.3
+        # 0: no-bayblade, 1: bayblade, 2: reverse-bayblade
+        beyblade=1
+
+        # random 0.2 chance to turn left only
+        # if np.random.rand() < 0.01:
+        #     r_power = -1
+
+        
+
+        # obstical in front
+        if obsticals[0]:
+            # obstical in front, left, and not right => turn right
+            if obsticals[1] and not obsticals[2]:
+                for i in range(1):
+                    # self.send_align_request([power, 0,0,beyblade])
+                    self.send_auto_aim([0,r_power,0])
+                    # self.send_align_request([0, 0,r_power,beyblade])
+                # time.sleep(time_s*2)
+            # obstical in front, right, and not left => turn left
+            elif obsticals[2] and not obsticals[1]:
+                for i in range(1):
+                    # self.send_align_request([-power, 0,0,beyblade])
+                    self.send_auto_aim([0,r_power,0])
+                    # self.send_align_request([0, 0,r_power,beyblade])
+                # time.sleep(time_s*2)
+            # obstical in front, left, and right => turn around
+            # elif obsticals[2] and obsticals[1]:
+            else:
+                for i in range(1):
+                    # self.send_align_request([ 0,-power,0,beyblade])
+                    self.send_auto_aim([0,r_power,0])
+                    # self.send_align_request([ 0,0,r_power,beyblade])
+                # time.sleep(time_s*4)
+            # else:
+            #     # obstical in front and not left or right
+            #     # turn right
+            #     for i in range(2):
+            #         self.send_align_request([power, 0,0,beyblade])
+                    # self.send_align_request([0, 0,r_power,beyblade])
+                # time.sleep(time_s*2)
+        else:
+            # no obstical in front
+            # go forward
+            # if obsticals[1] and not obsticals[2]:
+            #     # move right
+            #     for i in range(2):
+            #         self.send_align_request([power/2, power/2,0,beyblade])
+            # elif obsticals[2] and not obsticals[1]:
+            #     # move left
+            #     for i in range(2):
+            #         self.send_align_request([-power, -power/2,0,beyblade])
+            # else:
+            for i in range(2):
+                self.send_align_request([0,power,0,0])
+
+        # if obstical in front, left, and not right then turn right
+        # if obsticals[0] and obsticals[1] and not obsticals[2]:
+        #     for i in range(2):
+        #         self.send_align_request([0, 0,power,0])
+        # # if obstical in front, right, and not left then turn left
+        # elif obsticals[0] and obsticals[2] and not obsticals[1]:
+        #     for i in range(2):
+        #         self.send_align_request([0, 0,-power,0])
+        # # if obstical in front, right, left, and not back then turn around
+        # elif obsticals[0] and obsticals[2] and obsticals[1]:
+        #     for i in range(2):
+        #         self.send_align_request([ -power/2.0,0,power/2,0])
+        # # if no obstical in front, go forward
+        # elif not obsticals[0]:
+        #     for i in range(2):
+        #         self.send_align_request([power,0,0,0])
+        # time.sleep(time_s)
+        # # if obstical in front, right, left, and back then stop
+        # for i in range(2):
+        #     self.send_align_finish(msg=[1])
+        
+
+
 
     def send_auto_aim(self, msg):
         # msg = [pitch, yaw, has_target]
@@ -52,7 +198,7 @@ class Publisher_node:
         msg_type = 1
         header = struct.pack("BHBBH", self.header, length, 0x00, 0x00, msg_type)
 
-        body = struct.pack("iiB", int(msg[0] * 10000), int(msg[1] * 10000), int(msg[2]))
+        body = struct.pack("iiB", int(msg[0] * 1000000), int(msg[1] * 1000000), int(msg[2]))
         footer = struct.pack("H", 0x0)
 
         msg = header + body + footer
@@ -181,17 +327,27 @@ if __name__ == "__main__":
     # for i in range(4):
     #     node.send_align_request([-0.3, -0.3, 0, 0])
     #     time.sleep(0.5)
-    # for i in range(4):
-    #     node.send_align_request([0.0, 0.0, 0, 0])
-        #node.send_gimbal_movement([0.1,-0.1,0])
+    # for i in range(2):
+    #     node.send_align_request([0.2, 0.0, 0, 0])
+    # time.sleep(2.3)
+    #     # node.send_gimbal_movement([0.1,-0.1,0])
     # for i in range(2):
     #     node.send_align_finish([1])
     # # assert()
     # # print("ID: ", node.Uart.get_robot_id())
     # while True:
-    #   pitch, yaw = node.Uart.get_turret_feedback()
-    #   debugger.log(f"(Yaw, Pitch): ({yaw} , {pitch})")
-    #   time.sleep(0.2)
+    #     pitch, yaw = node.Uart.get_turret_feedback()
+    #     #print("(Yaw, Pitch): (", yaw, ", ", pitch, ")")
+    #     print("(Pitch deg,  Yaw deg): (", pitch, ", ", yaw, ")",end='\r')
+    #     #time.sleep(0.01)
+    #     os.system('clear') 
+    # while True:
+    #     referee_feedback_data = node.Uart.get_referee_feedback()
+    #     os.system('clear')
+    #     print(referee_feedback_data, end='\r')
+        
+        # time.sleep(0.01)
+        
     # print(node.Uart.handle_align_request())
     # print(node.Uart.get_auto_aim_request())
     # time.sleep(.2)
