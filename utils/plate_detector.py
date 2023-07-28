@@ -153,7 +153,7 @@ class plate_detector:
 
         #@TODO: will refactor this later
         (x_rad_offset, y_rad_offset) = calculate_angle_offsets(
-            ((x_max + x_min) // 2, (y_max + y_min) // 2),
+            ((x_max + x_min) // 4, (y_max + y_min) // 2),
             self.center_x,
             self.center_y,
             self.camera_height,
@@ -269,8 +269,8 @@ class plate_detector:
         Parameters:
         """
         if stop:
-            return #do nothing
-            # msg = [0, 0, 0] #Embedded does not want to receive non target messages right now
+            # return #do nothing
+            msg = [0, 0, 0] #Embedded does not want to receive non target messages right now
 
             # @TODO see if norm is correct for already normalized values
             #if np.linalg.norm(self.last_rad_offset) > 1.5:
@@ -286,7 +286,7 @@ class plate_detector:
         else:
             # get the pitch and yaw offsets
             x_rad_offset, y_rad_offset = calculate_angle_offsets(
-                ((x_max + x_min) / 2, (y_max + y_min) / 2),
+                ((x_max + x_min) / 4, (y_max + y_min) / 2),
                 self.center_x,
                 self.center_y,
                 self.camera_height,
@@ -307,18 +307,19 @@ class plate_detector:
             if debug:
                 print(f"X: {x_min} {x_max} Y: {y_min} {y_max}\nCenter: {self.center_x} {self.center_y}, has_target: {has_target}")
             
-            if y_rad_offset < -0.5:
-                y_rad_offset = -0.1
-            elif y_rad_offset > 0.5:
-                y_rad_offset = 0.1
+            # if y_rad_offset < -0.5:
+            #     y_rad_offset = -0.1
+            # elif y_rad_offset > 0.5:
+            #     y_rad_offset = 0.1
 
-            if x_rad_offset < -0.5:
-                x_rad_offset = -0.1
-            elif x_rad_offset > 0.5:
-                x_rad_offset = 0.1
+            # if x_rad_offset < -0.5:
+            #     x_rad_offset = -0.1
+            # elif x_rad_offset > 0.5:
+            #     x_rad_offset = 0.1
             # bound x and y offset each by 0.1
-            msg = [y_rad_offset/10.0,#+self.V_OFFSET, 
-            -x_rad_offset/10.0,#+self.H_OFFSET, 
+            # x_rad_offset+= 0.3 
+            msg = [y_rad_offset,#+self.V_OFFSET, 
+            -x_rad_offset/0.8,#+self.H_OFFSET, 
             has_target]
 
             self.last_rad_offset = (y_rad_offset, -x_rad_offset)
@@ -452,7 +453,7 @@ def get_distance_from_array(depth_image, bbox, x_min, x_max, y_min, y_max):
                 depth_x = int(x_max+curr_x)
                 distances = np.append(
                     distances, 
-                    depth_image[depth_x][depth_y]  /  1000,
+                    depth_image[depth_y][depth_x]  /  1000,
                 )
             curr_y = 0
         
@@ -468,7 +469,7 @@ def get_distance_from_array(depth_image, bbox, x_min, x_max, y_min, y_max):
         distance = (np.mean(modified_distances)+np.median(modified_distances))/2
         return distance if (distance and distance>0 and distance<10) else 1
     except Exception as error:
-        print(f'[aiming:get_distance_from_array] error/warning = {error}')
+        print("[aiming:get_distance_from_array] error/warning = ", error)
         return 1
 
 # Thank Actual Members for Using numba

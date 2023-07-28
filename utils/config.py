@@ -35,16 +35,16 @@ yolo_tensorrt = {
 detection = {
     "DEBUG": True,
     "DISPLAY":False,
-    "DETECTION_CONFIDENCE_CUTOFF": 0.6,
-    "NO_TO_DETECT": 2,
+    "DETECTION_CONFIDENCE_CUTOFF": 0.4,
+    "NO_TO_DETECT": 1,
     "UART": True,
     "IMU": False,
-    "TRACKING": False,
+    "TRACKING": True,
     "USE_CUDA_FLAGGER": False,
     "FIDUCIAL": False,
     # at <= __ meter (key), adjust the angle by __ in radians (value)
     "BULLET_DROP": [0.02, 0.1, 0.029, 0.0432, 0.05],#[0.02, 0.1, -0.09, -0.15, -0.20], #4 - # 0.3 , 5 - 0.4
-    "ENABLE_BULLET_DROP": False,
+    "ENABLE_BULLET_DROP": True,
     "CLASSIC": False
 }
 
@@ -154,5 +154,5 @@ uart_ultrasonic = {
     "UART_PORT": "/dev/ttyACM0",
     "UART_BAUDRATE": 9600,
     "MAPPER": [0, 1, 2, 3],
-    "MIN_DISTANCE": 125,
+    "MIN_DISTANCE": 150,
 }
