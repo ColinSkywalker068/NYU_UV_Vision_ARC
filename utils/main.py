@@ -8,8 +8,7 @@ import monitor
 import cv2
 import flagger
 from video_record import VideoRecord
-from fiducial_detection import Fiducial_detector
-
+from uart_distance import UartDistance
 if not os.path.exists("../logs/"):
     os.makedirs("../logs/")
 
@@ -66,20 +65,23 @@ def main():
     )
     if config.detection["UART"]:
        count = 0
-       while detector.uart.Uart.get_robot_id() not in [0, 1]:
+       while detector.uart.Uart.get_referee_feedback()['robotID'] in [0, -1] and count <= 100:
+           os.system('clear')   
            count += 1
+           logger.debug("Robot ID not found")
            if count > 100:
                logger.debug("Robot ID not found")
                break
        if count <= 100:
            flagger_obj.opponent_color = (
-               "RED" if detector.uart.Uart.get_robot_id() else "BLUE"
+            "RED" if detector.uart.Uart.get_referee_feedback()['robotID'] > 100 else "BLUE"
+                #"RED" if detector.uart.Uart.get_robot_id() else "BLUE"
            )
            if config.general["DEBUG_LOGS"]:
                print("opponent color: ", flagger_obj.opponent_color)
-
-    if config.detection["FIDUCIAL"]:
-        fiducial_detector = Fiducial_detector(log=False)
+       else:
+            flagger_obj.opponent_color = config.gameplay["OPPONENT_TEAM_COLOR"]
+            logger.debug("Robot ID not found, using default color")
 
     # create monitor object to display annotated images
     if config.detection["IMU"]:
@@ -93,10 +95,13 @@ def main():
     if config.camera["RECORD"]:
         video_saver = VideoRecord()
 
+
+
     while True:
         # obtain frame
         ret, depth_image, color_image = cam.get_frame()
         if not ret:
+            logger.debug("No frame received")
             continue
         # make deep copy of color image
         if config.camera["RECORD"]:
@@ -115,12 +120,13 @@ def main():
         if detector.tracker is not None:
             bboxes = detector.update_tracker(bboxes)
 
-
+        depth_values = None
         # sort bboxes by median distance
         if depth_image is not None and len(bboxes) > 0:
-            bboxes = plate_detector.sort_bboxes_by_distance(bboxes, depth_image)
+            bboxes, depth_values = plate_detector.sort_bboxes_by_distance(bboxes, depth_image)
 
-        bboxes, messages = detector.send_msg(bboxes, messages)
+        if len(bboxes) > 0:
+            bboxes, messages = detector.send_msg(bboxes, messages, depth_values)
 
         # show detections on screen
         if config.detection["DISPLAY"]:
@@ -132,8 +138,6 @@ def main():
             cv2.line( color_image, (center_x-c_size, center_y), (center_x+c_size, center_y), (0,255,0), 2)
             cv2.line( color_image, (center_x, center_y-c_size), (center_x, center_y+c_size), (0,255,0), 2)
             mon.draw_on_image(color_image, bboxes, messages)
-            if config.detection["FIDUCIAL"]:
-                fid_detection_res = fiducial_detector.detectFiducial(color_image)
 
     # if config.detection["IMU"]:
     #     localizationThread.stop()

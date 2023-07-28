@@ -16,4 +16,8 @@ services:
       - /dev:/dev
       - /tmp/.xX11-unix/:/tmp/.X11-unix
     working_dir: /home/ultraviolet/CV_Detection/rpc
+<<<<<<< HEAD
     command: python3 ./server.py
+=======
+    command: python3 ./server.py
+>>>>>>> sprint/s23/10

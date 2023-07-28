@@ -25,7 +25,7 @@ class VideoRecord:
         self.saving_thread.start()
 
     def get_output_filename(self):
-            video_dir = "~/Documents/video"
+            video_dir ="./video"
             if not os.path.exists(video_dir):
                 os.makedirs(video_dir)
 
@@ -53,7 +53,7 @@ class VideoRecord:
             self.frame_counter += 1
 
             # Change the frame threshold to 150 (30 FPS * 5 seconds = 150 frames)
-            if self.frame_counter >= 150:
+            if self.frame_counter >= 600:
                 self.save_video(frames_to_save)
                 frames_to_save = []
                 self.frame_counter = 0
