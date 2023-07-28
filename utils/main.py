@@ -75,12 +75,13 @@ def main():
        if count <= 100:
            flagger_obj.opponent_color = (
             "RED" if detector.uart.Uart.get_referee_feedback()['robotID'] > 100 else "BLUE"
-            #    "RED" if detector.uart.Uart.get_robot_id() else "BLUE"
+                #"RED" if detector.uart.Uart.get_robot_id() else "BLUE"
            )
            if config.general["DEBUG_LOGS"]:
                print("opponent color: ", flagger_obj.opponent_color)
        else:
             flagger_obj.opponent_color = config.gameplay["OPPONENT_TEAM_COLOR"]
+            logger.debug("Robot ID not found, using default color")
 
     # create monitor object to display annotated images
     if config.detection["IMU"]:
@@ -100,6 +101,7 @@ def main():
         # obtain frame
         ret, depth_image, color_image = cam.get_frame()
         if not ret:
+            logger.debug("No frame received")
             continue
         # make deep copy of color image
         if config.camera["RECORD"]:
@@ -118,12 +120,13 @@ def main():
         if detector.tracker is not None:
             bboxes = detector.update_tracker(bboxes)
 
-        depth_values = [1]
+        depth_values = None
         # sort bboxes by median distance
         if depth_image is not None and len(bboxes) > 0:
             bboxes, depth_values = plate_detector.sort_bboxes_by_distance(bboxes, depth_image)
 
-        bboxes, messages = detector.send_msg(bboxes, messages, depth_values)
+        if len(bboxes) > 0:
+            bboxes, messages = detector.send_msg(bboxes, messages, depth_values)
 
         # show detections on screen
         if config.detection["DISPLAY"]:

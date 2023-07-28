@@ -47,10 +47,13 @@ class Publisher_node:
     
     def _start_fiducial(self):
         while True:
+            if not self.Uart.get_auto_aim_request():
+                continue
             if self.fiducial_lock.locked():
                 continue
             self.fiducial_lock.acquire()
-            self.fiducial_result = self.fiducial_detector.detect()
+            #@TODO: add frame
+            self.fiducial_result = self.fiducial_detector.detectFiducial()
             self.fiducial_lock.release()
             time.sleep(0.1)
     def _get_current_position_from_fiducial(self):
@@ -70,6 +73,7 @@ class Publisher_node:
                 self.UD.read_sensor()
                 self.ultrasonic_callback(self.UD.distance)
             
+
 
     # called as a thread
     def _start(self):
@@ -105,8 +109,8 @@ class Publisher_node:
 
 
         obsticals= [x < config.uart_ultrasonic["MIN_DISTANCE"] for x in msg]
-        power = 0.2
-        r_power=0.7
+        power = 0.1
+        r_power=-1.57/2
         time_s=0.3
         # 0: no-bayblade, 1: bayblade, 2: reverse-bayblade
         beyblade=1
@@ -121,34 +125,47 @@ class Publisher_node:
         if obsticals[0]:
             # obstical in front, left, and not right => turn right
             if obsticals[1] and not obsticals[2]:
-                for i in range(2):
+                for i in range(1):
                     # self.send_align_request([power, 0,0,beyblade])
-                    self.send_align_request([0, 0,r_power,beyblade])
+                    self.send_auto_aim([0,r_power,0])
+                    # self.send_align_request([0, 0,r_power,beyblade])
                 # time.sleep(time_s*2)
             # obstical in front, right, and not left => turn left
             elif obsticals[2] and not obsticals[1]:
-                for i in range(2):
-                    self.send_align_request([-power, 0,0,beyblade])
+                for i in range(1):
+                    # self.send_align_request([-power, 0,0,beyblade])
+                    self.send_auto_aim([0,r_power,0])
                     # self.send_align_request([0, 0,r_power,beyblade])
                 # time.sleep(time_s*2)
             # obstical in front, left, and right => turn around
-            elif obsticals[2] and obsticals[1]:
-                for i in range(2):
-                    # self.send_align_request([ 0,-power,0,beyblade])
-                    self.send_align_request([ 0,0,r_power,beyblade])
-                # time.sleep(time_s*4)
+            # elif obsticals[2] and obsticals[1]:
             else:
-                # obstical in front and not left or right
-                # turn right
-                for i in range(2):
-                    # self.send_align_request([power, 0,0,beyblade])
-                    self.send_align_request([0, 0,r_power,beyblade])
+                for i in range(1):
+                    # self.send_align_request([ 0,-power,0,beyblade])
+                    self.send_auto_aim([0,r_power,0])
+                    # self.send_align_request([ 0,0,r_power,beyblade])
+                # time.sleep(time_s*4)
+            # else:
+            #     # obstical in front and not left or right
+            #     # turn right
+            #     for i in range(2):
+            #         self.send_align_request([power, 0,0,beyblade])
+                    # self.send_align_request([0, 0,r_power,beyblade])
                 # time.sleep(time_s*2)
         else:
             # no obstical in front
             # go forward
+            # if obsticals[1] and not obsticals[2]:
+            #     # move right
+            #     for i in range(2):
+            #         self.send_align_request([power/2, power/2,0,beyblade])
+            # elif obsticals[2] and not obsticals[1]:
+            #     # move left
+            #     for i in range(2):
+            #         self.send_align_request([-power, -power/2,0,beyblade])
+            # else:
             for i in range(2):
-                self.send_align_request([0,power,0,beyblade])
+                self.send_align_request([0,power,0,0])
 
         # if obstical in front, left, and not right then turn right
         # if obsticals[0] and obsticals[1] and not obsticals[2]:

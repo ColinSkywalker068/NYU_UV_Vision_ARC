@@ -253,7 +253,7 @@ def draw_t_offset_line(rvec, tvec, camera_matrix,camera_dist_matrix, image):
   
   # Puts text on image
   text = str(dist.round(2))
-  image = cv2.putText(image, text, text_center, font, fontScale, color, thickness, cv2.LINE_AA)
+  # image = cv2.putText(image, text, text_center, font, fontScale, color, thickness, cv2.LINE_AA)
   return image
 
 
@@ -401,12 +401,12 @@ class Fiducial_detector:
 
     # Converts img_points to integer values and reshapes into 4x2 array. 
     # Draws line between first point in img_points and the other three points 
-    if self.log:
-      img_points = np.int32(img_points.reshape((4,2)))
+    # if self.log:
+    #   img_points = np.int32(img_points.reshape((4,2)))
 
-      res_image = cv2.line(res_image, img_points[0],img_points[1],(255,0,0),2)
-      res_image = cv2.line(res_image, img_points[0],img_points[2],(0,255,0),2)
-      res_image = cv2.line(res_image, img_points[0],img_points[3],(0,0,255),2)
+    #   res_image = cv2.line(res_image, img_points[0],img_points[1],(255,0,0),2)
+    #   res_image = cv2.line(res_image, img_points[0],img_points[2],(0,255,0),2)
+    #   res_image = cv2.line(res_image, img_points[0],img_points[3],(0,0,255),2)
 
     font = cv2.FONT_HERSHEY_SIMPLEX  
     fontScale = 1.5
@@ -422,10 +422,10 @@ class Fiducial_detector:
     invRotM = np.linalg.inv(rotM)
 
     text = "Translation Cam as origin: "+str(tvec[0].round(2)) + ',' +str(tvec[1].round(2))+' '+str(tvec[2].round(2))
-    res_image = cv2.putText(res_image, text, (200,350) ,font, fontScale, color, thickness, cv2.LINE_AA)
+    # res_image = cv2.putText(res_image, text, (200,350) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
     text = "Translation Marker as origin: "+str(invRotM[:,3][0].round(2)) + ',' +str(invRotM[:,3][1].round(2))+' '+str(invRotM[:,3][2].round(2))
-    res_image = cv2.putText(res_image, text, (200,400) ,font, fontScale, color, thickness, cv2.LINE_AA)
+    # res_image = cv2.putText(res_image, text, (200,400) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
     R = invRotM[:3,:3]
 
@@ -451,15 +451,15 @@ class Fiducial_detector:
     print("camera_plane",camera_plane_wrt_marker)
 
     text = "Rotation: " + str(roll.round(2)) + ',' +str(pitch.round(2)) + ',' + str(yaw.round(2))
-    res_image = cv2.putText(res_image, text, (200,550) ,font, fontScale, color, thickness, cv2.LINE_AA)
+    # res_image = cv2.putText(res_image, text, (200,550) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
 
     text = "Color: " + detected_color
     # print(text)
-    res_image = cv2.putText(res_image, text, (200,650) ,font, fontScale, color, thickness, cv2.LINE_AA)
+    # res_image = cv2.putText(res_image, text, (200,650) ,font, fontScale, color, thickness, cv2.LINE_AA)
 
     # Draw Line
-    res_image = draw_t_offset_line(rvec, tvec, self.camera_matrix,self.camera_distortion_matrix, res_image)
+    # res_image = draw_t_offset_line(rvec, tvec, self.camera_matrix,self.camera_distortion_matrix, res_image)
     
     try:
       tvec = np.append(tvec,np.array([[1]]))
@@ -477,8 +477,8 @@ class Fiducial_detector:
       
 
 
-    cv2.imshow('ROBOMASTER', res_image)
-    cv2.waitKey(20)
+    # cv2.imshow('ROBOMASTER', res_image)
+    # cv2.waitKey(20)
 
     
     if len(hits)>0:
@@ -550,7 +550,7 @@ class Fiducial_detector:
     # Displays original image if no contours found 
     if len(contours)==0:
       if self.log:
-        cv2.imshow('ROBOMASTER', orig_img)
+        # cv2.imshow('ROBOMASTER', orig_img)
         cv2.waitKey(20)
 
       return [],[],None,''
@@ -583,7 +583,7 @@ class Fiducial_detector:
     # Check if contour successfully detected
     if len(res_contours)==0:
       if self.log:
-        cv2.imshow('ROBOMASTER', orig_img)
+        # cv2.imshow('ROBOMASTER', orig_img)
         cv2.waitKey(20)
       return [],[],None,''
     
@@ -622,7 +622,7 @@ class Fiducial_detector:
       color = (255, 0, 0)
       thickness = 2
     
-      res_image = cv2.putText(res_image,detected_marker_char,(200,250) ,font, fontScale, color, thickness, cv2.LINE_AA)
+      # res_image = cv2.putText(res_image,detected_marker_char,(200,250) ,font, fontScale, color, thickness, cv2.LINE_AA)
       
     return hits, res_contours, res_image, detected_color
     

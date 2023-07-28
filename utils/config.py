@@ -1,7 +1,7 @@
 # general specifications
 general = {
     "USE_V_DRIVER": False,
-    "DEBUG_LOGS": False, 
+    "DEBUG_LOGS": True, 
     "LOG_PATH": "../logs/logs.log"
     }
 
@@ -35,15 +35,15 @@ yolo_tensorrt = {
 detection = {
     "DEBUG": True,
     "DISPLAY":False,
-    "DETECTION_CONFIDENCE_CUTOFF": 0.5,
+    "DETECTION_CONFIDENCE_CUTOFF": 0.6,
     "NO_TO_DETECT": 2,
     "UART": True,
     "IMU": False,
-    "TRACKING": True,
+    "TRACKING": False,
     "USE_CUDA_FLAGGER": False,
     "FIDUCIAL": False,
     # at <= __ meter (key), adjust the angle by __ in radians (value)
-    "BULLET_DROP": [0.02, 0.01, -0.01, -0.08, -0.20], #4 - # 0.3 , 5 - 0.4
+    "BULLET_DROP": [0.02, 0.1, 0.029, 0.0432, 0.05],#[0.02, 0.1, -0.09, -0.15, -0.20], #4 - # 0.3 , 5 - 0.4
     "ENABLE_BULLET_DROP": False,
     "CLASSIC": False
 }
@@ -56,7 +56,7 @@ draw = {"bbox": {"COLOR": (255, 0, 0), "THICKNESS": 2}}
 # not to get the area of everything red, but our method is easier.
 
 gameplay = {
-    "Autonomous": True,
+    "Autonomous": False,
     "ALLY_TEAM_COLOR": "BLUE",
     "OPPONENT_TEAM_COLOR": "RED",
     "HSV_LOWER_RED": (0, 20, 228),
@@ -69,17 +69,17 @@ gameplay = {
 
 fiducials = {
     "camera_intrinsic_matrix": {
-        "camera_focal_length_x": 321.325225830078,
-        "camera_center_x": 321.325225830078,
-        "camera_focal_length_y": 246.889373779297,
-        "camera_center_y": 246.889373779297,
+        "camera_focal_length_x": 386.750671386719,
+        "camera_center_x": 326.653747558594,
+        "camera_focal_length_y":  385.748138427734,
+        "camera_center_y": 237.997650146484,
     },
     "camera_distortion_coefficients": {
-        "camera_dist_coeff_k1": -0.07231168346387425,
-        "camera_dist_coeff_k2": 0.054653045623148634,
-        "camera_dist_coeff_p1": 0.013779335161555138,
-        "camera_dist_coeff_p2": 0.005759852619212033,
-        "camera_dist_coeff_k3": 0.15626401335130446,
+        "camera_dist_coeff_k1": -0.0544583909213543,
+        "camera_dist_coeff_k2": 0.0612407959997654,
+        "camera_dist_coeff_p1":-0.00126419449225068,
+        "camera_dist_coeff_p2": 0.000465608172817156,
+        "camera_dist_coeff_k3": -0.0198560617864132,
     },
     "markers": [
         {"marker_id": "A", "marker_file": "./../fiducial_markers/marker_A.png"},

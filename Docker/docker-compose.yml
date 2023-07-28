@@ -22,4 +22,4 @@ services:
       - /tmp/.xX11-unix/:/tmp/.X11-unix
       - /root/.cache/:/root/.cache
     working_dir: /home/ultraviolet/CV_Detection/utils
-    command: python3 ./uart_comms.py
+    command: python3 ./main.py
