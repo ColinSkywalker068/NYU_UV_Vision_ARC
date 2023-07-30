@@ -24,7 +24,7 @@ READING_DATA = 2
 # UART class to handle serial communication with type A board
 class Uart:
     # Constructor
-    def __init__(self, port="/dev/ttyUSB1", baudrate=115200):
+    def __init__(self, port="/dev/ttyUSB0", baudrate=115200):
         # get serial port
         #port =serial.tools.list_ports.comports()[0].device
         logger.debug("Using port: " + port)
@@ -62,6 +62,41 @@ class Uart:
         # pitch, yaw
         self.turret_feedback = [0, 0]
         self.turret_feedback_mutex = threading.Lock()
+
+
+        # Referee Feedback
+        self.referee_feedback = {
+            "robotID": -1,
+            "maxHP": -1,
+            "currHP": -1,
+            "robotLevel": -1,
+            "stage": -1,
+            "timeLeft": -1,
+            "redHP": {
+                "Hero1": -1,
+                "Standard3": -1,
+                "Standard4": -1,
+                "Standard5": -1,
+                "Sentry7": -1,
+                "Base": -1
+            },
+            "blueHP": {
+                "Hero1": -1,
+                "Standard3": -1,
+                "Standard4": -1,
+                "Standard5": -1,
+                "Sentry7": -1,
+                "Base": -1
+            },
+            "rfid": -1,
+            "damagedArmorID": -1,
+            "damageType": -1,
+            "receivedDPMS": -1,
+            "warningLevel": -1,
+            "warningRobotID": -1,
+            "lastReceivedWarningRobotTime": -1
+        }
+        self.referee_feedback_mutex = threading.Lock()
 
     # Send string of data to type A board
     # @param data: byte string of data to send
@@ -141,10 +176,133 @@ class Uart:
         except:
             print("Invalid Turret Feedback Message")
             return
-        feedback = [data[0] / 100, data[1] / 100]
+        feedback = [data[0] / 1000000, data[1] / 1000000]
         self.turret_feedback_mutex.acquire()
         self.turret_feedback = feedback
         self.turret_feedback_mutex.release()
+
+
+    def handle_referee_feedback(self,data):
+        # data = [
+        # robotID (1-9 RED), (101-109 BLUE)
+        # maxHP (current robot)
+        # currHP (current robot)
+        # robotLevel (current robot level 1-3)
+
+        # stage (
+        #   0: prematch
+        #   1: setup
+        #   2: initialization
+        #   3: Countdown (5seconds)
+        #   4: in_game
+        #   5: end_game
+        # )
+
+        # timeLeft (time left in round @TODO get units)
+
+        # All robots HP
+
+        # RED HP
+        # redHero1
+        # redStandard3
+        # redStandard4
+        # redStandard5
+        # redSentry7
+        # redBase
+
+        # BLUE HP
+        # blueHero1
+        # blueStandard3
+        # blueStandard4
+        # blueStandard5
+        # blueSentry7
+        # blueBase
+
+
+        # rfid  (
+        #  0: robot in base
+        #  1: elevated ground
+        #  2: rune game activation zone
+        #  3: launch ramp zone (before actual ramp) 
+        #  4: adjacent to outpost
+        #  5: adjacent to resource island
+        #  6: in restoration zone
+        #  7: engineer's RFID swipe card is beneath RFID card and is activating the card )
+
+        # damagedArmorID (id of plate damaged)
+        # damage type (
+            # 0: armor damage
+            # 1: module offline
+            # 2: barrel over speed
+            # 3: barrel overheat
+            # 4: chasis power overrun
+            # 5: collision (armor plate collision)
+            # )
+        
+        # receivedDPMS  (damage per minute sustained)
+
+        # REFEREE WARNING
+
+        # warningLevel (
+            # 0: no warning
+            # 1: yellow warning
+            # 2: red card
+            # 3: forfeture
+            # )
+        
+        # warningRobotID (1-9 for red, 101-109 for blue)
+
+        # lastReceivedWarningRobotTime (time since last warning in ms)
+        # ]
+        try:
+            #print(data[-8:])
+            # Don't question it, it works
+            data_int=struct.unpack("<xxHxxH", data[-8:])
+            #print("DATA_INT: ", data_int)
+            data = struct.unpack("<HHHHHHHHHHHHHHHHHHHHHHH",data[:-8])
+        except:
+            print("Invalid Referee Feedback Message")
+            return
+
+        self.referee_feedback_mutex.acquire()
+        # data in the dictionary is same order as data in the listW, so we can just assign it
+        self.referee_feedback = {
+            "robotID": data[0],
+            "maxHP": data[1],
+            "currHP": data[2],
+            "robotLevel": data[3],
+            "stage": data[4],
+            "timeLeft": data[5],
+            "redHP": {
+                "redHero1": data[6],
+                "redStandard3": data[7],
+                "redStandard4": data[8],
+                "redStandard5": data[9],
+                "redSentry7": data[10],
+                "redBase": data[11]
+            },
+            "blueHP": {
+                "blueHero1": data[12],
+                "blueStandard3": data[13],
+                "blueStandard4": data[14],
+                "blueStandard5": data[15],
+                "blueSentry7": data[16],
+                "blueBase": data[17]
+            },
+            "rfid": data[18],
+            "damagedArmorID": data[19],
+            "damageType": data[20],
+            "warningLevel": data[21],
+            "warningRobotID": data[22],
+            "receivedDPMS": data_int[0]/100,
+            "lastReceivedWarningRobotTime": data_int[1]
+        }
+        self.referee_feedback_mutex.release()
+
+
+        
+
+        
 
     ### END MESSAGE HANDLERS ###
     # listen for data from serial port
@@ -169,10 +327,12 @@ class Uart:
                 self.msg_type = header[-1]
                 #print("Header: ", header)
                 #print("MSG_TYPE: ", self.msg_type)
+                #print("MSG_LEN: ", self.msg_len)
                 self.state = READING_DATA
 
             if self.state == READING_DATA:
                 self.data = self.ser.read(self.msg_len)
+                # print("DATA: ", self.data)
                 if self.msg_type == 1:
                     self.handle_align_request(self.data)
                 elif self.msg_type == 2:
@@ -183,6 +343,8 @@ class Uart:
                     self.handle_imu_feedback(self.data)
                 elif self.msg_type == 5:
                     self.handle_turret_feedback(self.data)
+                elif self.msg_type == 7:
+                    self.handle_referee_feedback(self.data)
                 self.reset_listener()
 
     def reset_listener(self):
@@ -216,6 +378,12 @@ class Uart:
         turret_feedback = self.turret_feedback
         self.turret_feedback_mutex.release()
         return turret_feedback
+
+    def get_referee_feedback(self):
+        self.referee_feedback_mutex.acquire()
+        referee_feedback = self.referee_feedback
+        self.referee_feedback_mutex.release()
+        return referee_feedback
 
     ### END GET FUNCTIONS ###
     def __del__(self):

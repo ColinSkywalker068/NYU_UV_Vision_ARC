@@ -6,7 +6,7 @@ After=docker.service
 [Service]
 Type=simple
 Restart=always
-ExecStart=/usr/bin/docker-compose -f /home/ultraviolet/Downloads/CV_Detection-sprint-s23-6/Docker/compose.yml up
-WorkingDirectory=/home/ultraviolet/Downloads/CV_Detection-sprint-s23-6/Docker
+ExecStart=/usr/bin/docker-compose -f /home/ultraviolet/CV_Detection/Docker/docker-compose.yml up
+WorkingDirectory=/home/ultraviolet/CV_Detection/Docker
 [Install]
 WantedBy=multi-user.target

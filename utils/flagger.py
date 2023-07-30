@@ -68,7 +68,7 @@ class Flagger:
                 self.blue_lower,
                 self.blue_upper,
             )
-        return red_or_blue(frame, self.blue_lower, self.blue_upper)
+        return red_or_blue(frame, self.blue_lower, self.blue_upper,self.red_lower,self.red_upper, self.red_lower_2,self.red_upper_2)
 
 
 
@@ -135,6 +135,11 @@ def red_or_blue(
     frame: np.ndarray,
     blue_lower: np.ndarray,
     blue_upper: np.ndarray,
+    red_lower: np.ndarray,
+    red_upper: np.ndarray,
+    red_lower_2: np.ndarray,
+    red_upper_2: np.ndarray,
+    
 ) -> str:
     """
     Checks what is the color of the robot in the image.
@@ -154,4 +159,29 @@ def red_or_blue(
         & (frame[:, :, 2] <= blue_upper[2])
     )
     b_area = np.count_nonzero(blue_mask)
-    return "BLUE" if b_area > 15 else "RED"
+
+    red_mask = (
+        (frame[:, :, 0] >= red_lower[0])
+        & (frame[:, :, 0] <= red_upper[0])
+        & (frame[:, :, 1] >= red_lower[1])
+        & (frame[:, :, 1] <= red_upper[1])
+        & (frame[:, :, 2] >= red_lower[2])
+        & (frame[:, :, 2] <= red_upper[2])
+    )
+    r_area = np.count_nonzero(red_mask)
+    #if b_area > r_area:
+    #     return "BLUE"
+    # elif r_area > b_area:
+    #     return "RED"
+    # else: return "NULL"
+    
+    if b_area > 50: #and #b_area > r_area:
+        return "BLUE"
+    #else:
+    return "RED"
+    #return "BLUE"
+    # if b_area > 15:
+    #     return "BLUE"
+    # return "RED"
+
+

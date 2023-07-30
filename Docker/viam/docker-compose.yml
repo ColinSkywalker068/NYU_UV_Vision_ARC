@@ -1,0 +1,23 @@
+version: "3"
+services:
+  my-container:
+    image: nyuultraviolet/cv-dockerfile:viam
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+      - /tmp/argus_socket:/tmp/argus_socket
+    network_mode: host
+    ipc: host
+    privileged: true
+    environment:
+      DISPLAY: :1
+      QT_X11_NO_MITSHM: 1
+    volumes:
+      - /home/ultraviolet:/home/ultraviolet
+      - /dev:/dev
+      - /tmp/.xX11-unix/:/tmp/.X11-unix
+    working_dir: /home/ultraviolet/CV_Detection/rpc
+<<<<<<< HEAD
+    command: python3 ./server.py
+=======
+    command: python3 ./server.py
+>>>>>>> sprint/s23/10
