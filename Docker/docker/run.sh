@@ -179,7 +179,7 @@ if [ $ARCH = "aarch64" ]; then
 	# /proc or /sys files aren't mountable into docker
 	cat /proc/device-tree/model > /tmp/nv_jetson_model
 	
-	sudo docker run --runtime nvidia -it --rm --privileged \
+	sudo docker run --gpus all -it --rm --privileged \
 		--network host \
 		-v /tmp/argus_socket:/tmp/argus_socket \
 		-v /etc/enctune.conf:/etc/enctune.conf \
