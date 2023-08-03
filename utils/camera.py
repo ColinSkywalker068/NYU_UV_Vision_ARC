@@ -111,13 +111,13 @@ class depth_camera:
         color_sensor = next(sensor for sensor in pipeline_profile.get_device(
         ).sensors if not sensor.is_depth_sensor())
 
-        color_sensor.set_option(rs.option.enable_auto_exposure, 0)
-        color_sensor.set_option(rs.option.exposure, 60)
-        color_sensor.set_option(rs.option.brightness, 0)
-        color_sensor.set_option(rs.option.contrast, 50)
-        color_sensor.set_option(rs.option.gain, 128)
-        color_sensor.set_option(rs.option.gamma, 500)
-        color_sensor.set_option(rs.option.saturation, 64)
+        color_sensor.set_option(rs.option.enable_auto_exposure, 1)
+        #color_sensor.set_option(rs.option.exposure, 60)
+        #color_sensor.set_option(rs.option.brightness, 0)
+        #color_sensor.set_option(rs.option.contrast, 50)
+        #color_sensor.set_option(rs.option.gain, 128)
+        #color_sensor.set_option(rs.option.gamma, 500)
+        #color_sensor.set_option(rs.option.saturation, 64)
 
         # Start streaming
         self.pipeline.start(config)

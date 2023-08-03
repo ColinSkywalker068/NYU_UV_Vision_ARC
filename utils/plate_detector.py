@@ -60,8 +60,8 @@ class plate_detector:
         #     repo, 'custom', path=model_file_path).eval()
 
         # TODO: start using python logging module
-        device = torch.device("cpu")
-
+        device = torch.device("cuda:0")
+        '''
         try:
             if torch.backends.mps.is_available():
                 logger.debug("MPS available")
@@ -73,6 +73,7 @@ class plate_detector:
                 device = torch.device("cuda:0")
             else:
                 logger.debug("CUDA/MPS not available")
+        '''
 
         self.model = torch.hub.load(repo, "custom", path=model_file_path, device=device)
 
