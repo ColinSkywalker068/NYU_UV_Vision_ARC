@@ -127,7 +127,7 @@ RUN 	cd ~ && \
 	sed -i '3iset(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)\' ../CMakeLists.txt && \
 	# Set the flags so that librealsense is compatible with python
 	cmake ../ -DBUILD_PYTHON_BINDINGS:bool=true -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=release -DBUILD_EXAMPLES=true -DBUILD_GRAPHICAL_EXAMPLES=true -DBUILD_WITH_CUDA:bool=true && \
-	make uninstall && sudo make clean && \
+	make uninstall && make clean && \
 	echo "[INFO] Building is starting, it will take a long time like half an hour or more!" && \
 	sleep 2 && \
 	make -j$(($(nproc)-1)) && make install && \
