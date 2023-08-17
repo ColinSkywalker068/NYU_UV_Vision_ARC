@@ -27,6 +27,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+# ignore large npm files - can be downloaded for each machine seperately
+node_modules/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
