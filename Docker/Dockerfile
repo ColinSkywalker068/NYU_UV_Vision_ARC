@@ -44,6 +44,7 @@ ARG MAKEFLAGS=-j$(nproc)
 RUN printenv
 
 # change the locale from POSIX to UTF-8
+RUN apt-get clean && apt-get update && apt-get install -y locales
 RUN locale-gen en_US en_US.UTF-8 && update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
 ENV LANG=en_US.UTF-8
 ENV PYTHONIOENCODING=utf-8
@@ -142,7 +143,7 @@ RUN apt-get install -y libglfw3-dev libgl1-mesa-dev libglu1-mesa-dev libcurl4-op
 
 #ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/python3.8/pyrealsense2/
 # stolen from https://github.com/35selim/RealSense-Jetson/blob/main/build_pyrealsense2_and_SDK.sh
-RUN 	cd ~ && \
+RUN cd ~ && \
 	git clone https://github.com/IntelRealSense/librealsense.git && \
 	cd librealsense && mkdir build && cd build && \
 	apt-get -y install python3 python3-dev libssl-dev libxinerama-dev libxcursor-dev libcanberra-gtk-module libcanberra-gtk3-module && \
@@ -159,9 +160,9 @@ RUN 	cd ~ && \
 	echo 'PYTHONPATH="/usr/local/lib:/usr/local/lib/python3.8/pyrealsense2:$PYTHONPATH"' >> ~/.bashrc && \
 	echo 'export PYTHONPATH' >> ~/.bashrc 
 
-RUN	cp ~/librealsense/config/99-realsense-libusb.rules /etc/udev/rules.d/ 
+RUN	cp ~/librealsense/config/99-realsense-libusb.rules /etc/udev/rules.d 
 
-RUN 	/lib/systemd/systemd-udevd --daemon && udevadm control --reload-rules && \
+RUN /lib/systemd/systemd-udevd --daemon && udevadm control --reload-rules && \
 	udevadm trigger && \
 	echo "[INFO] pyrealsense2 and RealSense SDK are ready to use!" && \
 	echo '[INFO] pyrealsense2 can only be used with "python3" not with "python"!'
