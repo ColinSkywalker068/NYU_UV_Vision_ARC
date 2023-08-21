@@ -29,6 +29,10 @@ WORKDIR /jetson-inference
 #
 # setup environment
 #
+ARG ROS_PKG=ros_base
+ENV ROS_DISTRO=foxy
+ENV ROS_ROOT=/opt/ros/${ROS_DISTRO}
+ENV ROS_PYTHON_VERSION=3
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CUDA_HOME="/usr/local/cuda"
 ENV CUDA_PATH="/usr/local/cuda"
@@ -50,33 +54,74 @@ ENV PYTHONIOENCODING=utf-8
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
           python3-pip \
-		  python3-dev \
+	  python3-dev \
           python3-matplotlib \
-		  build-essential \
-		  gfortran \
-		  git \
-		  cmake \
-		  curl \
-		  libopenblas-dev \
-		  liblapack-dev \
-		  libblas-dev \
-		  libhdf5-serial-dev \
-		  hdf5-tools \
-		  libhdf5-dev \
-		  zlib1g-dev \
-		  zip \
-		  libjpeg8-dev \
-		  libopenmpi-dev \
+	  build-essential \
+	  gfortran \
+	  git \
+	  cmake \
+	  curl \
+	  libopenblas-dev \
+	  liblapack-dev \
+	  libblas-dev \
+	  libhdf5-serial-dev \
+	  hdf5-tools \
+	  libhdf5-dev \
+	  zlib1g-dev \
+	  zip \
+	  libjpeg8-dev \
+	  libopenmpi-dev \
           openmpi-bin \
           openmpi-common \
-		  protobuf-compiler \
+	  protobuf-compiler \
           libprotoc-dev \
 		llvm-9 \
           llvm-9-dev nano \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
+# stolen from containers/Dockerfile.ros.foxy    
+RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+RUN echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null
+# 
+# install development packages
+#
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+		build-essential \
+		cmake \
+		git \
+		libbullet-dev \
+		libpython3-dev \
+		python3-colcon-common-extensions \
+		python3-flake8 \
+		python3-pip \
+		python3-numpy \
+		python3-pytest-cov \
+		python3-rosdep \
+		python3-setuptools \
+		python3-vcstool \
+		python3-rosinstall-generator \
+		libasio-dev \
+		libtinyxml2-dev \
+		libcunit1-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
+# install some pip packages needed for testing
+RUN python3 -m pip install -U \
+		argcomplete \
+		flake8-blind-except \
+		flake8-builtins \
+		flake8-class-newline \
+		flake8-comprehensions \
+		flake8-deprecated \
+		flake8-docstrings \
+		flake8-import-order \
+		flake8-quotes \
+		pytest-repeat \
+		pytest-rerunfailures \
+		pytest
 
 
 # Installs librealsense and pyrealsense2 on the Jetson NX running Ubuntu 18.04
@@ -95,26 +140,6 @@ RUN apt-get install -y git libssl-dev libusb-1.0-0-dev pkg-config libgtk-3-dev
 # Install Distribution-specific packages for Ubuntu 18
 RUN apt-get install -y libglfw3-dev libgl1-mesa-dev libglu1-mesa-dev libcurl4-openssl-dev
 
-# Install LibRealSense from source
-# We need to build from source because
-# the PyPi pip packages are not compatible with Arm processors.
-# See link [here](https://github.com/IntelRealSense/librealsense/issues/6964).
-	#&& cp config/99-realsense-libusb.rules /etc/udev/rules.d/ \
-	#&& cp config/99-realsense-d4xx-mipi-dfu.rules /etc/udev/rules.d/ \
-#	&& udevadm control --reload-rules && udevadm trigger \
-# First clone the repository
-#RUN git clone https://github.com/IntelRealSense/librealsense.git && cd ./librealsense \
-#	&& mkdir build && cd build && pwd && cmake ../ -DBUILD_PYTHON_BINDINGS:bool=true && make uninstall && make clean && make -j$(nproc)  && make install
-
-#RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE || sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE
-#RUN add-apt-repository "deb https://librealsense.intel.com/Debian/apt-repo $(lsb_release -cs) main" -u
-#RUN apt-get install librealsense2-utils -y
-#RUN apt-get install librealsense2-dev -y
-
-## Export pyrealsense2 to your PYTHONPATH so `import pyrealsense2` works
-
-
-
 #ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/python3.8/pyrealsense2/
 # stolen from https://github.com/35selim/RealSense-Jetson/blob/main/build_pyrealsense2_and_SDK.sh
 RUN 	cd ~ && \
@@ -126,7 +151,7 @@ RUN 	cd ~ && \
 	# Give the CUDA path to CMake
 	sed -i '3iset(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)\' ../CMakeLists.txt && \
 	# Set the flags so that librealsense is compatible with python
-	cmake ../ -DBUILD_PYTHON_BINDINGS:bool=true -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=release -DBUILD_EXAMPLES=true -DBUILD_GRAPHICAL_EXAMPLES=true -DBUILD_WITH_CUDA:bool=true && \
+	cmake ../ -DBUILD_PYTHON_BINDINGS:bool=true -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=release -DBUILD_EXAMPLES=true -DBUILD_GRAPHICAL_EXAMPLES=true -DBUILD_WITH_CUDA:bool=true -DBUILD_NETWORK_DEVICE=ON -DFORCE_RSUSB_BACKEND=ON && \
 	make uninstall && sudo make clean && \
 	echo "[INFO] Building is starting, it will take a long time like half an hour or more!" && \
 	sleep 2 && \
@@ -146,21 +171,7 @@ RUN ln -s ~/librealsense/build/wrappers/python/pybackend2.cpython-38-aarch64-lin
 RUN ln -s ~/librealsense/build/wrappers/python/pyrealsense2.cpython-38-aarch64-linux-gnu.so /usr/local/lib/python3.8/pyrealsense2/
 
 
-# RUN cd ./librealsense && cp config/99-realsense-libusb.rules /etc/udev/rules.d/  \
-#     && cp config/99-realsense-d4xx-mipi-dfu.rules /etc/udev/rules.d/ \
-# 	&& udevadm control --reload-rules \
-#     && udevadm trigger \
-#
-# python packages from TF/PyTorch containers
-#
-#COPY python/training/detection/ssd/requirements.txt /tmp/pytorch_ssd_requirements.txt
-#COPY python/www/flask/requirements.txt /tmp/flask_requirements.txt
-#COPY python/www/dash/requirements.txt /tmp/dash_requirements.txt
-
 RUN pip3 install --verbose --upgrade Cython 
-#    pip3 install --verbose -r /tmp/pytorch_ssd_requirements.txt && \
-#    pip3 install --verbose -r /tmp/flask_requirements.txt && \
-#    pip3 install --verbose -r /tmp/dash_requirements.txt
 
 
 #
@@ -173,21 +184,13 @@ RUN pip3 install --no-cache-dir  scikit-learn
 RUN pip3 install --no-cache-dir  pandas
 RUN pip3 install --no-cache-dir  pycuda
 RUN pip3 install --no-cache-dir  numba
+RUN pip3 install --upgrade --no-cache-dir --verbose cmake
+RUN cmake --version
 
 
 #
 # CuPy
 #
-#ARG CUPY_VERSION=v6.6.0
-#ARG CUPY_NVCC_GENERATE_CODE="arch=compute_53,code=sm_53;arch=compute_62,code=sm_62;arch=compute_72,code=sm_72"
-
-#RUN git clone -b ${CUPY_VERSION} --recursive https://github.com/cupy/cupy cupy && \
-#    cd cupy && \
-#   pip3 install --no-cache-dir fastrlock && \
-#    python3 setup.py install --verbose && \
-#    cd ../ && \
-#    rm -rf cupy
-# we use cuda 11.4
 RUN pip3 install --no-cache-dir cupy-wheel 
 RUN pip3 install --no-cache-dir --no-deps ultralytics
 RUN pip3 install --no-cache-dir py-cpuinfo psutil
@@ -211,12 +214,10 @@ RUN mkdir opencv && \
     apt-get clean
   
 RUN cd ../ && \
-    rm -rf opencv* #&& \
+    rm -rf opencv* 
+    #&& \
     #cp -r /usr/include/opencv4 /usr/local/include/opencv4 && \
     #cp -r /usr/lib/python3.8/dist-packages/cv2 /usr/local/lib/python3.8/dist-packages/cv2
-
-
-
 
 #RUN git clone https://github.com/ultralytics/yolov5 && cd yolov5 && pip3 install -r requirements.txt && cd /home/ultraviolet/Downloads
 RUN apt-get update -y && apt-get install -y python3-numpy python3-pillow python3-tk 
@@ -237,13 +238,105 @@ RUN mkdir unzip && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get clean && \
     rm -rf unzip
+
+#RUN apt-get remove opencv-python -y
+
+# 
+# compile yaml-cpp-0.6, which some ROS packages may use (but is not in the 18.04 apt repo)
+#
+RUN cd ~ && \
+    git clone --branch yaml-cpp-0.6.0 https://github.com/jbeder/yaml-cpp yaml-cpp-0.6 && \
+    cd yaml-cpp-0.6 && \
+    mkdir build && \
+    cd build && \
+    cmake -DBUILD_SHARED_LIBS=ON .. && \
+    make -j$(nproc) && \
+    cp libyaml-cpp.so.0.6.0 /usr/lib/aarch64-linux-gnu/ && \
+    ln -s /usr/lib/aarch64-linux-gnu/libyaml-cpp.so.0.6.0 /usr/lib/aarch64-linux-gnu/libyaml-cpp.so.0.6
+
+
+# 
+# download/build ROS from source
+#
+RUN mkdir -p ${ROS_ROOT}/src && \
+    cd ${ROS_ROOT} && \
     
+    # https://answers.ros.org/question/325245/minimal-ros2-installation/?answer=325249#post-id-325249
+    rosinstall_generator --deps --rosdistro ${ROS_DISTRO} ${ROS_PKG} \
+		launch_xml \
+		launch_yaml \
+		launch_testing \
+		launch_testing_ament_cmake \
+		demo_nodes_cpp \
+		demo_nodes_py \
+		example_interfaces \
+		camera_calibration_parsers \
+		camera_info_manager \
+		cv_bridge \
+		v4l2_camera \
+		vision_opencv \
+		vision_msgs \
+		image_geometry \
+		image_pipeline \
+		image_transport \
+		compressed_image_transport \
+		compressed_depth_image_transport \
+		> ros2.${ROS_DISTRO}.${ROS_PKG}.rosinstall && \
+    cat ros2.${ROS_DISTRO}.${ROS_PKG}.rosinstall && \
+    vcs import src < ros2.${ROS_DISTRO}.${ROS_PKG}.rosinstall && \
+    
+    # https://github.com/dusty-nv/jetson-containers/issues/181
+    rm -r ${ROS_ROOT}/src/ament_cmake && \
+    git -C ${ROS_ROOT}/src/ clone https://github.com/ament/ament_cmake -b ${ROS_DISTRO} && \
+    
+    # install dependencies using rosdep
+    apt-get update && \
+    cd ${ROS_ROOT} && \
+    rosdep init && \
+    rosdep update && \
+    rosdep install -y \
+    	  --ignore-src \
+       --from-paths src \
+	  --rosdistro ${ROS_DISTRO} \
+	  --skip-keys "libopencv-dev libopencv-contrib-dev libopencv-imgproc-dev python-opencv python3-opencv" && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get clean && \
+
+    # build it!
+    colcon build \
+        --merge-install \
+        --cmake-args -DCMAKE_BUILD_TYPE=Release && \
+    
+    # remove build files
+    rm -rf ${ROS_ROOT}/src && \
+    rm -rf ${ROS_ROOT}/logs && \
+    rm -rf ${ROS_ROOT}/build && \
+    rm ${ROS_ROOT}/*.rosinstall
+
+#
+# Set the default DDS middleware to cyclonedds
+# https://github.com/ros2/rclcpp/issues/1335
+#
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+    
+# 
+# setup entrypoint
+#
+COPY ./docker/containers/packages/ros_entrypoint.sh /ros_entrypoint.sh
+
+RUN sed -i \
+    's/ros_env_setup="\/opt\/ros\/$ROS_DISTRO\/setup.bash"/ros_env_setup="${ROS_ROOT}\/install\/setup.bash"/g' \
+    /ros_entrypoint.sh && \
+    cat /ros_entrypoint.sh
+
+RUN echo 'source ${ROS_ROOT}/install/setup.bash' >> /root/.bashrc
+RUN bash -c "chmod +x /ros_entrypoint.sh"
+ENTRYPOINT ["/ros_entrypoint.sh"]
+CMD ["bash"]
+
 #RUN cd /root/.cache/torch/hub && unzip ./master.zip && rm ./master.zip
 #RUN rm -rf /root/.cache/torch/hub/ultralytics_yolov5_master
 # make sure the folder is CV_Detection and not anything else
 WORKDIR /home/ultraviolet/CV_Detection/utils
-
-#RUN apt-get remove opencv-python -y
-
-
 #CMD python3 main.py

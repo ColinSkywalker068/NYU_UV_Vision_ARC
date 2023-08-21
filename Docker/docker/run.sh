@@ -73,8 +73,9 @@ DOCKER_ROOT="/jetson-inference"	# where the project resides inside docker
 SSD_BASE_MODEL="$DETECTION_DIR/models/mobilenet-v1-ssd-mp-0_675.pth"
 
 if [ ! -f "$SSD_BASE_MODEL" ]; then
-	echo "Downloading pytorch-ssd base model..."
-	wget --quiet --show-progress --progress=bar:force:noscroll --no-check-certificate https://nvidia.box.com/shared/static/djf5w54rjvpqocsiztzaandq1m3avr7c.pth -O $SSD_BASE_MODEL
+	#echo "Downloading pytorch-ssd base model..."
+	#wget --quiet --show-progress --progress=bar:force:noscroll --no-check-certificate https://nvidia.box.com/shared/static/djf5w54rjvpqocsiztzaandq1m3avr7c.pth -O $SSD_BASE_MODEL
+	echo "pytorch-ssd model not found...skipping"
 fi
 
 # generate mount commands
