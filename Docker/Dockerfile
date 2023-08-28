@@ -30,7 +30,7 @@ WORKDIR /jetson-inference
 # setup environment
 #
 ARG ROS_PKG=ros_base
-ENV ROS_DISTRO=foxy
+ENV ROS_DISTRO=iron
 ENV ROS_ROOT=/opt/ros/${ROS_DISTRO}
 ENV ROS_PYTHON_VERSION=3
 ENV DEBIAN_FRONTEND=noninteractive
@@ -78,6 +78,7 @@ RUN apt-get update && \
           libprotoc-dev \
 		llvm-9 \
           llvm-9-dev nano \
+		  lsb-release \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -134,7 +135,7 @@ RUN apt-get install -y --no-install-recommends \
     python3 \
     python3-setuptools \
     python3-pip \
-    python3-dev && apt-get update && apt-get install -y lsb-release && apt-get clean all
+    python3-dev && apt-get update && apt-get clean all
 
 # Install the core packages required to build librealsense libs
 RUN apt-get install -y git libssl-dev libusb-1.0-0-dev pkg-config libgtk-3-dev
@@ -143,17 +144,17 @@ RUN apt-get install -y libglfw3-dev libgl1-mesa-dev libglu1-mesa-dev libcurl4-op
 
 #ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/python3.8/pyrealsense2/
 # stolen from https://github.com/35selim/RealSense-Jetson/blob/main/build_pyrealsense2_and_SDK.sh
+
+# Give the CUDA path to CMake and Set the flags so that librealsense is compatible with python	
+RUN	apt-get -y install python3 python3-dev libssl-dev libxinerama-dev libxcursor-dev libcanberra-gtk-module libcanberra-gtk3-module udev 
 RUN cd ~ && \
 	git clone https://github.com/IntelRealSense/librealsense.git && \
 	cd librealsense && mkdir build && cd build && \
-	apt-get -y install python3 python3-dev libssl-dev libxinerama-dev libxcursor-dev libcanberra-gtk-module libcanberra-gtk3-module && \
 	echo "[INFO] pyrealsense2 bindings build has been started!" && \
 	sleep 2 && \
-	# Give the CUDA path to CMake
 	sed -i '3iset(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)\' ../CMakeLists.txt && \
-	# Set the flags so that librealsense is compatible with python
 	cmake ../ -DBUILD_PYTHON_BINDINGS:bool=true -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=release -DBUILD_EXAMPLES=true -DBUILD_GRAPHICAL_EXAMPLES=true -DBUILD_WITH_CUDA:bool=true -DBUILD_NETWORK_DEVICE=ON -DFORCE_RSUSB_BACKEND=ON && \
-	make uninstall && sudo make clean && \
+	make uninstall && make clean && \
 	echo "[INFO] Building is starting, it will take a long time like half an hour or more!" && \
 	sleep 2 && \
 	make -j$(($(nproc)-1)) && make install && \
@@ -227,19 +228,17 @@ RUN pip3 install pyserial filterpy tk tqdm seaborn scikit-image
 #RUN cd /home/ultraviolet/Downloads
 #RUN wget https://github.com/ultralytics/yolov5/archive/master.zip -P /root/.cache/torch/hub
 
-ARG UNZIP_URL=http://ports.ubuntu.com/pool/main/u/unzip/unzip_6.0-25ubuntu1_arm64.deb
-ARG UNZIP_DEB=unzip_6.0-25ubuntu1_arm64.deb
-RUN mkdir unzip && \
-    cd unzip && \
-    wget --quiet --show-progress --progress=bar:force:noscroll --no-check-certificate ${UNZIP_URL} -O ${UNZIP_DEB} && \
-    dpkg -i --force-depends *.deb && \
-    apt-get update && \
-    apt-get install -y -f --no-install-recommends && \
-    dpkg -i *.deb && \
-    rm -rf /var/lib/apt/lists/* && \
-    apt-get clean && \
-    rm -rf unzip
+#ARG UNZIP_URL=http://ports.ubuntu.com/pool/main/u/unzip/unzip_6.0-25ubuntu1_arm64.deb
+#ARG UNZIP_DEB=unzip_6.0-25ubuntu1_arm64.deb
+#RUN mkdir unzip && \
+#    cd unzip && \
+#    wget --quiet --show-progress --progress=bar:force:noscroll --no-check-certificate ${UNZIP_URL} -O ${UNZIP_DEB} && \
+#    dpkg -i --force-depends ${UNZIP_DEB} && \
+#    rm -rf /var/lib/apt/lists/* && \
+#    apt-get clean && \
+#    rm -rf unzip
 
+RUN apt-get install -y unzip
 #RUN apt-get remove opencv-python -y
 
 # 
@@ -252,17 +251,16 @@ RUN cd ~ && \
     cd build && \
     cmake -DBUILD_SHARED_LIBS=ON .. && \
     make -j$(nproc) && \
-    cp libyaml-cpp.so.0.6.0 /usr/lib/aarch64-linux-gnu/ && \
-    ln -s /usr/lib/aarch64-linux-gnu/libyaml-cpp.so.0.6.0 /usr/lib/aarch64-linux-gnu/libyaml-cpp.so.0.6
+    cp libyaml-cpp.so.0.6.0 /usr/lib/$(uname -m)-linux-gnu/ && \
+    ln -s /usr/lib/$(uname -m)-linux-gnu/libyaml-cpp.so.0.6.0 /usr/lib/$(uname -m)-linux-gnu/libyaml-cpp.so.0.6
 
 
 # 
 # download/build ROS from source
 #
+# https://answers.ros.org/question/325245/minimal-ros2-installation/?answer=325249#post-id-325249
 RUN mkdir -p ${ROS_ROOT}/src && \
     cd ${ROS_ROOT} && \
-    
-    # https://answers.ros.org/question/325245/minimal-ros2-installation/?answer=325249#post-id-325249
     rosinstall_generator --deps --rosdistro ${ROS_DISTRO} ${ROS_PKG} \
 		launch_xml \
 		launch_yaml \
@@ -285,13 +283,14 @@ RUN mkdir -p ${ROS_ROOT}/src && \
 		> ros2.${ROS_DISTRO}.${ROS_PKG}.rosinstall && \
     cat ros2.${ROS_DISTRO}.${ROS_PKG}.rosinstall && \
     vcs import src < ros2.${ROS_DISTRO}.${ROS_PKG}.rosinstall && \
-    
     # https://github.com/dusty-nv/jetson-containers/issues/181
-    rm -r ${ROS_ROOT}/src/ament_cmake && \
-    git -C ${ROS_ROOT}/src/ clone https://github.com/ament/ament_cmake -b ${ROS_DISTRO} && \
-    
+    rm -r ${ROS_ROOT}/src/ament_cmake 
+
+# https://stackoverflow.com/questions/56100217/how-to-accept-the-license-agreement-when-building-rti-connext-dds-5-3-1-with-doc
+RUN RTI_NC_LICENSE_ACCEPTED=yes apt-get install -y rti-connext-dds-6.0.1 
+
+RUN git -C ${ROS_ROOT}/src/ clone https://github.com/ament/ament_cmake -b ${ROS_DISTRO} && \
     # install dependencies using rosdep
-    apt-get update && \
     cd ${ROS_ROOT} && \
     rosdep init && \
     rosdep update && \
@@ -299,15 +298,14 @@ RUN mkdir -p ${ROS_ROOT}/src && \
     	  --ignore-src \
        --from-paths src \
 	  --rosdistro ${ROS_DISTRO} \
-	  --skip-keys "libopencv-dev libopencv-contrib-dev libopencv-imgproc-dev python-opencv python3-opencv" && \
-    rm -rf /var/lib/apt/lists/* && \
-    apt-get clean && \
+	  --skip-keys "libopencv-dev libopencv-contrib-dev libopencv-imgproc-dev python-opencv python3-opencv" 
 
+RUN rm -rf /var/lib/apt/lists/* && \
+    apt-get clean && \
     # build it!
     colcon build \
         --merge-install \
         --cmake-args -DCMAKE_BUILD_TYPE=Release && \
-    
     # remove build files
     rm -rf ${ROS_ROOT}/src && \
     rm -rf ${ROS_ROOT}/logs && \
