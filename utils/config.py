@@ -7,8 +7,8 @@ general = {
 
 # camera specifications
 camera = {
-    "DEPTH_CAPTURE": True,
-    "CAMERA_INDEX": 0,
+    "DEPTH_CAPTURE": False,
+    "CAMERA_INDEX": '../examples/vid.mp4',
     "FRAME_SIZE": (640, 480),
     "FRAME_RATE": 60,
     "RECORD": False,

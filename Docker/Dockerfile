@@ -37,6 +37,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV CUDA_HOME="/usr/local/cuda"
 ENV CUDA_PATH="/usr/local/cuda"
 ENV PATH="/usr/local/cuda/bin:${PATH}"
+ENV PATH="/opt/hpcx/ompi/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/opt/hpcx/ompi/lib:${LD_LIBRARY_PATH}"
 ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
 ENV LLVM_CONFIG="/usr/bin/llvm-config-9"
 ARG MAKEFLAGS=-j$(nproc) 
@@ -101,7 +103,6 @@ RUN apt-get update && \
 		python3-numpy \
 		python3-pytest-cov \
 		python3-rosdep \
-		python3-setuptools \
 		python3-vcstool \
 		python3-rosinstall-generator \
 		libasio-dev \
@@ -133,7 +134,6 @@ RUN python3 -m pip install -U \
 RUN apt-get update #&& apt-get -y upgrade
 RUN apt-get install -y --no-install-recommends \
     python3 \
-    python3-setuptools \
     python3-pip \
     python3-dev && apt-get update && apt-get clean all
 
@@ -169,11 +169,8 @@ RUN /lib/systemd/systemd-udevd --daemon && udevadm control --reload-rules && \
 	echo '[INFO] pyrealsense2 can only be used with "python3" not with "python"!'
 	
 RUN mkdir /usr/local/lib/python3.8/pyrealsense2
-RUN ln -s ~/librealsense/build/wrappers/python/pybackend2.cpython-38-aarch64-linux-gnu.so /usr/local/lib/python3.8/pyrealsense2/
-RUN ln -s ~/librealsense/build/wrappers/python/pyrealsense2.cpython-38-aarch64-linux-gnu.so /usr/local/lib/python3.8/pyrealsense2/
-
-
-RUN pip3 install --verbose --upgrade Cython 
+RUN ln -s ~/librealsense/build/wrappers/python/pybackend2.cpython-38-$(uname -m)-linux-gnu.so /usr/local/lib/python3.8/pyrealsense2/
+RUN ln -s ~/librealsense/build/wrappers/python/pyrealsense2.cpython-38-$(uname -m)-linux-gnu.so /usr/local/lib/python3.8/pyrealsense2/
 
 
 #
@@ -204,7 +201,8 @@ RUN pip3 install --no-cache-dir --upgrade matplotlib gitpython
 ARG OPENCV_URL=https://nvidia.box.com/shared/static/5v89u6g5rb62fpz4lh0rz531ajo2t5ef.gz
 ARG OPENCV_DEB=OpenCV-4.5.0-aarch64.tar.gz
 
-RUN mkdir opencv && \
+RUN cd ~ && \
+	mkdir opencv && \
     cd opencv && \
     wget --quiet --show-progress --progress=bar:force:noscroll --no-check-certificate ${OPENCV_URL} -O ${OPENCV_DEB} && \
     tar -xzvf ${OPENCV_DEB} && \
@@ -221,9 +219,9 @@ RUN cd ../ && \
     #cp -r /usr/include/opencv4 /usr/local/include/opencv4 && \
     #cp -r /usr/lib/python3.8/dist-packages/cv2 /usr/local/lib/python3.8/dist-packages/cv2
 
-#RUN git clone https://github.com/ultralytics/yolov5 && cd yolov5 && pip3 install -r requirements.txt && cd /home/ultraviolet/Downloads
+
 RUN apt-get update -y && apt-get install -y python3-numpy python3-pillow python3-tk 
-RUN pip3 install pyserial filterpy tk tqdm seaborn scikit-image
+RUN pip3 install --no-cache-dir pyserial filterpy tk seaborn scikit-image tqdm>=4.64.0 setuptools>=65.5.1
 
 #RUN cd /home/ultraviolet/Downloads
 #RUN wget https://github.com/ultralytics/yolov5/archive/master.zip -P /root/.cache/torch/hub
@@ -239,7 +237,6 @@ RUN pip3 install pyserial filterpy tk tqdm seaborn scikit-image
 #    rm -rf unzip
 
 RUN apt-get install -y unzip
-#RUN apt-get remove opencv-python -y
 
 # 
 # compile yaml-cpp-0.6, which some ROS packages may use (but is not in the 18.04 apt repo)
@@ -299,14 +296,12 @@ RUN git -C ${ROS_ROOT}/src/ clone https://github.com/ament/ament_cmake -b ${ROS_
        --from-paths src \
 	  --rosdistro ${ROS_DISTRO} \
 	  --skip-keys "libopencv-dev libopencv-contrib-dev libopencv-imgproc-dev python-opencv python3-opencv" 
-
+RUN pip3 install --no-cache-dir  catkin_pkg empy lark
+# build it and remove build files
 RUN rm -rf /var/lib/apt/lists/* && \
     apt-get clean && \
-    # build it!
-    colcon build \
-        --merge-install \
-        --cmake-args -DCMAKE_BUILD_TYPE=Release && \
-    # remove build files
+	cd ${ROS_ROOT} && \
+    colcon build --merge-install --cmake-args -DCMAKE_BUILD_TYPE=Release && \
     rm -rf ${ROS_ROOT}/src && \
     rm -rf ${ROS_ROOT}/logs && \
     rm -rf ${ROS_ROOT}/build && \
@@ -317,11 +312,7 @@ RUN rm -rf /var/lib/apt/lists/* && \
 # https://github.com/ros2/rclcpp/issues/1335
 #
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-
     
-# 
-# setup entrypoint
-#
 COPY ./docker/containers/packages/ros_entrypoint.sh /ros_entrypoint.sh
 
 RUN sed -i \
@@ -330,12 +321,12 @@ RUN sed -i \
     cat /ros_entrypoint.sh
 
 RUN echo 'source ${ROS_ROOT}/install/setup.bash' >> /root/.bashrc
-RUN bash -c "chmod +x /ros_entrypoint.sh"
+
 ENTRYPOINT ["/ros_entrypoint.sh"]
 CMD ["bash"]
 
 #RUN cd /root/.cache/torch/hub && unzip ./master.zip && rm ./master.zip
 #RUN rm -rf /root/.cache/torch/hub/ultralytics_yolov5_master
 # make sure the folder is CV_Detection and not anything else
-WORKDIR /home/ultraviolet/CV_Detection/utils
+#WORKDIR /home/ultraviolet/CV_Detection/utils
 #CMD python3 main.py

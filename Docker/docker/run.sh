@@ -81,11 +81,12 @@ fi
 # generate mount commands
 DATA_VOLUME="\
 --volume $PWD/data \
---volume $PWD/data:$DOCKER_ROOT/data \
---volume $PWD/$CLASSIFY_DIR/data:$DOCKER_ROOT/$CLASSIFY_DIR/data \
---volume $PWD/$CLASSIFY_DIR/models:$DOCKER_ROOT/$CLASSIFY_DIR/models \
---volume $PWD/$DETECTION_DIR/data:$DOCKER_ROOT/$DETECTION_DIR/data \
---volume $PWD/$DETECTION_DIR/models:$DOCKER_ROOT/$DETECTION_DIR/models"
+--volume $PWD/data:$DOCKER_ROOT/data" 
+
+# --volume $PWD/$CLASSIFY_DIR/data:$DOCKER_ROOT/$CLASSIFY_DIR/data \
+#--volume $PWD/$CLASSIFY_DIR/models:$DOCKER_ROOT/$CLASSIFY_DIR/models \
+#--volume $PWD/$DETECTION_DIR/data:$DOCKER_ROOT/$DETECTION_DIR/data \
+#--volume $PWD/$DETECTION_DIR/models:$DOCKER_ROOT/$DETECTION_DIR/models"
 
 # parse user arguments
 USER_VOLUME=""
