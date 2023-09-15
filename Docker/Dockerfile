@@ -36,6 +36,7 @@ RUN apt-get clean && apt-get update
 RUN pip3 uninstall opencv-python
 RUN apt-get remove -y *opencv*
 RUN rm -rf /usr/lib/python3.8/dist-packages/cv2
+RUN pip3 install --no-cache-dir opencv-python --user
 RUN pip3 install --no-cache-dir pyserial scikit-learn filterpy pandas ultralytics pyrealsense2
 
 
@@ -47,7 +48,10 @@ RUN pip3 install --no-cache-dir ultralytics
 RUN pip3 install --no-cache-dir py-cpuinfo psutil
 RUN pip3 install --no-cache-dir --upgrade matplotlib gitpython
 
-RUN apt-get update && apt-get install -y unzip vim && apt-get autoremove
-
+RUN apt-get update && apt-get install -y unzip vim && apt-get -y autoremove
+RUN wget https://github.com/ultralytics/yolov5/zipball/master -P /data/models/torch/hub/
+RUN unzip /data/models/torch/hub/master -d /data/models/torch/hub/ 
+RUN mv /data/models/torch/hub/ultralytics-yolov5-9e97ac3 /data/models/torch/hub/ultralytics_yolov5_master && rm -rf /data/models/torch/hub/master
+WORKDIR /home/CV_Detection
 
 
