@@ -125,8 +125,8 @@ def main():
         if depth_image is not None and len(bboxes) > 0:
             bboxes, depth_values = plate_detector.sort_bboxes_by_distance(bboxes, depth_image)
 
-        if len(bboxes) > 0:
-            bboxes, messages = detector.send_msg(bboxes, messages, depth_values)
+        #if len(bboxes) > 0:
+        #   bboxes, messages = detector.send_msg(bboxes, messages, depth_values)
 
         # show detections on screen
         if config.detection["DISPLAY"]:
