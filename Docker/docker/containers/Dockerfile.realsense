@@ -76,7 +76,43 @@ RUN apt-get update -y \
  && colcon build
  
 RUN source ./install/local_setup.sh
-RUN cd
+
+ENV WS_DIR_DUMMY="/ros2_dummy_ws"
+WORKDIR ${WS_DIR_DUMMY}
+RUN apt-get update -y \
+ && mkdir src \
+ && cd src \
+ && git clone https://github.com/gabriel-bronfman/dummy_camera.git \
+ && cd .. \
+ && colcon build
+ 
+RUN source ./install/local_setup.sh
+
+ENV WS_DIR_YOLOV8="/ros2_yolov8_ws"
+WORKDIR ${WS_DIR_YOLOV8}
+RUN apt-get update -y \
+ && mkdir src \
+ && cd src \
+ && git clone https://github.com/mgonzs13/yolov8_ros.git \
+ && pip3 install ultralytics --no-cache-dir --no-deps \
+ && pip3 install --no-cache-dir py-cpuinfo psutil scipy seaborn thop tqdm pandas onnxsim \
+ && pip3 install --no-cache-dir --upgrade matplotlib gitpython \
+ && cd .. \
+ && source /opt/ros/${ROS_DISTRO}/install/setup.bash \
+ && rm /etc/ros/rosdep/sources.list.d/20-default.list \
+ && rosdep init \
+ && rosdep update \
+ && rosdep install --from-paths src --ignore-src -r -y \
+ && source /opt/ros/${ROS_DISTRO}/setup.bash \
+ && colcon build
+ 
+RUN source ${WS_DIR_YOLOV8}/install/local_setup.sh
+
+RUN echo 'source "${WS_DIR_YOLOV8}/install/local_setup.sh"' >> ~/.bashrc
+RUN echo 'source "${WS_DIR_DUMMY}/install/local_setup.sh"' >> ~/.bashrc
+RUN echo 'source "${WS_DIR}/install/local_setup.sh"' >> ~/.bashrc
+
+RUN apt install -y ros-${ROS_DISTRO}-rviz2
 
 ENV DEBIAN_FRONTEND=dialog
 
