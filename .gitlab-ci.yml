@@ -34,3 +34,4 @@ format_code:
   only:
     - merge_requests
     - master
+    
