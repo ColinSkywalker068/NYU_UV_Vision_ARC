@@ -1,3 +1,4 @@
+[![pipeline status](https://gitlab.com/nyu-robomaster/CV_Detection/badges/main/pipeline.svg)](https://gitlab.com/nyu-robomaster/CV_Detection/-/commits/main)
 # CV Detection
 
 This is the NYU Robomaster's code for the Robomasters Robotics Competition.
