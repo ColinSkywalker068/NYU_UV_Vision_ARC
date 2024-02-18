@@ -16,21 +16,5 @@ pre_commit:
   stage: pre_commit
   script:
     - pre-commit clean
-    - pre-commit run --all-files | tee pre-commit-log.txt
-
-lint:
-  stage: lint
-  script:
-    - cd /builds/nyu-robomaster/CV_Detection
-    - flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-    - mypy . --ignore-missing-imports
-
-format_code:
-  stage: format_code
-  script:
-    - black .
-    - flake8 --ignore=E501 .
-  only:
-    - merge_requests
-    - main
+    - pre-commit run --all-files 
     
