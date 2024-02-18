@@ -9,6 +9,7 @@ import cv2
 import flagger
 from video_record import VideoRecord
 from uart_distance import UartDistance
+
 if not os.path.exists("../logs/"):
     os.makedirs("../logs/")
 
@@ -48,6 +49,7 @@ def main():
     if config.yolo_tensorrt["ENABLE"]:
         try:
             import tensorrt as trt
+
             model_weights_path = config.yolo_tensorrt["MODEL_WEIGHTS_PATH"]
         except ImportError:
             logger.debug("TensorRT not available, using YOLOv5")
@@ -64,22 +66,27 @@ def main():
         uart=config.detection["UART"],
     )
     if config.detection["UART"]:
-       count = 0
-       while detector.uart.Uart.get_referee_feedback()['robotID'] in [0, -1] and count <= 100:
-           os.system('clear')   
-           count += 1
-           logger.debug("Robot ID not found")
-           if count > 100:
-               logger.debug("Robot ID not found")
-               break
-       if count <= 100:
-           flagger_obj.opponent_color = (
-            "RED" if detector.uart.Uart.get_referee_feedback()['robotID'] > 100 else "BLUE"
-                #"RED" if detector.uart.Uart.get_robot_id() else "BLUE"
-           )
-           if config.general["DEBUG_LOGS"]:
-               print("opponent color: ", flagger_obj.opponent_color)
-       else:
+        count = 0
+        while (
+            detector.uart.Uart.get_referee_feedback()["robotID"] in [0, -1]
+            and count <= 100
+        ):
+            os.system("clear")
+            count += 1
+            logger.debug("Robot ID not found")
+            if count > 100:
+                logger.debug("Robot ID not found")
+                break
+        if count <= 100:
+            flagger_obj.opponent_color = (
+                "RED"
+                if detector.uart.Uart.get_referee_feedback()["robotID"] > 100
+                else "BLUE"
+                # "RED" if detector.uart.Uart.get_robot_id() else "BLUE"
+            )
+            if config.general["DEBUG_LOGS"]:
+                print("opponent color: ", flagger_obj.opponent_color)
+        else:
             flagger_obj.opponent_color = config.gameplay["OPPONENT_TEAM_COLOR"]
             logger.debug("Robot ID not found, using default color")
 
@@ -94,8 +101,6 @@ def main():
     mon = monitor.monitor()
     if config.camera["RECORD"]:
         video_saver = VideoRecord()
-
-
 
     while True:
         # obtain frame
@@ -131,18 +136,33 @@ def main():
 
         # show detections on screen
         if config.detection["DISPLAY"]:
-           
+
             # draw line of center
-            center_x = int(config.camera_intrinsics[config.camera['CameraVersion']]['PPX'] )
-            center_y = int(config.camera_intrinsics[config.camera['CameraVersion']]['PPY'])
-            c_size=40
-            cv2.line( color_image, (center_x-c_size, center_y), (center_x+c_size, center_y), (0,255,0), 2)
-            cv2.line( color_image, (center_x, center_y-c_size), (center_x, center_y+c_size), (0,255,0), 2)
+            center_x = int(
+                config.camera_intrinsics[config.camera["CameraVersion"]]["PPX"]
+            )
+            center_y = int(
+                config.camera_intrinsics[config.camera["CameraVersion"]]["PPY"]
+            )
+            c_size = 40
+            cv2.line(
+                color_image,
+                (center_x - c_size, center_y),
+                (center_x + c_size, center_y),
+                (0, 255, 0),
+                2,
+            )
+            cv2.line(
+                color_image,
+                (center_x, center_y - c_size),
+                (center_x, center_y + c_size),
+                (0, 255, 0),
+                2,
+            )
             mon.draw_on_image(color_image, bboxes, messages)
 
     # if config.detection["IMU"]:
     #     localizationThread.stop()
-
 
 
 if __name__ == "__main__":

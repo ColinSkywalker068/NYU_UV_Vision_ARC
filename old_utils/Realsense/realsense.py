@@ -21,32 +21,47 @@ def process_frame(depth_frame, x_min, y_min, x_max, y_max):
 def show_frame(color_frame, depth_frame, depth, coordinates):
     # Display Text for distance
     if coordinates != None:
-        cv2.putText(color_frame, "Median: {}mm".format(
-            depth), (coordinates[0], coordinates[1] - 20), cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 0))
+        cv2.putText(
+            color_frame,
+            f"Median: {depth}mm",
+            (coordinates[0], coordinates[1] - 20),
+            cv2.FONT_HERSHEY_PLAIN,
+            2,
+            (0, 0, 0),
+        )
 
         # Display Rectangle overlay
-        cv2.rectangle(color_frame, (coordinates[0], coordinates[1]),
-                      (coordinates[2], coordinates[3]), (0, 0, 255), 10)
-        cv2.rectangle(depth_frame, (coordinates[0], coordinates[1]),
-                      (coordinates[2], coordinates[3]), (0, 0, 255), 10)
-
+        cv2.rectangle(
+            color_frame,
+            (coordinates[0], coordinates[1]),
+            (coordinates[2], coordinates[3]),
+            (0, 0, 255),
+            10,
+        )
+        cv2.rectangle(
+            depth_frame,
+            (coordinates[0], coordinates[1]),
+            (coordinates[2], coordinates[3]),
+            (0, 0, 255),
+            10,
+        )
 
     # Show Both
     cv2.imshow("Video", color_frame)
     cv2.imshow("Video_Depth", depth_frame)
 
 
-#point = (400, 300)
+# point = (400, 300)
 
 # def show_distance(event, x, y, args, params):
 #    global point
 #    point = (x, y)
 
 # Initialize Camera Intel Realsense
-#dc = DepthCamera()
+# dc = DepthCamera()
 
 # Create mouse event
-#cv2.namedWindow("Color frame")
+# cv2.namedWindow("Color frame")
 
 
 # while True:

@@ -4,10 +4,8 @@ import config as cfg
 
 from pathlib import Path
 import logging
-logging.basicConfig(
-    filename=cfg.general["LOG_PATH"],
-    filemode='a',
-    level = logging.DEBUG)
+
+logging.basicConfig(filename=cfg.general["LOG_PATH"], filemode="a", level=logging.DEBUG)
 logger = logging.getLogger(Path(__file__).stem)
 
 if cfg.camera["DEPTH_CAPTURE"]:
@@ -36,7 +34,7 @@ class imu_sensor:
             )
             gyroscope = imu_frames[rs.stream.gyro].as_motion_frame().get_motion_data()
         except (RuntimeError, ValueError) as e:
-            logger.debug("IMU error: {}".format(e))
+            logger.debug(f"IMU error: {e}")
             return False, None, None
 
         # TODO: potentially return time data along with accel/gyro value
@@ -108,22 +106,25 @@ class depth_camera:
         depth_sensor = device.first_depth_sensor()
         depth_sensor.set_option(rs.option.laser_power, 0)
 
-        color_sensor = next(sensor for sensor in pipeline_profile.get_device(
-        ).sensors if not sensor.is_depth_sensor())
+        color_sensor = next(
+            sensor
+            for sensor in pipeline_profile.get_device().sensors
+            if not sensor.is_depth_sensor()
+        )
 
         color_sensor.set_option(rs.option.enable_auto_exposure, 1)
-        #color_sensor.set_option(rs.option.exposure, 60)
-        #color_sensor.set_option(rs.option.brightness, 0)
-        #color_sensor.set_option(rs.option.contrast, 50)
-        #color_sensor.set_option(rs.option.gain, 128)
-        #color_sensor.set_option(rs.option.gamma, 500)
-        #color_sensor.set_option(rs.option.saturation, 64)
+        # color_sensor.set_option(rs.option.exposure, 60)
+        # color_sensor.set_option(rs.option.brightness, 0)
+        # color_sensor.set_option(rs.option.contrast, 50)
+        # color_sensor.set_option(rs.option.gain, 128)
+        # color_sensor.set_option(rs.option.gamma, 500)
+        # color_sensor.set_option(rs.option.saturation, 64)
 
         # Start streaming
         self.pipeline.start(config)
 
         # algin depth frame to color frame
-        #self.align = rs.align(rs.stream.color)
+        # self.align = rs.align(rs.stream.color)
 
     # Get Depth and Color Frame
 
@@ -142,7 +143,7 @@ class depth_camera:
 
         # Align the depth frame to color frame
         # See https://dev.intelrealsense.com/docs/rs-align
-        #frames = self.align.process(frames)
+        # frames = self.align.process(frames)
 
         color_frame = frames.get_color_frame()
         depth_frame = frames.get_depth_frame()

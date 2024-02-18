@@ -12,7 +12,6 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-from __future__ import print_function
 
 import numpy as np
 from tracking.tracking_utils import associate_detections_to_trackers
@@ -22,7 +21,7 @@ import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
-class Sort(object):
+class Sort:
     def __init__(self, max_age=1, min_hits=3):
         """
         Sets key parameters for SORT
