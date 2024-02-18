@@ -7,14 +7,15 @@ import os
 import config
 from pathlib import Path
 import logging
+
 logging.basicConfig(
-    filename=config.general["LOG_PATH"],
-    filemode='a',
-    level = logging.DEBUG)
+    filename=config.general["LOG_PATH"], filemode="a", level=logging.DEBUG
+)
 logger = logging.getLogger(Path(__file__).stem)
 
+
 class VideoRecord:
-    def __init__(self, save_interval=5, file_prefix='output', file_extension='.mp4'):
+    def __init__(self, save_interval=5, file_prefix="output", file_extension=".mp4"):
         self.save_interval = save_interval
         self.file_prefix = file_prefix
         self.file_extension = file_extension
@@ -25,19 +26,19 @@ class VideoRecord:
         self.saving_thread.start()
 
     def get_output_filename(self):
-            video_dir ="./video"
-            if not os.path.exists(video_dir):
-                os.makedirs(video_dir)
+        video_dir = "./video"
+        if not os.path.exists(video_dir):
+            os.makedirs(video_dir)
 
-            current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            return f"{video_dir}/{self.file_prefix}_{current_time}{self.file_extension}"
+        current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        return f"{video_dir}/{self.file_prefix}_{current_time}{self.file_extension}"
 
     def save_video(self, frames):
         if len(frames) == 0:
             return
         filename = self.get_output_filename()
         height, width, _ = frames[0].shape
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         out = cv2.VideoWriter(filename, fourcc, 30.0, (width, height))
         for frame in frames:
             out.write(frame)
@@ -73,7 +74,7 @@ def main():
     preheat_frames = preheat_seconds * 30  # 1 seconds * 30 FPS = 150 frames
     for _ in range(preheat_frames):
         ret, frame = cap.read()
-        cv2.imshow('Webcam', frame)
+        cv2.imshow("Webcam", frame)
         cv2.waitKey(1)
 
     video_saver = VideoRecord()
@@ -84,9 +85,9 @@ def main():
             break
 
         video_saver.add_frame(frame)
-        cv2.imshow('Webcam', frame)
+        cv2.imshow("Webcam", frame)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
     cap.release()

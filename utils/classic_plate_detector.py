@@ -8,6 +8,7 @@ import uart_comms
 import math
 import config
 import numpy as np
+
 # from tracking.sort import Sort #unused - no tracking on classic CV
 from plate_detector import calculate_angle_offsets
 
@@ -16,7 +17,7 @@ import logging
 from pathlib import Path
 
 # use njit
-from numba import njit,prange
+from numba import njit, prange
 from pathlib import Path
 import logging
 
@@ -29,6 +30,8 @@ logger = logging.getLogger(Path(__file__).stem)
 # cudnn.benchmark = True
 
 # @TODO: clean up interface
+
+
 class classic_plate_detector:
     def __init__(
         self,
@@ -51,10 +54,10 @@ class classic_plate_detector:
         self.HFOV = config.camera["HFOV"]
         self.VFOV = config.camera["VFOV"]
         self.camera_width = config.camera["FRAME_SIZE"][0]
-        self.center_x = self.camera_width / 2#326.653747558594#
+        self.center_x = self.camera_width / 2  # 326.653747558594#
         self.camera_height = config.camera["FRAME_SIZE"][1]
-        self.center_y = self.camera_height / 2#237.997650146484#
-    
+        self.center_y = self.camera_height / 2  # 237.997650146484#
+
     def merge_boxes(self, boxes, x_val, y_val):
         size = len(boxes)
         if size < 2:
@@ -78,8 +81,10 @@ class classic_plate_detector:
     def boxes_mergeable(self, box1, box2, x_val, y_val):
         (x1, y1, w1, h1) = box1
         (x2, y2, w2, h2) = box2
-        return max(x1, x2) - min(x1, x2) - self.minx_w(x1, w1, x2, w2) < x_val \
+        return (
+            max(x1, x2) - min(x1, x2) - self.minx_w(x1, w1, x2, w2) < x_val
             and max(y1, y2) - min(y1, y2) - self.miny_h(y1, h1, y2, h2) < y_val
+        )
 
     def minx_w(self, x1, w1, x2, w2):
         return w1 if x1 <= x2 else w2
@@ -100,28 +105,28 @@ class classic_plate_detector:
     def process_frame(self, color_image, conf_thres=0.25, k=1, debug=False):
         messages = []
 
-        lab= cv2.cvtColor(color_image, cv2.COLOR_BGR2LAB)
+        lab = cv2.cvtColor(color_image, cv2.COLOR_BGR2LAB)
         l_channel, a, b = cv2.split(lab)
 
         # Applying CLAHE to L-channel
         # feel free to try different values for the limit and grid size:
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4,4))
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
         cl = clahe.apply(l_channel)
 
         # merge the CLAHE enhanced L-channel with the a and b channel
-        limg = cv2.merge((cl,a,b))
+        limg = cv2.merge((cl, a, b))
 
         # Converting image from LAB Color model to BGR color spcae
         enhanced_img = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
 
-        prepared_frame = cv2.GaussianBlur(src=enhanced_img, ksize=(5,5), sigmaX=0)
+        prepared_frame = cv2.GaussianBlur(src=enhanced_img, ksize=(5, 5), sigmaX=0)
 
         # Convert the frame to HSV color space
         hsv = cv2.cvtColor(prepared_frame, cv2.COLOR_BGR2HSV)
-        
+
         # reduce brightness
         value = -50.0
-        hsv[:,:,2] = hsv[:,:,2] - value
+        hsv[:, :, 2] = hsv[:, :, 2] - value
 
         # Define the lower and upper bounds of the blue color range
         # lower_blue = np.array([70, 200, 190])
@@ -133,7 +138,9 @@ class classic_plate_detector:
         mask = cv2.inRange(hsv, lower_blue, upper_blue)
 
         # Find all contours in the mask
-        contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, hierarchy = cv2.findContours(
+            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
 
         # Create a list to store the blue rectangles
         bboxes = []
@@ -153,10 +160,10 @@ class classic_plate_detector:
             # print(len(blue_rectangles))
             # Draw the blue rectangles on the frame
             bboxes = self.merge_boxes(bboxes, x_val=100, y_val=10)
-        
+
         # print(type(bboxes))
         # maintain the interface
-        dummy = np.array([1,1])
+        dummy = np.array([1, 1])
         bboxes = [np.append(sublist, dummy, axis=0) for sublist in bboxes]
         return bboxes, messages
 
@@ -166,18 +173,18 @@ class classic_plate_detector:
         #     # check if roi positive classification from the model
         #     # test_dl = model(TF.to_tensor(cv2.resize(roi,(32, 32), interpolation = cv2.INTER_AREA)).unsqueeze(0))
         #     # threshold = 0.7
-            
+
         #     # # Apply sigmoid activation
         #     # sigmoid_tensor = torch.sigmoid(test_dl)
         #     # print(sigmoid_tensor)
         #     # classification = np.argmax(torch.where(sigmoid_tensor > threshold, torch.tensor(1), torch.tensor(0)).numpy())
         #     # print(classification)
-        #     # if classification == 1:   
+        #     # if classification == 1:
         #     cv2.rectangle(frame, rectangle, (0, 255, 0), thickness=2)
         #     cv2.circle(frame, (rectangle[0]+rectangle[2]//2,rectangle[1]+rectangle[3]//2), radius=3, color=(0, 0, 255), thickness=-1)
         #     # roi = frame[rectangle[1]:rectangle[1]+rectangle[3], rectangle[0]:rectangle[0]+rectangle[2]]
         #     # cv2.imwrite(f'frames/roi{i}.png', roi)
-    
+
     # @TODO: write unified detection library with common utils
     def send_angles(self, x_min, x_max, y_min, y_max, stop=False, debug=True):
         """
@@ -189,16 +196,16 @@ class classic_plate_detector:
             msg = [0, 0, 0]
 
             # @TODO see if norm is correct for already normalized values
-            #if np.linalg.norm(self.last_rad_offset) > 1.5:
-                # check if last_rad_offset was large (target went out of frame)
-                # then we should send the last rad offset to continue tracking
-                # send the last rad offset /6
-                #msg = [
-                #    self.last_rad_offset[0] / 6,
-                #    self.last_rad_offset[1] / 6,
-                #    0,
-                #]
-                #self.last_rad_offset = (0, 0)
+            # if np.linalg.norm(self.last_rad_offset) > 1.5:
+            # check if last_rad_offset was large (target went out of frame)
+            # then we should send the last rad offset to continue tracking
+            # send the last rad offset /6
+            # msg = [
+            #    self.last_rad_offset[0] / 6,
+            #    self.last_rad_offset[1] / 6,
+            #    0,
+            # ]
+            # self.last_rad_offset = (0, 0)
         else:
             # get the pitch and yaw offsets
             x_rad_offset, y_rad_offset = calculate_angle_offsets(
@@ -214,7 +221,7 @@ class classic_plate_detector:
             # if the L2 norm of the offsets from 0 is <= 0.175 rad (+- 10 degrees x, y), start firing
 
             has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
-            
+
             if y_rad_offset < -0.5:
                 y_rad_offset = -0.5
             elif y_rad_offset > 0.5:
@@ -225,12 +232,12 @@ class classic_plate_detector:
             elif x_rad_offset > 0.5:
                 x_rad_offset = 0.5
             # bound x and y offset each by 0.1
-            msg = [y_rad_offset/3, -x_rad_offset/3, has_target]
+            msg = [y_rad_offset / 3, -x_rad_offset / 3, has_target]
 
             self.last_rad_offset = (y_rad_offset, -x_rad_offset)
         assert self.uart is not None
         logger.debug(f"MSG: {msg}")
-        #for i in range(2):
+        # for i in range(2):
         self.uart.send_auto_aim(msg)
 
         if debug and not stop:
@@ -257,8 +264,7 @@ class classic_plate_detector:
             x_min, y_min, x_max, y_max, _, _ = bboxes[0]
             stop_shooting = False
 
-
-        #@TODO: will refactor this later
+        # @TODO: will refactor this later
         (x_rad_offset, y_rad_offset) = calculate_angle_offsets(
             ((x_max + x_min) // 2, (y_max + y_min) // 2),
             self.center_x,
@@ -272,11 +278,11 @@ class classic_plate_detector:
         # if the L2 norm of the offsets from 0 is <= 0.175 rad (+- 10 degrees x, y), start firing
 
         has_target = int(np.linalg.norm([x_rad_offset, y_rad_offset]) <= 0.175)
-        #print("XRAD: ", x_rad_offset)
-        #print("YRAD: ", y_rad_offset)
+        # print("XRAD: ", x_rad_offset)
+        # print("YRAD: ", y_rad_offset)
         logger.debug(f"x= {-x_rad_offset}, y= {y_rad_offset}, target= {has_target} ")
 
-        #if self.uart is not None:
+        # if self.uart is not None:
         try:
             self.send_angles(
                 x_min, x_max, y_min, y_max, stop=stop_shooting, debug=debug

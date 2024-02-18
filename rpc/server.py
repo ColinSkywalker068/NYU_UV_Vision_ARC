@@ -10,7 +10,6 @@ from xavier_rpc_driver import SentryDriver
 sys.path.append("/usr/local/lib/python3.11/site-packages")
 
 
-
 async def main():
     time.sleep(5)  # Give the sentry server time to start up
     srv = Server([SentryDriver("sentry-base")])

@@ -51,7 +51,10 @@ if [ $ARCH = "aarch64" ]; then
 	L4T_VERSION="$L4T_RELEASE.$L4T_REVISION"
 
 	echo "L4T BSP Version:  L4T R$L4T_VERSION"
-	
+
+elif [ $ARCH = "unknown" ]; then
+	ARCH=$(uname -m)
+	echo "ARCH:  $ARCH"	
 elif [ $ARCH != "x86_64" ]; then
 	echo "unsupported architecture:  $ARCH"
 	exit 1

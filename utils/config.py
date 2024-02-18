@@ -1,18 +1,14 @@
 # general specifications
-general = {
-    "USE_V_DRIVER": False,
-    "DEBUG_LOGS": True, 
-    "LOG_PATH": "../logs/logs.log"
-    }
+general = {"USE_V_DRIVER": False, "DEBUG_LOGS": True, "LOG_PATH": "../logs/logs.log"}
 
 # camera specifications
 camera = {
     "DEPTH_CAPTURE": True,
     "CAMERA_INDEX": 0,
     "FRAME_SIZE": (640, 480),
-    "FRAME_RATE": 30,
+    "FRAME_RATE": 60,
     "RECORD": False,
-    "CameraVersion": "D455-2"
+    "CameraVersion": "D435-2",
 }
 
 
@@ -25,7 +21,7 @@ yolo = {
 
 # yolo model with tensorrt weights specification
 yolo_tensorrt = {
-    "ENABLE": True,
+    "ENABLE": False,
     "REPO_PATH": "ultralytics/yolov5",
     "MODEL_SOURCE": "custom",
     "MODEL_WEIGHTS_PATH": "./../Algorithm/pt_files/better_yolo.engine",
@@ -34,18 +30,24 @@ yolo_tensorrt = {
 # specifications for detection
 detection = {
     "DEBUG": True,
-    "DISPLAY":False,
+    "DISPLAY": True,
     "DETECTION_CONFIDENCE_CUTOFF": 0.4,
     "NO_TO_DETECT": 1,
-    "UART": True,
+    "UART": False,
     "IMU": False,
     "TRACKING": True,
     "USE_CUDA_FLAGGER": False,
     "FIDUCIAL": False,
     # at <= __ meter (key), adjust the angle by __ in radians (value)
-    "BULLET_DROP": [0.02, 0.1, 0.029, 0.0432, 0.05],#[0.02, 0.1, -0.09, -0.15, -0.20], #4 - # 0.3 , 5 - 0.4
+    "BULLET_DROP": [
+        0.02,
+        0.1,
+        0.029,
+        0.0432,
+        0.05,
+    ],  # [0.02, 0.1, -0.09, -0.15, -0.20], #4 - # 0.3 , 5 - 0.4
     "ENABLE_BULLET_DROP": True,
-    "CLASSIC": False
+    "CLASSIC": False,
 }
 
 # drawing specifications
@@ -71,13 +73,13 @@ fiducials = {
     "camera_intrinsic_matrix": {
         "camera_focal_length_x": 386.750671386719,
         "camera_center_x": 326.653747558594,
-        "camera_focal_length_y":  385.748138427734,
+        "camera_focal_length_y": 385.748138427734,
         "camera_center_y": 237.997650146484,
     },
     "camera_distortion_coefficients": {
         "camera_dist_coeff_k1": -0.0544583909213543,
         "camera_dist_coeff_k2": 0.0612407959997654,
-        "camera_dist_coeff_p1":-0.00126419449225068,
+        "camera_dist_coeff_p1": -0.00126419449225068,
         "camera_dist_coeff_p2": 0.000465608172817156,
         "camera_dist_coeff_k3": -0.0198560617864132,
     },
@@ -101,7 +103,7 @@ camera_intrinsics = {
         "FY": 608.600036621094,
         "DistortionModel": "BrownConrady",
         "Coeffs": [0.0, 0.0, 0.0, 0.0, 0.0],
-        "HFOV":  55.47,
+        "HFOV": 55.47,
         "VFOV": 43.04,
         "H_OFFSET": -0.0022,
         "V_OFFSET": 0.0002,
@@ -115,7 +117,7 @@ camera_intrinsics = {
         "FY": 607.150573730469,
         "DistortionModel": "BrownConrady",
         "Coeffs": [0.0, 0.0, 0.0, 0.0, 0.0],
-        "HFOV":  55.54,
+        "HFOV": 55.54,
         "VFOV": 43.13,
         "H_OFFSET": -0.0022,
         "V_OFFSET": 0.0,
@@ -128,8 +130,14 @@ camera_intrinsics = {
         "FX": 386.565704345703,
         "FY": 385.639862060547,
         "DistortionModel": "BrownConrady",
-        "Coeffs": [-0.0544622577726841, 0.0625528246164322, -0.000655769952572882, 0.00022078184701968, -0.0200711339712143],
-        "HFOV":  79.23,
+        "Coeffs": [
+            -0.0544622577726841,
+            0.0625528246164322,
+            -0.000655769952572882,
+            0.00022078184701968,
+            -0.0200711339712143,
+        ],
+        "HFOV": 79.23,
         "VFOV": 63.79,
         "H_OFFSET": -0.0022,
         "V_OFFSET": 0.0002,
@@ -142,12 +150,18 @@ camera_intrinsics = {
         "FX": 386.750671386719,
         "FY": 385.748138427734,
         "DistortionModel": "BrownConrady",
-        "Coeffs": [-0.0544583909213543, 0.0612407959997654, -0.00126419449225068, 0.000465608172817156, -0.0198560617864132],
-        "HFOV":  79.2,
+        "Coeffs": [
+            -0.0544583909213543,
+            0.0612407959997654,
+            -0.00126419449225068,
+            0.000465608172817156,
+            -0.0198560617864132,
+        ],
+        "HFOV": 79.2,
         "VFOV": 63.78,
         "H_OFFSET": 0.007487,
         "V_OFFSET": 0.004,
-    }
+    },
 }
 
 uart_ultrasonic = {

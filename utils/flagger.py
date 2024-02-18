@@ -39,7 +39,7 @@ class Flagger:
         self.red_upper_2 = np.array(red_upper_2, dtype=np.uint8)
         self.blue_lower = np.array(blue_lower, dtype=np.uint8)
         self.blue_upper = np.array(blue_upper, dtype=np.uint8)
-        
+
         # breaks with fiducials code, new implementation below
         # self.red_or_blue = (
         #     red_or_blue_cuda if detection["USE_CUDA_FLAGGER"] else red_or_blue
@@ -60,7 +60,7 @@ class Flagger:
         color = self.red_or_blue(frame)
 
         return color == self.opponent_color
-    
+
     def red_or_blue(self, frame):
         if detection["USE_CUDA_FLAGGER"]:
             return red_or_blue_cuda(
@@ -68,8 +68,15 @@ class Flagger:
                 self.blue_lower,
                 self.blue_upper,
             )
-        return red_or_blue(frame, self.blue_lower, self.blue_upper,self.red_lower,self.red_upper, self.red_lower_2,self.red_upper_2)
-
+        return red_or_blue(
+            frame,
+            self.blue_lower,
+            self.blue_upper,
+            self.red_lower,
+            self.red_upper,
+            self.red_lower_2,
+            self.red_upper_2,
+        )
 
 
 @cuda.jit(fastmath=True)
@@ -139,7 +146,6 @@ def red_or_blue(
     red_upper: np.ndarray,
     red_lower_2: np.ndarray,
     red_upper_2: np.ndarray,
-    
 ) -> str:
     """
     Checks what is the color of the robot in the image.
@@ -169,19 +175,17 @@ def red_or_blue(
         & (frame[:, :, 2] <= red_upper[2])
     )
     r_area = np.count_nonzero(red_mask)
-    #if b_area > r_area:
+    # if b_area > r_area:
     #     return "BLUE"
     # elif r_area > b_area:
     #     return "RED"
     # else: return "NULL"
-    
-    if b_area > 50: #and #b_area > r_area:
+
+    if b_area > 50:  # and #b_area > r_area:
         return "BLUE"
-    #else:
+    # else:
     return "RED"
-    #return "BLUE"
+    # return "BLUE"
     # if b_area > 15:
     #     return "BLUE"
     # return "RED"
-
-
