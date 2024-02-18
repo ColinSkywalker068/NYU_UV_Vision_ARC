@@ -1,9 +1,9 @@
 repos:
   # Black for formatting Python code consistently.
-  # - repo: https://github.com/psf/black
-  #   rev: 22.3.0
-  #   hooks:
-  #     - id: black
+  - repo: https://github.com/psf/black
+    rev: 22.3.0
+    hooks:
+      - id: black
 
   # Autopep8 for automatically formatting Python code to conform to the PEP 8 style guide.
   - repo: https://github.com/hhatto/autopep8
@@ -26,11 +26,11 @@ repos:
         additional_dependencies: [types-all]
 
   # # Codespell for identifying common misspellings in text files.
-  # - repo: https://github.com/codespell-project/codespell
-  #   rev: v2.1.0
-  #   hooks:
-  #     - id: codespell
-  #       args: ['--ignore-words-list=nd,amin']
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.1.0
+    hooks:
+      - id: codespell
+        args: ['--ignore-words-list=nd,amin']
 
   # Commitlint for enforcing conventional commit messages.
   - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
