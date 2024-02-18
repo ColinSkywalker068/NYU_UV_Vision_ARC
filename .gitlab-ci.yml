@@ -10,7 +10,6 @@ before_script:
   - apt-get install fd-find build-essential python3-pip -y
   - ln -s $(which fdfind) /usr/local/bin/fd || true
   - pip3 install pre-commit black flake8 mypy
-  - echo "ROS 2 environment sourced"
   - pre-commit install
 
 pre_commit:
@@ -22,7 +21,7 @@ pre_commit:
 lint:
   stage: lint
   script:
-    - cd /builds/nyu-robomaster/snb-331-vision-midterm/
+    - cd /builds/nyu-robomaster/CV_Detection
     - flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
     - mypy . --ignore-missing-imports
 
@@ -33,5 +32,5 @@ format_code:
     - flake8 --ignore=E501 .
   only:
     - merge_requests
-    - master
+    - main
     
