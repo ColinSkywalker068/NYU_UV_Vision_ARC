@@ -7,10 +7,10 @@ import config
 
 from pathlib import Path
 import logging
+
 logging.basicConfig(
-    filename=config.general["LOG_PATH"],
-    filemode='a',
-    level = logging.DEBUG)
+    filename=config.general["LOG_PATH"], filemode="a", level=logging.DEBUG
+)
 logger = logging.getLogger(Path(__file__).stem)
 
 
@@ -26,7 +26,7 @@ class Uart:
     # Constructor
     def __init__(self, port="/dev/ttyUSB0", baudrate=115200):
         # get serial port
-        #port =serial.tools.list_ports.comports()[0].device
+        # port =serial.tools.list_ports.comports()[0].device
         logger.debug("Using port: " + port)
         self.ser = serial.Serial(
             port=port,
@@ -63,7 +63,6 @@ class Uart:
         self.turret_feedback = [0, 0]
         self.turret_feedback_mutex = threading.Lock()
 
-
         # Referee Feedback
         self.referee_feedback = {
             "robotID": -1,
@@ -78,7 +77,7 @@ class Uart:
                 "Standard4": -1,
                 "Standard5": -1,
                 "Sentry7": -1,
-                "Base": -1
+                "Base": -1,
             },
             "blueHP": {
                 "Hero1": -1,
@@ -86,7 +85,7 @@ class Uart:
                 "Standard4": -1,
                 "Standard5": -1,
                 "Sentry7": -1,
-                "Base": -1
+                "Base": -1,
             },
             "rfid": -1,
             "damagedArmorID": -1,
@@ -94,7 +93,7 @@ class Uart:
             "receivedDPMS": -1,
             "warningLevel": -1,
             "warningRobotID": -1,
-            "lastReceivedWarningRobotTime": -1
+            "lastReceivedWarningRobotTime": -1,
         }
         self.referee_feedback_mutex = threading.Lock()
 
@@ -181,8 +180,7 @@ class Uart:
         self.turret_feedback = feedback
         self.turret_feedback_mutex.release()
 
-
-    def handle_referee_feedback(self,data):
+    def handle_referee_feedback(self, data):
         # data = [
         # robotID (1-9 RED), (101-109 BLUE)
         # maxHP (current robot)
@@ -218,12 +216,11 @@ class Uart:
         # blueSentry7
         # blueBase
 
-
         # rfid  (
         #  0: robot in base
         #  1: elevated ground
         #  2: rune game activation zone
-        #  3: launch ramp zone (before actual ramp) 
+        #  3: launch ramp zone (before actual ramp)
         #  4: adjacent to outpost
         #  5: adjacent to resource island
         #  6: in restoration zone
@@ -231,35 +228,35 @@ class Uart:
 
         # damagedArmorID (id of plate damaged)
         # damage type (
-            # 0: armor damage
-            # 1: module offline
-            # 2: barrel over speed
-            # 3: barrel overheat
-            # 4: chasis power overrun
-            # 5: collision (armor plate collision)
-            # )
-        
+        # 0: armor damage
+        # 1: module offline
+        # 2: barrel over speed
+        # 3: barrel overheat
+        # 4: chasis power overrun
+        # 5: collision (armor plate collision)
+        # )
+
         # receivedDPMS  (damage per minute sustained)
 
         # REFEREE WARNING
 
         # warningLevel (
-            # 0: no warning
-            # 1: yellow warning
-            # 2: red card
-            # 3: forfeture
-            # )
-        
+        # 0: no warning
+        # 1: yellow warning
+        # 2: red card
+        # 3: forfeture
+        # )
+
         # warningRobotID (1-9 for red, 101-109 for blue)
 
         # lastReceivedWarningRobotTime (time since last warning in ms)
         # ]
         try:
-            #print(data[-8:])
+            # print(data[-8:])
             # Don't question it, it works
-            data_int=struct.unpack("<xxHxxH", data[-8:])
-            #print("DATA_INT: ", data_int)
-            data = struct.unpack("<HHHHHHHHHHHHHHHHHHHHHHH",data[:-8])
+            data_int = struct.unpack("<xxHxxH", data[-8:])
+            # print("DATA_INT: ", data_int)
+            data = struct.unpack("<HHHHHHHHHHHHHHHHHHHHHHH", data[:-8])
         except:
             print("Invalid Referee Feedback Message")
             return
@@ -279,7 +276,7 @@ class Uart:
                 "redStandard4": data[8],
                 "redStandard5": data[9],
                 "redSentry7": data[10],
-                "redBase": data[11]
+                "redBase": data[11],
             },
             "blueHP": {
                 "blueHero1": data[12],
@@ -287,47 +284,42 @@ class Uart:
                 "blueStandard4": data[14],
                 "blueStandard5": data[15],
                 "blueSentry7": data[16],
-                "blueBase": data[17]
+                "blueBase": data[17],
             },
             "rfid": data[18],
             "damagedArmorID": data[19],
             "damageType": data[20],
             "warningLevel": data[21],
             "warningRobotID": data[22],
-            "receivedDPMS": data_int[0]/100,
-            "lastReceivedWarningRobotTime": data_int[1]
+            "receivedDPMS": data_int[0] / 100,
+            "lastReceivedWarningRobotTime": data_int[1],
         }
         self.referee_feedback_mutex.release()
-
-
-        
-
-        
 
     ### END MESSAGE HANDLERS ###
     # listen for data from serial port
 
     def listener(self):
         if self.ser.in_waiting > 0:
-            #print("STATE: ", self.state)
+            # print("STATE: ", self.state)
             if self.state == WAITING_FOR_HEADER:
                 data = struct.unpack("B", self.ser.read())[0]
                 if data == self.HEADER:
                     self.state = READING_HEADER
             elif self.state == READING_HEADER:
                 header_bytes = self.ser.read(HEADER_LENGTH + 2)
-                #print("HEADER BYTES: ", header_bytes)
+                # print("HEADER BYTES: ", header_bytes)
                 if len(header_bytes) != HEADER_LENGTH + 2:
                     self.state = WAITING_FOR_HEADER
                     return
 
                 header = struct.unpack("<BHBBH", header_bytes)
-                #print(header)
+                # print(header)
                 self.msg_len = header[1]
                 self.msg_type = header[-1]
-                #print("Header: ", header)
-                #print("MSG_TYPE: ", self.msg_type)
-                #print("MSG_LEN: ", self.msg_len)
+                # print("Header: ", header)
+                # print("MSG_TYPE: ", self.msg_type)
+                # print("MSG_LEN: ", self.msg_len)
                 self.state = READING_DATA
 
             if self.state == READING_DATA:

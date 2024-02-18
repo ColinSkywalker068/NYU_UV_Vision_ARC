@@ -11,12 +11,13 @@ import time
 import argparse
 import struct
 from UART.uart import uart_server
-opponent_team = 'r'  # 'r' or 'b'
+
+opponent_team = "r"  # 'r' or 'b'
 count = 0
 
-matplotlib.use('TKAgg')
+matplotlib.use("TKAgg")
 # Disable tensorflow output
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 
 red_lower = np.array([0, 4, 226])
@@ -30,9 +31,11 @@ def red_or_blue(color_frame):
     red_mask = cv2.inRange(hsv, red_lower, red_upper)
     blue_mask = cv2.inRange(hsv, blue_lower, blue_upper)
     _, red_contours, _ = cv2.findContours(
-        red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
     _, blue_contours, _ = cv2.findContours(
-        blue_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        blue_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
 
     if len(red_contours) > 0 and len(blue_contours) > 0:
         r_area = 0
@@ -42,19 +45,20 @@ def red_or_blue(color_frame):
         for c in blue_contours:
             b_area += cv2.contourArea(c)
         if r_area > b_area:
-            return 'r'
+            return "r"
         else:
-            return 'b'
+            return "b"
     elif len(red_contours) > 0:
-        return 'r'
+        return "r"
 
-    return 'b'
+    return "b"
 
 
 def send_cords(ser, horiz_disp, vert_disp):
     global count
-    data = struct.pack('fff', np.float32(
-        horiz_disp/640), np.float32(vert_disp/480), 1)
+    data = struct.pack(
+        "fff", np.float32(horiz_disp / 640), np.float32(vert_disp / 480), 1
+    )
     try:
         ser.write(data)
     except:
@@ -63,16 +67,16 @@ def send_cords(ser, horiz_disp, vert_disp):
 
 
 def det_move_(obj_x_coord, obj_y_coord, xres, yres):
-    obj_y_coord = yres-obj_y_coord
-    centerx, centery = xres/2.0, yres/2.0
+    obj_y_coord = yres - obj_y_coord
+    centerx, centery = xres / 2.0, yres / 2.0
 
-    move_x = obj_x_coord-centerx
-    move_y = obj_y_coord-centery
-    if(move_x != 0):
+    move_x = obj_x_coord - centerx
+    move_y = obj_y_coord - centery
+    if move_x != 0:
         move_x /= centerx
-    if(move_y != 0):
+    if move_y != 0:
         move_y /= centery
-    return(move_x, move_y)
+    return (move_x, move_y)
 
 
 def main(_argv):
@@ -102,7 +106,7 @@ def main(_argv):
         bytesize=serial.EIGHTBITS,
         parity=serial.PARITY_NONE,
         stopbits=serial.STOPBITS_ONE,
-        timeout=1
+        timeout=1,
     )
 
     # Initialize Algorithm
@@ -133,7 +137,12 @@ def main(_argv):
                 # Get Median Depth from depth frame
                 try:
                     depth = process_frame(
-                        depth_frame, coordinates[0], coordinates[1], coordinates[2], coordinates[3])
+                        depth_frame,
+                        coordinates[0],
+                        coordinates[1],
+                        coordinates[2],
+                        coordinates[3],
+                    )
                 except:
                     print("Error processing_frame")
 
@@ -144,25 +153,27 @@ def main(_argv):
                     print(depth)
                     show_frame(color_frame, depth_frame, depth, coordinates)
 
-               # try:
+                # try:
                 final_cords = det_move_(
-                    (coordinates[0]+coordinates[2])/2,
-                    (coordinates[1]+coordinates[3])/2,
+                    (coordinates[0] + coordinates[2]) / 2,
+                    (coordinates[1] + coordinates[3]) / 2,
                     640,
-                    480)
+                    480,
+                )
 
                 if red_or_blue(color_frame) != opponent_team:
                     pass
                 print(final_cords[0], final_cords[1])
                 send_cords(ser, final_cords[0], final_cords[1])
-               # except:
-                #   print("Error sending coordinates", coordinates[0], coordinates[1], coordinates[2], coordinates[3],  det_move_(
-                #           (coordinates[0]+coordinates[2])/2,
-                #           (coordinates[1]+coordinates[3])/2,
-                #           640,
-                #           480))
+            # except:
+            #   print("Error sending coordinates", coordinates[0], coordinates[1], coordinates[2], coordinates[3],  det_move_(
+            #           (coordinates[0]+coordinates[2])/2,
+            #           (coordinates[1]+coordinates[3])/2,
+            #           640,
+            #           480))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import sys
+
     main(sys.argv[1:])
