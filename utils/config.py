@@ -10,9 +10,9 @@ camera = {
     "DEPTH_CAPTURE": True,
     "CAMERA_INDEX": 0,
     "FRAME_SIZE": (640, 480),
-    "FRAME_RATE": 30,
+    "FRAME_RATE": 60,
     "RECORD": False,
-    "CameraVersion": "D455-2"
+    "CameraVersion": "D435-2"
 }
 
 
@@ -25,7 +25,7 @@ yolo = {
 
 # yolo model with tensorrt weights specification
 yolo_tensorrt = {
-    "ENABLE": True,
+    "ENABLE": False,
     "REPO_PATH": "ultralytics/yolov5",
     "MODEL_SOURCE": "custom",
     "MODEL_WEIGHTS_PATH": "./../Algorithm/pt_files/better_yolo.engine",
@@ -34,10 +34,10 @@ yolo_tensorrt = {
 # specifications for detection
 detection = {
     "DEBUG": True,
-    "DISPLAY":False,
+    "DISPLAY":True,
     "DETECTION_CONFIDENCE_CUTOFF": 0.4,
     "NO_TO_DETECT": 1,
-    "UART": True,
+    "UART": False,
     "IMU": False,
     "TRACKING": True,
     "USE_CUDA_FLAGGER": False,

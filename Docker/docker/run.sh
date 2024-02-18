@@ -73,18 +73,20 @@ DOCKER_ROOT="/jetson-inference"	# where the project resides inside docker
 SSD_BASE_MODEL="$DETECTION_DIR/models/mobilenet-v1-ssd-mp-0_675.pth"
 
 if [ ! -f "$SSD_BASE_MODEL" ]; then
-	echo "Downloading pytorch-ssd base model..."
-	wget --quiet --show-progress --progress=bar:force:noscroll --no-check-certificate https://nvidia.box.com/shared/static/djf5w54rjvpqocsiztzaandq1m3avr7c.pth -O $SSD_BASE_MODEL
+	#echo "Downloading pytorch-ssd base model..."
+	#wget --quiet --show-progress --progress=bar:force:noscroll --no-check-certificate https://nvidia.box.com/shared/static/djf5w54rjvpqocsiztzaandq1m3avr7c.pth -O $SSD_BASE_MODEL
+	echo "pytorch-ssd model not found...skipping"
 fi
 
 # generate mount commands
 DATA_VOLUME="\
 --volume $PWD/data \
---volume $PWD/data:$DOCKER_ROOT/data \
---volume $PWD/$CLASSIFY_DIR/data:$DOCKER_ROOT/$CLASSIFY_DIR/data \
---volume $PWD/$CLASSIFY_DIR/models:$DOCKER_ROOT/$CLASSIFY_DIR/models \
---volume $PWD/$DETECTION_DIR/data:$DOCKER_ROOT/$DETECTION_DIR/data \
---volume $PWD/$DETECTION_DIR/models:$DOCKER_ROOT/$DETECTION_DIR/models"
+--volume $PWD/data:$DOCKER_ROOT/data" 
+
+# --volume $PWD/$CLASSIFY_DIR/data:$DOCKER_ROOT/$CLASSIFY_DIR/data \
+#--volume $PWD/$CLASSIFY_DIR/models:$DOCKER_ROOT/$CLASSIFY_DIR/models \
+#--volume $PWD/$DETECTION_DIR/data:$DOCKER_ROOT/$DETECTION_DIR/data \
+#--volume $PWD/$DETECTION_DIR/models:$DOCKER_ROOT/$DETECTION_DIR/models"
 
 # parse user arguments
 USER_VOLUME=""
@@ -179,7 +181,7 @@ if [ $ARCH = "aarch64" ]; then
 	# /proc or /sys files aren't mountable into docker
 	cat /proc/device-tree/model > /tmp/nv_jetson_model
 	
-	sudo docker run --runtime nvidia -it --rm --privileged \
+	sudo docker run --gpus all -it --rm --privileged \
 		--network host \
 		-v /tmp/argus_socket:/tmp/argus_socket \
 		-v /etc/enctune.conf:/etc/enctune.conf \
