@@ -5,24 +5,26 @@ from cv_bridge import CvBridge
 from ultralytics import YOLO
 import cv2
 
+
 class YOLOv8Node(Node):
     def __init__(self):
-        super().__init__('yolov8_node')
-        self.declare_parameter('model_path', '/home/ultraviolet/Downloads/yolo/best_yolov8_shubham.engine')
-        model_path = self.get_parameter('model_path').get_parameter_value().string_value
-        
+        super().__init__("yolov8_node")
+        self.declare_parameter(
+            "model_path", "/home/ultraviolet/Downloads/yolo/best_yolov8_shubham.engine"
+        )
+        model_path = self.get_parameter("model_path").get_parameter_value().string_value
+
         self.subscription = self.create_subscription(
-            Image,
-            'video_frames',
-            self.listener_callback,
-            10)
+            Image, "video_frames", self.listener_callback, 10
+        )
         self.bridge = CvBridge()
-        self.model = YOLO(model_path, task='detect')
+        self.model = YOLO(model_path, task="detect")
 
     def listener_callback(self, msg):
         frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-        results = self.model.predict(frame, half=True, imgsz=[480,640], show=True)
+        results = self.model.predict(frame, half=True, imgsz=[480, 640], show=True)
         # Process results here
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -35,5 +37,6 @@ def main(args=None):
         node.destroy_node()
         rclpy.shutdown()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
