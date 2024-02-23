@@ -9,15 +9,16 @@ class YOLOv8Node(Node):
     def __init__(self):
         super().__init__('yolov8_node')
         self.declare_parameter('model_path', '/home/ultraviolet/Downloads/yolo/best_yolov8_shubham.engine')
+        self.declare_parameter('task', 'detect')
         model_path = self.get_parameter('model_path').get_parameter_value().string_value
-        
+        task = self.get_parameter('task').get_parameter_value().string_value
         self.subscription = self.create_subscription(
             Image,
             'video_frames',
             self.listener_callback,
             10)
         self.bridge = CvBridge()
-        self.model = YOLO(model_path, task='detect')
+        self.model = YOLO(model_path, task=task)
 
     def listener_callback(self, msg):
         frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
