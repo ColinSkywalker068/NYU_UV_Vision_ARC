@@ -86,6 +86,10 @@ def main():
             )
             if config.general["DEBUG_LOGS"]:
                 print("opponent color: ", flagger_obj.opponent_color)
+
+
+
+
         else:
             flagger_obj.opponent_color = config.gameplay["OPPONENT_TEAM_COLOR"]
             logger.debug("Robot ID not found, using default color")
