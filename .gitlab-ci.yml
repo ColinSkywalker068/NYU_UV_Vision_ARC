@@ -9,12 +9,12 @@ before_script:
   - apt-get update -y
   - apt-get install fd-find build-essential python3-pip -y
   - ln -s $(which fdfind) /usr/local/bin/fd || true
-  - pip3 install pre-commit black flake8 mypy
+  - pip3 install pre-commit 
   - pre-commit install
 
 lint:
   stage: test
-  scrip:
+  script:
     - cd /builds/nyu-robomaster/CV_Detection/ # Change directory to where your code is
     - pre-commit run --all-files || true # Run pre-commit and ignore failure
     - |
@@ -23,3 +23,8 @@ lint:
         git commit -m "Apply clang-format fixes"
         git push gitlab_origin HEAD:$CI_COMMIT_REF_NAME
       fi
+pre_commit:
+  stage: pre_commit
+  script:
+    - pre-commit clean
+    - pre-commit run --all-files 
