@@ -2,7 +2,7 @@ image: mohanlu/cv_detection:latest
 
 
 before_script:
-- apt-get update -y && apt-get install fd-find -y
+  - apt-get update -y && apt-get install fd-find -y
   - ln -s $(which fdfind) /usr/local/bin/fd || true
   - which fd || which fdd || which fdfind
   - apt-get install build-essential -y
