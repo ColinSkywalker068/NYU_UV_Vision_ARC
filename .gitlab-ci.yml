@@ -13,14 +13,14 @@ before_script:
   # - ls -l /opt/ros/iron/
   # - source /opt/ros/iron/setup.bash
   # - echo "ROS 2 environment sourced"
-  # - git fetch
-  # - git remote add gitlab_origin https://oauth2:glpat-7GrwyrPa-7CqntJpe_8R@gitlab.com/nyu-robomaster/cv_detection.git
-  # - git checkout $CI_COMMIT_REF_NAME
+  - git fetch
+  - git remote add gitlab_origin https://oauth2:glpat-7GrwyrPa-7CqntJpe_8R@gitlab.com/nyu-robomaster/cv_detection.git
+  - git checkout $CI_COMMIT_REF_NAME
   # - chmod +x /builds/nyu-robomaster/controls_ros/scripts/run-clang-tidy.sh
 
 
 lint:
-  stage: test
+  stage: pre_commit
   script:
     - cd /builds/nyu-robomaster/CV_Detection/ # Change directory to where your code is
     - pre-commit run --all-files || true # Run pre-commit and ignore failure
