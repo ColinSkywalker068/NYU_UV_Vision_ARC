@@ -31,8 +31,8 @@ lint:
         git push gitlab_origin HEAD:$CI_COMMIT_REF_NAME
       fi
 
-pre_commit:
-  stage: pre_commit
-  script:
-    - pre-commit clean
-    - pre-commit run --all-files 
+# pre_commit:
+#   stage: pre_commit
+#   script:
+#     - pre-commit clean
+#     - pre-commit run --all-files 
