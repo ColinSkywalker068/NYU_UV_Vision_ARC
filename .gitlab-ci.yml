@@ -20,7 +20,7 @@ before_script:
 
 
 lint:
-  stage: pre_commit
+  stage: test
   script:
     - cd /builds/nyu-robomaster/CV_Detection/ # Change directory to where your code is
     - pre-commit run --all-files || true # Run pre-commit and ignore failure
