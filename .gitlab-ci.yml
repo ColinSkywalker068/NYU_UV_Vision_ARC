@@ -28,7 +28,7 @@ lint:
       if [ -n "$(git status --porcelain)" ]; then # Check if there are any changes
         git add .
         git commit -m "Apply clang-format fixes"
-        git push gitlab_origin HEAD:$CI_COMMIT_REF_NAME
+        git push 
       fi
 
 # pre_commit:
