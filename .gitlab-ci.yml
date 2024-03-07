@@ -1,10 +1,5 @@
 image: mohanlu/cv_detection_ci:latest 
 
-stages:
-  - build
-  - test
-  - deploy
-
 before_script:
   # - apt-get update -y && apt-get install fd-find -y
   # - ln -s $(which fdfind) /usr/local/bin/fd || true
@@ -36,7 +31,7 @@ lint:
     #   fi
 
 pre_commit:
-  stage: pre_commit
+  stage: test
   script:
     - pre-commit clean
     - pre-commit run --all-files 
