@@ -1,21 +1,21 @@
 image: mohanlu/cv_detection_ci:latest 
 
 
-before_script:
+# before_script:
   # - apt-get update -y && apt-get install fd-find -y
   # - ln -s $(which fdfind) /usr/local/bin/fd || true
   # - which fd || which fdd || which fdfind
   # - apt-get install build-essential -y
   # - apt-get install python3-pip -y # Ensure pip is available for installing pre-commit
   # - pip3 install pre-commit
-  - git config --global user.email "you@example.com"
-  - git config --global user.name "CI Auto Formatter"
+  # - git config --global user.email "you@example.com"
+  # - git config --global user.name "CI Auto Formatter"
   # - ls -l /opt/ros/iron/
   # - source /opt/ros/iron/setup.bash
   # - echo "ROS 2 environment sourced"
-  - git fetch
-  - git remote add gitlab_origin https://oauth2:glpat-7GrwyrPa-7CqntJpe_8R@gitlab.com/nyu-robomaster/cv_detection.git
-  - git checkout $CI_COMMIT_REF_NAME
+  # - git fetch
+  # - git remote add gitlab_origin https://oauth2:glpat-7GrwyrPa-7CqntJpe_8R@gitlab.com/nyu-robomaster/cv_detection.git
+  # - git checkout $CI_COMMIT_REF_NAME
   # - chmod +x /builds/nyu-robomaster/controls_ros/scripts/run-clang-tidy.sh
 
 
@@ -31,8 +31,8 @@ lint:
         git push 
       fi
 
-# pre_commit:
-#   stage: pre_commit
-#   script:
-#     - pre-commit clean
-#     - pre-commit run --all-files 
+pre_commit:
+  stage: pre_commit
+  script:
+    - pre-commit clean
+    - pre-commit run --all-files 
