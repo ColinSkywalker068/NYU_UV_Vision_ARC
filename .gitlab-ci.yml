@@ -10,13 +10,13 @@ before_script:
   # - pip3 install pre-commit
   - git config --global user.email "you@example.com"
   - git config --global user.name "CI Auto Formatter"
-  - ls -l /opt/ros/iron/
-  - source /opt/ros/iron/setup.bash
-  - echo "ROS 2 environment sourced"
-  - git fetch
-  - git remote add gitlab_origin https://oauth2:glpat-7GrwyrPa-7CqntJpe_8R@gitlab.com/nyu-robomaster/cv_detection.git
-  - git checkout $CI_COMMIT_REF_NAME
-  - chmod +x /builds/nyu-robomaster/controls_ros/scripts/run-clang-tidy.sh
+  # - ls -l /opt/ros/iron/
+  # - source /opt/ros/iron/setup.bash
+  # - echo "ROS 2 environment sourced"
+  # - git fetch
+  # - git remote add gitlab_origin https://oauth2:glpat-7GrwyrPa-7CqntJpe_8R@gitlab.com/nyu-robomaster/cv_detection.git
+  # - git checkout $CI_COMMIT_REF_NAME
+  # - chmod +x /builds/nyu-robomaster/controls_ros/scripts/run-clang-tidy.sh
 
 lint:
   stage: test
@@ -31,8 +31,8 @@ lint:
     #     git push 
     #   fi
 
-# pre_commit:
-#   stage: pre_commit
-#   script:
-#     - pre-commit clean
-#     - pre-commit run --all-files 
+pre_commit:
+  stage: pre_commit
+  script:
+    - pre-commit clean
+    - pre-commit run --all-files 
