@@ -18,7 +18,6 @@ image: mohanlu/cv_detection_ci:latest
   # - git checkout $CI_COMMIT_REF_NAME
   # - chmod +x /builds/nyu-robomaster/controls_ros/scripts/run-clang-tidy.sh
 
-
 lint:
   stage: test
   script:
