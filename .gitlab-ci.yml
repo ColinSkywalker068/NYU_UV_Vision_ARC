@@ -23,15 +23,15 @@ lint:
     - cd /builds/nyu-robomaster/CV_Detection/ # Change directory to where your code is
     - git checkout pre-commit-testing # Switch to an existing branch or create a new branch
     - pre-commit run --all-files || true # Run pre-commit and ignore failure
-    - |
-      if [ -n "$(git status --porcelain)" ]; then # Check if there are any changes
-        git add .
-        git commit -m "Apply clang-format fixes"
-        git push 
-      fi
+#     - |
+#       if [ -n "$(git status --porcelain)" ]; then # Check if there are any changes
+#         git add .
+#         git commit -m "Apply clang-format fixes"
+#         git push 
+#       fi
 
-pre_commit:
-  stage: test
-  script:
-    - pre-commit clean
-    - pre-commit run --all-files 
+# pre_commit:
+#   stage: test
+#   script:
+#     - pre-commit clean
+#     - pre-commit run --all-files 
