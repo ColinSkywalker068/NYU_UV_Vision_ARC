@@ -1,4 +1,6 @@
-image: mohanlu/cv_detection_ci:latest 
+image: 
+  name: mohanlu/cv_detection_ci:latest 
+  pull_policy: always
 
 before_script:
   # - apt-get update -y && apt-get install fd-find -y
