@@ -10,7 +10,7 @@ before_script:
   - git config --global user.email "you@example.com"
   - git config --global user.name "CI Auto Formatter"
   - git fetch
-  - git remote add gitlab_origin https://oauth2:glpat-WxsXAYyeyfiETrPJZCQn@gitlab.com/nyu-robomaster/cv_detection.git
+  - git remote add gitlab_origin https://oauth2:glpat-DzjEgBXjAv-EJoQ6b5-e@gitlab.com/nyu-robomaster/CV_Detection.git
   - git checkout $CI_COMMIT_REF_NAME
 
 lint:
