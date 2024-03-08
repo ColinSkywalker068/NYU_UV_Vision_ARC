@@ -72,3 +72,40 @@ commands:
     update (upgrade)  Update conda packages to the latest compatible version.
 ```
 Create conda environment and use normally like https://github.com/naseemap47/YOLO-NAS
+
+### Install and run dependencies - ON TERMINAL
+Repositories like https://github.com/naseemap47/YOLO-NAS usually come with instructions. Following them usually gives best results. 
+
+**NOTE** while installing dependencies you want your file to have a `rw` (read-write) permission but while executing code you want it to have `ro` (read-only) permission. Do NOT try updating the overlay file in `ro` mode as the changes wont be save in the right location. 
+
+#### Allocate GPU to install GPU specific dependencies
+You may vary the time and resources according to your needs
+```
+srun --pty -c 4 --mem=16GB --time=00:30:00 --gres=gpu:rtx8000:1 /bin/bash
+```
+#### Run the overlay image
+```
+singularity exec --nv --overlay /scratch/sg7761/robomaster/yolonas/overlay-25GB-500K.ext3:rw /scratch/work/public/singularity/cuda11.3.0-cudnn8-devel-ubuntu20.04.sif /bin/bash
+```
+#### Activate conda
+```
+source /ext3/env.sh
+conda activate <env-name> #yolo-nas for this example
+```
+
+Now you can run any python file for quick prototyping and making sure your code works
+
+### Run dependencies - ASYNCHRONOUSLY
+Suppose you are training a large model that takes hours to train and you cannot be the terminal open all the time. Use `SBATCH` files to specify your system configuration and  commands to run. SLURM will automatically allocate resources and run the commands when possible. An example of this can be found in `train_nas.SBATCH`. All communication happpens using emails. 
+
+To start a `SBATCH` job, run:
+```
+sbatch <file-name> #train_nas.SBATCH in our case
+```
+
+To monitor a job:
+```
+watch squeue -u <netid> #enter your net id here
+```
+
+**NOTE** make sure to define the `.err` and `.out` file with unqiue names so that its easier to debug your problems.
