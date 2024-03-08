@@ -71,4 +71,4 @@ commands:
     search            Search for packages and display associated information using the MatchSpec format.
     update (upgrade)  Update conda packages to the latest compatible version.
 ```
-Create conda environment and use normally
+Create conda environment and use normally like https://github.com/naseemap47/YOLO-NAS
