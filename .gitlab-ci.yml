@@ -10,7 +10,7 @@ before_script:
   - git config --global user.email "you@example.com"
   - git config --global user.name "CI Auto Formatter"
   - git fetch
-  - git remote add gitlab_origin https://oauth2:glpat-DzjEgBXjAv-EJoQ6b5-e@gitlab.com/nyu-robomaster/CV_Detection.git
+  - git remote add gitlab_origin https://oauth2:glpat-DsBwXG4eNrNQraYKswyr@gitlab.com/nyu-robomaster/cv_detection.git
   - git checkout $CI_COMMIT_REF_NAME
 
 lint:
@@ -22,9 +22,10 @@ lint:
     - |
       if [ -n "$(git status --porcelain)" ]; then # Check if there are any changes
         git add .
-        git commit -m "Apply clang-format fixes"
-        git push 
+        git commit -m "Apply pre-commit fixes"
+        git push gitlab_origin HEAD:$CI_COMMIT_REF_NAME
       fi
+
 
 # pre_commit:
 #   stage: test
