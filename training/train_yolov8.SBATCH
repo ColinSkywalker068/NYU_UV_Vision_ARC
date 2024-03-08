@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH --time=6:00:00
+#SBATCH --time=12:00:00
 #SBATCH --mem=32GB
 #SBATCH --gres=gpu:rtx8000:1
 #SBATCH --output=y8n_20k_adam_coslr_300_64_0.out
