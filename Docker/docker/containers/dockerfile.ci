@@ -9,4 +9,4 @@ RUN apt-get update && \
     && pip3 install pre-commit black flake8 mypy \
     && apt-get clean
 
-RUN ln -s $(which fdfind) /usr/local/bin/fd || true
+RUN ln -s $(which fdfind) /usr/local/bin/fd
