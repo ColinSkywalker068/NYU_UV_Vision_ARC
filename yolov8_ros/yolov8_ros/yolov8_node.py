@@ -12,10 +12,18 @@ class YOLOv8Node(Node):
         self.declare_parameter('model_path', '/home/ultraviolet/Downloads/yolo/best_yolov8_shubham.engine')
         self.declare_parameter('task', 'detect')
         self.declare_parameter('type', 'yolo')
+        self.declare_parameter('half', True)
+        self.declare_parameter('imgsz', 640)
+        self.declare_parameter('show', False)
+        self.declare_parameter('conf', 0.5)
         model_path = self.get_parameter('model_path').get_parameter_value().string_value
-        print(f'model_name = {model_path}')
+        #print(f'model_name = {model_path}')
         model_type = self.get_parameter('type').get_parameter_value().string_value
         task = self.get_parameter('task').get_parameter_value().string_value
+        self.half = self.get_parameter('half').get_parameter_value().bool_value
+        self.imgsz = self.get_parameter('imgsz').get_parameter_value().integer_value
+        self.show = self.get_parameter('show').get_parameter_value().bool_value
+        self.conf = self.get_parameter('conf').get_parameter_value().double_value
         self.subscription = self.create_subscription(
             Image,
             'video_frames',
@@ -30,6 +38,8 @@ class YOLOv8Node(Node):
         	self.model = NAS(model_path)
        	else:
        		raise NotImplementedError
+       		
+       	
 
     def listener_callback(self, msg):
         frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
@@ -47,7 +57,7 @@ class YOLOv8Node(Node):
         #adjusted_hsv = cv2.merge([h,s,v])
         #frame = cv2.cvtColor(adjusted_hsv, cv2.COLOR_HSV2BGR)
         #norm_frame = self.normalize_frame(padded_image)
-        for r in self.model.predict(padded_image, half=True, imgsz=640, show=True, stream=True, conf=0.5):
+        for r in self.model.predict(padded_image, half=self.half, imgsz=self.imgsz, show=self.show, stream=True, conf=self.conf):
         	print(r.obb)
         # Process results here
         
