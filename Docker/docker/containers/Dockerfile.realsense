@@ -114,6 +114,8 @@ RUN echo 'source "${WS_DIR}/install/local_setup.sh"' >> ~/.bashrc
 
 RUN apt install -y ros-${ROS_DISTRO}-rviz2
 
+RUN apt-get install python3-tk -y
+
 ENV DEBIAN_FRONTEND=dialog
 
 CMD ["/bin/bash"]
