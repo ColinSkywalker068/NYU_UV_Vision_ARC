@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from std_msgs.msg import Int32
+from std_msgs.msg import Int32, Int32MultiArray, Bool
 from cv_bridge import CvBridge
 from ultralytics import YOLO, RTDETR, NAS
 import cv2
@@ -34,7 +34,7 @@ class YOLOv8Node(Node):
         self.imgsz = self.get_parameter("imgsz").get_parameter_value().integer_value
         self.show = self.get_parameter("show").get_parameter_value().bool_value
         self.conf = self.get_parameter("conf").get_parameter_value().double_value
-        self.target_class = []
+        self.target_class = None
         self.subscription = self.create_subscription(
             Image, "video_frames", self.listener_callback, 10
         )
@@ -43,6 +43,10 @@ class YOLOv8Node(Node):
         self.int_subscription = self.create_subscription(
             Int32, "robot_id", self.id_listener_callback, 10
         )
+        
+        self.bbox_publisher = self.create_publisher(Int32MultiArray, 'bounding_box', 10)
+        self.override_publisher = self.create_publisher(Bool, 'override', 10)
+        self.override = Bool()
 
         if model_type == "yolo":
             self.model = YOLO(model_path, task=task)
@@ -61,7 +65,7 @@ class YOLOv8Node(Node):
         padded_image = cv2.copyMakeBorder(
             frame, padding, padding, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0]
         )
-        result = self.model.predict(
+        results = self.model.predict(
             padded_image,
             half=self.half,
             imgsz=self.imgsz,
@@ -69,12 +73,25 @@ class YOLOv8Node(Node):
             conf=self.conf,
             classes=self.target_class,
         )
-        if result:
-            if hasattr(result, "obb"):
-                pass
-            elif result.boxes and hasattr(result.boxes, "xyxy"):
-                for box in result.xyxy:
-                    pass
+        self.override.data = False
+        for r in results:
+            if hasattr(r, 'obb'):
+                #print(r.obb.xyxy.cpu())
+                bbox = r.obb.xyxy.cpu()
+                if len(bbox) > 0:
+                    bbox_msg = Int32MultiArray()
+                    #print(bbox.view(-1).tolist())
+                    bbox_msg.data = [int(x) for x in bbox.view(-1).tolist()]
+                    self.override.data = True
+                    self.override_publisher.publish(self.override)
+                    self.bbox_publisher.publish(bbox_msg)
+                else:
+                    bbox_msg = Int32MultiArray()
+                    bbox_msg.data = [320,320,320,320]
+                    self.override.data = False
+                    self.override_publisher.publish(self.override)
+                    self.bbox_publisher.publish(bbox_msg)
+
 
         # Process results here
 
