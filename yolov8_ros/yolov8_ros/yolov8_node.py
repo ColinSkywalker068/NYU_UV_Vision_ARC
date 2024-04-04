@@ -43,9 +43,9 @@ class YOLOv8Node(Node):
         self.int_subscription = self.create_subscription(
             Int32, "robot_id", self.id_listener_callback, 10
         )
-        
-        self.bbox_publisher = self.create_publisher(Int32MultiArray, 'bounding_box', 10)
-        self.override_publisher = self.create_publisher(Bool, 'override', 10)
+
+        self.bbox_publisher = self.create_publisher(Int32MultiArray, "bounding_box", 10)
+        self.override_publisher = self.create_publisher(Bool, "override", 10)
         self.override = Bool()
 
         if model_type == "yolo":
@@ -75,23 +75,22 @@ class YOLOv8Node(Node):
         )
         self.override.data = False
         for r in results:
-            if hasattr(r, 'obb'):
-                #print(r.obb.xyxy.cpu())
+            if hasattr(r, "obb"):
+                # print(r.obb.xyxy.cpu())
                 bbox = r.obb.xyxy.cpu()
                 if len(bbox) > 0:
                     bbox_msg = Int32MultiArray()
-                    #print(bbox.view(-1).tolist())
+                    # print(bbox.view(-1).tolist())
                     bbox_msg.data = [int(x) for x in bbox.view(-1).tolist()]
                     self.override.data = True
                     self.override_publisher.publish(self.override)
                     self.bbox_publisher.publish(bbox_msg)
                 else:
                     bbox_msg = Int32MultiArray()
-                    bbox_msg.data = [320,320,320,320]
+                    bbox_msg.data = [320, 320, 320, 320]
                     self.override.data = False
                     self.override_publisher.publish(self.override)
                     self.bbox_publisher.publish(bbox_msg)
-
 
         # Process results here
 
