@@ -11,39 +11,8 @@ This is the NYU Robomaster's code for the Robomasters Robotics Competition.
 
 ---
 
-### Create docker image
+### New documentation coming soon
 
-#### Only build once
-
-```shell
-cd Docker
-docker/build.sh
-```
-
-#### Run docker image
-
-```shell
-docker/run.sh --volume ./Docker/:/jetson_interface -c nyuultraviolet.cv-dockerfile:xavier
-```
-
-#### list current docker images
-
-```shell
-sudo docker images
-REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
-```
-
-#### export docker image
-
-```shell
-sudo docker save -o CV.tar <IMAGE_ID>
-```
-
-#### import docker image
-
-```shell
-sudo docker load -i CV.tar
-```
 
 ### Update yml files
 

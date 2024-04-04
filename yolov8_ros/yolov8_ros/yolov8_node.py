@@ -6,6 +6,7 @@ from ultralytics import YOLO, RTDETR, NAS
 import cv2
 import numpy as np
 
+
 class YOLOv8Node(Node):
     def __init__(self):
         super().__init__('yolov8_node')
@@ -25,10 +26,8 @@ class YOLOv8Node(Node):
         self.show = self.get_parameter('show').get_parameter_value().bool_value
         self.conf = self.get_parameter('conf').get_parameter_value().double_value
         self.subscription = self.create_subscription(
-            Image,
-            'video_frames',
-            self.listener_callback,
-            10)
+            Image, "video_frames", self.listener_callback, 10
+        )
         self.bridge = CvBridge()
         if model_type=='yolo':
         	self.model = YOLO(model_path, task=task)
@@ -70,6 +69,7 @@ class YOLOv8Node(Node):
             frame[:,:, i] = (frame[:, :, i] - mean_bgr[i])/stddev_bgr[i]
         return frame
 
+
 def main(args=None):
     rclpy.init(args=args)
     node = YOLOv8Node()
@@ -81,5 +81,6 @@ def main(args=None):
         node.destroy_node()
         rclpy.shutdown()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

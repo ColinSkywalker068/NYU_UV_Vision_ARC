@@ -1,20 +1,35 @@
-image: mohanlu/cv_detection:latest 
-
-stages:
-  - pre_commit
-  - lint
-  - format_code
+image: 
+  name: mohanlu/cv_detection_ci:latest 
+  pull_policy: always
 
 before_script:
-  - apt-get update -y
-  - apt-get install fd-find build-essential python3-pip -y
-  - ln -s $(which fdfind) /usr/local/bin/fd || true
-  - pip3 install pre-commit black flake8 mypy
-  - pre-commit install
+  # - apt-get update -y && apt-get install fd-find -y
+  # - ln -s $(which fdfind) /usr/local/bin/fd || true
+  # - which fd || which fdd || which fdfind
+  # - apt-get install build-essential -y
+  # - apt-get install python3-pip -y # Ensure pip is available for installing pre-commit
+  # - pip3 install pre-commit
+  - git config --global user.email "you@example.com"
+  - git config --global user.name "CI Auto Formatter"
+  - git fetch
+  - git remote add gitlab_origin https://oauth2:glpat-DsBwXG4eNrNQraYKswyr@gitlab.com/nyu-robomaster/cv_detection.git
+  - git checkout $CI_COMMIT_REF_NAME
 
-pre_commit:
-  stage: pre_commit
+lint:
+  stage: test
   script:
-    - pre-commit clean
-    - pre-commit run --all-files 
-    
+    - cd /builds/nyu-robomaster/CV_Detection/ # Change directory to where your code is
+    - pre-commit run --all-files || true # Run pre-commit and ignore failure
+    - |
+      if [ -n "$(git status --porcelain)" ]; then # Check if there are any changes
+        git add .
+        git commit -m "Apply pre-commit fixes"
+        git push gitlab_origin HEAD:$CI_COMMIT_REF_NAME
+      fi
+
+
+# pre_commit:
+#   stage: test
+#   script:
+#     - pre-commit clean
+#     - pre-commit run --all-files 
