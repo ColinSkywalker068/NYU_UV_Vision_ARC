@@ -1,10 +1,17 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
+from std_msgs.msg import Int32
 from cv_bridge import CvBridge
 from ultralytics import YOLO, RTDETR, NAS
 import cv2
 import numpy as np
+
+RED_TEAM = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+BLUE_TEAM = (101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111)
+
+RED_CLASS = [1]
+BLUE_CLASS = [0]
 
 
 class YOLOv8Node(Node):
@@ -27,10 +34,16 @@ class YOLOv8Node(Node):
         self.imgsz = self.get_parameter("imgsz").get_parameter_value().integer_value
         self.show = self.get_parameter("show").get_parameter_value().bool_value
         self.conf = self.get_parameter("conf").get_parameter_value().double_value
+        self.target_class = []
         self.subscription = self.create_subscription(
             Image, "video_frames", self.listener_callback, 10
         )
         self.bridge = CvBridge()
+
+        self.int_subscription = self.create_subscription(
+            Int32, "robot_id", self.id_listener_callback, 10
+        )
+
         if model_type == "yolo":
             self.model = YOLO(model_path, task=task)
         elif model_type == "rtdetr":
@@ -48,35 +61,34 @@ class YOLOv8Node(Node):
         padded_image = cv2.copyMakeBorder(
             frame, padding, padding, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0]
         )
-        # blur_image = cv2.GaussianBlur(image, (3,3),0)
-        # hsv_image = cv2.cvtColor(blur_image, cv2.COLOR_BGR2HSV)
-        # h,s,v = cv2.split(hsv_image)
-        # brightness_factor = 0.7
-        # saturation_factor = 1.9
-        # v = np.clip(v * brightness_factor, 0, 255).astype(np.uint8)
-        # s = np.clip(s * saturation_factor, 0, 255).astype(np.uint8)
-        # adjusted_hsv = cv2.merge([h,s,v])
-        # frame = cv2.cvtColor(adjusted_hsv, cv2.COLOR_HSV2BGR)
-        # norm_frame = self.normalize_frame(padded_image)
-        for r in self.model.predict(
+        result = self.model.predict(
             padded_image,
             half=self.half,
             imgsz=self.imgsz,
             show=self.show,
-            stream=True,
             conf=self.conf,
-        ):
-            print(r.obb)
+            classes=self.target_class,
+        )
+        if result:
+            if hasattr(result, "obb"):
+                pass
+            elif result.boxes and hasattr(result.boxes, "xyxy"):
+                for box in result.xyxy:
+                    pass
+
         # Process results here
 
-    def normalize_frame(self, frame):
-        # print(frame)
-        frame = frame.astype(np.float32) / 255.0
-        mean_bgr = [0.26162062, 0.26129663, 0.24841645][::-1]
-        stddev_bgr = [0.25822758, 0.25649119, 0.24888551][::-1]
-        for i in range(3):
-            frame[:, :, i] = (frame[:, :, i] - mean_bgr[i]) / stddev_bgr[i]
-        return frame
+    def id_listener_callback(self, msg):
+        self.target_class = BLUE_CLASS if msg in RED_TEAM else RED_CLASS
+
+    # def normalize_frame(self, frame):
+    #     # print(frame)
+    #     frame = frame.astype(np.float32) / 255.0
+    #     mean_bgr = [0.26162062, 0.26129663, 0.24841645][::-1]
+    #     stddev_bgr = [0.25822758, 0.25649119, 0.24888551][::-1]
+    #     for i in range(3):
+    #         frame[:, :, i] = (frame[:, :, i] - mean_bgr[i]) / stddev_bgr[i]
+    #     return frame
 
 
 def main(args=None):
