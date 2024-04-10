@@ -109,3 +109,4 @@ watch squeue -u <netid> #enter your net id here
 ```
 
 **NOTE** make sure to define the `.err` and `.out` file with unqiue names so that its easier to debug your problems.
+
