@@ -67,6 +67,8 @@ Follow the prompt instructions and you should be connected now.
 
 A new `sbatch` script has been shared `train_ultralytics.SBATCH` which runs `train_ultralytics.py` internally. Most `ultralytics` have been wrapped. In case you want additional flags, feel free to modify the python file and make a PR.
 
+**NOTE** Wandb by default caches logs in `/home/<netdi>/.cache/wandb`, to modify this, edit the environment variable set in `train_ultralytics.py` to either use `/scratch/<netdi>` or `/vast/<netdi>`
+
 After altering the `sbatch` file to your folder paths and environment, you can launch using
 ```
 sbatch train_ultralytics.SBATCH

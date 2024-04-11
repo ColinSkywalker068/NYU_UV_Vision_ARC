@@ -11,6 +11,9 @@ import argparse
 from ultralytics import YOLO, RTDETR
 from wandb.integration.ultralytics import add_wandb_callback
 import wandb
+import os
+
+os.environ["WANDB_CACHE_DIR"] = "/scratch/sg7761/.cache/wandb"
 
 # Setup argument parser
 parser = argparse.ArgumentParser(description="Train YOLOv8 Model with W&B Logging")
