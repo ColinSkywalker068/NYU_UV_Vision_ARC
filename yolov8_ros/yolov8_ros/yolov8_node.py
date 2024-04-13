@@ -6,12 +6,26 @@ from cv_bridge import CvBridge
 from ultralytics import YOLO, RTDETR, NAS
 import cv2
 import numpy as np
+import os
+
+os.environ["GDK_SYNCHRONIZE"] = "1"
 
 RED_TEAM = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
 BLUE_TEAM = (101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111)
 
-RED_CLASS = [1]
-BLUE_CLASS = [0]
+RED_CLASS = 1
+BLUE_CLASS = 0
+
+BLUE_RANGES = [[np.array((90, 50, 70), np.uint8), np.array((128, 255, 255), np.uint8)]]
+RED_RANGES = [
+    [np.array((0, 50, 70), np.uint8), np.array((9, 255, 255), np.uint8)],
+    [np.array((159, 50, 70), np.uint8), np.array((180, 255, 255), np.uint8)],
+]
+
+BBOX_COLOR = (0, 255, 0)
+BBOX_LINE_SIZE = 2
+
+COLOR_THRESHOLD = 200
 
 
 class YOLOv8Node(Node):
@@ -34,7 +48,7 @@ class YOLOv8Node(Node):
         self.imgsz = self.get_parameter("imgsz").get_parameter_value().integer_value
         self.show = self.get_parameter("show").get_parameter_value().bool_value
         self.conf = self.get_parameter("conf").get_parameter_value().double_value
-        self.target_class = None
+        self.target_class = RED_CLASS
         self.subscription = self.create_subscription(
             Image, "video_frames", self.listener_callback, 10
         )
@@ -47,6 +61,8 @@ class YOLOv8Node(Node):
         self.bbox_publisher = self.create_publisher(Int32MultiArray, "bounding_box", 10)
         self.override_publisher = self.create_publisher(Bool, "override", 10)
         self.override = Bool()
+        self.bbox_msg = Int32MultiArray()
+        self.bbox_msg.data = [320, 320, 320, 320]
 
         if model_type == "yolo":
             self.model = YOLO(model_path, task=task)
@@ -65,46 +81,78 @@ class YOLOv8Node(Node):
         padded_image = cv2.copyMakeBorder(
             frame, padding, padding, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0]
         )
-        results = self.model.predict(
-            padded_image,
-            half=self.half,
-            imgsz=self.imgsz,
-            show=self.show,
-            conf=self.conf,
-            classes=self.target_class,
+        results = self.model.track(
+            padded_image, half=self.half, imgsz=self.imgsz, show=False, conf=self.conf
         )
         self.override.data = False
+
         for r in results:
-            if hasattr(r, "obb"):
+            bboxs = []
+            if hasattr(r, "obb") and r.obb is not None:
                 # print(r.obb.xyxy.cpu())
-                bbox = r.obb.xyxy.cpu()
-                if len(bbox) > 0:
-                    bbox_msg = Int32MultiArray()
-                    # print(bbox.view(-1).tolist())
-                    bbox_msg.data = [int(x) for x in bbox.view(-1).tolist()]
+                bboxs = r.obb.xyxy.cpu().int().tolist()
+
+            for i, bbox in enumerate(bboxs):
+                print(bbox)
+                roi_bbox = padded_image[bbox[1] : bbox[3], bbox[0] : bbox[2]]
+                if self.check_enemy(roi_bbox):
+                    if self.show:
+                        # print("appeneded bbox")
+                        cv2.rectangle(
+                            padded_image,
+                            (bbox[0], bbox[1]),
+                            (bbox[2], bbox[3]),
+                            BBOX_COLOR,
+                            BBOX_LINE_SIZE,
+                        )
+                    # print("helooooo")
+                    self.bbox_msg.data = bbox
                     self.override.data = True
                     self.override_publisher.publish(self.override)
-                    self.bbox_publisher.publish(bbox_msg)
+                    self.bbox_publisher.publish(self.bbox_msg)
                 else:
-                    bbox_msg = Int32MultiArray()
-                    bbox_msg.data = [320, 320, 320, 320]
+                    self.bbox_msg.data = [320, 320, 320, 320]
                     self.override.data = False
                     self.override_publisher.publish(self.override)
-                    self.bbox_publisher.publish(bbox_msg)
+                    self.bbox_publisher.publish(self.bbox_msg)
 
-        # Process results here
+        if self.show:
+            cv2.imshow(f"Detecting {self.target_class}", padded_image)
+            cv2.waitKey(1)
 
     def id_listener_callback(self, msg):
         self.target_class = BLUE_CLASS if msg in RED_TEAM else RED_CLASS
 
-    # def normalize_frame(self, frame):
-    #     # print(frame)
-    #     frame = frame.astype(np.float32) / 255.0
-    #     mean_bgr = [0.26162062, 0.26129663, 0.24841645][::-1]
-    #     stddev_bgr = [0.25822758, 0.25649119, 0.24888551][::-1]
-    #     for i in range(3):
-    #         frame[:, :, i] = (frame[:, :, i] - mean_bgr[i]) / stddev_bgr[i]
-    #     return frame
+    def check_enemy(self, roi_image):
+        print(f"roi_image shape = {roi_image.shape}")
+        if roi_image.shape[0] == 0 or roi_image.shape[1] == 0:
+            return False
+        ranges = []
+        if self.target_class == BLUE_CLASS:
+            ranges = BLUE_RANGES
+        elif self.target_class == RED_CLASS:
+            ranges = RED_RANGES
+        else:
+            # controls node offline, no color
+            return False
+        hsv_roi = cv2.cvtColor(roi_image, cv2.COLOR_BGR2HSV)
+        color_area = 0
+        for i, hsv_range in enumerate(ranges):
+            lower_range = hsv_range[0]
+            upper_range = hsv_range[1]
+            mask = (
+                (hsv_roi[:, :, 0] >= lower_range[0])
+                & (hsv_roi[:, :, 0] <= upper_range[0])
+                & (hsv_roi[:, :, 1] >= lower_range[1])
+                & (hsv_roi[:, :, 1] <= upper_range[1])
+                & (hsv_roi[:, :, 2] >= lower_range[2])
+                & (hsv_roi[:, :, 2] <= upper_range[2])
+            )
+            color_area += np.count_nonzero(mask)
+        print(f"color_area = {color_area}")
+        if color_area > COLOR_THRESHOLD:
+            return True
+        return False
 
 
 def main(args=None):
@@ -117,6 +165,7 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
+    cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
