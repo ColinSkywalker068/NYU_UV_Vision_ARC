@@ -7,6 +7,7 @@ from ultralytics import YOLO, RTDETR, NAS
 import cv2
 import numpy as np
 import os
+
 os.environ["GDK_SYNCHRONIZE"] = "1"
 
 RED_TEAM = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
@@ -16,12 +17,16 @@ RED_CLASS = 1
 BLUE_CLASS = 0
 
 BLUE_RANGES = [[np.array((90, 50, 70), np.uint8), np.array((128, 255, 255), np.uint8)]]
-RED_RANGES = [[np.array((0, 50, 70), np.uint8), np.array((9, 255, 255), np.uint8)],[np.array((159, 50, 70), np.uint8), np.array((180, 255, 255), np.uint8)]]
+RED_RANGES = [
+    [np.array((0, 50, 70), np.uint8), np.array((9, 255, 255), np.uint8)],
+    [np.array((159, 50, 70), np.uint8), np.array((180, 255, 255), np.uint8)],
+]
 
 BBOX_COLOR = (0, 255, 0)
-BBOX_LINE_SIZE =2
+BBOX_LINE_SIZE = 2
 
 COLOR_THRESHOLD = 200
+
 
 class YOLOv8Node(Node):
     def __init__(self):
@@ -77,14 +82,10 @@ class YOLOv8Node(Node):
             frame, padding, padding, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0]
         )
         results = self.model.track(
-            padded_image,
-            half=self.half,
-            imgsz=self.imgsz,
-            show=False,
-            conf=self.conf
+            padded_image, half=self.half, imgsz=self.imgsz, show=False, conf=self.conf
         )
         self.override.data = False
-        
+
         for r in results:
             bboxs = []
             if hasattr(r, "obb") and r.obb is not None:
@@ -93,12 +94,18 @@ class YOLOv8Node(Node):
 
             for i, bbox in enumerate(bboxs):
                 print(bbox)
-                roi_bbox = padded_image[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+                roi_bbox = padded_image[bbox[1] : bbox[3], bbox[0] : bbox[2]]
                 if self.check_enemy(roi_bbox):
                     if self.show:
                         # print("appeneded bbox")
-                        cv2.rectangle(padded_image, (bbox[0], bbox[1]), (bbox[2], bbox[3]), BBOX_COLOR, BBOX_LINE_SIZE)    
-                    # print("helooooo")          
+                        cv2.rectangle(
+                            padded_image,
+                            (bbox[0], bbox[1]),
+                            (bbox[2], bbox[3]),
+                            BBOX_COLOR,
+                            BBOX_LINE_SIZE,
+                        )
+                    # print("helooooo")
                     self.bbox_msg.data = bbox
                     self.override.data = True
                     self.override_publisher.publish(self.override)
@@ -108,11 +115,10 @@ class YOLOv8Node(Node):
                     self.override.data = False
                     self.override_publisher.publish(self.override)
                     self.bbox_publisher.publish(self.bbox_msg)
-        
-        if self.show:
-            cv2.imshow(f'Detecting {self.target_class}', padded_image)  
-            cv2.waitKey(1)
 
+        if self.show:
+            cv2.imshow(f"Detecting {self.target_class}", padded_image)
+            cv2.waitKey(1)
 
     def id_listener_callback(self, msg):
         self.target_class = BLUE_CLASS if msg in RED_TEAM else RED_CLASS
@@ -141,14 +147,12 @@ class YOLOv8Node(Node):
                 & (hsv_roi[:, :, 1] <= upper_range[1])
                 & (hsv_roi[:, :, 2] >= lower_range[2])
                 & (hsv_roi[:, :, 2] <= upper_range[2])
-
             )
             color_area += np.count_nonzero(mask)
-        print(f"color_area = {color_area}")    
+        print(f"color_area = {color_area}")
         if color_area > COLOR_THRESHOLD:
             return True
         return False
-        
 
 
 def main(args=None):
