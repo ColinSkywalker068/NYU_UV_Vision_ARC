@@ -116,7 +116,11 @@ RUN apt install -y ros-${ROS_DISTRO}-rviz2
 
 RUN apt-get install python3-tk -y
 
+RUN apt-get update && apt-get install ros-humble-teleop-twist-keyboard -y 
+
 ENV DEBIAN_FRONTEND=dialog
+
+RUN pip3 install --no-cache-dir lapx
 
 WORKDIR /home/ultraviolet/Documents/workspace
 

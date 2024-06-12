@@ -1,0 +1,29 @@
+FROM arm64v8/ros:humble-perception
+SHELL ["/bin/bash", "-c"]
+ENV NAV2_WS_DIR="/nav2_ws"
+WORKDIR ${NAV2_WS_DIR}
+RUN apt-get update -y && apt install -y \
+ ros-${ROS_DISTRO}-navigation2 \
+ ros-${ROS_DISTRO}-nav2-bringup \
+ ros-${ROS_DISTRO}-rviz2 \
+ nano
+RUN mkdir src \
+ && cd src \
+ && git clone https://github.com/Slamtec/sllidar_ros2.git \
+ && git clone -b ros2 https://github.com/Slamtec/rplidar_ros.git \
+ && cd rplidar_ros \
+ && source scripts/create_udev_rules.sh \
+ && cd ${NAV2_WS_DIR} \
+ && rm /etc/ros/rosdep/sources.list.d/20-default.list \
+ && rosdep init \
+ && rosdep update \
+ && rosdep install --from-paths src --ignore-src -r -y \
+ && source /opt/ros/${ROS_DISTRO}/setup.bash \
+ && colcon build --symlink-install
+
+RUN source ${NAV2_WS_DIR}/install/setup.bash \
+ && echo "source ${NAV2_WS_DIR}/install/setup.bash" >> ~/.bashrc
+
+WORKDIR /home/ultraviolet/Documents/workspace
+
+CMD ["/bin/bash"]
