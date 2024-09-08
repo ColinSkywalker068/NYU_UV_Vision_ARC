@@ -3,7 +3,7 @@
 
 This is the NYU Robomaster's code for the Robomasters Robotics Competition. Here are some useful resources:
 
-- [Wiki](https://gitlab.com/nyu-robomaster/CV_Detection/-/wikis/Welcome).
+- [Wiki](https://gitlab.com/nyu-robomaster/CV_Detection/-/wikis/Welcome)
 - [Issues](https://gitlab.com/nyu-robomaster/CV_Detection/-/issues)
 
 ## Table of Contents
