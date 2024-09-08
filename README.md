@@ -1,9 +1,10 @@
 [![pipeline status](https://gitlab.com/nyu-robomaster/CV_Detection/badges/main/pipeline.svg)](https://gitlab.com/nyu-robomaster/CV_Detection/-/commits/main)
 # CV Detection
 
-This is the NYU Robomaster's code for the Robomasters Robotics Competition.
+This is the NYU Robomaster's code for the Robomasters Robotics Competition. Here are some useful resources:
 
-If you have any questions, you can consult this repo's [wiki](https://gitlab.com/nyu-robomaster/CV_Detection/-/wikis/Welcome).
+- [Wiki](https://gitlab.com/nyu-robomaster/CV_Detection/-/wikis/Welcome).
+- [Issues](https://gitlab.com/nyu-robomaster/CV_Detection/-/issues)
 
 ## Table of Contents
 
