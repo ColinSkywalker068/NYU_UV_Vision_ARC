@@ -3,6 +3,8 @@
 
 This is the NYU Robomaster's code for the Robomasters Robotics Competition.
 
+If you have any questions, you can consult this repo's [wiki](https://gitlab.com/nyu-robomaster/CV_Detection/-/wikis/Welcome).
+
 ## Table of Contents
 
 - [Pipeline Documentation](./Documentation/Pipeline/Pipeline.md)
