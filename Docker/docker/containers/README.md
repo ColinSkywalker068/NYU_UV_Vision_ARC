@@ -1,3 +1,5 @@
+**Warning: The dockerfiles here are deprecated. Go to uv-services/Docker to find the most up-to-date dockerfiles**
+
 # Docker Basics
 
 Search confluence and docker documentation, the commands are usually the same.
