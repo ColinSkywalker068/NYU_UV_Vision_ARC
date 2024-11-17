@@ -1,5 +1,7 @@
-.cache
+packages/apt/
+test/data/
 .git
+.cache
 __pycache__
 **/__pycache__
 **.pyc
