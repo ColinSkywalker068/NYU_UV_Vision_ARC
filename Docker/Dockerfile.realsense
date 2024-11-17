@@ -2,28 +2,34 @@ ARG BASE_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt
 
 FROM ${BASE_IMAGE}
 
+# Install Python
 RUN apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     python3-dev && apt-get update && apt-get clean all
 
-
+# Install basic dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-		  libssl-dev \
-		  libusb-1.0-0-dev \
-            libgtk-3-dev \
-            libglfw3-dev \
-		  libgl1-mesa-dev \
-		  libglu1-mesa-dev \
-		  udev \
-		  qtcreator && \
+	    libssl-dev \
+	    libusb-1.0-0-dev \
+        libgtk-3-dev \
+        libglfw3-dev \
+	    libgl1-mesa-dev \
+	    libglu1-mesa-dev \
+	    libusb-1.0-0 \
+        udev \
+        apt-transport-https \
+        ca-certificates \
+        curl \
+        software-properties-common \
+	    qtcreator && \
     rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
+# Realsense Library
 # https://github.com/IntelRealSense/librealsense/issues/11931
 ARG LIBREALSENSE_VERSION=development
-
 RUN git clone --branch ${LIBREALSENSE_VERSION} --depth=1 https://github.com/IntelRealSense/librealsense && \
     cd librealsense && \
     mkdir build && \
@@ -48,17 +54,7 @@ ENV PYTHONPATH=${PYTHONPATH}:/usr/local/lib
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \	
-    libusb-1.0-0 \
-    udev \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    software-properties-common \
- && rm -rf /var/lib/apt/lists/*
-
-# The following steps are based on: https://github.com/IntelRealSense/realsense-ros/tree/ros2-development
+# Realsense ROS: https://github.com/IntelRealSense/realsense-ros/tree/ros2-development
 ENV WS_DIR="/ros2_ws"
 WORKDIR ${WS_DIR}
 RUN apt-get update -y \
@@ -74,20 +70,9 @@ RUN apt-get update -y \
  && rosdep install -i --from-path src --rosdistro ${ROS_DISTRO} --skip-keys=librealsense2 -y \
  && source /opt/ros/${ROS_DISTRO}/setup.bash \
  && colcon build
- 
 RUN source ./install/local_setup.sh
 
-ENV WS_DIR_DUMMY="/ros2_dummy_ws"
-WORKDIR ${WS_DIR_DUMMY}
-RUN apt-get update -y \
- && mkdir src \
- && cd src \
- && git clone https://github.com/gabriel-bronfman/dummy_camera.git \
- && cd .. \
- && colcon build
- 
-RUN source ./install/local_setup.sh
-
+# YOLOv8 ROS
 ENV WS_DIR_YOLOV8="/ros2_yolov8_ws"
 WORKDIR ${WS_DIR_YOLOV8}
 RUN apt-get update -y \
@@ -105,23 +90,47 @@ RUN apt-get update -y \
  && rosdep install --from-paths src --ignore-src -r -y \
  && source /opt/ros/${ROS_DISTRO}/setup.bash \
  && colcon build
- 
 RUN source ${WS_DIR_YOLOV8}/install/local_setup.sh
 
-RUN echo 'source "${WS_DIR_YOLOV8}/install/local_setup.sh"' >> ~/.bashrc
-RUN echo 'source "${WS_DIR_DUMMY}/install/local_setup.sh"' >> ~/.bashrc
-RUN echo 'source "${WS_DIR}/install/local_setup.sh"' >> ~/.bashrc
+# MicroROS
+ENV WS_DIR_MICROROS="/ros2_micro_ws"
+WORKDIR ${WS_DIR_MICROROS}
+RUN apt-get update -y \
+ && mkdir src \
+ && cd src \
+ && git clone -b $ROS_DISTRO https://github.com/micro-ROS/micro_ros_setup.git src/micro_ros_setup \
+ && cd .. \
+ && source /opt/ros/${ROS_DISTRO}/install/setup.bash \
+ && rm /etc/ros/rosdep/sources.list.d/20-default.list \
+ && rosdep init \
+ && rosdep update \
+ && rosdep install --from-paths src --ignore-src -r -y \
+ && source /opt/ros/${ROS_DISTRO}/setup.bash \
+ && colcon build \
+ && source ${WS_DIR_MICROROS}/install/local_setup.bash \
+ && ros2 run micro_ros_setup create_firmware_ws.sh host
 
-RUN apt install -y ros-${ROS_DISTRO}-rviz2
-
-RUN apt-get install python3-tk -y
-
-RUN apt-get update && apt-get install ros-humble-teleop-twist-keyboard -y 
-
-ENV DEBIAN_FRONTEND=dialog
+# Install additional dependencies
+RUN apt-get update && apt-get install -y \
+    ros-${ROS_DISTRO}-rviz2 \
+    ros-${ROS_DISTRO}-rqt \
+    ros-${ROS_DISTRO}-rqt-plot \
+    python3-tk \
+    psmisc
 
 RUN pip3 install --no-cache-dir lapx
 
-WORKDIR /home/ultraviolet/Documents/workspace
+# Make setup scripts run every time the shell starts
+RUN echo 'git config --global --add safe.directory "*"' >> ~/.bashrc \
+    && echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> ~/.bashrc \
+    && echo 'source "${WS_DIR_YOLOV8}/install/local_setup.sh"' >> ~/.bashrc \
+    && echo 'source "${WS_DIR_MICROROS}/install/local_setup.sh"' >> ~/.bashrc \
+    && echo 'source "${WS_DIR}/install/local_setup.sh"' >> ~/.bashrc
+
+RUN cd /librealsense/build && make install
+
+ENV DEBIAN_FRONTEND=dialog
+
+WORKDIR /home/ultraviolet
 
 CMD ["/bin/bash"]
