@@ -100,15 +100,12 @@ RUN apt-get update -y \
  && cd src \
  && git clone -b $ROS_DISTRO https://github.com/micro-ROS/micro_ros_setup.git src/micro_ros_setup \
  && cd .. \
- && source /opt/ros/${ROS_DISTRO}/install/setup.bash \
+ && source /opt/ros/${ROS_DISTRO}/local_setup.bash \
  && rm /etc/ros/rosdep/sources.list.d/20-default.list \
  && rosdep init \
  && rosdep update \
  && rosdep install --from-paths src --ignore-src -r -y \
- && source /opt/ros/${ROS_DISTRO}/setup.bash \
- && colcon build \
- && source ${WS_DIR_MICROROS}/install/local_setup.bash \
- && ros2 run micro_ros_setup create_firmware_ws.sh host
+ && colcon build
 
 # Install additional dependencies
 RUN apt-get update && apt-get install -y \
@@ -122,6 +119,8 @@ RUN pip3 install --no-cache-dir lapx
 
 # Make setup scripts run every time the shell starts
 RUN echo 'git config --global --add safe.directory "*"' >> ~/.bashrc \
+    && echo 'git config --global user.email "jetson.service@gmail.com"' >> ~/.bashrc \
+    && echo 'git config --global user.email "jetson-service"' >> ~/.bashrc \
     && echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> ~/.bashrc \
     && echo 'source "${WS_DIR_YOLOV8}/install/local_setup.sh"' >> ~/.bashrc \
     && echo 'source "${WS_DIR_MICROROS}/install/local_setup.sh"' >> ~/.bashrc \
