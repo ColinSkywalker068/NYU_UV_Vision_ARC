@@ -8,8 +8,10 @@ uv build yolov8_ros yolov8_node --ros-args -r video_frames:=/camera/camera/color
 ________________________________________________________________________________________________________________
 Important Stuff:
 1. model_path must be the exact path to the model you want to test. 
-2. show:=True is to be set if you want a window with the realsense_camera feed and bounding boxes if they are detected. You will not see anything here if it is set to False, but there will be a text feed of frames, with bounding box info. 
-3. While you run the second command you will see a popup on which directory/folder the terminal wants to use, with several folders and a number associated with it. You will want to type the number associated with this directory, CV_Detection. 
+2. show:=True is to be set if you want a window with the realsense_camera feed and bounding boxes if they are detected. 
+You will not see anything here if it is set to False, but there will be a text feed of frames, with bounding box info. 
+3. While you run the second command you will see a popup on which directory/folder the terminal wants to use, with several folders and a number associated with it. 
+You will want to type the number associated with this directory, CV_Detection. 
 
 In the second window run the realsense_node:
 ________________________________________________________________________________________________________________
@@ -17,7 +19,8 @@ uv docker
 ros2 launch realsense2_camera rs_launch.py rgb_camera.profile:=640x480x60
 ________________________________________________________________________________________________________________
 Important Stuff: 
-Make sure the camera is connected properly when the command is run. Ideally you want to run this before running CV_Detection but it should still work in both orders. 
+Make sure the camera is connected properly when the command is run. 
+Ideally you want to run this before running CV_Detection but it should still work in both orders. 
 
 
 Camera Options for RealSense:
