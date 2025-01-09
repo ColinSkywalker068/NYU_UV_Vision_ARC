@@ -1,0 +1,3 @@
+FROM nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper
+
+ENTRYPOINT /bin/bash -c "source /opt/ros/humble/install/setup.bash && source /ros2_ws/install/local_setup.bash && ros2 launch realsense2_camera rs_launch.py rgb_camera.profile:=640x480x60"
