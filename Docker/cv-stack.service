@@ -6,8 +6,8 @@ After=docker.service uv-can-enable.service
 [Service]
 Type=simple
 Restart=always
-ExecStartPre=docker compose -f /home/ultraviolet/CV_Detection/docker-compose.yml build
-ExecStart=docker compose -f /home/ultraviolet/CV_Detection/docker-compose.yml up --remove-orphans
+ExecStartPre=docker compose -f /home/ultraviolet/CV_Detection/Docker/docker-compose.yml build
+ExecStart=docker compose -f /home/ultraviolet/CV_Detection/Docker/docker-compose.yml up --remove-orphans
           
 [Install]
 WantedBy=multi-user.target

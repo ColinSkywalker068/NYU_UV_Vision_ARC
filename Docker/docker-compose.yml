@@ -1,7 +1,7 @@
 services:
   realsense-container:
     build:
-      context: ./Docker
+      context: .
       dockerfile: Dockerfile.run-realsense
     runtime: nvidia
     environment:
@@ -33,7 +33,7 @@ services:
 
   cv-container:
     build:
-      context: ./Docker
+      context: .
       dockerfile: Dockerfile.run-cv
     runtime: nvidia
     environment:
