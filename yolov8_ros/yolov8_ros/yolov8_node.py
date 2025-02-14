@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+
+"""
+ROS2 Node for object detection and tracking using YOLOv8.
+This node processes video frames to detect and track objects, with specific focus on
+team-based color detection (red vs blue teams).
+"""
+
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
@@ -7,172 +15,280 @@ from ultralytics import YOLO, RTDETR, NAS
 import cv2
 import numpy as np
 import os
+from typing import List, Tuple, Optional
+from dataclasses import dataclass
 
+# Enable GTK synchronization for display
 os.environ["GDK_SYNCHRONIZE"] = "1"
 
-RED_TEAM = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
-BLUE_TEAM = (101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111)
 
-RED_CLASS = 1
-BLUE_CLASS = 0
+@dataclass
+class ColorRange:
+    """Represents HSV color range for detection"""
 
-BLUE_RANGES = [[np.array((90, 50, 70), np.uint8), np.array((128, 255, 255), np.uint8)]]
-RED_RANGES = [
-    [np.array((0, 50, 70), np.uint8), np.array((9, 255, 255), np.uint8)],
-    [np.array((159, 50, 70), np.uint8), np.array((180, 255, 255), np.uint8)],
-]
+    lower: np.ndarray
+    upper: np.ndarray
 
-BBOX_COLOR = (0, 255, 0)
-BBOX_LINE_SIZE = 2
 
-COLOR_THRESHOLD = 200
+# Constants
+class TeamIDs:
+    """Team identification constants"""
+
+    RED_TEAM = frozenset(range(1, 12))  # IDs 1-11
+    BLUE_TEAM = frozenset(range(101, 112))  # IDs 101-111
+
+
+class TeamClass:
+    """Team class identifiers"""
+
+    RED = 1
+    BLUE = 0
+
+
+class ColorRanges:
+    """HSV color ranges for team detection"""
+
+    BLUE = [
+        ColorRange(
+            np.array((90, 50, 70), np.uint8), np.array((128, 255, 255), np.uint8)
+        )
+    ]
+    RED = [
+        ColorRange(np.array((0, 50, 70), np.uint8), np.array((9, 255, 255), np.uint8)),
+        ColorRange(
+            np.array((159, 50, 70), np.uint8), np.array((180, 255, 255), np.uint8)
+        ),
+    ]
+
+
+class DetectionConfig:
+    """Detection configuration constants"""
+
+    BBOX_COLOR = (0, 255, 0)
+    BBOX_LINE_SIZE = 2
+    COLOR_THRESHOLD = 200
+    DEFAULT_BBOX = [320, 320, 320, 320]
 
 
 class YOLOv8Node(Node):
+    """
+    ROS2 Node for YOLOv8-based object detection and tracking.
+
+    This node subscribes to video frames and robot ID topics, processes frames using
+    YOLOv8 (or similar models), and publishes bounding box and override information.
+    """
+
     def __init__(self):
+        """Initialize the YOLOv8 node with parameters and publishers/subscribers."""
         super().__init__("yolov8_node")
-        print("Initializing YOLOv8Node...")
+        self.get_logger().info("Initializing YOLOv8Node...")
 
-        # Parameter declaration and retrieval with debug statements
-        self.declare_parameter(
-            "model_path", "/home/ultraviolet/Downloads/yolo/model-opt.onnx"
-        )
-        model_path = self.get_parameter("model_path").get_parameter_value().string_value
-        print(f"Model path: {model_path}")
+        self._init_parameters()
+        self._setup_model()
+        self._init_ros_interfaces()
 
-        # Other parameters
-        self.declare_parameter("task", "detect")
-        self.declare_parameter("type", "yolo")
-        self.declare_parameter("half", True)
-        self.declare_parameter("imgsz", 640)
-        self.declare_parameter("show", True)
-        self.declare_parameter("conf", 0.5)
+    def _init_parameters(self):
+        """Initialize and declare all ROS parameters."""
+        # Define parameter defaults
+        param_defaults = {
+            "model_path": "/home/ultraviolet/Downloads/yolo/best.pt",
+            "task": "detect",
+            "type": "yolo",
+            "half": True,
+            "imgsz": 640,
+            "show": True,
+            "conf": 0.5,
+        }
 
-        # Retrieve parameter values with debug outputs
-        model_type = self.get_parameter("type").get_parameter_value().string_value
-        print(f"Model type: {model_type}")
-        task = self.get_parameter("task").get_parameter_value().string_value
-        self.half = self.get_parameter("half").get_parameter_value().bool_value
-        self.imgsz = self.get_parameter("imgsz").get_parameter_value().integer_value
-        self.show = self.get_parameter("show").get_parameter_value().bool_value
-        self.conf = self.get_parameter("conf").get_parameter_value().double_value
-        self.target_class = RED_CLASS
+        # Declare and get parameters
+        for name, default in param_defaults.items():
+            self.declare_parameter(name, default)
 
-        # Setting up model based on type with debug output
-        if model_type == "yolo":
-            self.model = YOLO(model_path, task=task)
-        elif model_type == "rtdetr":
-            self.model = RTDETR(model_path)
-        elif model_type == "nas":
-            self.model = NAS(model_path)
-        else:
-            raise NotImplementedError("Unsupported model type specified.")
-        print(f"Model initialized as {model_type} with task {task}.")
+        # Store parameters as instance variables
+        self.model_path = self.get_parameter("model_path").value
+        self.model_type = self.get_parameter("type").value
+        self.task = self.get_parameter("task").value
+        self.half = self.get_parameter("half").value
+        self.imgsz = self.get_parameter("imgsz").value
+        self.show = self.get_parameter("show").value
+        self.conf = self.get_parameter("conf").value
 
-        # Subscription and publishing setup with debug statements
-        self.subscription = self.create_subscription(
-            Image, "video_frames", self.listener_callback, 10
-        )
-        print("Image subscriber created.")
-        self.bridge = CvBridge()
+        # Initialize target class
+        self.target_class = TeamClass.RED
 
-        self.int_subscription = self.create_subscription(
-            Int32, "robot_id", self.id_listener_callback, 10
-        )
-        print("Robot ID subscriber created.")
+    def _setup_model(self):
+        """Initialize the AI model based on specified type."""
+        model_classes = {"yolo": YOLO, "rtdetr": RTDETR, "nas": NAS}
 
+        if self.model_type not in model_classes:
+            raise ValueError(f"Unsupported model type: {self.model_type}")
+
+        ModelClass = model_classes[self.model_type]
+        self.model = ModelClass(self.model_path, task=self.task)
+        self.get_logger().info(f"Initialized {self.model_type} model")
+
+    def _init_ros_interfaces(self):
+        """Initialize ROS publishers and subscribers."""
+        # Create subscribers
+        self.create_subscription(Image, "video_frames", self._process_frame, 10)
+        self.create_subscription(Int32, "robot_id", self._handle_robot_id, 10)
+
+        # Create publishers
         self.bbox_publisher = self.create_publisher(Int32MultiArray, "bounding_box", 10)
         self.override_publisher = self.create_publisher(Bool, "override", 10)
-        self.override = Bool()
+
+        # Initialize message objects
+        self.override_msg = Bool()
         self.bbox_msg = Int32MultiArray()
-        self.bbox_msg.data = [320, 320, 320, 320]
+        self.bbox_msg.data = DetectionConfig.DEFAULT_BBOX
 
-    def listener_callback(self, msg):
-        print("Received image message.")
-        frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        # Initialize CV bridge
+        self.bridge = CvBridge()
+
+    def _process_frame(self, msg: Image):
+        """
+        Process incoming video frames for object detection.
+
+        Args:
+            msg (Image): ROS Image message containing the video frame
+        """
+        try:
+            # Convert ROS Image to OpenCV format
+            frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+            padded_image = self._pad_image(frame)
+
+            # Perform detection
+            results = self.model.track(
+                padded_image,
+                half=self.half,
+                imgsz=self.imgsz,
+                show=self.show,
+                conf=self.conf,
+            )
+
+            self._process_results(results, padded_image)
+
+        except Exception as e:
+            self.get_logger().error(f"Error processing frame: {str(e)}")
+
+    def _pad_image(self, frame: np.ndarray) -> np.ndarray:
+        """
+        Pad the input image to make it square.
+
+        Args:
+            frame (np.ndarray): Input image
+
+        Returns:
+            np.ndarray: Padded square image
+        """
         height, width = frame.shape[:2]
-        print(f"Frame shape: {frame.shape}")
-
-        # Padding debug output
-        required_padding = width - height
-        padding = required_padding // 2
-        padded_image = cv2.copyMakeBorder(
+        padding = (width - height) // 2
+        return cv2.copyMakeBorder(
             frame, padding, padding, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0]
         )
-        print("Padded image.")
 
-        # Running model and checking bounding boxes
-        results = self.model.track(
-            padded_image,
-            half=self.half,
-            imgsz=self.imgsz,
-            show=self.show,
-            conf=self.conf,
-        )
-        self.override.data = False
+    def _process_results(self, results, padded_image: np.ndarray):
+        """
+        Process detection results and publish findings.
+
+        Args:
+            results: YOLOv8 detection results
+            padded_image (np.ndarray): Processed image
+        """
+        self.override_msg.data = False
 
         for r in results:
-            if hasattr(r, "obb") and r.obb is not None:
-                bboxs = r.obb.xyxy.cpu().int().tolist()
-                print(f"Bounding boxes: {bboxs}")
+            if not hasattr(r, "obb") or r.obb is None:
+                continue
 
-                for i, bbox in enumerate(bboxs):
-                    roi_bbox = padded_image[bbox[1] : bbox[3], bbox[0] : bbox[2]]
-                    if self.check_enemy(roi_bbox):
-                        if self.show:
-                            cv2.rectangle(
-                                padded_image,
-                                (bbox[0], bbox[1]),
-                                (bbox[2], bbox[3]),
-                                BBOX_COLOR,
-                                BBOX_LINE_SIZE,
-                            )
-                        self.bbox_msg.data = bbox
-                        self.override.data = True
-                        self.override_publisher.publish(self.override)
-                        self.bbox_publisher.publish(self.bbox_msg)
-                    else:
-                        self.bbox_msg.data = [320, 320, 320, 320]
-                        self.override.data = False
-                        self.override_publisher.publish(self.override)
-                        self.bbox_publisher.publish(self.bbox_msg)
+            bboxes = r.obb.xyxy.cpu().int().tolist()
+            for bbox in bboxes:
+                roi = padded_image[bbox[1] : bbox[3], bbox[0] : bbox[2]]
 
-    def id_listener_callback(self, msg):
-        self.target_class = BLUE_CLASS if msg.data in RED_TEAM else RED_CLASS
-        print(
-            f"Set target class to {'BLUE' if self.target_class == BLUE_CLASS else 'RED'}."
+                if self._check_enemy(roi):
+                    self._handle_detection(bbox, padded_image)
+                else:
+                    self._publish_default_values()
+
+    def _handle_detection(self, bbox: list[int], image: np.ndarray):
+        """Handle positive detection by updating visualization and publishing data."""
+        if self.show:
+            cv2.rectangle(
+                image,
+                (bbox[0], bbox[1]),
+                (bbox[2], bbox[3]),
+                DetectionConfig.BBOX_COLOR,
+                DetectionConfig.BBOX_LINE_SIZE,
+            )
+
+        self.bbox_msg.data = bbox
+        self.override_msg.data = True
+        self._publish_messages()
+
+    def _publish_default_values(self):
+        """Publish default values when no detection is made."""
+        self.bbox_msg.data = DetectionConfig.DEFAULT_BBOX
+        self.override_msg.data = False
+        self._publish_messages()
+
+    def _publish_messages(self):
+        """Publish current bbox and override messages."""
+        self.override_publisher.publish(self.override_msg)
+        self.bbox_publisher.publish(self.bbox_msg)
+
+    def _handle_robot_id(self, msg: Int32):
+        """
+        Handle robot ID messages to determine target team.
+
+        Args:
+            msg (Int32): Robot ID message
+        """
+        self.target_class = (
+            TeamClass.BLUE if msg.data in TeamIDs.RED_TEAM else TeamClass.RED
+        )
+        self.get_logger().info(
+            f"Target class set to: {'BLUE' if self.target_class == TeamClass.BLUE else 'RED'}"
         )
 
-    def check_enemy(self, roi_image):
-        if roi_image.shape[0] == 0 or roi_image.shape[1] == 0:
-            print("Invalid ROI shape; returning False.")
+    def _check_enemy(self, roi_image: np.ndarray) -> bool:
+        """
+        Check if ROI contains enemy team colors.
+
+        Args:
+            roi_image (np.ndarray): Region of interest from the image
+
+        Returns:
+            bool: True if enemy detected, False otherwise
+        """
+        if roi_image.size == 0:
             return False
-        ranges = BLUE_RANGES if self.target_class == BLUE_CLASS else RED_RANGES
+
+        ranges = (
+            ColorRanges.BLUE if self.target_class == TeamClass.BLUE else ColorRanges.RED
+        )
+
         hsv_roi = cv2.cvtColor(roi_image, cv2.COLOR_BGR2HSV)
         color_area = sum(
-            np.count_nonzero(cv2.inRange(hsv_roi, hsv_range[0], hsv_range[1]))
-            for hsv_range in ranges
+            np.count_nonzero(cv2.inRange(hsv_roi, r.lower, r.upper)) for r in ranges
         )
-        return color_area > COLOR_THRESHOLD
 
-    def check_orange(self, roi_image):
-        print(f"ROI image shape: {roi_image.shape}")
-        if roi_image.shape[0] == 0 or roi_image.shape[1] == 0:
-            return False
-        return True
+        return color_area > DetectionConfig.COLOR_THRESHOLD
 
 
 def main(args=None):
+    """Main function to initialize and run the node."""
     rclpy.init(args=args)
-    node = YOLOv8Node()
+
     try:
+        node = YOLOv8Node()
         rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
+    except Exception as e:
+        print(f"Error running node: {str(e)}")
     finally:
-        node.destroy_node()
+        if "node" in locals():
+            node.destroy_node()
         rclpy.shutdown()
-    cv2.destroyAllWindows()
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
