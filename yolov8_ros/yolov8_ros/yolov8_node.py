@@ -139,6 +139,7 @@ class YOLOv8Node(Node):
                     self.override.data = False
                     self.override_publisher.publish(self.override)
                     self.bbox_publisher.publish(self.bbox_msg)
+
     def id_listener_callback(self, msg):
         self.target_class = BLUE_CLASS if msg.data in RED_TEAM else RED_CLASS
         print(
