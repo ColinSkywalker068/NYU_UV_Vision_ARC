@@ -112,31 +112,33 @@ class YOLOv8Node(Node):
         self.override.data = False
 
         for r in results:
-            if hasattr(r, "obb") and r.obb is not None:
-                bboxs = r.obb.xyxy.cpu().int().tolist()
-                print(f"Bounding boxes: {bboxs}")
+            if not hasattr(r, "boxes") or r.boxes is None:
+                continue
 
-                for i, bbox in enumerate(bboxs):
-                    roi_bbox = padded_image[bbox[1] : bbox[3], bbox[0] : bbox[2]]
-                    if self.check_enemy(roi_bbox):
-                        if self.show:
-                            cv2.rectangle(
-                                padded_image,
-                                (bbox[0], bbox[1]),
-                                (bbox[2], bbox[3]),
-                                BBOX_COLOR,
-                                BBOX_LINE_SIZE,
-                            )
-                        self.bbox_msg.data = bbox
-                        self.override.data = True
-                        self.override_publisher.publish(self.override)
-                        self.bbox_publisher.publish(self.bbox_msg)
-                    else:
-                        self.bbox_msg.data = [320, 320, 320, 320]
-                        self.override.data = False
-                        self.override_publisher.publish(self.override)
-                        self.bbox_publisher.publish(self.bbox_msg)
+            bboxs = r.boxes.xyxy.cpu().int().tolist()
+            print(f"Bounding boxes: {bboxs}")
 
+            for i, bbox in enumerate(bboxs):
+                roi_bbox = padded_image[bbox[1] : bbox[3], bbox[0] : bbox[2]]
+                if self.check_enemy(roi_bbox):
+                    print("otw to bboxmsg")
+                    if self.show:
+                        cv2.rectangle(
+                            padded_image,
+                            (bbox[0], bbox[1]),
+                            (bbox[2], bbox[3]),
+                            BBOX_COLOR,
+                            BBOX_LINE_SIZE,
+                        )
+                    self.bbox_msg.data = bbox
+                    self.override.data = True
+                    self.override_publisher.publish(self.override)
+                    self.bbox_publisher.publish(self.bbox_msg)
+                else:
+                    self.bbox_msg.data = [320, 320, 320, 320]
+                    self.override.data = False
+                    self.override_publisher.publish(self.override)
+                    self.bbox_publisher.publish(self.bbox_msg)
     def id_listener_callback(self, msg):
         self.target_class = BLUE_CLASS if msg.data in RED_TEAM else RED_CLASS
         print(
