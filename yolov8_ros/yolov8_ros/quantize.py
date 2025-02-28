@@ -1,15 +1,16 @@
-import sys
+
 from ultralytics import YOLO
 
 
-def quantize_model(model_path):
+def quantize_model():
     """Quantize YOLOv8 model to TensorRT INT8 engine."""
+    model_path='/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.pt/'
     model = YOLO(model_path)
-    model.export(format="engine", device=0, int8=True)
+    model.export(format="engine", int8=True, data ="/home/ultraviolet/Downloads/trainTR/data.yaml")
+    print('done')
 
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python quantize_model.py <path_to_pt_model>")
-        sys.exit(1)
-    quantize_model(sys.argv[1])
+def main():
+    quantize_model()
+    return 0
+    
+main()
