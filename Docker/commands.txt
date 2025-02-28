@@ -7,7 +7,7 @@ uv docker
 uv build yolov8_ros yolov8_node --ros-args -r video_frames:=/camera/camera/color/image_raw -p model_path:='path/to/your/model.pt' -p task:='obb' -p show:=False 
 ________________________________________________________________________________________________________________
 Important Stuff:
-1. model_path must be the exact path to the model you want to test. 
+1. model_path must be the exact path to the model you want to test. Example Path is '/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.pt'
 2. show:=True is to be set if you want a window with the realsense_camera feed and bounding boxes if they are detected. 
 You will not see anything here if it is set to False, but there will be a text feed of frames, with bounding box info. 
 3. While you run the second command you will see a popup on which directory/folder the terminal wants to use, with several folders and a number associated with it. 
