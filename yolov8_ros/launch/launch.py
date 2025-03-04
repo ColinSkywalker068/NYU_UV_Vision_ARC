@@ -1,4 +1,4 @@
-#Test Merge
+# Test Merge
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
 from launch_ros.actions import Node
@@ -34,7 +34,6 @@ def generate_launch_description():
                     {"conf": 0.5},
                 ],
             ),
-
             # Include the Realsense2 Camera Launch File
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(realsense_launch_file),
