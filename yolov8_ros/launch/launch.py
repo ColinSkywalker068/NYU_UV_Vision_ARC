@@ -14,12 +14,13 @@ def generate_launch_description():
                 ],
                 parameters=[
                     {
-                        "model_path": "/home/ultraviolet/Downloads/yolo/best_yolov8_shubham.pt"
+                        "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.engine"
                     },
-                    {"task": "obb"},
-                    {"show": False},
+                    {"task": "detect"},
+                    {"show": True},
                     {"conf": 0.5},
                 ],
             ),
+            Node()
         ]
     )
