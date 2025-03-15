@@ -6,6 +6,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 import os
 
+
 def generate_launch_description():
     # Get the path to the realsense2_camera launch file
     realsense_launch_file = os.path.join(

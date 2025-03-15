@@ -35,7 +35,8 @@ class YOLOv8Node(Node):
 
         # Parameter declaration and retrieval with debug statements
         self.declare_parameter(
-            "model_path", "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.engine"
+            "model_path",
+            "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.engine",
         )
         model_path = self.get_parameter("model_path").get_parameter_value().string_value
         print(f"Model path: {model_path}")
@@ -134,7 +135,7 @@ class YOLOv8Node(Node):
                     self.override.data = True
                     self.override_publisher.publish(self.override)
                     self.bbox_publisher.publish(self.bbox_msg)
-            if(len(bboxs)==0):
+            if len(bboxs) == 0:
                 self.bbox_msg.data = [320, 320, 320, 320]
                 self.override.data = True
                 self.override_publisher.publish(self.override)
