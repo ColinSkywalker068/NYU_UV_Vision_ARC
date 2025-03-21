@@ -30,8 +30,8 @@ def generate_launch_description():
                         "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.engine"
                     },
                     {"task": "detect"},
-                    {"show": False},
-                    {"conf": 0.6},
+                    {"show": True},
+                    {"conf": 0.5},
                 ],
             ),
             # Include the Realsense2 Camera Launch File
