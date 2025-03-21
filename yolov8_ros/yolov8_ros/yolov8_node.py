@@ -158,7 +158,7 @@ class YOLOv8Node(Node):
             print("Invalid ROI shape; returning False.")
             return False
         # redefine based on the shape size
-        COLOR_THRESHOLD = color_threshold = roi.shape[0] * roi.shape[1] * 0.01
+        COLOR_THRESHOLD = color_threshold = roi_image.shape[0] * roi_image.shape[1] * 0.01
         ranges = BLUE_RANGES if self.target_class == BLUE_CLASS else RED_RANGES
         hsv_roi = cv2.cvtColor(roi_image, cv2.COLOR_BGR2HSV)
         color_area = sum(
