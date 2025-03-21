@@ -38,7 +38,7 @@ def main():
     pipeline.start(config)
 
     # Load YOLO model
-    model = YOLO("best.pt")
+    model = YOLO("best.engine")
 
     # Define target classes from YOLO model
     target_yolo_classes = [0, 39]  # Adjust based on what you want to detect
@@ -96,25 +96,19 @@ def main():
                                 cv2.FONT_HERSHEY_SIMPLEX,
                                 0.7,
                                 (0, 0, 255),
-                                2,
+                                2
                             )
 
                             # Create combined view with mask for display during pause
                             if mask is not None:
-                                mask_resized = cv2.resize(
-                                    mask, (roi.shape[1], roi.shape[0])
-                                )
-                                mask_bgr = cv2.cvtColor(
-                                    mask_resized, cv2.COLOR_GRAY2BGR
-                                )
+                                mask_resized = cv2.resize(mask, (roi.shape[1], roi.shape[0]))
+                                mask_bgr = cv2.cvtColor(mask_resized, cv2.COLOR_GRAY2BGR)
                                 roi_with_mask = np.hstack((roi, mask_bgr))
 
                                 # Add overlay to main display
                                 h, w = roi_with_mask.shape[:2]
                                 overlay_y, overlay_x = 70, 20
-                                frame[
-                                    overlay_y : overlay_y + h, overlay_x : overlay_x + w
-                                ] = roi_with_mask
+                                frame[overlay_y:overlay_y+h, overlay_x:overlay_x+w] = roi_with_mask
 
                             # Show frame with pause notification
                             cv2.imshow("YOLO with Color Detection", frame)
@@ -139,18 +133,30 @@ def main():
 
                         # Display the ROI and its mask
                         if mask is not None:
-                            # Resize mask to match ROI
-                            mask_resized = cv2.resize(
-                                mask, (roi.shape[1], roi.shape[0])
-                            )
-                            mask_bgr = cv2.cvtColor(mask_resized, cv2.COLOR_GRAY2BGR)
-                            roi_with_mask = np.hstack((roi, mask_bgr))
+                            if mask is not None:
+                                # Resize mask to match ROI
+                                mask_resized = cv2.resize(
+                                    mask, (roi.shape[1], roi.shape[0])
+                                )
+                                mask_bgr = cv2.cvtColor(mask_resized, cv2.COLOR_GRAY2BGR)
+                                roi_with_mask = np.hstack((roi, mask_bgr))
 
-                            # Show ROI analysis in a separate window
-                            cv2.imshow(
-                                f"ROI Analysis - {model.names[cls]}", roi_with_mask
-                            )
+                                # Add color_area value to the display
+                                color_area_text = f"Color area: {int(np.count_nonzero(mask))}"
+                                cv2.putText(
+                                    roi_with_mask,
+                                    color_area_text,
+                                    (10, 20),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.5,
+                                    (0, 255, 0),
+                                    1
+                                )
 
+                                # Show ROI analysis in a separate window
+                                cv2.imshow(
+                                    f"ROI Analysis - {model.names[cls]}", roi_with_mask
+                                )
             # Show the main frame
             cv2.putText(
                 frame,
