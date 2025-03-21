@@ -10,10 +10,7 @@ def check_enemy(roi_image, target_class, blue_ranges, red_ranges, color_threshol
 
     ranges = blue_ranges if target_class == "BLUE" else red_ranges
     hsv_roi = cv2.cvtColor(roi_image, cv2.COLOR_BGR2HSV)
-    mask = sum(
-        cv2.inRange(hsv_roi, hsv_range[0], hsv_range[1])
-        for hsv_range in ranges
-    )
+    mask = sum(cv2.inRange(hsv_roi, hsv_range[0], hsv_range[1]) for hsv_range in ranges)
     color_area = np.count_nonzero(mask)
 
     return color_area > color_threshold, mask
@@ -27,10 +24,13 @@ RED_RANGES = [
     [np.array((170, 150, 150), np.uint8), np.array((180, 255, 255), np.uint8)],
 ]
 
+
 def main():
     # Load YOLO model
     # Adjust this path to your YOLO model
-    model = YOLO("best.pt")  # You can use a different model like "best.pt" if you have it
+    model = YOLO(
+        "best.pt"
+    )  # You can use a different model like "best.pt" if you have it
 
     # Define target classes from YOLO model to analyze
     # 0: person, 39: bottle, etc. (COCO dataset classes)
@@ -78,7 +78,9 @@ def main():
                     color_threshold = roi.shape[0] * roi.shape[1] * 0.01
 
                     # Check for enemy color in the ROI
-                    result, mask = check_enemy(roi, target_class, BLUE_RANGES, RED_RANGES, color_threshold)
+                    result, mask = check_enemy(
+                        roi, target_class, BLUE_RANGES, RED_RANGES, color_threshold
+                    )
 
                     # Draw bounding box
                     color = (0, 255, 0) if result else (0, 0, 255)
@@ -86,7 +88,15 @@ def main():
 
                     # Label
                     label = f"{model.names[cls]}: {target_class} {result}"
-                    cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                    cv2.putText(
+                        frame,
+                        label,
+                        (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        color,
+                        2,
+                    )
 
                     detected_objects = True
 
@@ -103,26 +113,29 @@ def main():
         # Show the main frame
         cv2.putText(
             frame,
-            f"Detecting {target_class} in objects" if detected_objects else "No target objects detected",
+            f"Detecting {target_class} in objects"
+            if detected_objects
+            else "No target objects detected",
             (20, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             (0, 255, 0),
-            2
+            2,
         )
         cv2.imshow("YOLO with Color Detection", frame)
 
         # Handle keyboard input
         key = cv2.waitKey(1) & 0xFF
-        if key == ord('t'):
+        if key == ord("t"):
             target_class = "BLUE" if target_class == "RED" else "RED"
             print(f"Switched to {target_class} detection")
-        elif key == ord('q'):
+        elif key == ord("q"):
             break
 
     # Clean up
     cap.release()
     cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     main()
