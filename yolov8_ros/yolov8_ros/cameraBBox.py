@@ -87,77 +87,65 @@ def main():
                         result, mask = check_enemy(
                             roi, target_class, BLUE_RANGES, RED_RANGES, color_threshold
                         )
-                        # Fix the overlay broadcasting issue by checking dimensions and resizing if necessary
                         if result:
+                            # Create a copy of the frame to avoid modifying during display
+                            frame_copy = frame.copy()
+
                             # Display pause notification
                             cv2.putText(
-                                frame,
+                                frame_copy,
                                 "TARGET DETECTED - PAUSING FOR 2 SECONDS",
                                 (20, 60),
                                 cv2.FONT_HERSHEY_SIMPLEX,
                                 0.7,
                                 (0, 0, 255),
-                                2,
+                                2
                             )
 
                             # Create combined view with mask for display during pause
                             if mask is not None:
-                                mask_resized = cv2.resize(
-                                    mask, (roi.shape[1], roi.shape[0])
+                                # Add color area info to the ROI analysis
+                                color_area = np.count_nonzero(mask)
+                                color_percentage = (color_area / (roi.shape[0] * roi.shape[1])) * 100
+
+                                # Prepare the mask for display
+                                mask_resized = cv2.resize(mask, (roi.shape[1], roi.shape[0]))
+                                mask_bgr = cv2.cvtColor(mask_resized, cv2.COLOR_GRAY2BGR)
+
+                                # Add text to the mask
+                                cv2.putText(
+                                    mask_bgr,
+                                    f"Area: {color_area} ({color_percentage:.1f}%)",
+                                    (10, 30),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.5,
+                                    (0, 255, 0),
+                                    1
                                 )
-                                mask_bgr = cv2.cvtColor(
-                                    mask_resized, cv2.COLOR_GRAY2BGR
-                                )
+
+                                # Combine ROI and mask side by side
                                 roi_with_mask = np.hstack((roi, mask_bgr))
 
-                                # Calculate available space in the frame
-                                max_h = frame.shape[0] - 70  # Starting y position
-                                max_w = frame.shape[1] - 20  # Starting x position
+                                # Show in separate window without overlay to avoid memory issues
+                                cv2.imshow(f"ROI Analysis - {model.names[cls]}", roi_with_mask)
 
-                                # Resize roi_with_mask if it's too large for the available space
-                                if (
-                                    roi_with_mask.shape[0] > max_h
-                                    or roi_with_mask.shape[1] > max_w
-                                ):
-                                    scale = min(
-                                        max_h / roi_with_mask.shape[0],
-                                        max_w / roi_with_mask.shape[1],
-                                    )
-                                    new_h = int(roi_with_mask.shape[0] * scale)
-                                    new_w = int(roi_with_mask.shape[1] * scale)
-                                    roi_with_mask = cv2.resize(
-                                        roi_with_mask, (new_w, new_h)
-                                    )
-
-                                # Add overlay to main display
-                                h, w = roi_with_mask.shape[:2]
-                                overlay_y, overlay_x = 70, 20
-                                frame[
-                                    overlay_y : overlay_y + h, overlay_x : overlay_x + w
-                                ] = roi_with_mask
-
-                            # Show frame with pause notification
-                            cv2.imshow("YOLO with Color Detection", frame)
+                            # Show frame with pause notification (without overlay)
+                            cv2.imshow("YOLO with Color Detection", frame_copy)
                             cv2.waitKey(2000)  # Pause for 2 seconds
-
-                            # Show ROI analysis in a separate window
-                            cv2.imshow(
-                                f"ROI Analysis - {model.names[cls]}", roi_with_mask
+                        else:
+                            # Show the main frame
+                            cv2.putText(
+                                frame,
+                                f"Detecting {target_class} in objects"
+                                if detected_objects
+                                else "No target objects detected",
+                                (20, 30),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.7,
+                                (0, 255, 0),
+                                2,
                             )
-            # Show the main frame
-            cv2.putText(
-                frame,
-                f"Detecting {target_class} in objects"
-                if detected_objects
-                else "No target objects detected",
-                (20, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 0),
-                2,
-            )
-            cv2.imshow("YOLO with Color Detection", frame)
-
+                            cv2.imshow("YOLO with Color Detection", frame)
             # Handle keyboard input
             key = cv2.waitKey(1) & 0xFF
             if key == ord("t"):
