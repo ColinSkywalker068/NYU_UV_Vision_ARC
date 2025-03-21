@@ -16,11 +16,17 @@ BLUE_TEAM = (101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111)
 RED_CLASS = 1
 BLUE_CLASS = 0
 
-BLUE_RANGES = [[np.array((90, 50, 70), np.uint8), np.array((128, 255, 255), np.uint8)]]
-RED_RANGES = [
-    [np.array((0, 50, 70), np.uint8), np.array((9, 255, 255), np.uint8)],
-    [np.array((159, 50, 70), np.uint8), np.array((180, 255, 255), np.uint8)],
+BLUE_RANGES = [
+    # Old range: [np.array((90, 50, 70), np.uint8), np.array((128, 255, 255), np.uint8)]
+    [np.array((100, 150, 150), np.uint8), np.array((128, 255, 255), np.uint8)]
 ]
+RED_RANGES = [
+    # Old range: [np.array((0, 50, 70), np.uint8), np.array((9, 255, 255), np.uint8)]
+    # Old range: [np.array((159, 50, 70), np.uint8), np.array((180, 255, 255), np.uint8)]
+    [np.array((0, 150, 150), np.uint8), np.array((10, 255, 255), np.uint8)],
+    [np.array((170, 150, 150), np.uint8), np.array((180, 255, 255), np.uint8)],
+]
+
 
 BBOX_COLOR = (0, 255, 0)
 BBOX_LINE_SIZE = 2
