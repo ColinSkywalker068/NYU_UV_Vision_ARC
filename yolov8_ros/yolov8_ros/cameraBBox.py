@@ -96,13 +96,17 @@ def main():
                                 cv2.FONT_HERSHEY_SIMPLEX,
                                 0.7,
                                 (0, 0, 255),
-                                2
+                                2,
                             )
 
                             # Create combined view with mask for display during pause
                             if mask is not None:
-                                mask_resized = cv2.resize(mask, (roi.shape[1], roi.shape[0]))
-                                mask_bgr = cv2.cvtColor(mask_resized, cv2.COLOR_GRAY2BGR)
+                                mask_resized = cv2.resize(
+                                    mask, (roi.shape[1], roi.shape[0])
+                                )
+                                mask_bgr = cv2.cvtColor(
+                                    mask_resized, cv2.COLOR_GRAY2BGR
+                                )
                                 roi_with_mask = np.hstack((roi, mask_bgr))
 
                                 # Add overlay to main display
@@ -115,11 +119,15 @@ def main():
                                     scale_factor = max_w / w
                                     new_w = max_w
                                     new_h = int(h * scale_factor)
-                                    roi_with_mask = cv2.resize(roi_with_mask, (new_w, new_h))
+                                    roi_with_mask = cv2.resize(
+                                        roi_with_mask, (new_w, new_h)
+                                    )
                                     h, w = new_h, new_w
 
                                 # Now safely overlay
-                                frame[overlay_y:overlay_y+h, overlay_x:overlay_x+w] = roi_with_mask
+                                frame[
+                                    overlay_y : overlay_y + h, overlay_x : overlay_x + w
+                                ] = roi_with_mask
                             # Show frame with pause notification
                             cv2.imshow("YOLO with Color Detection", frame)
                             cv2.waitKey(2000)  # Pause for 2 seconds
