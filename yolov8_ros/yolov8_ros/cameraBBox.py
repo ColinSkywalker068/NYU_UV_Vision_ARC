@@ -39,7 +39,7 @@ def main():
 
     # Load YOLO model
     model = YOLO("best.pt")
-    print('loaded model')
+    print("loaded model")
     # Define target classes from YOLO model
     target_yolo_classes = [0, 39]  # Adjust based on what you want to detect
 
