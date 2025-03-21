@@ -127,7 +127,7 @@ class YOLOv8Node(Node):
 
             for i, bbox in enumerate(bboxs):
                 roi_bbox = padded_image[bbox[1] : bbox[3], bbox[0] : bbox[2]]
-                ret, col= self.check_enemy(roi_bbox)
+                ret, col = self.check_enemy(roi_bbox)
                 if ret:
                     print("otw to bboxmsg, col: ", str(col))
                     if self.show:
@@ -158,18 +158,24 @@ class YOLOv8Node(Node):
         if roi_image.shape[0] == 0 or roi_image.shape[1] == 0:
             print("Invalid ROI shape; returning False.")
             return False, None
-        
+
         # Calculate threshold based on ROI size
         color_threshold = roi_image.shape[0] * roi_image.shape[1] * 0.01
         target_class_str = "BLUE" if self.target_class == BLUE_CLASS else "RED"
-        ranges = BLUE_RANGES if target_class_str == "BLUE" else RED_RANGES        
+        ranges = BLUE_RANGES if target_class_str == "BLUE" else RED_RANGES
         hsv_roi = cv2.cvtColor(roi_image, cv2.COLOR_BGR2HSV)
-        mask = sum(cv2.inRange(hsv_roi, hsv_range[0], hsv_range[1]) for hsv_range in ranges)
+        mask = sum(
+            cv2.inRange(hsv_roi, hsv_range[0], hsv_range[1]) for hsv_range in ranges
+        )
         color_area = np.count_nonzero(mask)
-        
-        color_percentage = (color_area / (roi_image.shape[0] * roi_image.shape[1])) * 100
-        print(f"Color area: {color_area}, Threshold: {color_threshold:.1f}, Percentage: {color_percentage:.1f}%")
-        
+
+        color_percentage = (
+            color_area / (roi_image.shape[0] * roi_image.shape[1])
+        ) * 100
+        print(
+            f"Color area: {color_area}, Threshold: {color_threshold:.1f}, Percentage: {color_percentage:.1f}%"
+        )
+
         return color_area > color_threshold, color_area
 
 
