@@ -38,7 +38,7 @@ def main():
     pipeline.start(config)
 
     # Load YOLO model
-    model = YOLO("best.engine")
+    model = YOLO("best.pt")
 
     # Define target classes from YOLO model
     target_yolo_classes = [0, 39]  # Adjust based on what you want to detect
