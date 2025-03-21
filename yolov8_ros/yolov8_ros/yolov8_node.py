@@ -63,7 +63,7 @@ class YOLOv8Node(Node):
         self.imgsz = self.get_parameter("imgsz").get_parameter_value().integer_value
         self.show = self.get_parameter("show").get_parameter_value().bool_value
         self.conf = self.get_parameter("conf").get_parameter_value().double_value
-        self.target_class = RED_CLASS
+        self.target_class = BLUE_CLASS
 
         # Setting up model based on type with debug output
         if model_type == "yolo":
