@@ -96,19 +96,25 @@ def main():
                                 cv2.FONT_HERSHEY_SIMPLEX,
                                 0.7,
                                 (0, 0, 255),
-                                2
+                                2,
                             )
 
                             # Create combined view with mask for display during pause
                             if mask is not None:
-                                mask_resized = cv2.resize(mask, (roi.shape[1], roi.shape[0]))
-                                mask_bgr = cv2.cvtColor(mask_resized, cv2.COLOR_GRAY2BGR)
+                                mask_resized = cv2.resize(
+                                    mask, (roi.shape[1], roi.shape[0])
+                                )
+                                mask_bgr = cv2.cvtColor(
+                                    mask_resized, cv2.COLOR_GRAY2BGR
+                                )
                                 roi_with_mask = np.hstack((roi, mask_bgr))
 
                                 # Add overlay to main display
                                 h, w = roi_with_mask.shape[:2]
                                 overlay_y, overlay_x = 70, 20
-                                frame[overlay_y:overlay_y+h, overlay_x:overlay_x+w] = roi_with_mask
+                                frame[
+                                    overlay_y : overlay_y + h, overlay_x : overlay_x + w
+                                ] = roi_with_mask
 
                             # Show frame with pause notification
                             cv2.imshow("YOLO with Color Detection", frame)
