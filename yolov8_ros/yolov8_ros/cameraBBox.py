@@ -87,6 +87,7 @@ def main():
                         result, mask = check_enemy(
                             roi, target_class, BLUE_RANGES, RED_RANGES, color_threshold
                         )
+                        # Fix the overlay broadcasting issue by checking dimensions and resizing if necessary
                         if result:
                             # Display pause notification
                             cv2.putText(
@@ -96,122 +97,37 @@ def main():
                                 cv2.FONT_HERSHEY_SIMPLEX,
                                 0.7,
                                 (0, 0, 255),
-                                2,
+                                2
                             )
 
                             # Create combined view with mask for display during pause
                             if mask is not None:
-                                mask_resized = cv2.resize(
-                                    mask, (roi.shape[1], roi.shape[0])
-                                )
-                                mask_bgr = cv2.cvtColor(
-                                    mask_resized, cv2.COLOR_GRAY2BGR
-                                )
+                                mask_resized = cv2.resize(mask, (roi.shape[1], roi.shape[0]))
+                                mask_bgr = cv2.cvtColor(mask_resized, cv2.COLOR_GRAY2BGR)
                                 roi_with_mask = np.hstack((roi, mask_bgr))
+
+                                # Calculate available space in the frame
+                                max_h = frame.shape[0] - 70  # Starting y position
+                                max_w = frame.shape[1] - 20  # Starting x position
+
+                                # Resize roi_with_mask if it's too large for the available space
+                                if roi_with_mask.shape[0] > max_h or roi_with_mask.shape[1] > max_w:
+                                    scale = min(max_h / roi_with_mask.shape[0], max_w / roi_with_mask.shape[1])
+                                    new_h = int(roi_with_mask.shape[0] * scale)
+                                    new_w = int(roi_with_mask.shape[1] * scale)
+                                    roi_with_mask = cv2.resize(roi_with_mask, (new_w, new_h))
 
                                 # Add overlay to main display
                                 h, w = roi_with_mask.shape[:2]
                                 overlay_y, overlay_x = 70, 20
-                                frame[
-                                    overlay_y : overlay_y + h, overlay_x : overlay_x + w
-                                ] = roi_with_mask
+                                frame[overlay_y:overlay_y+h, overlay_x:overlay_x+w] = roi_with_mask
 
                             # Show frame with pause notification
                             cv2.imshow("YOLO with Color Detection", frame)
                             cv2.waitKey(2000)  # Pause for 2 seconds
-                        # Draw bounding box
-                        color = (0, 255, 0) if result else (0, 0, 255)
-                        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-
-                        # Label
-                        label = f"{model.names[cls]}: {target_class} {result}"
-                        cv2.putText(
-                            frame,
-                            label,
-                            (x1, y1 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5,
-                            color,
-                            2,
-                        )
-
-                        detected_objects = True
-
-                        # Display the ROI and its mask only once
-                        if mask is not None:
-                            # Resize mask to match ROI
-                            mask_resized = cv2.resize(
-                                mask, (roi.shape[1], roi.shape[0])
-                            )
-                            mask_bgr = cv2.cvtColor(mask_resized, cv2.COLOR_GRAY2BGR)
-                            roi_with_mask = np.hstack((roi, mask_bgr))
-
-                            # Add color_area value to the display
-                            color_area = np.count_nonzero(mask)
-                            color_percentage = (
-                                color_area / (roi.shape[0] * roi.shape[1])
-                            ) * 100
-                            threshold_percentage = (
-                                color_threshold / (roi.shape[0] * roi.shape[1])
-                            ) * 100
-                            color_area_text = (
-                                f"Color area: {color_area} ({color_percentage:.1f}%)"
-                            )
-                            threshold_text = f"Threshold: {color_threshold} ({threshold_percentage:.1f}%)"
-
-                            cv2.putText(
-                                roi_with_mask,
-                                color_area_text,
-                                (10, 20),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                0.5,
-                                (0, 255, 0),
-                                1,
-                            )
-                            cv2.putText(
-                                roi_with_mask,
-                                threshold_text,
-                                (10, 40),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                0.5,
-                                (0, 255, 0),
-                                1,
-                            )
-
-                            # For the overlay, make sure dimensions are within frame bounds
-                            h, w = roi_with_mask.shape[:2]
-                            overlay_y, overlay_x = 70, 20
-
-                            # Check if overlay fits within the frame
-                            if (overlay_y + h <= frame.shape[0]) and (
-                                overlay_x + w <= frame.shape[1]
-                            ):
-                                # Create a copy to avoid modifying the original during display
-                                overlay_frame = frame.copy()
-                                overlay_frame[
-                                    overlay_y : overlay_y + h, overlay_x : overlay_x + w
-                                ] = roi_with_mask
-
-                                # If result is True, show with pause
-                                if result:
-                                    cv2.putText(
-                                        overlay_frame,
-                                        "TARGET DETECTED - PAUSING FOR 2 SECONDS",
-                                        (20, 60),
-                                        cv2.FONT_HERSHEY_SIMPLEX,
-                                        0.7,
-                                        (0, 0, 255),
-                                        2,
-                                    )
-                                    cv2.imshow(
-                                        "YOLO with Color Detection", overlay_frame
-                                    )
-                                    cv2.waitKey(2000)  # Pause for 2 seconds
 
                             # Show ROI analysis in a separate window
-                            cv2.imshow(
-                                f"ROI Analysis - {model.names[cls]}", roi_with_mask
-                            )
+                            cv2.imshow(f"ROI Analysis - {model.names[cls]}", roi_with_mask)
             # Show the main frame
             cv2.putText(
                 frame,
