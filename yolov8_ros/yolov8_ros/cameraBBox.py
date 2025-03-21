@@ -92,11 +92,11 @@ def main():
                             cv2.putText(
                                 frame,
                                 "TARGET DETECTED - PAUSING FOR 2 SECONDS",
-                                (frame.shape[1]//2 - 200, frame.shape[0]//2),
+                                (frame.shape[1] // 2 - 200, frame.shape[0] // 2),
                                 cv2.FONT_HERSHEY_SIMPLEX,
                                 1,
                                 (0, 0, 255),
-                                2
+                                2,
                             )
                             cv2.imshow("YOLO with Color Detection", frame)
                             cv2.waitKey(2000)  # Wait 2000 milliseconds (2 seconds)
