@@ -127,8 +127,9 @@ class YOLOv8Node(Node):
 
             for i, bbox in enumerate(bboxs):
                 roi_bbox = padded_image[bbox[1] : bbox[3], bbox[0] : bbox[2]]
-                if self.check_enemy(roi_bbox):
-                    print("otw to bboxmsg")
+                ret,col= self.check_enemy(roi_bbox):
+                if ret:
+                    print("otw to bboxmsg, col: ", str(col))
                     if self.show:
                         cv2.rectangle(
                             padded_image,
@@ -153,21 +154,17 @@ class YOLOv8Node(Node):
             f"Set target class to {'BLUE' if self.target_class == BLUE_CLASS else 'RED'}."
         )
 
-    def check_enemy(self, roi_image):
+    def check_enemy(roi_image, target_class, blue_ranges, red_ranges, color_threshold):
         if roi_image.shape[0] == 0 or roi_image.shape[1] == 0:
             print("Invalid ROI shape; returning False.")
-            return False
-        # redefine based on the shape size
-        COLOR_THRESHOLD = color_threshold = (
-            roi_image.shape[0] * roi_image.shape[1] * 0.01
-        )
-        ranges = BLUE_RANGES if self.target_class == BLUE_CLASS else RED_RANGES
+            return False, None
+
+        ranges = blue_ranges if target_class == "BLUE" else red_ranges
         hsv_roi = cv2.cvtColor(roi_image, cv2.COLOR_BGR2HSV)
-        color_area = sum(
-            np.count_nonzero(cv2.inRange(hsv_roi, hsv_range[0], hsv_range[1]))
-            for hsv_range in ranges
-        )
-        return color_area > COLOR_THRESHOLD
+        mask = sum(cv2.inRange(hsv_roi, hsv_range[0], hsv_range[1]) for hsv_range in ranges)
+        color_area = np.count_nonzero(mask)
+
+        return color_area > color_threshold, color_area
 
 
 def main(args=None):
