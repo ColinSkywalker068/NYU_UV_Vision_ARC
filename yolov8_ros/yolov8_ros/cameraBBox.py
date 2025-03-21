@@ -96,28 +96,66 @@ def main():
                             if mask is not None:
                                 # Add color information to the mask display
                                 color_area = np.count_nonzero(mask)
-                                color_percentage = (color_area / (roi.shape[0] * roi.shape[1])) * 100
-                                threshold_percentage = (color_threshold / (roi.shape[0] * roi.shape[1])) * 100
+                                color_percentage = (
+                                    color_area / (roi.shape[0] * roi.shape[1])
+                                ) * 100
+                                threshold_percentage = (
+                                    color_threshold / (roi.shape[0] * roi.shape[1])
+                                ) * 100
 
                                 # Prepare mask for display
-                                mask_resized = cv2.resize(mask, (roi.shape[1], roi.shape[0]))
-                                mask_bgr = cv2.cvtColor(mask_resized, cv2.COLOR_GRAY2BGR)
+                                mask_resized = cv2.resize(
+                                    mask, (roi.shape[1], roi.shape[0])
+                                )
+                                mask_bgr = cv2.cvtColor(
+                                    mask_resized, cv2.COLOR_GRAY2BGR
+                                )
 
                                 # Create ROI analysis display with detailed information
                                 roi_with_mask = np.hstack((roi, mask_bgr))
 
                                 # Add text with detection details to ROI analysis
-                                cv2.putText(roi_with_mask, f"Color: {target_class}", (10, 20),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-                                cv2.putText(roi_with_mask, f"Area: {color_area} px ({color_percentage:.1f}%)", (10, 40),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-                                cv2.putText(roi_with_mask, f"Threshold: {threshold_percentage:.1f}%", (10, 60),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-                                cv2.putText(roi_with_mask, "DETECTED - PAUSING 2 SEC", (10, 80),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                                cv2.putText(
+                                    roi_with_mask,
+                                    f"Color: {target_class}",
+                                    (10, 20),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.5,
+                                    (255, 255, 255),
+                                    1,
+                                )
+                                cv2.putText(
+                                    roi_with_mask,
+                                    f"Area: {color_area} px ({color_percentage:.1f}%)",
+                                    (10, 40),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.5,
+                                    (255, 255, 255),
+                                    1,
+                                )
+                                cv2.putText(
+                                    roi_with_mask,
+                                    f"Threshold: {threshold_percentage:.1f}%",
+                                    (10, 60),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.5,
+                                    (255, 255, 255),
+                                    1,
+                                )
+                                cv2.putText(
+                                    roi_with_mask,
+                                    "DETECTED - PAUSING 2 SEC",
+                                    (10, 80),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.5,
+                                    (0, 255, 0),
+                                    1,
+                                )
 
                                 # Show ROI analysis in a separate window
-                                cv2.imshow(f"ROI Analysis - {model.names[cls]}", roi_with_mask)
+                                cv2.imshow(
+                                    f"ROI Analysis - {model.names[cls]}", roi_with_mask
+                                )
 
                             # Pause for 2 seconds
                             cv2.waitKey(2000)
