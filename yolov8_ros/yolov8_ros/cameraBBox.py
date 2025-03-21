@@ -87,7 +87,19 @@ def main():
                         result, mask = check_enemy(
                             roi, target_class, BLUE_RANGES, RED_RANGES, color_threshold
                         )
-
+                        if result:
+                            # Record detection time to pause for 2 seconds
+                            cv2.putText(
+                                frame,
+                                "TARGET DETECTED - PAUSING FOR 2 SECONDS",
+                                (frame.shape[1]//2 - 200, frame.shape[0]//2),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                1,
+                                (0, 0, 255),
+                                2
+                            )
+                            cv2.imshow("YOLO with Color Detection", frame)
+                            cv2.waitKey(2000)  # Wait 2000 milliseconds (2 seconds)
                         # Draw bounding box
                         color = (0, 255, 0) if result else (0, 0, 255)
                         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
