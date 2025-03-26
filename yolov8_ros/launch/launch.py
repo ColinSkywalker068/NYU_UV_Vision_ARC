@@ -44,8 +44,8 @@ def generate_launch_description():
                     "enable_sync": "true",  # Synchronizes RGB & depth frames
                     "align_depth.enable": "true",  # Aligns depth to color frame
                     "pointcloud.enable": "false",  # Disable unless needed
-                    "enable_debug": "false",   # Disables debug logging
-                    "log_level": "error",      # Only shows errors
+                    "enable_debug": "false",  # Disables debug logging
+                    "log_level": "error",  # Only shows errors
                 }.items(),
             ),
         ]
