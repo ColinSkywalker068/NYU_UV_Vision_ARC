@@ -38,11 +38,11 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(realsense_launch_file),
                 launch_arguments={
-                    'rgb_camera.profile': '640x480x30',
-                    'depth_module.enable': True,  # Re-enable the depth module
-                    'pointcloud.enable': False,
-                    'enable_debug': False,
-                    'log_level': 'debug',
+                    "rgb_camera.profile": "640x480x30",
+                    "depth_module.enable": True,  # Re-enable the depth module
+                    "pointcloud.enable": False,
+                    "enable_debug": False,
+                    "log_level": "debug",
                 }.items(),
             ),
         ]
