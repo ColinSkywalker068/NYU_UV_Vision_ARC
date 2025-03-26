@@ -39,7 +39,12 @@ def generate_launch_description():
                 PythonLaunchDescriptionSource(realsense_launch_file),
                 launch_arguments={
                     "rgb_camera.profile": "640x480x60",
-                    "depth_module.enable_auto_exposure": "True",
+                    "depth_module.enable_auto_exposure": "true",  # Dynamic lighting adjustment
+                    "depth_module.visual_preset": "5",  # High-accuracy mode
+                    "enable_sync": "true",  # Synchronizes RGB & depth frames
+                    "align_depth.enable": "true",  # Aligns depth to color frame
+                    "pointcloud.enable": "false",  # Disable unless needed
+                    
                 }.items(),
             ),
         ]
