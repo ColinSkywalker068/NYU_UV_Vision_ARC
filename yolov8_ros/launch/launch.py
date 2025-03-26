@@ -44,7 +44,6 @@ def generate_launch_description():
                     "enable_sync": "true",  # Synchronizes RGB & depth frames
                     "align_depth.enable": "true",  # Aligns depth to color frame
                     "pointcloud.enable": "false",  # Disable unless needed
-                    
                 }.items(),
             ),
         ]
