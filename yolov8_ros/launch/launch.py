@@ -39,6 +39,7 @@ def generate_launch_description():
                 PythonLaunchDescriptionSource(realsense_launch_file),
                 launch_arguments={
                     "rgb_camera.profile": "640x480x60",
+                    "depth_module.enable_auto_exposure": "True",
                 }.items(),
             ),
         ]
