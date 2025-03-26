@@ -37,12 +37,12 @@ def generate_launch_description():
             # Include the Realsense2 Camera Launch File
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(realsense_launch_file),
-                launch_arguments={    
-                    'rgb_camera.profile': '640x480x30',
-                    'depth_module.enable': False,
-                    'pointcloud.enable': False,
-                    'enable_debug': False,
-                    'log_level': 'debug',
+                launch_arguments={
+                    "rgb_camera.profile": "640x480x30",
+                    "depth_module.enable": False,
+                    "pointcloud.enable": False,
+                    "enable_debug": False,
+                    "log_level": "debug",
                 }.items(),
             ),
         ]
