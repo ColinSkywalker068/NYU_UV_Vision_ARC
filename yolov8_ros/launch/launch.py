@@ -30,7 +30,7 @@ def generate_launch_description():
                         "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.engine"
                     },
                     {"task": "detect"},
-                    {"show": True},
+                    {"show": False},
                     {"conf": 0.5},
                 ],
             ),
