@@ -119,7 +119,7 @@ class YOLOv8Node(Node):
         self.override.data = False
 
         for r in results:
-            if task == "detect":
+            if self.task == "detect":
                 if not hasattr(r, "boxes") or r.boxes is None:
                     continue
                 bboxs = r.boxes.xyxy.cpu().int().tolist()
