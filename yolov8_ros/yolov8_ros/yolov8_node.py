@@ -58,7 +58,7 @@ class YOLOv8Node(Node):
         # Retrieve parameter values with debug outputs
         model_type = self.get_parameter("type").get_parameter_value().string_value
         print(f"Model type: {model_type}")
-        task = self.get_parameter("task").get_parameter_value().string_value
+        self.task = self.get_parameter("task").get_parameter_value().string_value
         self.half = self.get_parameter("half").get_parameter_value().bool_value
         self.imgsz = self.get_parameter("imgsz").get_parameter_value().integer_value
         self.show = self.get_parameter("show").get_parameter_value().bool_value
@@ -67,14 +67,14 @@ class YOLOv8Node(Node):
 
         # Setting up model based on type with debug output
         if model_type == "yolo":
-            self.model = YOLO(model_path, task=task)
+            self.model = YOLO(model_path, task=self.task)
         elif model_type == "rtdetr":
             self.model = RTDETR(model_path)
         elif model_type == "nas":
             self.model = NAS(model_path)
         else:
             raise NotImplementedError("Unsupported model type specified.")
-        print(f"Model initialized as {model_type} with task {task}.")
+        print(f"Model initialized as {model_type} with task {self.task}.")
 
         # Subscription and publishing setup with debug statements
         self.subscription = self.create_subscription(
