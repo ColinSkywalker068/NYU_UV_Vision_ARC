@@ -1,4 +1,3 @@
-# Test Merge
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
 from launch_ros.actions import Node
@@ -39,10 +38,11 @@ def generate_launch_description():
                 PythonLaunchDescriptionSource(realsense_launch_file),
                 launch_arguments={
                     "rgb_camera.profile": "640x480x30",
+                    "depth_module.profile": "640x480x30",  # Setting a profile for the depth module
                     "depth_module.enable": True,  # Re-enable the depth module
                     "pointcloud.enable": False,
                     "enable_debug": False,
-                    "log_level": "debug",
+                    "log_level": "info",  # Changed log_level to "info" to reduce verbosity
                 }.items(),
             ),
         ]
