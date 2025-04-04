@@ -119,17 +119,21 @@ class YOLOv8Node(Node):
         self.override.data = False
 
         for r in results:
-            if not hasattr(r, "boxes") or r.boxes is None:
-                continue
+            if task = "detect":
+                if not hasattr(r, "boxes") or r.boxes is None:
+                    continue
+                bboxs = r.boxes.xyxy.cpu().int().tolist()
+            else:
+                if not hasattr(r, "obb") and r.obb is not None:
+                    continue
+                bboxs = r.obb.xyxy.cpu().int().tolist()
 
-            bboxs = r.boxes.xyxy.cpu().int().tolist()
             print(f"Bounding boxes: {bboxs}")
 
             for i, bbox in enumerate(bboxs):
                 roi_bbox = padded_image[bbox[1] : bbox[3], bbox[0] : bbox[2]]
                 ret, col = self.check_enemy(roi_bbox)
                 if ret:
-                    print("otw to bboxmsg, col: ", str(col))
                     if self.show:
                         cv2.rectangle(
                             padded_image,
