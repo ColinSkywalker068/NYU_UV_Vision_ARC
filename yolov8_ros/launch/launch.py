@@ -30,7 +30,7 @@ def generate_launch_description():
                     },
                     {"task": "detect"},
                     {"show": True},
-                    {"conf": 0},
+                    {"conf": 0.1},
                 ],
             ),
             # Include the Realsense2 Camera Launch File
