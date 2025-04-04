@@ -27,7 +27,7 @@ def generate_launch_description():
                 ],
                 parameters=[
                     {
-                        "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.engine"
+                        "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/bestNewTR.pt"
                     },
                     {"task": "detect"},
                     {"show": False},
