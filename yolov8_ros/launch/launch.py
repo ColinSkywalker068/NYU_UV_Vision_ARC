@@ -26,7 +26,7 @@ def generate_launch_description():
                 ],
                 parameters=[
                     {
-                        "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/bestNewTR.pt"
+                        "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.pt"
                     },
                     {"task": "detect"},
                     {"show": True},
