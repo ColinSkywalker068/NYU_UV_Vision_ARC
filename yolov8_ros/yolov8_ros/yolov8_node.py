@@ -47,7 +47,9 @@ class YOLOv8Node(Node):
                 self.model = NAS(model_path)
             else:
                 raise NotImplementedError("Unsupported model type specified.")
-            self.get_logger().info(f"Model initialized as {model_type} with task {self.task}.")
+            self.get_logger().info(
+                f"Model initialized as {model_type} with task {self.task}."
+            )
         except Exception as e:
             self.get_logger().error(f"Error loading model: {e}")
 
