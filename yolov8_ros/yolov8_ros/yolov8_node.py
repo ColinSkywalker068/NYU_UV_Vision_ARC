@@ -70,7 +70,9 @@ class YOLOv8Node(Node):
             self.model = NAS(model_path)
         else:
             raise NotImplementedError("Unsupported model type specified.")
-        self.get_logger().info(f"Model initialized as {model_type} with task {self.task}.")
+        self.get_logger().info(
+            f"Model initialized as {model_type} with task {self.task}."
+        )
 
         # Subscription and publishing setup with debug statements
         self.subscription = self.create_subscription(
