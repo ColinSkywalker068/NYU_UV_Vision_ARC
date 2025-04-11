@@ -1,11 +1,35 @@
-from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
-from launch_ros.actions import Node
-from launch.launch_description_sources import PythonLaunchDescriptionSource
-from ament_index_python.packages import get_package_share_directory
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from std_msgs.msg import Int32, Int32MultiArray, Bool
+from cv_bridge import CvBridge
+from ultralytics import YOLO, RTDETR, NAS
+import cv2
+import numpy as np
 import os
 
-# Replace print statements with ROS logging for better integration and debugging
+os.environ["GDK_SYNCHRONIZE"] = "1"
+
+RED_TEAM = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+BLUE_TEAM = (101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111)
+
+RED_CLASS = 1
+BLUE_CLASS = 0
+
+BLUE_RANGES = [
+    [np.array((100, 150, 150), np.uint8), np.array((128, 255, 255), np.uint8)]
+]
+RED_RANGES = [
+    [np.array((0, 150, 150), np.uint8), np.array((10, 255, 255), np.uint8)],
+    [np.array((170, 150, 150), np.uint8), np.array((180, 255, 255), np.uint8)],
+]
+
+BBOX_COLOR = (0, 255, 0)
+BBOX_LINE_SIZE = 2
+
+COLOR_THRESHOLD = 200
+
+
 class YOLOv8Node(Node):
     def __init__(self):
         super().__init__("yolov8_node")
@@ -38,20 +62,15 @@ class YOLOv8Node(Node):
         self.target_class = BLUE_CLASS
 
         # Setting up model based on type with debug output
-        try:
-            if model_type == "yolo":
-                self.model = YOLO(model_path, task=self.task)
-            elif model_type == "rtdetr":
-                self.model = RTDETR(model_path)
-            elif model_type == "nas":
-                self.model = NAS(model_path)
-            else:
-                raise NotImplementedError("Unsupported model type specified.")
-            self.get_logger().info(
-                f"Model initialized as {model_type} with task {self.task}."
-            )
-        except Exception as e:
-            self.get_logger().error(f"Error loading model: {e}")
+        if model_type == "yolo":
+            self.model = YOLO(model_path, task=self.task)
+        elif model_type == "rtdetr":
+            self.model = RTDETR(model_path)
+        elif model_type == "nas":
+            self.model = NAS(model_path)
+        else:
+            raise NotImplementedError("Unsupported model type specified.")
+        self.get_logger().info(f"Model initialized as {model_type} with task {self.task}.")
 
         # Subscription and publishing setup with debug statements
         self.subscription = self.create_subscription(
@@ -73,64 +92,61 @@ class YOLOv8Node(Node):
 
     def listener_callback(self, msg):
         self.get_logger().info("Received image message.")
-        try:
-            frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-            height, width = frame.shape[:2]
-            self.get_logger().info(f"Frame shape: {frame.shape}")
+        frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        height, width = frame.shape[:2]
+        self.get_logger().info(f"Frame shape: {frame.shape}")
 
-            # Padding debug output
-            required_padding = width - height
-            padding = required_padding // 2
-            padded_image = cv2.copyMakeBorder(
-                frame, padding, padding, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0]
-            )
-            self.get_logger().info("Padded image.")
+        # Padding debug output
+        required_padding = width - height
+        padding = required_padding // 2
+        padded_image = cv2.copyMakeBorder(
+            frame, padding, padding, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0]
+        )
+        self.get_logger().info("Padded image.")
 
-            # Running model and checking bounding boxes
-            results = self.model.track(
-                padded_image,
-                half=self.half,
-                imgsz=self.imgsz,
-                show=self.show,
-                conf=self.conf,
-            )
-            self.override.data = False
+        # Running model and checking bounding boxes
+        results = self.model.track(
+            padded_image,
+            half=self.half,
+            imgsz=self.imgsz,
+            show=self.show,
+            conf=self.conf,
+        )
+        self.override.data = False
 
-            for r in results:
-                if self.task == "detect":
-                    if not hasattr(r, "boxes") or r.boxes is None:
-                        continue
-                    bboxs = r.boxes.xyxy.cpu().int().tolist()
-                else:
-                    if not hasattr(r, "obb") and r.obb is not None:
-                        continue
-                    bboxs = r.obb.xyxy.cpu().int().tolist()
+        for r in results:
+            if self.task == "detect":
+                if not hasattr(r, "boxes") or r.boxes is None:
+                    continue
+                bboxs = r.boxes.xyxy.cpu().int().tolist()
+            else:
+                if not hasattr(r, "obb") and r.obb is not None:
+                    continue
+                bboxs = r.obb.xyxy.cpu().int().tolist()
 
-                self.get_logger().info(f"Bounding boxes: {bboxs}")
+            self.get_logger().info(f"Bounding boxes: {bboxs}")
 
-                for i, bbox in enumerate(bboxs):
-                    roi_bbox = padded_image[bbox[1] : bbox[3], bbox[0] : bbox[2]]
-                    ret, col = self.check_enemy(roi_bbox)
-                    if ret:
-                        if self.show:
-                            cv2.rectangle(
-                                padded_image,
-                                (bbox[0], bbox[1]),
-                                (bbox[2], bbox[3]),
-                                BBOX_COLOR,
-                                BBOX_LINE_SIZE,
-                            )
-                        self.bbox_msg.data = bbox
-                        self.override.data = True
-                        self.override_publisher.publish(self.override)
-                        self.bbox_publisher.publish(self.bbox_msg)
-                if len(bboxs) == 0:
-                    self.bbox_msg.data = [320, 320, 320, 320]
+            for i, bbox in enumerate(bboxs):
+                roi_bbox = padded_image[bbox[1] : bbox[3], bbox[0] : bbox[2]]
+                ret, col = self.check_enemy(roi_bbox)
+                if ret:
+                    if self.show:
+                        cv2.rectangle(
+                            padded_image,
+                            (bbox[0], bbox[1]),
+                            (bbox[2], bbox[3]),
+                            BBOX_COLOR,
+                            BBOX_LINE_SIZE,
+                        )
+                    self.bbox_msg.data = bbox
                     self.override.data = True
                     self.override_publisher.publish(self.override)
                     self.bbox_publisher.publish(self.bbox_msg)
-        except Exception as e:
-            self.get_logger().error(f"Error in listener_callback: {e}")
+            if len(bboxs) == 0:
+                self.bbox_msg.data = [320, 320, 320, 320]
+                self.override.data = True
+                self.override_publisher.publish(self.override)
+                self.bbox_publisher.publish(self.bbox_msg)
 
     def id_listener_callback(self, msg):
         self.target_class = BLUE_CLASS if msg.data in RED_TEAM else RED_CLASS
@@ -161,3 +177,20 @@ class YOLOv8Node(Node):
         )
 
         return color_area > color_threshold, color_area
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = YOLOv8Node()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+    cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
