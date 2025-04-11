@@ -7,7 +7,6 @@ from ultralytics import YOLO, RTDETR, NAS
 import cv2
 import numpy as np
 import os
-import time
 
 os.environ["GDK_SYNCHRONIZE"] = "1"
 
@@ -71,9 +70,7 @@ class YOLOv8Node(Node):
             self.model = NAS(model_path)
         else:
             raise NotImplementedError("Unsupported model type specified.")
-        self.get_logger().info(
-            f"Model initialized as {model_type} with task {self.task}."
-        )
+        self.get_logger().info(f"Model initialized as {model_type} with task {self.task}.")
 
         # Subscription and publishing setup with debug statements
         self.subscription = self.create_subscription(
@@ -97,7 +94,7 @@ class YOLOv8Node(Node):
         self.get_logger().info("Received image message.")
         frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         height, width = frame.shape[:2]
-        # self.get_logger().info(f"Frame shape: {frame.shape}")
+        self.get_logger().info(f"Frame shape: {frame.shape}")
 
         # Padding debug output
         required_padding = width - height
@@ -105,7 +102,7 @@ class YOLOv8Node(Node):
         padded_image = cv2.copyMakeBorder(
             frame, padding, padding, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0]
         )
-        # self.get_logger().info("Padded image.")
+        self.get_logger().info("Padded image.")
 
         # Running model and checking bounding boxes
         results = self.model.track(
@@ -128,14 +125,7 @@ class YOLOv8Node(Node):
                 bboxs = r.obb.xyxy.cpu().int().tolist()
 
             self.get_logger().info(f"Bounding boxes: {bboxs}")
-            # Initialize a variable to store the last log time
-            self.last_log_time = time.time()
 
-            # Calculate the time difference and log it
-            current_time = time.time()
-            time_diff = current_time - self.last_log_time
-            self.get_logger().info(f"Time since last log: {time_diff:.2f} seconds")
-            self.last_log_time = current_time
             for i, bbox in enumerate(bboxs):
                 roi_bbox = padded_image[bbox[1] : bbox[3], bbox[0] : bbox[2]]
                 ret, col = self.check_enemy(roi_bbox)
