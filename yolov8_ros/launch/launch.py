@@ -26,7 +26,7 @@ def generate_launch_description():
                 ],
                 parameters=[
                     {
-                        "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/HUST_model.onnx"
+                        "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.pt"
                     },
                     {"task": "detect"},
                     {"show": True},
