@@ -37,7 +37,8 @@ def generate_launch_description():
                 launch_arguments={
                     "rgb_camera.profile": "640x480x30",
                     "depth_module.profile": "640x480x30",
-                    "__log_level": "ERROR",  # Reduced verbosity
+                    "__log_level": "ERROR",  
+                    "Initial_reset": "true",
                 }.items(),
             ),
         ]
