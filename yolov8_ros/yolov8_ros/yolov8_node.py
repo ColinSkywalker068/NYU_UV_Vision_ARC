@@ -71,7 +71,9 @@ class YOLOv8Node(Node):
             self.model = NAS(model_path)
         else:
             raise NotImplementedError("Unsupported model type specified.")
-        self.get_logger().info(f"Model initialized as {model_type} with task {self.task}.")
+        self.get_logger().info(
+            f"Model initialized as {model_type} with task {self.task}."
+        )
 
         # Subscription and publishing setup with debug statements
         self.subscription = self.create_subscription(
@@ -95,7 +97,7 @@ class YOLOv8Node(Node):
         self.get_logger().info("Received image message.")
         frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         height, width = frame.shape[:2]
-        #self.get_logger().info(f"Frame shape: {frame.shape}")
+        # self.get_logger().info(f"Frame shape: {frame.shape}")
 
         # Padding debug output
         required_padding = width - height
@@ -103,7 +105,7 @@ class YOLOv8Node(Node):
         padded_image = cv2.copyMakeBorder(
             frame, padding, padding, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0]
         )
-        #self.get_logger().info("Padded image.")
+        # self.get_logger().info("Padded image.")
 
         # Running model and checking bounding boxes
         results = self.model.track(
