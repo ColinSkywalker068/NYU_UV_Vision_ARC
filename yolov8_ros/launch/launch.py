@@ -45,6 +45,7 @@ def generate_launch_description():
                     "rgb_camera.gain": "0",  # Gain set to 0
                     "rgb_camera.gamma": "250",  # Gamma correction
                     "rgb_camera.white_balance": "4800",  # White balance in K
+                    "color_fps": "30", # set fps to 30
                 }.items(),
             ),
         ]
