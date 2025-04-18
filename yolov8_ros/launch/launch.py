@@ -19,8 +19,8 @@ def generate_launch_description():
             # YOLOv8 Node
             Node(
                 package="yolov8_ros",
-                executable="yolov8_node_visFilt",
-                name="yolov8_node_visFilt",
+                executable="yolov8_node",
+                name="yolov8_node",
                 remappings=[("video_frames", "/camera/camera/color/image_raw")],
                 parameters=[
                     {
