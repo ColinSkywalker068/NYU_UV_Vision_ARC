@@ -30,10 +30,10 @@ BBOX_LINE_SIZE = 2
 COLOR_THRESHOLD = 200
 
 
-class YOLOv8Node(Node):
+class YOLOv8Node_visFilt(Node):
     def __init__(self):
-        super().__init__("yolov8_node")
-        self.get_logger().info("Initializing YOLOv8Node...")
+        super().__init__("yolov8_node_visFilt")
+        self.get_logger().info("Initializing YOLOv8Node_visFilt...")
 
         # Parameter declaration and retrieval with debug statements
         self.declare_parameter(
@@ -213,7 +213,7 @@ class YOLOv8Node(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = YOLOv8Node()
+    node = YOLOv8Node_visFilt()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
