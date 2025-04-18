@@ -30,10 +30,10 @@ BBOX_LINE_SIZE = 2
 COLOR_THRESHOLD = 200
 
 
-class YOLOv8Node_visFilt(Node):
+class YOLOv8Node(Node):
     def __init__(self):
-        super().__init__("yolov8_node_visFilt")
-        self.get_logger().info("Initializing YOLOv8Node_visFilt...")
+        super().__init__("yolov8_node")
+        self.get_logger().info("Initializing YOLOv8Node...")
 
         # Parameter declaration and retrieval with debug statements
         self.declare_parameter(
