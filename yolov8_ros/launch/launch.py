@@ -19,8 +19,8 @@ def generate_launch_description():
             # YOLOv8 Node
             Node(
                 package="yolov8_ros",
-                executable="yolov8_node",
-                name="yolov8_node",
+                executable="yolov8_node_visFilt",
+                name="yolov8_node_visFilt",
                 remappings=[("video_frames", "/camera/camera/color/image_raw")],
                 parameters=[
                     {
@@ -28,7 +28,7 @@ def generate_launch_description():
                     },
                     {"task": "obb"},
                     {"show": True},
-                    {"conf": 0.2},
+                    {"conf": 0.05},
                 ],
             ),
             # RealSense2 Camera with only two key parameters
