@@ -91,20 +91,20 @@ class YOLOv8Node_visFilt(Node):
         self.override = Bool()
         self.bbox_msg = Int32MultiArray()
         self.bbox_msg.data = [320, 320, 320, 320]
-    def reduce_white_regions(hsv):
+    def reduce_white_regions(self, hsv):
         """Reduce brightness in white regions to enhance color visibility."""
         white_mask = cv2.inRange(hsv, np.array([0, 0, 200]), np.array([180, 30, 255]))
         hsv[:, :, 2][white_mask > 0] = (hsv[:, :, 2][white_mask > 0] * 0.7).astype(np.uint8)
         return white_mask
 
-    def create_color_mask(hsv, color_ranges):
+    def create_color_mask(self, hsv, color_ranges):
         """Create a mask for specified color ranges."""
         mask = np.zeros_like(hsv[:, :, 0])
         for low, high in color_ranges:
             mask = cv2.bitwise_or(mask, cv2.inRange(hsv, low, high))
         return mask
 
-    def enhance_image(frame):
+    def enhance_image(self, frame):
         """Enhance image by reducing white regions and isolating red/blue colors."""
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         white_mask = reduce_white_regions(hsv)
