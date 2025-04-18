@@ -2,16 +2,17 @@
 import cv2
 import numpy as np
 from ultralytics import YOLO
+import pyrealsense2 as rs
 
 # Enable OpenCV optimizations
 cv2.setUseOptimized(True)
 cv2.setNumThreads(2)
 
 # Load YOLO model
-model = YOLO("/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.pt")
+model = YOLO("bestObb2.pt")
 # bestObb2.pt runs well, 120 inch is good 80-100 performance, 150 inch is about mid performance with 50-80 general conf, and 180 is the max for any ok results.
 # Initialize webcam
-cap = cv2.VideoCapture(1)
+cap = cv2.VideoCapture(0)
 
 
 # Define HSV color ranges for blue and red
@@ -60,20 +61,26 @@ def enhance_image(frame):
     white_vis[white_mask > 0] = [255, 255, 255]
 
     return result, color_vis, white_vis
+pipeline = rs.pipeline()
+config = rs.config()
+config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+pipeline.start(config)
 
 try:
     while True:
-        ret, frame = cap.read()
-        if not ret:
+        # Wait for a coherent color frame
+        frames = pipeline.wait_for_frames()
+        color_frame = frames.get_color_frame()
+        if not color_frame:
             print("Failed to grab frame. Exiting...")
             break
-        #enhanced_frame = frame
+        frame = np.asanyarray(color_frame.get_data())  # Convert to numpy array
+
         enhanced_frame, color_visualization, white_visualization = enhance_image(frame)
         results = model(enhanced_frame)
         output_frame = results[0].plot()
 
         cv2.imshow("Original Frame", frame)
-
         cv2.imshow("Detection Results", output_frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -83,5 +90,6 @@ except KeyboardInterrupt:
     print("Interrupted by user. Exiting...")
 
 finally:
-    cap.release()
+    pipeline.stop()  # Stop the RealSense pipeline
     cv2.destroyAllWindows()
+    cap.release()
