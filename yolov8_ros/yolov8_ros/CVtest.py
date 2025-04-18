@@ -11,7 +11,7 @@ cv2.setNumThreads(2)
 model = YOLO("/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.pt")
 # bestObb2.pt runs well, 120 inch is good 80-100 performance, 150 inch is about mid performance with 50-80 general conf, and 180 is the max for any ok results.
 # Initialize webcam
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(1)
 
 
 # Define HSV color ranges for blue and red
