@@ -30,10 +30,10 @@ BBOX_LINE_SIZE = 2
 COLOR_THRESHOLD = 200
 
 
-class YOLOv8Node_visFilt(Node):
+class YOLOv8Node(Node):
     def __init__(self):
-        super().__init__("yolov8_node_visFilt")
-        self.get_logger().info("Initializing YOLOv8Node_visFilt...")
+        super().__init__("yolov8_node")
+        self.get_logger().info("Initializing YOLOv8Node...")
 
         # Parameter declaration and retrieval with debug statements
         self.declare_parameter(
@@ -91,33 +91,6 @@ class YOLOv8Node_visFilt(Node):
         self.override = Bool()
         self.bbox_msg = Int32MultiArray()
         self.bbox_msg.data = [320, 320, 320, 320]
-    def reduce_white_regions(hsv):
-        """Reduce brightness in white regions to enhance color visibility."""
-        white_mask = cv2.inRange(hsv, np.array([0, 0, 200]), np.array([180, 30, 255]))
-        hsv[:, :, 2][white_mask > 0] = (hsv[:, :, 2][white_mask > 0] * 0.7).astype(np.uint8)
-        return white_mask
-
-    def create_color_mask(hsv, color_ranges):
-        """Create a mask for specified color ranges."""
-        mask = np.zeros_like(hsv[:, :, 0])
-        for low, high in color_ranges:
-            mask = cv2.bitwise_or(mask, cv2.inRange(hsv, low, high))
-        return mask
-
-    def enhance_image(frame):
-        """Enhance image by reducing white regions and isolating red/blue colors."""
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        white_mask = reduce_white_regions(hsv)
-        # Use your existing RED_RANGES and BLUE_RANGES
-        red_mask = create_color_mask(hsv, RED_RANGES)
-        blue_mask = create_color_mask(hsv, BLUE_RANGES)
-        color_mask = cv2.bitwise_or(red_mask, blue_mask)
-        hsv[:, :, 2] = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(hsv[:, :, 2])
-        enhanced = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-        color_regions = cv2.bitwise_and(enhanced, enhanced, mask=color_mask)
-        result = cv2.addWeighted(enhanced, 0.7, color_regions, 0.3, 0)
-        result = cv2.bilateralFilter(result, 9, 75, 75)
-        return result
 
     def listener_callback(self, msg):
         self.get_logger().info("Received image message.")
@@ -125,14 +98,11 @@ class YOLOv8Node_visFilt(Node):
         height, width = frame.shape[:2]
         self.get_logger().info(f"Frame shape: {frame.shape}")
 
-        # Enhance the frame before any processing
-        enhanced_frame = enhance_image(frame)
-
         # Padding debug output
         required_padding = width - height
         padding = required_padding // 2
         padded_image = cv2.copyMakeBorder(
-            enhanced_frame, padding, padding, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0]
+            frame, padding, padding, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0]
         )
         self.get_logger().info("Padded image.")
 
@@ -213,7 +183,7 @@ class YOLOv8Node_visFilt(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = YOLOv8Node_visFilt()
+    node = YOLOv8Node()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
