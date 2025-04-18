@@ -107,10 +107,10 @@ class YOLOv8Node_visFilt(Node):
     def enhance_image(self, frame):
         """Enhance image by reducing white regions and isolating red/blue colors."""
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        white_mask = reduce_white_regions(hsv)
+        white_mask = self.reduce_white_regions(hsv)
         # Use your existing RED_RANGES and BLUE_RANGES
-        red_mask = create_color_mask(hsv, RED_RANGES)
-        blue_mask = create_color_mask(hsv, BLUE_RANGES)
+        red_mask = self.create_color_mask(hsv, RED_RANGES)
+        blue_mask = self.create_color_mask(hsv, BLUE_RANGES)
         color_mask = cv2.bitwise_or(red_mask, blue_mask)
         hsv[:, :, 2] = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(hsv[:, :, 2])
         enhanced = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
@@ -126,7 +126,7 @@ class YOLOv8Node_visFilt(Node):
         self.get_logger().info(f"Frame shape: {frame.shape}")
 
         # Enhance the frame before any processing
-        enhanced_frame = enhance_image(frame)
+        enhanced_frame = self.enhance_image(frame)
 
         # Padding debug output
         required_padding = width - height
