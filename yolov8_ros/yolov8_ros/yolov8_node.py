@@ -213,7 +213,7 @@ class YOLOv8Node(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = YOLOv8Node_visFilt()
+    node = YOLOv8Node()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
