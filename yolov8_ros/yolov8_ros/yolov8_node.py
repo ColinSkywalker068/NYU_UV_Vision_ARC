@@ -126,7 +126,8 @@ class YOLOv8Node(Node):
         self.get_logger().info(f"Frame shape: {frame.shape}")
 
         # Enhance the frame before any processing
-        enhanced_frame = self.enhance_image(frame)
+        # stop enhance for now
+        enhanced_frame = frame
 
         # Padding debug output
         required_padding = width - height
