@@ -125,42 +125,63 @@ def enhance_image(frame):
     white_vis[white_mask > 0] = [255, 255, 255]
 
     return result, color_vis, white_vis
+
+def tile_inference(image, model, tile_size=640, overlap=0.2):
+    stride = int(tile_size * (1 - overlap))
+    H, W, _ = image.shape
+    detections = []
+
+    for y in range(0, H, stride):
+        for x in range(0, W, stride):
+            tile = image[y:y+tile_size, x:x+tile_size]
+            if tile.shape[0] < tile_size or tile.shape[1] < tile_size:
+                continue  # skip incomplete tiles
+
+            result = model(tile)[0]
+            for box in result.boxes.xyxy.cpu().numpy():
+                x1, y1, x2, y2 = box[:4]
+                conf = box[4]
+                cls = int(box[5])
+                detections.append([x1 + x, y1 + y, x2 + x, y2 + y, conf, cls])
+
+    return detections
+
 pipeline = rs.pipeline()
 config = rs.config()
 config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
 pipeline.start(config)
 
-try:
-    while True:
-        # Wait for a coherent color frame
-        frames = pipeline.wait_for_frames()
-        color_frame = frames.get_color_frame()
-        if not color_frame:
-            print("Failed to grab frame. Exiting...")
-            break
-        frame = np.asanyarray(color_frame.get_data())  # Convert to numpy array
+# # try:
+# #     while True:
+# #         # Wait for a coherent color frame
+# #         frames = pipeline.wait_for_frames()
+# #         color_frame = frames.get_color_frame()
+# #         if not color_frame:
+# #             print("Failed to grab frame. Exiting...")
+# #             break
+# #         frame = np.asanyarray(color_frame.get_data())  # Convert to numpy array
 
-        enhanced_frame, color_visualization, white_visualization = enhance_image(frame)
-        results = model(enhanced_frame)
-        output_frame = results[0].plot()
+# #         enhanced_frame, color_visualization, white_visualization = enhance_image(frame)
+# #         results = model(enhanced_frame)
+# #         output_frame = results[0].plot()
 
-        cv2.imshow("Original Frame", frame)
-        cv2.imshow("Detection Results", output_frame)
+# #         cv2.imshow("Original Frame", frame)
+# #         cv2.imshow("Detection Results", output_frame)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+# #         if cv2.waitKey(1) & 0xFF == ord('q'):
+# #             break
 
-except KeyboardInterrupt:
-    print("Interrupted by user. Exiting...")
+# # except KeyboardInterrupt:
+# #     print("Interrupted by user. Exiting...")
 
-finally:
-    pipeline.stop()  # Stop the RealSense pipeline
-    cv2.destroyAllWindows()
-    cap.release()
-pipeline = rs.pipeline()
-config = rs.config()
-config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-pipeline.start(config)
+# # finally:
+# #     pipeline.stop()  # Stop the RealSense pipeline
+# #     cv2.destroyAllWindows()
+# #     cap.release()
+# pipeline = rs.pipeline()
+# config = rs.config()
+# config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+# pipeline.start(config)
 
 try:
     while True:
