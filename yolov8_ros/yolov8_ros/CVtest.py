@@ -61,50 +61,10 @@ def enhance_image(frame):
     white_vis[white_mask > 0] = [255, 255, 255]
 
     return result, color_vis, white_vis
-
-def tile_inference(image, model, tile_size=640, overlap=0.4, conf_threshold=0.3):
-    stride = int(tile_size * (1 - overlap))
-    H, W, _ = image.shape
-    detections = []
-
-    for y in range(0, H, stride):
-        for x in range(0, W, stride):
-            tile = image[y:y+tile_size, x:x+tile_size]
-            h, w, _ = tile.shape
-
-            # Pad tile if it's smaller than tile_size
-            if h < tile_size or w < tile_size:
-                padded_tile = np.zeros((tile_size, tile_size, 3), dtype=np.uint8)
-                padded_tile[:h, :w] = tile
-                tile = padded_tile
-
-            # Run inference
-            result = model(tile)[0]
-
-            if result.boxes is None:
-                continue
-
-            for box in result.boxes.xyxy.cpu().numpy():
-                x1, y1, x2, y2 = box[:4]
-                conf = box[4]
-                cls = int(box[5])
-
-                if conf >= conf_threshold:
-                    # Offset coordinates to original image space
-                    detections.append([
-                        x1 + x, y1 + y,
-                        x2 + x, y2 + y,
-                        conf, cls
-                    ])
-
-    return detections
-
-
 pipeline = rs.pipeline()
 config = rs.config()
 config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
 pipeline.start(config)
-
 
 try:
     while True:
@@ -117,15 +77,9 @@ try:
         frame = np.asanyarray(color_frame.get_data())  # Convert to numpy array
 
         enhanced_frame, color_visualization, white_visualization = enhance_image(frame)
-        detections = tile_inference(enhanced_frame, model, tile_size=640, overlap=0.5)
+        results = model(enhanced_frame)
+        output_frame = results[0].plot()
 
-
-        output_frame = enhanced_frame.copy()
-        for det in detections:
-            x1, y1, x2, y2, conf, cls = det
-            cv2.rectangle(output_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-            cv2.putText(output_frame, f"{model.names[cls]} {conf:.2f}", (int(x1), int(y1)-5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
         cv2.imshow("Original Frame", frame)
         cv2.imshow("Detection Results", output_frame)
 
