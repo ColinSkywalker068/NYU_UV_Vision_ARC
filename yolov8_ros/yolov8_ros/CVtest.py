@@ -126,7 +126,7 @@ def enhance_image(frame):
 
     return result, color_vis, white_vis
 
-def tile_inference(image, model, tile_size=640, overlap=0.2):
+def tile_inference(image, model, tile_size=160, overlap=0.2):
     stride = int(tile_size * (1 - overlap))
     H, W, _ = image.shape
     detections = []
@@ -134,8 +134,12 @@ def tile_inference(image, model, tile_size=640, overlap=0.2):
     for y in range(0, H, stride):
         for x in range(0, W, stride):
             tile = image[y:y+tile_size, x:x+tile_size]
-            if tile.shape[0] < tile_size or tile.shape[1] < tile_size:
-                continue  # skip incomplete tiles
+            h, w, _ = tile.shape
+            if h < tile_size or w < tile_size:
+                padded_tile = np.zeros((tile_size, tile_size, 3), dtype=np.uint8)
+                padded_tile[:h, :w] = tile
+                tile = padded_tile
+
 
             result = model(tile)[0]
             for box in result.boxes.xyxy.cpu().numpy():
@@ -194,7 +198,8 @@ try:
         frame = np.asanyarray(color_frame.get_data())  # Convert to numpy array
 
         enhanced_frame, color_visualization, white_visualization = enhance_image(frame)
-        detections = tile_inference(enhanced_frame, model)
+        detections = tile_inference(enhanced_frame, model, tile_size=640, overlap=0.5)
+
 
         output_frame = enhanced_frame.copy()
         for det in detections:
