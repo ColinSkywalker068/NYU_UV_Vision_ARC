@@ -22,7 +22,7 @@ try:
     color_image = np.asanyarray(color_frame.get_data())
 
     # Preprocess: resize and normalize
-    img_resized = cv2.resize(color_image, (224, 224))
+    img_resized = cv2.resize(color_image, (416, 416))
     img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
     img_normalized = img_rgb.astype(np.float32) / 255.0
     img_transposed = np.transpose(img_normalized, (2, 0, 1))  # HWC to CHW
