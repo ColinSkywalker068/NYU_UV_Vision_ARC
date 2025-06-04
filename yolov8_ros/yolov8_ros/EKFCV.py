@@ -9,6 +9,10 @@ import numpy as np
 import os
 import random # For Kalman tracker color
 
+# SAHI Imports for Slicing Aided Hyper Inference
+from sahi.slicing import slice_image
+from sahi.prediction import ObjectPrediction, PredictionResult
+
 os.environ["GDK_SYNCHRONIZE"] = "1" # If using GTK-based cv2.imshow concurrently
 
 # Team and Class Definitions
@@ -29,78 +33,63 @@ RED_RANGES = [
 
 # Bounding Box Drawing Parameters
 BBOX_RAW_COLOR = (0, 255, 0)  # Green for raw YOLO detection
-BBOX_KF_COLOR = (255, 0, 0)   # Blue for Kalman Filter prediction
+BBOX_KF_COLOR = (255, 0, 0)   # Blue for Kalman Filter prediction (active, not selected)
+BBOX_SELECTED_KF_COLOR = (0, 255, 255) # Yellow for the selected KF target
+BBOX_SAHI_COLOR = (255, 0, 255) # Magenta for SAHI NMS detections
 BBOX_LINE_SIZE = 2
-
-# This was in your original code but appeared unused.
-# COLOR_THRESHOLD = 200
 
 # ──────────────────────────────────────────────────────────────
 # Kalman Filter Tracker Classes
 # ──────────────────────────────────────────────────────────────
 class ArmorPlateTracker:
-    def __init__(self, initial_x, initial_y, width, height): # dt removed from constructor
-        self.kf = cv2.KalmanFilter(6, 2) # 6 states (x,y,vx,vy,ax,ay), 2 measurements (x,y)
+    def __init__(self, initial_x, initial_y, width, height):
+        self.kf = cv2.KalmanFilter(6, 2) 
         
         self.kf.measurementMatrix = np.array([
             [1, 0, 0, 0, 0, 0],
             [0, 1, 0, 0, 0, 0]
         ], np.float32)
 
-        # --- TUNABLE KALMAN PARAMETERS ---
-        # processNoiseCov (Q): How much uncertainty in the motion model.
-        # Higher values make the filter adapt faster to unmodeled changes (e.g., sudden acceleration)
-        # but can make the prediction jittery if too high.
-        # Order of states: x, y, vx, vy, ax, ay
-        proc_noise_pos = 0.01 # For position (usually kept relatively small)
-        proc_noise_vel = 0.05 # For velocity
-        proc_noise_acc = 0.1  # For acceleration (increase if lagging during accelerations)
+        proc_noise_pos = 0.01 
+        proc_noise_vel = 0.05 
+        proc_noise_acc = 0.1  
         
         self.kf.processNoiseCov = np.diag([
             proc_noise_pos, proc_noise_pos, 
             proc_noise_vel, proc_noise_vel,
             proc_noise_acc, proc_noise_acc
-        ]).astype(np.float32) * 1.0 # Overall multiplier for process noise
+        ]).astype(np.float32) * 1.0
 
-        # measurementNoiseCov (R): How much uncertainty in the YOLO detections.
-        # Lower values mean more trust in the measurement, making the filter follow detections closely.
-        # Higher values mean less trust, relying more on the model's prediction (smoother but can lag).
-        meas_noise = 0.15 # Tunable: adjust based on YOLO detection stability
+        meas_noise = 0.15 
         self.kf.measurementNoiseCov = np.eye(2, dtype=np.float32) * meas_noise
-        # --- END TUNABLE KALMAN PARAMETERS ---
+        
+        self.kf.errorCovPost = np.eye(6, dtype=np.float32) * 0.1 
 
-        self.kf.errorCovPost = np.eye(6, dtype=np.float32) * 0.1 # Initial estimate error covariance
-
-        # Initial state: [x, y, vx, vy, ax, ay]'
         self.kf.statePost = np.array([
             np.float32(initial_x), np.float32(initial_y), 0, 0, 0, 0
         ], np.float32).reshape(6, 1)
 
-        self.color = (random.randint(0,255), random.randint(0,255), random.randint(0,255)) # For viz
+        self.color = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
         self.width = float(width)
         self.height = float(height)
-        self._last_dt_used = 0.033 # For reference/debugging
+        self._last_dt_used = 0.033
 
     def _update_transition_matrix(self, dt):
         self._last_dt_used = dt
-        # State transition matrix for constant acceleration model
         self.kf.transitionMatrix = np.array([
-            [1, 0, dt, 0, 0.5*dt*dt, 0], # x = x_prev + vx*dt + 0.5*ax*dt^2
-            [0, 1, 0, dt, 0, 0.5*dt*dt], # y = y_prev + vy*dt + 0.5*ay*dt^2
-            [0, 0, 1, 0, dt, 0],         # vx = vx_prev + ax*dt
-            [0, 0, 0, 1, 0, dt],         # vy = vy_prev + ay*dt
-            [0, 0, 0, 0, 1, 0],         # ax = ax_prev
-            [0, 0, 0, 0, 0, 1]          # ay = ay_prev
+            [1,0,dt,0,0.5*dt*dt,0], [0,1,0,dt,0,0.5*dt*dt],
+            [0,0,1,0,dt,0], [0,0,0,1,0,dt],
+            [0,0,0,0,1,0], [0,0,0,0,0,1]
         ], np.float32)
 
-    def predict(self, dt): # dt is now an argument to update transition matrix dynamically
+    def predict(self, dt):
         self._update_transition_matrix(dt)
-        prediction_state = self.kf.predict() # This updates kf.statePre with the predicted state
-        return int(prediction_state[0, 0]), int(prediction_state[1, 0]) # x, y
+        prediction_state = self.kf.predict()
+        return int(prediction_state[0, 0]), int(prediction_state[1, 0])
 
-    def update(self, x, y, width, height): # Called when a new measurement is available
+    def update(self, x, y, width, height):
         measurement = np.array([[np.float32(x)], [np.float32(y)]], np.float32)
-        self.kf.correct(measurement) # Corrects the state based on the new measurement, updates kf.statePost
+        self.kf.correct(measurement)
         self.width = float(width)
         self.height = float(height)
 
@@ -113,20 +102,28 @@ class TrackerWrapper:
 class YOLOv8Node(Node):
     def __init__(self):
         super().__init__("yolov8_node")
-        self.get_logger().info("Initializing YOLOv8Node with Kalman Filter & Lag Compensation...")
+        self.get_logger().info("Initializing YOLOv8Node with SAHI, Kalman Filter & Advanced Features...")
 
         # --- ROS Parameters ---
-        self.declare_parameter("model_path", "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.engine")
-        self.declare_parameter("task", "detect") # e.g., "detect", "obb"
-        self.declare_parameter("type", "yolo")   # "yolo", "rtdetr", "nas"
-        self.declare_parameter("half", True)     # Use FP16 precision
-        self.declare_parameter("imgsz", 640)     # Model input image size
-        self.declare_parameter("show", True)     # Enable/disable OpenCV visualization windows
-        self.declare_parameter("conf", 0.25)     # YOLO confidence threshold (LOWERED for better initial detection)
+        self.declare_parameter("model_path", "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb.pt") # Default if not overridden
+        self.declare_parameter("task", "detect")
+        self.declare_parameter("type", "yolo")  
+        self.declare_parameter("half", True)    
+        self.declare_parameter("imgsz", 640)    
+        self.declare_parameter("show", True)    
+        self.declare_parameter("conf", 0.25)    
         
-        self.declare_parameter("tracker_timeout", 15)      # Frames to keep a lost track before deleting
-        self.declare_parameter("kalman_initial_dt", 1.0/30.0) # Initial/fallback dt for Kalman filter (e.g., for 30fps)
-        self.declare_parameter("prediction_lookahead_steps", 0.5) # How many extra 'dt' steps to look ahead (0=std KF, 0.5=half dt ahead, 1.0=full dt ahead)
+        self.declare_parameter("tracker_timeout", 15)      
+        self.declare_parameter("kalman_initial_dt", 1.0/30.0) 
+        self.declare_parameter("prediction_lookahead_steps", 0.5)
+        self.declare_parameter("target_selection_strategy", "first") # "first", "biggest_area", "closest_to_center"
+
+        self.declare_parameter("use_sahi", False) 
+        self.declare_parameter("sahi_slice_height", 512)
+        self.declare_parameter("sahi_slice_width", 512)
+        self.declare_parameter("sahi_overlap_height_ratio", 0.2)
+        self.declare_parameter("sahi_overlap_width_ratio", 0.2)
+        self.declare_parameter("sahi_nms_iou_threshold", 0.5)
 
         # Get parameter values
         model_path = self.get_parameter("model_path").get_parameter_value().string_value
@@ -139,296 +136,199 @@ class YOLOv8Node(Node):
         self.tracker_timeout_val = self.get_parameter("tracker_timeout").get_parameter_value().integer_value
         self.kalman_initial_dt_val = self.get_parameter("kalman_initial_dt").get_parameter_value().double_value
         self.prediction_lookahead_steps_val = self.get_parameter("prediction_lookahead_steps").get_parameter_value().double_value
+        self.selection_strategy = self.get_parameter("target_selection_strategy").get_parameter_value().string_value
+        
+        self.use_sahi = self.get_parameter("use_sahi").get_parameter_value().bool_value
+        self.sahi_slice_h = self.get_parameter("sahi_slice_height").get_parameter_value().integer_value
+        self.sahi_slice_w = self.get_parameter("sahi_slice_width").get_parameter_value().integer_value
+        self.sahi_ov_h_ratio = self.get_parameter("sahi_overlap_height_ratio").get_parameter_value().double_value
+        self.sahi_ov_w_ratio = self.get_parameter("sahi_overlap_width_ratio").get_parameter_value().double_value
+        self.sahi_nms_thresh = self.get_parameter("sahi_nms_iou_threshold").get_parameter_value().double_value
 
         self.get_logger().info(f"Model Path: {model_path}")
-        self.get_logger().info(f"Model Type: {model_type}, Task: {self.task}, ImgSz: {self.imgsz}")
-        self.get_logger().info(f"Confidence: {self.conf}, Show Viz: {self.show}, Half Prec: {self.half}")
-        self.get_logger().info(f"Tracker Timeout: {self.tracker_timeout_val} frames")
-        self.get_logger().info(f"Kalman Initial dt: {self.kalman_initial_dt_val:.4f}s")
-        self.get_logger().info(f"Prediction Lookahead Steps: {self.prediction_lookahead_steps_val}")
+        self.get_logger().info(f"Settings: Task={self.task}, Type={model_type}, ImgSz={self.imgsz}, Conf={self.conf}, Show={self.show}, Half={self.half}")
+        self.get_logger().info(f"Kalman: Timeout={self.tracker_timeout_val}, InitialDT={self.kalman_initial_dt_val:.4f}, LookAhead={self.prediction_lookahead_steps_val}")
+        self.get_logger().info(f"Target Selection: {self.selection_strategy}")
+        if self.use_sahi:
+            self.get_logger().info(f"SAHI Enabled: Slice({self.sahi_slice_h}x{self.sahi_slice_w}), Overlap({self.sahi_ov_h_ratio:.2f}x{self.sahi_ov_w_ratio:.2f}), NMS_Thresh={self.sahi_nms_thresh:.2f}")
         
-        self.target_class = BLUE_CLASS # Default target class
-
-        # --- Model Initialization ---
+        self.target_class = BLUE_CLASS 
         if model_type == "yolo": self.model = YOLO(model_path, task=self.task)
-        elif model_type == "rtdetr": self.model = RTDETR(model_path) # Task might be implicit
-        elif model_type == "nas": self.model = NAS(model_path) # Task might be implicit
-        else:
-            self.get_logger().error(f"Unsupported model type specified: {model_type}")
-            raise NotImplementedError("Unsupported model type specified.")
-        self.get_logger().info(f"YOLO Model '{model_type}' initialized successfully.")
+        elif model_type == "rtdetr": self.model = RTDETR(model_path)
+        elif model_type == "nas": self.model = NAS(model_path)
+        else: self.get_logger().error(f"Unsupported model: {model_type}"); raise NotImplementedError
+        self.get_logger().info(f"YOLO Model '{model_type}' initialized.")
 
-        # --- ROS Subscriptions and Publishers ---
         self.subscription = self.create_subscription(Image, "video_frames", self.listener_callback, 10)
         self.bridge = CvBridge()
         self.int_subscription = self.create_subscription(Int32, "robot_id", self.id_listener_callback, 10)
         self.bbox_publisher = self.create_publisher(Int32MultiArray, "bounding_box", 10)
         self.override_publisher = self.create_publisher(Bool, "override", 10)
-        self.get_logger().info("ROS Publishers/Subscribers initialized.")
+        self.get_logger().info("ROS I/O initialized.")
 
-        # --- Node State Variables ---
-        self.override = Bool()
-        self.bbox_msg = Int32MultiArray()
+        self.override = Bool(); self.bbox_msg = Int32MultiArray()
         default_center = self.imgsz // 2
-        self.bbox_msg.data = [default_center, default_center, default_center, default_center] # Default bbox
-        self.active_trackers = {}  # Stores {track_id: TrackerWrapper}
-        self.last_frame_time = None # For dynamic dt calculation
+        self.bbox_msg.data = [default_center, default_center, default_center, default_center]
+        self.active_trackers = {}; self.last_frame_time = None
 
-    # --- Image Enhancement Methods (from user's original code) ---
-    def reduce_white_regions(self, hsv):
-        white_mask = cv2.inRange(hsv, np.array([0, 0, 200]), np.array([180, 30, 255]))
-        hsv[:, :, 2][white_mask > 0] = (hsv[:, :, 2][white_mask > 0] * 0.7).astype(np.uint8)
-        # HSV is modified in-place, white_mask return isn't strictly needed by caller here
-        return white_mask 
+    def reduce_white_regions(self, hsv): # Modifies hsv in-place
+        white_mask = cv2.inRange(hsv, np.array([0,0,200]), np.array([180,30,255]))
+        hsv[:,:,2][white_mask > 0] = (hsv[:,:,2][white_mask > 0] * 0.7).astype(np.uint8)
 
     def create_color_mask(self, hsv, color_ranges):
-        mask = np.zeros_like(hsv[:, :, 0])
-        for low, high in color_ranges:
-            mask = cv2.bitwise_or(mask, cv2.inRange(hsv, low, high))
+        mask = np.zeros_like(hsv[:,:,0])
+        for low, high in color_ranges: mask = cv2.bitwise_or(mask, cv2.inRange(hsv, low, high))
         return mask
 
     def enhance_image(self, frame):
-        # This function can be called on 'frame' if enhancement is desired
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        self.reduce_white_regions(hsv) # Modifies hsv in-place
-        red_mask = self.create_color_mask(hsv, RED_RANGES)
-        blue_mask = self.create_color_mask(hsv, BLUE_RANGES)
-        color_mask = cv2.bitwise_or(red_mask, blue_mask)
-        
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        hsv[:, :, 2] = clahe.apply(hsv[:, :, 2]) # Apply CLAHE to Value channel
-        
+        self.reduce_white_regions(hsv)
+        color_mask = cv2.bitwise_or(self.create_color_mask(hsv, RED_RANGES), self.create_color_mask(hsv, BLUE_RANGES))
+        hsv[:,:,2] = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(hsv[:,:,2])
         enhanced_hsv_bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
         color_regions = cv2.bitwise_and(enhanced_hsv_bgr, enhanced_hsv_bgr, mask=color_mask)
         result = cv2.addWeighted(enhanced_hsv_bgr, 0.7, color_regions, 0.3, 0)
-        result = cv2.bilateralFilter(result, 9, 75, 75)
-        return result
+        return cv2.bilateralFilter(result, 9, 75, 75)
 
-    # --- Main Image Processing Callback ---
     def listener_callback(self, msg: Image):
-        # Calculate dynamic dt
-        current_time = self.get_clock().now()
-        dt = self.kalman_initial_dt_val 
-        if self.last_frame_time is not None:
-            time_diff_s = (current_time - self.last_frame_time).nanoseconds / 1e9
-            if 0.001 < time_diff_s < 1.0: # Sanity check for dt
-                dt = time_diff_s
-            else:
-                self.get_logger().warn(f"Unusual dt calculated ({time_diff_s:.4f}s), using fallback dt: {dt:.4f}s")
-        self.last_frame_time = current_time
-        self.get_logger().debug(f"Using dt for this frame: {dt:.4f}s")
+        current_time = self.get_clock().now(); dt = self.kalman_initial_dt_val 
+        if self.last_frame_time:
+            time_diff_s=(current_time-self.last_frame_time).nanoseconds/1e9
+            if 0.001 < time_diff_s < 1.0: dt = time_diff_s
+            else: self.get_logger().warn(f"Unusual dt ({time_diff_s:.4f}s), using fallback: {dt:.4f}s")
+        self.last_frame_time = current_time; self.get_logger().debug(f"dt: {dt:.4f}s")
 
-        self.get_logger().debug("Received image message.")
         frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         original_height, original_width = frame.shape[:2]
-
         if self.show: cv2.imshow("1. Raw Input", frame); cv2.waitKey(1)
-
-        # enhanced_frame = self.enhance_image(frame.copy()) # Optional: Apply enhancement
+        # enhanced_frame = self.enhance_image(frame.copy())
         enhanced_frame = frame 
 
-        # Robust Padding/Resizing (Letterboxing)
-        target_h, target_w = self.imgsz, self.imgsz
-        scale = 0.0
-        if original_width > 0 and original_height > 0:
-            scale = min(target_w / original_width, target_h / original_height)
-        new_w, new_h = int(original_width * scale), int(original_height * scale)
-        
-        padded_image = np.full((self.imgsz, self.imgsz, 3), (114, 114, 114), dtype=np.uint8) # Gray padding
+        # --- SAHI Processing (Visualized Separately For Now) ---
+        if self.use_sahi and original_width > 0 and original_height > 0:
+            self.get_logger().info("--- SAHI Slicing ---")
+            slice_gen = slice_image(image=enhanced_frame, slice_height=self.sahi_slice_h, slice_width=self.sahi_slice_w,
+                                    overlap_height_ratio=self.sahi_ov_h_ratio, overlap_width_ratio=self.sahi_ov_w_ratio)
+            raw_sahi_obj_preds = []
+            for i, slice_item in enumerate(slice_gen):
+                slice_np, (start_x,start_y) = slice_item.image, slice_item.starting_pixel
+                if not (slice_np is None or slice_np.shape[0]==0 or slice_np.shape[1]==0):
+                    preds_on_slice = self.model.predict(source=slice_np, conf=self.conf, half=self.half, verbose=False)
+                    if preds_on_slice and preds_on_slice[0].boxes is not None and preds_on_slice[0].boxes.xyxy is not None:
+                        for j in range(len(preds_on_slice[0].boxes.xyxy)):
+                            raw_sahi_obj_preds.append(ObjectPrediction(
+                                bbox=preds_on_slice[0].boxes.xyxy.cpu().numpy()[j].tolist(),
+                                category_id=int(preds_on_slice[0].boxes.cls.cpu().numpy()[j]),
+                                score=float(preds_on_slice[0].boxes.conf.cpu().numpy()[j]),
+                                shift_amount=[start_x, start_y], full_shape=[original_height, original_width]))
+            self.get_logger().debug(f"SAHI: {len(raw_sahi_obj_preds)} raw slice detections.")
+            if raw_sahi_obj_preds:
+                sahi_pred_res = PredictionResult(raw_sahi_obj_preds, (original_height,original_width))
+                sahi_merged = sahi_pred_res.get_merged_predictions("NMS", self.sahi_nms_thresh, "IOU")
+                self.get_logger().info(f"SAHI: {len(sahi_merged.object_prediction_list)} final NMS detections.")
+                if self.show and sahi_merged.object_prediction_list:
+                    sahi_vis = frame.copy()
+                    for op in sahi_merged.object_prediction_list:
+                        x1,y1,x2,y2 = op.bbox.to_xyxy()
+                        cv2.rectangle(sahi_vis, (int(x1),int(y1)),(int(x2),int(y2)), BBOX_SAHI_COLOR, BBOX_LINE_SIZE)
+                        cv2.putText(sahi_vis, f"S:{op.category_id} {op.score:.2f}", (int(x1),int(y1)-5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, BBOX_SAHI_COLOR,1)
+                    cv2.imshow("4. SAHI NMS (Original Img)", sahi_vis); cv2.waitKey(1)
+        # --- End SAHI ---
+
+        # --- Full-Frame YOLO + Kalman Filter Pipeline ---
+        target_h, target_w = self.imgsz, self.imgsz; scale = 0.0
+        if original_width > 0 and original_height > 0: scale = min(target_w/original_width, target_h/original_height)
+        new_w, new_h = int(original_width*scale), int(original_height*scale)
+        padded_image = np.full((self.imgsz,self.imgsz,3), (114,114,114), dtype=np.uint8)
         if new_w > 0 and new_h > 0:
-            resized_image = cv2.resize(enhanced_frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-            dw, dh = (target_w - new_w) // 2, (target_h - new_h) // 2
-            padded_image[dh:dh+new_h, dw:dw+new_w] = resized_image
-        else: # Fallback if resize dimensions are invalid
-            self.get_logger().warn(f"Invalid resize dimensions ({new_w}x{new_h}). Resizing directly (may distort).")
-            padded_image = cv2.resize(enhanced_frame, (self.imgsz, self.imgsz), interpolation=cv2.INTER_LINEAR)
+            dw,dh=(target_w-new_w)//2,(target_h-new_h)//2
+            padded_image[dh:dh+new_h, dw:dw+new_w] = cv2.resize(enhanced_frame,(new_w,new_h), interpolation=cv2.INTER_LINEAR)
+        else: padded_image = cv2.resize(enhanced_frame,(self.imgsz,self.imgsz),interpolation=cv2.INTER_LINEAR)
+        if self.show: cv2.imshow("2. Padded Full YOLO Input", padded_image); cv2.waitKey(1)
+
+        results = self.model.track(padded_image, half=self.half, imgsz=self.imgsz, show=False, conf=self.conf, persist=True, tracker='bytetrack.yaml')
         
-        if self.show: cv2.imshow("2. Padded Input for YOLO", padded_image); cv2.waitKey(1)
-
-        # YOLO Model Tracking
-        self.get_logger().debug(f"Calling model.track() with conf: {self.conf}")
-        results = self.model.track(
-            padded_image,
-            half=self.half,
-            imgsz=self.imgsz,
-            show=False, # Manual visualization
-            conf=self.conf,
-            persist=True, # Keep tracks between frames
-            tracker='bytetrack.yaml' # Specify a robust tracker
-        )
+        vis_yolo_kf = padded_image.copy() if self.show else None
+        current_frame_track_ids = set()
+        if results and results[0]:
+            boxes_data = results[0].boxes if hasattr(results[0],"boxes") and results[0].boxes else (results[0].obb if hasattr(results[0],"obb") and results[0].obb and self.task=="obb" else None)
+            if boxes_data and hasattr(boxes_data,'xyxy') and boxes_data.xyxy is not None:
+                for i, (x1,y1,x2,y2) in enumerate(boxes_data.xyxy.cpu().int().tolist()):
+                    track_id = int(boxes_data.id.cpu().numpy()[i]) if hasattr(boxes_data,'id') and boxes_data.id is not None else None
+                    if self.show and vis_yolo_kf: cv2.rectangle(vis_yolo_kf,(x1,y1),(x2,y2),BBOX_RAW_COLOR,1); cv2.putText(vis_yolo_kf,f"R:{track_id}",(x1,y1-2),cv2.FONT_HERSHEY_SIMPLEX,0.4,BBOX_RAW_COLOR,1)
+                    roi=padded_image[max(0,y1):min(y2,self.imgsz),max(0,x1):min(x2,self.imgsz)]
+                    if roi.shape[0]==0 or roi.shape[1]==0: continue
+                    is_enemy,_ = self.check_enemy(roi)
+                    if is_enemy and track_id is not None:
+                        current_frame_track_ids.add(track_id)
+                        cx,cy,w,h = (x1+x2)/2.0,(y1+y2)/2.0,float(abs(x2-x1)),float(abs(y2-y1))
+                        if track_id not in self.active_trackers: self.active_trackers[track_id]=TrackerWrapper(ArmorPlateTracker(cx,cy,w,h))
+                        else: self.active_trackers[track_id].tracker.update(cx,cy,w,h)
+                        self.active_trackers[track_id].lost_frames=0
         
-        vis_frame = padded_image.copy() if self.show else None
-        current_frame_processed_track_ids = set()
-        published_bbox_this_frame = False
-
-        if results and len(results) > 0:
-            res_obj = results[0] # Results for the first (and likely only) image
-            
-            boxes_data = None # To hold r.boxes or r.obb
-            if hasattr(res_obj, "boxes") and res_obj.boxes is not None: boxes_data = res_obj.boxes
-            elif hasattr(res_obj, "obb") and res_obj.obb is not None and self.task == "obb": boxes_data = res_obj.obb
-            
-            if boxes_data is not None and hasattr(boxes_data, 'xyxy') and boxes_data.xyxy is not None:
-                bbox_coords_list = boxes_data.xyxy.cpu().int().tolist()
-                self.get_logger().debug(f"Number of raw boxes from YOLO: {len(bbox_coords_list)}")
-
-                track_ids_list = []
-                if hasattr(boxes_data, 'id') and boxes_data.id is not None:
-                    track_ids_list = boxes_data.id.cpu().int().tolist()
-                else: # Fallback if no track IDs
-                    track_ids_list = [None] * len(bbox_coords_list)
-                
-                for i, bbox_xyxy in enumerate(bbox_coords_list):
-                    track_id = track_ids_list[i]
-                    x1, y1, x2, y2 = bbox_xyxy
-
-                    if self.show and vis_frame is not None: # Draw raw YOLO box
-                        cv2.rectangle(vis_frame, (x1, y1), (x2, y2), BBOX_RAW_COLOR, BBOX_LINE_SIZE)
-                        if track_id is not None: cv2.putText(vis_frame, f"ID:{track_id}", (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, BBOX_RAW_COLOR, 1)
-
-                    roi_img = padded_image[max(0,y1):min(y2, self.imgsz), max(0,x1):min(x2, self.imgsz)]
-                    if roi_img.shape[0] == 0 or roi_img.shape[1] == 0: continue # Skip empty ROIs
-                    
-                    is_enemy, _ = self.check_enemy(roi_img) # check_enemy logs its own decision
-                    self.get_logger().debug(f"Raw detection {i} (ID: {track_id}): check_enemy result: {is_enemy}")
-
-                    if is_enemy and track_id is not None: # Must be an enemy AND have a track ID for KF
-                        current_frame_processed_track_ids.add(track_id)
-                        center_x, center_y = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-                        width_det, height_det = float(abs(x2 - x1)), float(abs(y2 - y1))
-
-                        if track_id not in self.active_trackers:
-                            self.get_logger().info(f"Creating new Kalman tracker for enemy ID: {track_id}")
-                            self.active_trackers[track_id] = TrackerWrapper(ArmorPlateTracker(center_x, center_y, width_det, height_det))
-                        else:
-                            self.get_logger().debug(f"Updating Kalman tracker for enemy ID: {track_id}")
-                            self.active_trackers[track_id].tracker.update(center_x, center_y, width_det, height_det)
-                        self.active_trackers[track_id].lost_frames = 0
-            else:
-                self.get_logger().debug("No bounding boxes (xyxy) in YOLO results[0].")
-        else:
-            self.get_logger().debug("YOLO model.track() returned no results or empty list.")
-
-        # Manage and predict from active Kalman trackers
-        active_ids_to_remove = []
-        for track_id, tw_wrapper in self.active_trackers.items():
-            if track_id not in current_frame_processed_track_ids:
-                tw_wrapper.lost_frames += 1
-            
-            if tw_wrapper.lost_frames >= self.tracker_timeout_val:
-                active_ids_to_remove.append(track_id)
-                self.get_logger().info(f"Removing tracker ID {track_id} (lost {tw_wrapper.lost_frames} frames).")
-                continue
-
-            if not published_bbox_this_frame and tw_wrapper.lost_frames == 0: # Publish for first active, non-lost track
-                pred_x_curr, pred_y_curr = tw_wrapper.tracker.predict(dt) # Standard KF prediction for t+dt
-
-                # Get latest corrected velocity and acceleration for lookahead
-                last_corrected_state = tw_wrapper.tracker.kf.statePost.flatten()
-                vx, vy = last_corrected_state[2], last_corrected_state[3]
-                ax, ay = last_corrected_state[4], last_corrected_state[5]
-
-                additional_lookahead_time = self.prediction_lookahead_steps_val * dt
-                
-                pred_x_final = pred_x_curr + vx * additional_lookahead_time + 0.5 * ax * (additional_lookahead_time**2)
-                pred_y_final = pred_y_curr + vy * additional_lookahead_time + 0.5 * ay * (additional_lookahead_time**2)
-                
-                self.get_logger().debug(f"KF ID {track_id}: BasePred({pred_x_curr},{pred_y_curr}), Vel({vx:.1f},{vy:.1f}), Acc({ax:.1f},{ay:.1f}), LookAheadT({additional_lookahead_time:.3f}), FinalPred({pred_x_final:.0f},{pred_y_final:.0f})")
-
-                kf_width, kf_height = tw_wrapper.tracker.width, tw_wrapper.tracker.height
-                pub_x1 = int(pred_x_final - kf_width / 2); pub_y1 = int(pred_y_final - kf_height / 2)
-                pub_x2 = int(pred_x_final + kf_width / 2); pub_y2 = int(pred_y_final + kf_height / 2)
-                
-                # Clamp coordinates to image boundaries
-                pub_x1 = max(0, min(pub_x1, self.imgsz -1)); pub_y1 = max(0, min(pub_y1, self.imgsz -1))
-                pub_x2 = max(0, min(pub_x2, self.imgsz -1)); pub_y2 = max(0, min(pub_y2, self.imgsz -1))
-
-                if pub_x1 < pub_x2 and pub_y1 < pub_y2: # Check for valid box
-                    self.bbox_msg.data = [pub_x1, pub_y1, pub_x2, pub_y2]
-                    self.override.data = True
-                    self.bbox_publisher.publish(self.bbox_msg)
-                    self.override_publisher.publish(self.override)
-                    published_bbox_this_frame = True
-                    self.get_logger().info(f"Published KF BBox ID {track_id} (Lookahead): {[pub_x1, pub_y1, pub_x2, pub_y2]}")
-
-                    if self.show and vis_frame is not None: # Draw KF box
-                        cv2.rectangle(vis_frame, (pub_x1, pub_y1), (pub_x2, pub_y2), BBOX_KF_COLOR, BBOX_LINE_SIZE)
-                        text_y_pos = pub_y1 - 25 if pub_y1 > 25 else pub_y1 + int(kf_height) + 15 # Adjust text position
-                        cv2.putText(vis_frame, f"KF_ID:{track_id}", (pub_x1, text_y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.5, BBOX_KF_COLOR, 1)
-                else:
-                     self.get_logger().warn(f"KF ID {track_id} produced invalid lookahead box ({[pub_x1, pub_y1, pub_x2, pub_y2]}). Not publishing.")
+        active_ids_to_remove=[]; valid_kf_preds=[]
+        fcx,fcy=self.imgsz/2.0,self.imgsz/2.0
+        for tid,tw in self.active_trackers.items():
+            if tid not in current_frame_track_ids: tw.lost_frames+=1
+            if tw.lost_frames >= self.tracker_timeout_val: active_ids_to_remove.append(tid); continue
+            if tw.lost_frames==0:
+                pcx,pcy=tw.tracker.predict(dt); state=tw.tracker.kf.statePost.flatten()
+                vx,vy,ax,ay=state[2],state[3],state[4],state[5]
+                look_t=self.prediction_lookahead_steps_val*dt
+                pfx,pfy=pcx+vx*look_t+0.5*ax*look_t**2, pcy+vy*look_t+0.5*ay*look_t**2
+                kw,kh=tw.tracker.width,tw.tracker.height
+                if kw<=0 or kh<=0: continue
+                x1,y1,x2,y2=[max(0,min(int(c),self.imgsz-1)) for c in [pfx-kw/2,pfy-kh/2,pfx+kw/2,pfy+kh/2]]
+                if not(x1<x2 and y1<y2): continue
+                valid_kf_preds.append({"id":tid,"box_coords":[x1,y1,x2,y2],"area":kw*kh,"dist_sq_to_center":(pfx-fcx)**2+(pfy-fcy)**2})
+                if self.show and vis_yolo_kf: cv2.rectangle(vis_yolo_kf,(x1,y1),(x2,y2),BBOX_KF_COLOR,1); cv2.putText(vis_yolo_kf,f"K:{tid}",(x1,y1-2),cv2.FONT_HERSHEY_SIMPLEX,0.4,BBOX_KF_COLOR,1)
         
-        for track_id_to_remove in active_ids_to_remove:
-            if track_id_to_remove in self.active_trackers: del self.active_trackers[track_id_to_remove]
+        sel_pred=None
+        if valid_kf_preds:
+            if self.selection_strategy=="biggest_area": sel_pred=max(valid_kf_preds,key=lambda p:p["area"])
+            elif self.selection_strategy=="closest_to_center": sel_pred=min(valid_kf_preds,key=lambda p:p["dist_sq_to_center"])
+            else: sel_pred=valid_kf_preds[0] # Default "first"
+        
+        pub_this_frame = False
+        if sel_pred:
+            self.bbox_msg.data=sel_pred["box_coords"]; self.override.data=True; pub_this_frame=True
+            self.get_logger().info(f"Pub KF ID {sel_pred['id']} Strat:{self.selection_strategy} Box:{sel_pred['box_coords']}")
+            if self.show and vis_yolo_kf: cv2.rectangle(vis_yolo_kf,(sel_pred["box_coords"][0],sel_pred["box_coords"][1]),(sel_pred["box_coords"][2],sel_pred["box_coords"][3]),BBOX_SELECTED_KF_COLOR,2)
+        if not pub_this_frame: 
+            ctr=self.imgsz//2; self.bbox_msg.data=[ctr,ctr,ctr,ctr]; self.override.data=False
+        self.bbox_publisher.publish(self.bbox_msg); self.override_publisher.publish(self.override)
+        
+        for tid_rem in active_ids_to_remove:
+            if tid_rem in self.active_trackers: del self.active_trackers[tid_rem]
+        if self.show and vis_yolo_kf: cv2.imshow("3. Full YOLO + KF", vis_yolo_kf); cv2.waitKey(1)
 
-        if not published_bbox_this_frame: # Publish default if no valid KF track was published
-            default_center = self.imgsz // 2
-            self.bbox_msg.data = [default_center, default_center, default_center, default_center]
-            self.override.data = False
-            self.bbox_publisher.publish(self.bbox_msg)
-            self.override_publisher.publish(self.override)
-            self.get_logger().debug("No KF-tracked enemy published. Sent default bbox.")
-
-        if self.show and vis_frame is not None:
-            cv2.imshow("3. YOLOv8 Kalman Tracking", vis_frame)
-            cv2.waitKey(1) # Essential for imshow to refresh
-
-    # --- ROS Callback for Robot ID ---
     def id_listener_callback(self, msg: Int32):
-        robot_id = msg.data
-        self.get_logger().info(f"Received robot_id: {robot_id}")
-        if robot_id in RED_TEAM:
-            self.target_class = BLUE_CLASS
-            self.get_logger().info(f"Robot ID {robot_id} is RED_TEAM. Targeting BLUE_CLASS.")
-        elif robot_id in BLUE_TEAM:
-            self.target_class = RED_CLASS
-            self.get_logger().info(f"Robot ID {robot_id} is BLUE_TEAM. Targeting RED_CLASS.")
-        else:
-            current_target_str = 'BLUE' if self.target_class == BLUE_CLASS else 'RED'
-            self.get_logger().warn(f"Robot ID {robot_id} not in known teams. Maintaining current target_class: {current_target_str}")
+        rid=msg.data; self.get_logger().info(f"RobotID: {rid}")
+        if rid in RED_TEAM: self.target_class=BLUE_CLASS; self.get_logger().info(f"ID {rid} RED. Target BLUE.")
+        elif rid in BLUE_TEAM: self.target_class=RED_CLASS; self.get_logger().info(f"ID {rid} BLUE. Target RED.")
+        else: self.get_logger().warn(f"ID {rid} unknown. Target: {'BLUE' if self.target_class==BLUE_CLASS else 'RED'}")
 
-    # --- Enemy Validation Method (from user's original code) ---
-    def check_enemy(self, roi_image): # roi_image is a crop from padded_image
-        if roi_image.shape[0] == 0 or roi_image.shape[1] == 0:
-            self.get_logger().warn("check_enemy: Invalid ROI shape (0 dimension); returning False.")
-            return False, None # Return a tuple
+    def check_enemy(self, roi):
+        if roi.shape[0]==0 or roi.shape[1]==0: return False,None
+        hsv=cv2.cvtColor(roi,cv2.COLOR_BGR2HSV)
+        rng=BLUE_RANGES if self.target_class==BLUE_CLASS else RED_RANGES
+        mask=np.zeros_like(hsv[:,:,0])
+        for r_low,r_high in rng: mask=cv2.bitwise_or(mask,cv2.inRange(hsv,r_low,r_high))
+        area=np.count_nonzero(mask)
+        thr=roi.shape[0]*roi.shape[1]*0.01 # 1% threshold
+        is_e=area>thr
+        self.get_logger().debug(f"check_enemy: Tgt:{'B' if self.target_class==BLUE_CLASS else 'R'}. ROI{roi.shape} Area:{area} Thr:{thr:.1f} -> {is_e}")
+        return is_e,area
 
-        hsv_roi = cv2.cvtColor(roi_image, cv2.COLOR_BGR2HSV)
-        target_ranges = BLUE_RANGES if self.target_class == BLUE_CLASS else RED_RANGES
-        
-        final_mask = np.zeros_like(hsv_roi[:,:,0])
-        for hsv_range in target_ranges:
-            current_mask = cv2.inRange(hsv_roi, hsv_range[0], hsv_range[1])
-            final_mask = cv2.bitwise_or(final_mask, current_mask)
-            
-        color_area = np.count_nonzero(final_mask)
-        
-        # Using the 0.01 (1%) area threshold from your original code. This is tunable.
-        min_color_area_threshold = roi_image.shape[0] * roi_image.shape[1] * 0.01 
-
-        is_it_enemy = color_area > min_color_area_threshold
-        
-        target_color_str = 'BLUE' if self.target_class == BLUE_CLASS else 'RED'
-        self.get_logger().debug(
-            f"check_enemy: Target: {target_color_str}. "
-            f"ROI Shape: {roi_image.shape}, Color Area: {color_area}, Threshold Req: {min_color_area_threshold:.2f}. Result: {is_it_enemy}"
-        )
-        return is_it_enemy, color_area # Return tuple
-
-# --- Main Execution ---
 def main(args=None):
     rclpy.init(args=args)
     node = YOLOv8Node()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        node.get_logger().info("Keyboard interrupt received, shutting down.")
+    try: rclpy.spin(node)
+    except KeyboardInterrupt: node.get_logger().info("KI Shutdown.")
     finally:
-        node.destroy_node()
-        if rclpy.ok(): # Check if rclpy is still initialized
-            rclpy.shutdown()
-        cv2.destroyAllWindows()
-        node.get_logger().info("Node cleanup complete.")
+        node.destroy_node(); 
+        if rclpy.ok(): rclpy.shutdown()
+        cv2.destroyAllWindows(); node.get_logger().info("Cleanup done.")
 
 if __name__ == "__main__":
     main()
