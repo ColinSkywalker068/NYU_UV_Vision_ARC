@@ -24,7 +24,7 @@ def generate_launch_description():
                 remappings=[("video_frames", "/camera/camera/color/image_raw")],
                 parameters=[
                     {
-                        "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb3.pt"
+                        "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb.pt"
                     },
                     {"task": "obb"},
                     {"show": True},
