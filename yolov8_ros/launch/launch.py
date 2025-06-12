@@ -23,29 +23,13 @@ def generate_launch_description():
                 name="yolov8_node",
                 remappings=[("video_frames", "/camera/camera/color/image_raw")],
                 parameters=[
-                    # --- Model and Basic YOLO Parameters ---
-                    {"model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb.pt"}, # Your model
-                    {"task": "obb"},          # Your task: "detect" or "obb"
-                    {"type": "yolo"},         # Model type: "yolo", "rtdetr", "nas" (default: yolo)
-                    {"imgsz": 640},           # Inference image size (default: 640)
-                    {"conf": 0.05},           # Confidence threshold (default in code is 0.25, your launch overrides)
-                    {"half": True},           # Use FP16 precision (default: True)
-                    {"show": True},           # Enable OpenCV visualization windows (default: True)
-
-                    # --- Kalman Filter and Tracking Parameters ---
-                    {"tracker_timeout": 15},                   # Default: 15 frames
-                    {"kalman_initial_dt": 0.0333},             # Default: 1.0/30.0 (for ~30 FPS)
-                    {"prediction_lookahead_steps": 0.5},       # Default: 0.5 (predict 0.5 * dt ahead)
-                    {"target_selection_strategy": "closest_to_center"}, # Options: "first", "biggest_area", "closest_to_center" (default: "first")
-
-                    # --- SAHI (Slicing Aided Hyper Inference) Parameters ---
-                    {"use_sahi": False},                        # Set to True to enable SAHI (default: False)
-                    {"sahi_slice_height": 320},               # Slice height for SAHI (default: 512)
-                    {"sahi_slice_width": 320},                # Slice width for SAHI (default: 512)
-                    {"sahi_overlap_height_ratio": 0.1},       # Overlap ratio for height (default: 0.2)
-                    {"sahi_overlap_width_ratio": 0.1},        # Overlap ratio for width (default: 0.2)
-                    {"sahi_nms_iou_threshold": 0.4},          # NMS IoU threshold for SAHI merged detections (default: 0.5)
-                ]
+                    {
+                        "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb.pt"
+                    },
+                    {"task": "obb"},
+                    {"show": True},
+                    {"conf": 0.05},
+                ],
             ),
             # RealSense2 Camera with only two key parameters
             IncludeLaunchDescription(
