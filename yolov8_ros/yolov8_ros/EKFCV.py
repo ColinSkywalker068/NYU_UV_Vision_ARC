@@ -7,7 +7,7 @@ from ultralytics import YOLO, RTDETR, NAS # Ensure ultralytics is installed
 import cv2
 import numpy as np
 import os
-import random # For Kalman tracker color
+import random # For Kalman 
 
 os.environ["GDK_SYNCHRONIZE"] = "1" # If using GTK-based cv2.imshow concurrently
 
