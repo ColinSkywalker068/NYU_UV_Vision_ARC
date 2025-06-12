@@ -222,10 +222,10 @@ class YOLOv8Node(Node):
         frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         original_height, original_width = frame.shape[:2]
 
-        if self.show: cv2.imshow("1. Raw Input", frame); cv2.waitKey(1)
+        # if self.show: cv2.imshow("1. Raw Input", frame); cv2.waitKey(1)
 
-        # enhanced_frame = self.enhance_image(frame.copy()) # Optional: Apply enhancement
-        enhanced_frame = frame 
+        enhanced_frame = self.enhance_image(frame.copy()) # Optional: Apply enhancement
+        # enhanced_frame = frame 
 
         # Robust Padding/Resizing (Letterboxing)
         target_h, target_w = self.imgsz, self.imgsz
@@ -243,7 +243,7 @@ class YOLOv8Node(Node):
             self.get_logger().warn(f"Invalid resize dimensions ({new_w}x{new_h}). Resizing directly (may distort).")
             padded_image = cv2.resize(enhanced_frame, (self.imgsz, self.imgsz), interpolation=cv2.INTER_LINEAR)
         
-        if self.show: cv2.imshow("2. Padded Input for YOLO", padded_image); cv2.waitKey(1)
+        # if self.show: cv2.imshow("2. Padded Input for YOLO", padded_image); cv2.waitKey(1)
 
         # YOLO Model Tracking
         self.get_logger().debug(f"Calling model.track() with conf: {self.conf}")
