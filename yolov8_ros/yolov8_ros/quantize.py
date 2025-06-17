@@ -3,9 +3,10 @@ from ultralytics import YOLO
 
 def quantize_model():
     """Quantize YOLOv8 model to TensorRT INT8 engine."""
-    model_path = "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/HUST_model.onnx/"
+    model_path = "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.pt/"
+    yaml_path = "/home/ultraviolet/Downloads/armorplate-1/data.yaml"
     model = YOLO(model_path)
-    model.export(format="engine", int8=True)
+    model.export(data=yaml_path, format="engine", int8=True)
     print("done")
 
 
