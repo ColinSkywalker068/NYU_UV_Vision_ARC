@@ -122,10 +122,10 @@ class YOLOv8Node(Node):
         self.declare_parameter("half", True)     # Use FP16 precision
         self.declare_parameter("imgsz", 640)     # Model input image size
         self.declare_parameter("show", True)     # Enable/disable OpenCV visualization windows
-        self.declare_parameter("conf", 0.25)     # YOLO confidence threshold (LOWERED for better initial detection)
+        self.declare_parameter("conf", 0.05)     # YOLO confidence threshold (LOWERED for better initial detection)
         
         self.declare_parameter("tracker_timeout", 15)      # Frames to keep a lost track before deleting
-        self.declare_parameter("kalman_initial_dt", 1.0/30.0) # Initial/fallback dt for Kalman filter (e.g., for 30fps)
+        self.declare_parameter("kalman_initial_dt", 1.0/60.0) # Initial/fallback dt for Kalman filter (e.g., for 30fps)
         self.declare_parameter("prediction_lookahead_steps", 0.5) # How many extra 'dt' steps to look ahead (0=std KF, 0.5=half dt ahead, 1.0=full dt ahead)
 
         # Get parameter values
@@ -224,8 +224,8 @@ class YOLOv8Node(Node):
 
         # if self.show: cv2.imshow("1. Raw Input", frame); cv2.waitKey(1)
 
-        enhanced_frame = self.enhance_image(frame.copy()) # Optional: Apply enhancement
-        # enhanced_frame = frame 
+        # enhanced_frame = self.enhance_image(frame.copy()) # Optional: Apply enhancement
+        enhanced_frame = frame 
 
         # Robust Padding/Resizing (Letterboxing)
         target_h, target_w = self.imgsz, self.imgsz
