@@ -1,3 +1,4 @@
+https://limewire.com/d/Ha8tz#M7d4qSlJjH
 How to Run the Object Detection pipeline:
 You will need two terminal windows:
 In either of the windows, run 'uv update' to make sure the jetson Container stuff is up to date. 
