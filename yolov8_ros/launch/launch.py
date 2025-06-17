@@ -27,7 +27,7 @@ def generate_launch_description():
                         "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb.pt"
                     },
                     {"task": "obb"},
-                    {"show": False},
+                    {"show": True},
                     {"conf": 0.05},
                 ],
             ),
@@ -35,7 +35,7 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(realsense_launch_file),
                 launch_arguments={
-                    "rgb_camera.color_profile": "640x480x30",
+                    "rgb_camera.color_profile": "640x480x60",
                     "rgb_camera.enable_auto_exposure": "false",  # Manual exposure
                     "enable_depth": "false",  # Turn off depth
                     "rgb_camera.exposure": "100",  # Exposure value
