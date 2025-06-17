@@ -35,16 +35,16 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(realsense_launch_file),
                 launch_arguments={
-                    "rgb_camera.color_profile": "640x480x60",
+                    "rgb_camera.color_profile": "640x480x30",
                     "rgb_camera.enable_auto_exposure": "false",  # Manual exposure
                     "enable_depth": "false",  # Turn off depth
-                    # "rgb_camera.exposure": "100",  # Exposure value
-                    # "rgb_camera.brightness": "50",  # Brightness tweak
-                    # "rgb_camera.enable_auto_white_balance": "false",  # Manual WB
-                    # "rgb_camera.global_time_enabled": "false",  # Disable global timing
-                    # "rgb_camera.gain": "0",  # Gain set to 0
-                    # "rgb_camera.gamma": "250",  # Gamma correction
-                    # "rgb_camera.white_balance": "4800",  # White balance in K
+                    "rgb_camera.exposure": "100",  # Exposure value
+                    "rgb_camera.brightness": "50",  # Brightness tweak
+                    "rgb_camera.enable_auto_white_balance": "false",  # Manual WB
+                    "rgb_camera.global_time_enabled": "false",  # Disable global timing
+                    "rgb_camera.gain": "0",  # Gain set to 0
+                    "rgb_camera.gamma": "250",  # Gamma correction
+                    "rgb_camera.white_balance": "4800",  # White balance in K
                 }.items(),
             ),
         ]
