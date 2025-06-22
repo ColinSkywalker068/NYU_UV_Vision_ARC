@@ -173,37 +173,6 @@ class YOLOv8Node(Node):
         self.bbox_msg.data = [default_center, default_center, default_center, default_center] # Default bbox
         self.active_trackers = {}  # Stores {track_id: TrackerWrapper}
         self.last_frame_time = None # For dynamic dt calculation
-
-    # --- Image Enhancement Methods (from user's original code) ---
-    def reduce_white_regions(self, hsv):
-        white_mask = cv2.inRange(hsv, np.array([0, 0, 200]), np.array([180, 30, 255]))
-        hsv[:, :, 2][white_mask > 0] = (hsv[:, :, 2][white_mask > 0] * 0.7).astype(np.uint8)
-        # HSV is modified in-place, white_mask return isn't strictly needed by caller here
-        return white_mask 
-
-    def create_color_mask(self, hsv, color_ranges):
-        mask = np.zeros_like(hsv[:, :, 0])
-        for low, high in color_ranges:
-            mask = cv2.bitwise_or(mask, cv2.inRange(hsv, low, high))
-        return mask
-
-    def enhance_image(self, frame):
-        # This function can be called on 'frame' if enhancement is desired
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        self.reduce_white_regions(hsv) # Modifies hsv in-place
-        red_mask = self.create_color_mask(hsv, RED_RANGES)
-        blue_mask = self.create_color_mask(hsv, BLUE_RANGES)
-        color_mask = cv2.bitwise_or(red_mask, blue_mask)
-        
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        hsv[:, :, 2] = clahe.apply(hsv[:, :, 2]) # Apply CLAHE to Value channel
-        
-        enhanced_hsv_bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-        color_regions = cv2.bitwise_and(enhanced_hsv_bgr, enhanced_hsv_bgr, mask=color_mask)
-        result = cv2.addWeighted(enhanced_hsv_bgr, 0.7, color_regions, 0.3, 0)
-        result = cv2.bilateralFilter(result, 9, 75, 75)
-        return result
-
     # --- Main Image Processing Callback ---
     def listener_callback(self, msg: Image):
         # Calculate dynamic dt
@@ -224,9 +193,6 @@ class YOLOv8Node(Node):
 
         # if self.show: cv2.imshow("1. Raw Input", frame); cv2.waitKey(1)
 
-        # enhanced_frame = self.enhance_image(frame.copy()) # Optional: Apply enhancement
-        enhanced_frame = frame 
-
         # Robust Padding/Resizing (Letterboxing)
         target_h, target_w = self.imgsz, self.imgsz
         scale = 0.0
@@ -236,12 +202,12 @@ class YOLOv8Node(Node):
         
         padded_image = np.full((self.imgsz, self.imgsz, 3), (114, 114, 114), dtype=np.uint8) # Gray padding
         if new_w > 0 and new_h > 0:
-            resized_image = cv2.resize(enhanced_frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+            resized_image = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
             dw, dh = (target_w - new_w) // 2, (target_h - new_h) // 2
             padded_image[dh:dh+new_h, dw:dw+new_w] = resized_image
         else: # Fallback if resize dimensions are invalid
             self.get_logger().warn(f"Invalid resize dimensions ({new_w}x{new_h}). Resizing directly (may distort).")
-            padded_image = cv2.resize(enhanced_frame, (self.imgsz, self.imgsz), interpolation=cv2.INTER_LINEAR)
+            padded_image = cv2.resize(frame, (self.imgsz, self.imgsz), interpolation=cv2.INTER_LINEAR)
         
         # if self.show: cv2.imshow("2. Padded Input for YOLO", padded_image); cv2.waitKey(1)
 
