@@ -162,7 +162,12 @@ class YOLOv8Node(Node):
         self.get_logger().info(f"YOLO Model '{model_type}' initialized successfully.")
 
         # --- ROS Subscriptions and Publishers ---
-        self.subscription = self.create_subscription(CompressedImage, "video_frames", self.listener_callback, 10)
+        self.subscription = self.create_subscription(
+            CompressedImage, 
+            image_topic, # Use the variable here
+            self.listener_callback, 
+            10
+        )
         self.bridge = CvBridge()
         self.int_subscription = self.create_subscription(Int32, "robot_id", self.id_listener_callback, 10)
         self.bbox_publisher = self.create_publisher(Int32MultiArray, "bounding_box", 10)
