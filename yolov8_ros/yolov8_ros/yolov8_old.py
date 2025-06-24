@@ -38,7 +38,7 @@ class YOLOv8Node(Node):
         # Parameter declaration and retrieval with debug statements
         self.declare_parameter(
             "model_path",
-            "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.engine",
+            "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine",
         )
         model_path = self.get_parameter("model_path").get_parameter_value().string_value
         self.get_logger().info(f"Model path: {model_path}")
@@ -124,6 +124,16 @@ class YOLOv8Node(Node):
         frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         height, width = frame.shape[:2]
         self.get_logger().info(f"Frame shape: {frame.shape}")
+        dt = .0001
+        if self.last_frame_time is not None:
+            time_diff_s = (current_time - self.last_frame_time).nanoseconds / 1e9
+            if 0.001 < time_diff_s < 1.0: # Sanity check for dt
+                dt = time_diff_s
+            else:
+                self.get_logger().warn(f"Unusual dt calculated ({time_diff_s:.4f}s), using fallback dt: {dt:.4f}s")
+        
+        self.get_logger().info(f"Current FPS: {1.0 / dt:.2f}")
+
 
         # Enhance the frame before any processing
         # stop enhance for now
