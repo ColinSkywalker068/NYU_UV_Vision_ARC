@@ -177,7 +177,7 @@ class YOLOv8Node(Node):
         self.active_trackers = {}  # Stores {track_id: TrackerWrapper}
         self.last_frame_time = None # For dynamic dt calculation
     # --- Main Image Processing Callback ---
-    def listener_callback(self, msg: Image):
+    def listener_callback(self, msg: CompressedImage):
         self.get_logger().debug("Received compressed image message.")
         # Calculate dynamic dt
         current_time = self.get_clock().now()
