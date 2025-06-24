@@ -115,7 +115,7 @@ class YOLOv8Node(Node):
     def __init__(self):
         super().__init__("yolov8_node")
         self.get_logger().info("Initializing YOLOv8Node with Kalman Filter & Lag Compensation (Pyrealsense2)...")
-
+        fps = 60
         # --- ROS Parameters ---
         self.declare_parameter("model_path", "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.engine")
         self.declare_parameter("task", "detect") # e.g., "detect", "obb"
@@ -127,13 +127,13 @@ class YOLOv8Node(Node):
         self.declare_parameter("show", True)     # Enable/disable OpenCV visualization windows
         self.declare_parameter("conf", 0.05)     # YOLO confidence threshold (LOWERED for better initial detection)
         self.declare_parameter("tracker_timeout", 15)      # Frames to keep a lost track before deleting
-        self.declare_parameter("kalman_initial_dt", 1.0/30.0) # Initial/fallback dt for Kalman filter (e.g., for 30fps)
+        self.declare_parameter("kalman_initial_dt", 1.0/fps) # Initial/fallback dt for Kalman filter (e.g., for 30fps)
         self.declare_parameter("prediction_lookahead_steps", 0.5) # How many extra 'dt' steps to look ahead (0=std KF, 0.5=half dt ahead, 1.0=full dt ahead)
         
         # New Realsense specific parameters
         self.declare_parameter("realsense_width", 640)
         self.declare_parameter("realsense_height", 480)
-        self.declare_parameter("realsense_fps", 30) # Will attempt to get max FPS supported by the camera
+        self.declare_parameter("realsense_fps", fps) # Will attempt to get max FPS supported by the camera
 
         # Get parameter values
         model_path = self.get_parameter("model_path").get_parameter_value().string_value
