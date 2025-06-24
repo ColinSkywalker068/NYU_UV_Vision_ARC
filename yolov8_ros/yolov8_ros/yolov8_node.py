@@ -113,7 +113,7 @@ class TrackerWrapper:
 class YOLOv8Node(Node):
     def __init__(self):
         super().__init__("yolov8_node")
-        self.get_logger().debug("Initializing YOLOv8Node with Kalman Filter & Lag Compensation...")
+        self.get_logger().info("Initializing YOLOv8Node with Kalman Filter & Lag Compensation...")
 
         # --- ROS Parameters ---
         self.declare_parameter("model_path", "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.engine")
@@ -143,12 +143,12 @@ class YOLOv8Node(Node):
         self.kalman_initial_dt_val = self.get_parameter("kalman_initial_dt").get_parameter_value().double_value
         self.prediction_lookahead_steps_val = self.get_parameter("prediction_lookahead_steps").get_parameter_value().double_value
 
-        self.get_logger().debug(f"Model Path: {model_path}")
-        self.get_logger().debug(f"Model Type: {model_type}, Task: {self.task}, ImgSz: {self.imgsz}")
-        self.get_logger().debug(f"Confidence: {self.conf}, Show Viz: {self.show}, Half Prec: {self.half}")
-        self.get_logger().debug(f"Tracker Timeout: {self.tracker_timeout_val} frames")
-        self.get_logger().debug(f"Kalman Initial dt: {self.kalman_initial_dt_val:.4f}s")
-        self.get_logger().debug(f"Prediction Lookahead Steps: {self.prediction_lookahead_steps_val}")
+        self.get_logger().info(f"Model Path: {model_path}")
+        self.get_logger().info(f"Model Type: {model_type}, Task: {self.task}, ImgSz: {self.imgsz}")
+        self.get_logger().info(f"Confidence: {self.conf}, Show Viz: {self.show}, Half Prec: {self.half}")
+        self.get_logger().info(f"Tracker Timeout: {self.tracker_timeout_val} frames")
+        self.get_logger().info(f"Kalman Initial dt: {self.kalman_initial_dt_val:.4f}s")
+        self.get_logger().info(f"Prediction Lookahead Steps: {self.prediction_lookahead_steps_val}")
         
         self.target_class = BLUE_CLASS # Default target class
 
@@ -159,7 +159,7 @@ class YOLOv8Node(Node):
         else:
             self.get_logger().error(f"Unsupported model type specified: {model_type}")
             raise NotImplementedError("Unsupported model type specified.")
-        self.get_logger().debug(f"YOLO Model '{model_type}' initialized successfully.")
+        self.get_logger().info(f"YOLO Model '{model_type}' initialized successfully.")
 
         # --- ROS Subscriptions and Publishers ---
         self.subscription = self.create_subscription(CompressedImage, "video_frames", self.listener_callback, 10)
@@ -167,7 +167,7 @@ class YOLOv8Node(Node):
         self.int_subscription = self.create_subscription(Int32, "robot_id", self.id_listener_callback, 10)
         self.bbox_publisher = self.create_publisher(Int32MultiArray, "bounding_box", 10)
         self.override_publisher = self.create_publisher(Bool, "override", 10)
-        self.get_logger().debug("ROS Publishers/Subscribers initialized.")
+        self.get_logger().info("ROS Publishers/Subscribers initialized.")
 
         # --- Node State Variables ---
         self.override = Bool()
@@ -178,7 +178,7 @@ class YOLOv8Node(Node):
         self.last_frame_time = None # For dynamic dt calculation
     # --- Main Image Processing Callback ---
     def listener_callback(self, msg: CompressedImage):
-        self.get_logger().debug("Received compressed image message.")
+        self.get_logger().info("Received compressed image message.")
         # Calculate dynamic dt
         current_time = self.get_clock().now()
         dt = self.kalman_initial_dt_val 
@@ -191,9 +191,9 @@ class YOLOv8Node(Node):
         if dt > 0:
             self.get_logger().info(f"Current FPS: {1.0 / dt:.2f}")
         self.last_frame_time = current_time
-        self.get_logger().debug(f"Using dt for this frame: {dt:.4f}s")
+        self.get_logger().info(f"Using dt for this frame: {dt:.4f}s")
 
-        self.get_logger().debug("Received image message.")
+        self.get_logger().info("Received image message.")
         # frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         np_arr = np.array(msg.data, dtype=np.uint8)
         frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
@@ -225,7 +225,7 @@ class YOLOv8Node(Node):
         # if self.show: cv2.imshow("2. Padded Input for YOLO", padded_image); cv2.waitKey(1)
 
         # YOLO Model Tracking
-        self.get_logger().debug(f"Calling model.track() with conf: {self.conf}")
+        self.get_logger().info(f"Calling model.track() with conf: {self.conf}")
         results = self.model.track(
             padded_image,
             half=self.half,
@@ -249,7 +249,7 @@ class YOLOv8Node(Node):
             
             if boxes_data is not None and hasattr(boxes_data, 'xyxy') and boxes_data.xyxy is not None:
                 bbox_coords_list = boxes_data.xyxy.cpu().int().tolist()
-                self.get_logger().debug(f"Number of raw boxes from YOLO: {len(bbox_coords_list)}")
+                self.get_logger().info(f"Number of raw boxes from YOLO: {len(bbox_coords_list)}")
 
                 track_ids_list = []
                 if hasattr(boxes_data, 'id') and boxes_data.id is not None:
@@ -269,7 +269,7 @@ class YOLOv8Node(Node):
                     if roi_img.shape[0] == 0 or roi_img.shape[1] == 0: continue # Skip empty ROIs
                     
                     is_enemy, _ = self.check_enemy(roi_img) # check_enemy logs its own decision
-                    self.get_logger().debug(f"Raw detection {i} (ID: {track_id}): check_enemy result: {is_enemy}")
+                    self.get_logger().info(f"Raw detection {i} (ID: {track_id}): check_enemy result: {is_enemy}")
 
                     if is_enemy and track_id is not None: # Must be an enemy AND have a track ID for KF
                         current_frame_processed_track_ids.add(track_id)
@@ -277,16 +277,16 @@ class YOLOv8Node(Node):
                         width_det, height_det = float(abs(x2 - x1)), float(abs(y2 - y1))
 
                         if track_id not in self.active_trackers:
-                            self.get_logger().debug(f"Creating new Kalman tracker for enemy ID: {track_id}")
+                            self.get_logger().info(f"Creating new Kalman tracker for enemy ID: {track_id}")
                             self.active_trackers[track_id] = TrackerWrapper(ArmorPlateTracker(center_x, center_y, width_det, height_det))
                         else:
-                            self.get_logger().debug(f"Updating Kalman tracker for enemy ID: {track_id}")
+                            self.get_logger().info(f"Updating Kalman tracker for enemy ID: {track_id}")
                             self.active_trackers[track_id].tracker.update(center_x, center_y, width_det, height_det)
                         self.active_trackers[track_id].lost_frames = 0
             else:
-                self.get_logger().debug("No bounding boxes (xyxy) in YOLO results[0].")
+                self.get_logger().info("No bounding boxes (xyxy) in YOLO results[0].")
         else:
-            self.get_logger().debug("YOLO model.track() returned no results or empty list.")
+            self.get_logger().info("YOLO model.track() returned no results or empty list.")
 
         # Manage and predict from active Kalman trackers
         active_ids_to_remove = []
@@ -296,7 +296,7 @@ class YOLOv8Node(Node):
             
             if tw_wrapper.lost_frames >= self.tracker_timeout_val:
                 active_ids_to_remove.append(track_id)
-                self.get_logger().debug(f"Removing tracker ID {track_id} (lost {tw_wrapper.lost_frames} frames).")
+                self.get_logger().info(f"Removing tracker ID {track_id} (lost {tw_wrapper.lost_frames} frames).")
                 continue
 
             if not published_bbox_this_frame and tw_wrapper.lost_frames == 0: # Publish for first active, non-lost track
@@ -312,7 +312,7 @@ class YOLOv8Node(Node):
                 pred_x_final = pred_x_curr + vx * additional_lookahead_time + 0.5 * ax * (additional_lookahead_time**2)
                 pred_y_final = pred_y_curr + vy * additional_lookahead_time + 0.5 * ay * (additional_lookahead_time**2)
                 
-                self.get_logger().debug(f"KF ID {track_id}: BasePred({pred_x_curr},{pred_y_curr}), Vel({vx:.1f},{vy:.1f}), Acc({ax:.1f},{ay:.1f}), LookAheadT({additional_lookahead_time:.3f}), FinalPred({pred_x_final:.0f},{pred_y_final:.0f})")
+                self.get_logger().info(f"KF ID {track_id}: BasePred({pred_x_curr},{pred_y_curr}), Vel({vx:.1f},{vy:.1f}), Acc({ax:.1f},{ay:.1f}), LookAheadT({additional_lookahead_time:.3f}), FinalPred({pred_x_final:.0f},{pred_y_final:.0f})")
 
                 kf_width, kf_height = tw_wrapper.tracker.width, tw_wrapper.tracker.height
                 pub_x1 = int(pred_x_final - kf_width / 2); pub_y1 = int(pred_y_final - kf_height / 2)
@@ -328,7 +328,7 @@ class YOLOv8Node(Node):
                     self.bbox_publisher.publish(self.bbox_msg)
                     self.override_publisher.publish(self.override)
                     published_bbox_this_frame = True
-                    self.get_logger().debug(f"Published KF BBox ID {track_id} (Lookahead): {[pub_x1, pub_y1, pub_x2, pub_y2]}")
+                    self.get_logger().info(f"Published KF BBox ID {track_id} (Lookahead): {[pub_x1, pub_y1, pub_x2, pub_y2]}")
 
                     if self.show and vis_frame is not None: # Draw KF box
                         cv2.rectangle(vis_frame, (pub_x1, pub_y1), (pub_x2, pub_y2), BBOX_KF_COLOR, BBOX_LINE_SIZE)
@@ -346,7 +346,7 @@ class YOLOv8Node(Node):
             self.override.data = False
             self.bbox_publisher.publish(self.bbox_msg)
             self.override_publisher.publish(self.override)
-            self.get_logger().debug("No KF-tracked enemy published. Sent default bbox.")
+            self.get_logger().info("No KF-tracked enemy published. Sent default bbox.")
 
         if self.show and vis_frame is not None:
             cv2.imshow("3. YOLOv8 Kalman Tracking", vis_frame)
@@ -355,13 +355,13 @@ class YOLOv8Node(Node):
     # --- ROS Callback for Robot ID ---
     def id_listener_callback(self, msg: Int32):
         robot_id = msg.data
-        self.get_logger().debug(f"Received robot_id: {robot_id}")
+        self.get_logger().info(f"Received robot_id: {robot_id}")
         if robot_id in RED_TEAM:
             self.target_class = BLUE_CLASS
-            self.get_logger().debug(f"Robot ID {robot_id} is RED_TEAM. Targeting BLUE_CLASS.")
+            self.get_logger().info(f"Robot ID {robot_id} is RED_TEAM. Targeting BLUE_CLASS.")
         elif robot_id in BLUE_TEAM:
             self.target_class = RED_CLASS
-            self.get_logger().debug(f"Robot ID {robot_id} is BLUE_TEAM. Targeting RED_CLASS.")
+            self.get_logger().info(f"Robot ID {robot_id} is BLUE_TEAM. Targeting RED_CLASS.")
         else:
             current_target_str = 'BLUE' if self.target_class == BLUE_CLASS else 'RED'
             self.get_logger().warn(f"Robot ID {robot_id} not in known teams. Maintaining current target_class: {current_target_str}")
@@ -388,7 +388,7 @@ class YOLOv8Node(Node):
         is_it_enemy = color_area > min_color_area_threshold
         
         target_color_str = 'BLUE' if self.target_class == BLUE_CLASS else 'RED'
-        self.get_logger().debug(
+        self.get_logger().info(
             f"check_enemy: Target: {target_color_str}. "
             f"ROI Shape: {roi_image.shape}, Color Area: {color_area}, Threshold Req: {min_color_area_threshold:.2f}. Result: {is_it_enemy}"
         )
@@ -401,13 +401,13 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().debug("Keyboard interrupt received, shutting down.")
+        node.get_logger().info("Keyboard interrupt received, shutting down.")
     finally:
         node.destroy_node()
         if rclpy.ok(): # Check if rclpy is still initialized
             rclpy.shutdown()
         cv2.destroyAllWindows()
-        node.get_logger().debug("Node cleanup complete.")
+        node.get_logger().info("Node cleanup complete.")
 
 if __name__ == "__main__":
     main()
