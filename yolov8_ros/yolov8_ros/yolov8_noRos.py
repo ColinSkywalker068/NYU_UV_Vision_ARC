@@ -100,7 +100,8 @@ class YOLOv8Node:
     def __init__(self, model_path="/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine", 
                  task="detect", model_type="yolo", half=True, imgsz=640, show=True, conf=0.05,
                  tracker_timeout=15, kalman_initial_dt=1.0/60.0, prediction_lookahead_steps=0.5,
-                 robot_id=1, target_class=None, fps_interval=30, use_webcam=False, camera_width=640, camera_height=480):
+                 robot_id=1, target_class=None, fps_interval=30, device='', profile=False,
+                 use_webcam=False, camera_width=640, camera_height=480):
         
         print("Initializing YOLOv8Node with Kalman Filter & Lag Compensation...")
         
@@ -113,6 +114,8 @@ class YOLOv8Node:
         self.tracker_timeout_val = tracker_timeout
         self.kalman_initial_dt_val = kalman_initial_dt
         self.prediction_lookahead_steps_val = prediction_lookahead_steps
+        self.device = device
+        self.profile = profile
         
         print(f"Model Path: {model_path}")
         print(f"Model Type: {model_type}, Task: {task}, ImgSz: {imgsz}")
@@ -121,6 +124,8 @@ class YOLOv8Node:
         print(f"Kalman Initial dt: {kalman_initial_dt:.4f}s")
         print(f"Prediction Lookahead Steps: {prediction_lookahead_steps}")
         print(f"FPS Update Interval: {fps_interval} frames")
+        print(f"Device: {device if device else 'auto'}")
+        print(f"Profiling: {'enabled' if profile else 'disabled'}")
         
         # Set target class (simplified - no team logic)
         if target_class is not None:
@@ -145,6 +150,12 @@ class YOLOv8Node:
             self.model = NAS(model_path)
         else:
             raise NotImplementedError("Unsupported model type specified.")
+        
+        # Set device if specified
+        if device:
+            self.model.to(device)
+            print(f"Model moved to device: {device}")
+        
         print(f"YOLO Model '{model_type}' initialized successfully.")
 
         # Camera Initialization
@@ -200,7 +211,7 @@ class YOLOv8Node:
                 print(f"Unusual dt calculated ({time_diff_s:.4f}s), using fallback dt: {dt:.4f}s")
         self.last_frame_time = current_time
         
-        # Update FPS calculation
+        # Update FPS calculation and add profiling
         self.fps_frame_count += 1
         if self.fps_frame_count % self.fps_update_interval == 0:
             elapsed_time = current_time - self.fps_start_time
@@ -208,6 +219,9 @@ class YOLOv8Node:
                 self.current_fps = self.fps_update_interval / elapsed_time
                 print(f"FPS: {self.current_fps:.1f}")
             self.fps_start_time = current_time
+        
+        # Start detailed timing for bottleneck analysis
+        preprocess_start = time.time()
 
         original_height, original_width = frame.shape[:2]
 
@@ -227,17 +241,28 @@ class YOLOv8Node:
             print(f"Invalid resize dimensions ({new_w}x{new_h}). Resizing directly (may distort).")
             padded_image = cv2.resize(frame, (self.imgsz, self.imgsz), interpolation=cv2.INTER_LINEAR)
 
+        preprocess_time = time.time() - preprocess_start
+        
         # YOLO Model Tracking
-        results = self.model.track(
-            padded_image,
-            half=self.half,
-            imgsz=self.imgsz,
-            show=False,
-            conf=self.conf,
-            persist=True,
-            tracker='bytetrack.yaml',
-            verbose=False  # Disable verbose output to avoid KeyError on unknown classes
-        )
+        yolo_start = time.time()
+        track_kwargs = {
+            'half': self.half,
+            'imgsz': self.imgsz,
+            'show': False,
+            'conf': self.conf,
+            'persist': True,
+            'tracker': 'bytetrack.yaml',
+            'verbose': False  # Disable verbose output to avoid KeyError on unknown classes
+        }
+        
+        # Add device if specified
+        if self.device:
+            track_kwargs['device'] = self.device
+            
+        results = self.model.track(padded_image, **track_kwargs)
+        
+        yolo_time = time.time() - yolo_start
+        tracking_start = time.time()
         
         vis_frame = padded_image.copy() if self.show else None
         current_frame_processed_track_ids = set()
@@ -346,6 +371,9 @@ class YOLOv8Node:
             self.bbox_data = [default_center, default_center, default_center, default_center]
             self.override_active = False
 
+        tracking_time = time.time() - tracking_start
+        display_start = time.time()
+
         if self.show and vis_frame is not None:
             # Add FPS display to visualization
             fps_text = f"FPS: {self.current_fps:.1f}"
@@ -354,6 +382,10 @@ class YOLOv8Node:
             # Add frame count display
             frame_text = f"Frame: {self.fps_frame_count}"
             cv2.putText(vis_frame, frame_text, (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            
+            # Add timing info to display
+            timing_text = f"YOLO: {yolo_time*1000:.1f}ms | Track: {tracking_time*1000:.1f}ms"
+            cv2.putText(vis_frame, timing_text, (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
             
             try:
                 cv2.imshow("YOLOv8 Kalman Tracking", vis_frame)
@@ -364,6 +396,20 @@ class YOLOv8Node:
                     self.show = False  # Disable further attempts to show windows
                 else:
                     raise e
+
+        display_time = time.time() - display_start
+        total_frame_time = time.time() - current_time
+        
+        # Print detailed timing every N frames for performance analysis
+        if self.profile and self.fps_frame_count % (self.fps_update_interval * 2) == 0:  # Print less frequently
+            print(f"Performance Breakdown (ms):")
+            print(f"  Preprocessing: {preprocess_time*1000:.1f}ms")
+            print(f"  YOLO Inference: {yolo_time*1000:.1f}ms")
+            print(f"  Tracking/Kalman: {tracking_time*1000:.1f}ms")
+            print(f"  Display: {display_time*1000:.1f}ms")
+            print(f"  Total Frame: {total_frame_time*1000:.1f}ms")
+            print(f"  Theoretical Max FPS: {1000/total_frame_time:.1f}")
+            print("---")
 
         return vis_frame
 
@@ -468,6 +514,13 @@ def main():
     parser.add_argument('--lookahead', type=float, default=0.5, help='Prediction lookahead steps')
     parser.add_argument('--robot_id', type=int, default=1, help='Robot ID for fallback target assignment')
     parser.add_argument('--target_class', type=int, choices=[0, 1], help='Target class: 0=BLUE, 1=RED')
+    
+    # Performance optimization arguments
+    parser.add_argument('--device', default='', help='Device to run on (e.g., 0 for GPU, cpu for CPU)')
+    parser.add_argument('--batch_size', type=int, default=1, help='Batch size for inference')
+    parser.add_argument('--workers', type=int, default=1, help='Number of worker threads')
+    parser.add_argument('--profile', action='store_true', help='Enable detailed performance profiling')
+    
     parser.add_argument('--webcam', action='store_true', help='Use webcam instead of RealSense')
     parser.add_argument('--width', type=int, default=640, help='Camera width')
     parser.add_argument('--height', type=int, default=480, help='Camera height')
@@ -493,6 +546,8 @@ def main():
         robot_id=args.robot_id,
         target_class=args.target_class,
         fps_interval=args.fps_interval,
+        device=args.device,
+        profile=args.profile,
         use_webcam=args.webcam,
         camera_width=args.width,
         camera_height=args.height
