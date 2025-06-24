@@ -1,15 +1,21 @@
-import pyrealsense2 as rs
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import Int32, Int32MultiArray, Bool
+from cv_bridge import CvBridge
+from ultralytics import YOLO, RTDETR, NAS # Ensure ultralytics is installed
 import cv2
 import numpy as np
 import os
-import random
-import time
-import argparse
-from ultralytics import YOLO, RTDETR, NAS
+import random # For Kalman 
+import pyrealsense2 as rs # Import pyrealsense2
 
 os.environ["GDK_SYNCHRONIZE"] = "1" # If using GTK-based cv2.imshow concurrently
 
-# Class Definitions
+# Team and Class Definitions
+RED_TEAM = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+BLUE_TEAM = (101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111)
+
 RED_CLASS = 1
 BLUE_CLASS = 0
 
@@ -27,11 +33,14 @@ BBOX_RAW_COLOR = (0, 255, 0)  # Green for raw YOLO detection
 BBOX_KF_COLOR = (255, 0, 0)   # Blue for Kalman Filter prediction
 BBOX_LINE_SIZE = 2
 
+# This was in your original code but appeared unused.
+# COLOR_THRESHOLD = 200
+
 # ──────────────────────────────────────────────────────────────
 # Kalman Filter Tracker Classes
 # ──────────────────────────────────────────────────────────────
 class ArmorPlateTracker:
-    def __init__(self, initial_x, initial_y, width, height):
+    def __init__(self, initial_x, initial_y, width, height): # dt removed from constructor
         self.kf = cv2.KalmanFilter(6, 2) # 6 states (x,y,vx,vy,ax,ay), 2 measurements (x,y)
         
         self.kf.measurementMatrix = np.array([
@@ -40,51 +49,59 @@ class ArmorPlateTracker:
         ], np.float32)
 
         # --- TUNABLE KALMAN PARAMETERS ---
-        proc_noise_pos = 0.01
-        proc_noise_vel = 0.05
-        proc_noise_acc = 0.1
+        # processNoiseCov (Q): How much uncertainty in the motion model.
+        # Higher values make the filter adapt faster to unmodeled changes (e.g., sudden acceleration)
+        # but can make the prediction jittery if too high.
+        # Order of states: x, y, vx, vy, ax, ay
+        proc_noise_pos = 0.01 # For position (usually kept relatively small)
+        proc_noise_vel = 0.05 # For velocity
+        proc_noise_acc = 0.1  # For acceleration (increase if lagging during accelerations)
         
         self.kf.processNoiseCov = np.diag([
             proc_noise_pos, proc_noise_pos, 
             proc_noise_vel, proc_noise_vel,
             proc_noise_acc, proc_noise_acc
-        ]).astype(np.float32) * 1.0
+        ]).astype(np.float32) * 1.0 # Overall multiplier for process noise
 
-        meas_noise = 0.15
+        # measurementNoiseCov (R): How much uncertainty in the YOLO detections.
+        # Lower values mean more trust in the measurement, making the filter follow detections closely.
+        # Higher values mean less trust, relying more on the model's prediction (smoother but can lag).
+        meas_noise = 0.15 # Tunable: adjust based on YOLO detection stability
         self.kf.measurementNoiseCov = np.eye(2, dtype=np.float32) * meas_noise
         # --- END TUNABLE KALMAN PARAMETERS ---
 
-        self.kf.errorCovPost = np.eye(6, dtype=np.float32) * 0.1
+        self.kf.errorCovPost = np.eye(6, dtype=np.float32) * 0.1 # Initial estimate error covariance
 
         # Initial state: [x, y, vx, vy, ax, ay]'
         self.kf.statePost = np.array([
             np.float32(initial_x), np.float32(initial_y), 0, 0, 0, 0
         ], np.float32).reshape(6, 1)
 
-        self.color = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
+        self.color = (random.randint(0,255), random.randint(0,255), random.randint(0,255)) # For viz
         self.width = float(width)
         self.height = float(height)
-        self._last_dt_used = 0.033
+        self._last_dt_used = 0.033 # For reference/debugging
 
     def _update_transition_matrix(self, dt):
         self._last_dt_used = dt
+        # State transition matrix for constant acceleration model
         self.kf.transitionMatrix = np.array([
-            [1, 0, dt, 0, 0.5*dt*dt, 0],
-            [0, 1, 0, dt, 0, 0.5*dt*dt],
-            [0, 0, 1, 0, dt, 0],
-            [0, 0, 0, 1, 0, dt],
-            [0, 0, 0, 0, 1, 0],
-            [0, 0, 0, 0, 0, 1]
+            [1, 0, dt, 0, 0.5*dt*dt, 0], # x = x_prev + vx*dt + 0.5*ax*dt^2
+            [0, 1, 0, dt, 0, 0.5*dt*dt], # y = y_prev + vy*dt + 0.5*ay*dt^2
+            [0, 0, 1, 0, dt, 0],         # vx = vx_prev + ax*dt
+            [0, 0, 0, 1, 0, dt],         # vy = vy_prev + ay*dt
+            [0, 0, 0, 0, 1, 0],         # ax = ax_prev
+            [0, 0, 0, 0, 0, 1]          # ay = ay_prev
         ], np.float32)
 
-    def predict(self, dt):
+    def predict(self, dt): # dt is now an argument to update transition matrix dynamically
         self._update_transition_matrix(dt)
-        prediction_state = self.kf.predict()
-        return int(prediction_state[0, 0]), int(prediction_state[1, 0])
+        prediction_state = self.kf.predict() # This updates kf.statePre with the predicted state
+        return int(prediction_state[0, 0]), int(prediction_state[1, 0]) # x, y
 
-    def update(self, x, y, width, height):
+    def update(self, x, y, width, height): # Called when a new measurement is available
         measurement = np.array([[np.float32(x)], [np.float32(y)]], np.float32)
-        self.kf.correct(measurement)
+        self.kf.correct(measurement) # Corrects the state based on the new measurement, updates kf.statePost
         self.width = float(width)
         self.height = float(height)
 
@@ -92,226 +109,229 @@ class TrackerWrapper:
     def __init__(self, tracker: ArmorPlateTracker):
         self.tracker = tracker
         self.lost_frames = 0
-
 # ──────────────────────────────────────────────────────────────
-# Main Detection Class
-# ──────────────────────────────────────────────────────────────
-class YOLOv8Node:
-    def __init__(self, model_path="/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine", 
-                 task="detect", model_type="yolo", half=True, imgsz=640, show=True, conf=0.05,
-                 tracker_timeout=15, kalman_initial_dt=1.0/60.0, prediction_lookahead_steps=0.5,
-                 robot_id=1, target_class=None, fps_interval=30, device='', profile=False,
-                 use_webcam=False, camera_width=640, camera_height=480):
-        
-        print("Initializing YOLOv8Node with Kalman Filter & Lag Compensation...")
-        
-        # Parameters
-        self.task = task
-        self.half = half
-        self.imgsz = imgsz
-        self.show = show
-        self.conf = conf
-        self.tracker_timeout_val = tracker_timeout
-        self.kalman_initial_dt_val = kalman_initial_dt
-        self.prediction_lookahead_steps_val = prediction_lookahead_steps
-        self.device = device
-        self.profile = profile
-        
-        print(f"Model Path: {model_path}")
-        print(f"Model Type: {model_type}, Task: {task}, ImgSz: {imgsz}")
-        print(f"Confidence: {conf}, Show Viz: {show}, Half Prec: {half}")
-        print(f"Tracker Timeout: {tracker_timeout} frames")
-        print(f"Kalman Initial dt: {kalman_initial_dt:.4f}s")
-        print(f"Prediction Lookahead Steps: {prediction_lookahead_steps}")
-        print(f"FPS Update Interval: {fps_interval} frames")
-        print(f"Device: {device if device else 'auto'}")
-        print(f"Profiling: {'enabled' if profile else 'disabled'}")
-        
-        # Set target class (simplified - no team logic)
-        if target_class is not None:
-            self.target_class = target_class
-            target_str = 'RED' if target_class == RED_CLASS else 'BLUE'
-            print(f"Using specified target class: {target_str}_CLASS")
-        else:
-            # Fallback: Use robot_id to determine target: even IDs target RED, odd IDs target BLUE
-            if robot_id % 2 == 0:
-                self.target_class = RED_CLASS
-                print(f"Robot ID {robot_id} (even). Targeting RED_CLASS.")
-            else:
-                self.target_class = BLUE_CLASS
-                print(f"Robot ID {robot_id} (odd). Targeting BLUE_CLASS.")
 
-        # Model Initialization
-        if model_type == "yolo": 
-            self.model = YOLO(model_path, task=task)
-        elif model_type == "rtdetr": 
-            self.model = RTDETR(model_path)
-        elif model_type == "nas": 
-            self.model = NAS(model_path)
+class YOLOv8Node(Node):
+    def __init__(self):
+        super().__init__("yolov8_node")
+        self.get_logger().info("Initializing YOLOv8Node with Kalman Filter & Lag Compensation (Pyrealsense2)...")
+
+        # --- ROS Parameters ---
+        self.declare_parameter("model_path", "/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.engine")
+        self.declare_parameter("task", "detect") # e.g., "detect", "obb"
+        self.declare_parameter("type", "yolo")   # "yolo", "rtdetr", "nas"
+        self.declare_parameter("half", True)     # Use FP16 precision
+        # Set imgsz to match Realsense resolution
+        self.declare_parameter("imgsz_width", 640) 
+        self.declare_parameter("imgsz_height", 480) 
+        self.declare_parameter("show", True)     # Enable/disable OpenCV visualization windows
+        self.declare_parameter("conf", 0.05)     # YOLO confidence threshold (LOWERED for better initial detection)
+        self.declare_parameter("tracker_timeout", 15)      # Frames to keep a lost track before deleting
+        self.declare_parameter("kalman_initial_dt", 1.0/30.0) # Initial/fallback dt for Kalman filter (e.g., for 30fps)
+        self.declare_parameter("prediction_lookahead_steps", 0.5) # How many extra 'dt' steps to look ahead (0=std KF, 0.5=half dt ahead, 1.0=full dt ahead)
+        
+        # New Realsense specific parameters
+        self.declare_parameter("realsense_width", 640)
+        self.declare_parameter("realsense_height", 480)
+        self.declare_parameter("realsense_fps", 30) # Will attempt to get max FPS supported by the camera
+
+        # Get parameter values
+        model_path = self.get_parameter("model_path").get_parameter_value().string_value
+        self.task = self.get_parameter("task").get_parameter_value().string_value
+        model_type = self.get_parameter("type").get_parameter_value().string_value
+        self.half = self.get_parameter("half").get_parameter_value().bool_value
+        self.imgsz_width = self.get_parameter("imgsz_width").get_parameter_value().integer_value
+        self.imgsz_height = self.get_parameter("imgsz_height").get_parameter_value().integer_value
+        self.show = self.get_parameter("show").get_parameter_value().bool_value
+        self.conf = self.get_parameter("conf").get_parameter_value().double_value
+        self.tracker_timeout_val = self.get_parameter("tracker_timeout").get_parameter_value().integer_value
+        self.kalman_initial_dt_val = self.get_parameter("kalman_initial_dt").get_parameter_value().double_value
+        self.prediction_lookahead_steps_val = self.get_parameter("prediction_lookahead_steps").get_parameter_value().double_value
+        
+        self.realsense_width = self.get_parameter("realsense_width").get_parameter_value().integer_value
+        self.realsense_height = self.get_parameter("realsense_height").get_parameter_value().integer_value
+        self.realsense_fps = self.get_parameter("realsense_fps").get_parameter_value().integer_value
+
+        self.get_logger().info(f"Model Path: {model_path}")
+        self.get_logger().info(f"Model Type: {model_type}, Task: {self.task}, ImgSz (W,H): ({self.imgsz_width},{self.imgsz_height})")
+        self.get_logger().info(f"Confidence: {self.conf}, Show Viz: {self.show}, Half Prec: {self.half}")
+        self.get_logger().info(f"Tracker Timeout: {self.tracker_timeout_val} frames")
+        self.get_logger().info(f"Kalman Initial dt: {self.kalman_initial_dt_val:.4f}s")
+        self.get_logger().info(f"Prediction Lookahead Steps: {self.prediction_lookahead_steps_val}")
+        self.get_logger().info(f"Realsense Config - Width: {self.realsense_width}, Height: {self.realsense_height}, FPS: {self.realsense_fps}")
+
+        self.target_class = BLUE_CLASS # Default target class
+
+        # --- Model Initialization ---
+        if model_type == "yolo": self.model = YOLO(model_path, task=self.task)
+        elif model_type == "rtdetr": self.model = RTDETR(model_path) # Task might be implicit
+        elif model_type == "nas": self.model = NAS(model_path) # Task might be implicit
         else:
+            self.get_logger().error(f"Unsupported model type specified: {model_type}")
             raise NotImplementedError("Unsupported model type specified.")
-        
-        # Set device if specified
-        if device:
-            self.model.to(device)
-            print(f"Model moved to device: {device}")
-        
-        print(f"YOLO Model '{model_type}' initialized successfully.")
+        self.get_logger().info(f"YOLO Model '{model_type}' initialized successfully.")
 
-        # Camera Initialization
-        if use_webcam:
-            print("Initializing webcam...")
-            self.cap = cv2.VideoCapture(0)
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, camera_width)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_height)
-            self.cap.set(cv2.CAP_PROP_FPS, 30)
-            self.pipeline = None
-        else:
-            print("Initializing RealSense camera...")
-            self.pipeline = rs.pipeline()
-            config = rs.config()
-            config.enable_stream(rs.stream.color, camera_width, camera_height, rs.format.bgr8, 30)
-            self.pipeline.start(config)
-            self.cap = None
+        # --- Pyrealsense2 Pipeline Setup ---
+        self.pipeline = rs.pipeline()
+        self.config = rs.config()
         
-        # State Variables
-        self.active_trackers = {}
-        self.last_frame_time = None
-        self.bbox_data = [imgsz//2, imgsz//2, imgsz//2, imgsz//2]  # Default bbox
-        self.override_active = False
+        # Enable color stream with desired resolution and FPS
+        self.config.enable_stream(rs.stream.color, self.realsense_width, self.realsense_height, rs.format.bgr8, self.realsense_fps)
         
-        # FPS tracking
-        self.fps_start_time = time.time()
-        self.fps_frame_count = 0
-        self.current_fps = 0.0
-        self.fps_update_interval = fps_interval  # Update FPS display every N frames
+        # Start streaming
+        profile = self.pipeline.start(self.config)
+        self.get_logger().info(f"Realsense pipeline started with color stream: {self.realsense_width}x{self.realsense_height} @ {self.realsense_fps} FPS.")
 
-    def get_frame(self):
-        """Get frame from either RealSense or webcam"""
-        if self.pipeline:  # RealSense
+        # Get actual FPS from the stream profile
+        color_profile = profile.get_stream(rs.stream.color).as_video_stream_profile()
+        actual_fps = color_profile.fps()
+        self.get_logger().info(f"Actual Realsense color stream FPS: {actual_fps}")
+        self.kalman_initial_dt_val = 1.0 / actual_fps if actual_fps > 0 else self.kalman_initial_dt_val
+        self.get_logger().info(f"Updated Kalman initial dt based on actual FPS: {self.kalman_initial_dt_val:.4f}s")
+
+
+        # --- ROS Publishers ---
+        # We no longer subscribe to CompressedImage, as we get frames directly from Realsense
+        self.int_subscription = self.create_subscription(Int32, "robot_id", self.id_listener_callback, 10)
+        self.bbox_publisher = self.create_publisher(Int32MultiArray, "bounding_box", 10)
+        self.override_publisher = self.create_publisher(Bool, "override", 10)
+        self.get_logger().info("ROS Publishers/Subscribers initialized.")
+
+        # --- Node State Variables ---
+        self.override = Bool()
+        self.bbox_msg = Int32MultiArray()
+        default_center = self.imgsz_width // 2 # Use imgsz_width for default center
+        self.bbox_msg.data = [default_center, default_center, default_center, default_center] # Default bbox
+        self.active_trackers = {}  # Stores {track_id: TrackerWrapper}
+        self.last_frame_time = None # For dynamic dt calculation
+
+        # Create a timer to capture frames and process them
+        self.timer = self.create_timer(1.0 / self.realsense_fps, self.timer_callback) # Use configured FPS for timer
+    
+    # --- Timer Callback for Frame Acquisition and Processing ---
+    def timer_callback(self):
+        try:
+            # Wait for a new set of Realsense frames
             frames = self.pipeline.wait_for_frames()
             color_frame = frames.get_color_frame()
             if not color_frame:
-                return None
-            return np.asanyarray(color_frame.get_data())
-        else:  # Webcam
-            ret, frame = self.cap.read()
-            return frame if ret else None
+                self.get_logger().warn("Failed to get color frame from Realsense. Skipping this frame.")
+                return
 
-    def process_frame(self, frame):
-        """Main frame processing function - replaces the old listener_callback"""
+            # Convert Realsense frame to OpenCV image
+            frame = np.asanyarray(color_frame.get_data())
+            # frame is now a BGR8 OpenCV image
+            
+            self.listener_callback(frame) # Call the existing processing logic
+
+        except Exception as e:
+            self.get_logger().error(f"Error in Realsense frame acquisition or processing: {e}")
+
+    # --- Main Image Processing Logic (now takes a cv2 image directly) ---
+    def listener_callback(self, frame):
+        # self.get_logger().info("Processing image frame from Realsense.") # Too verbose, log less
         # Calculate dynamic dt
-        current_time = time.time()
+        current_time = self.get_clock().now()
         dt = self.kalman_initial_dt_val 
         if self.last_frame_time is not None:
-            time_diff_s = current_time - self.last_frame_time
-            if 0.001 < time_diff_s < 1.0:
+            time_diff_s = (current_time - self.last_frame_time).nanoseconds / 1e9
+            if 0.001 < time_diff_s < 1.0: # Sanity check for dt
                 dt = time_diff_s
             else:
-                print(f"Unusual dt calculated ({time_diff_s:.4f}s), using fallback dt: {dt:.4f}s")
+                # self.get_logger().warn(f"Unusual dt calculated ({time_diff_s:.4f}s), using fallback dt: {dt:.4f}s") # Too verbose
+                pass
+        # if dt > 0: self.get_logger().info(f"Current FPS: {1.0 / dt:.2f}") # Too verbose
         self.last_frame_time = current_time
-        
-        # Update FPS calculation and add profiling
-        self.fps_frame_count += 1
-        if self.fps_frame_count % self.fps_update_interval == 0:
-            elapsed_time = current_time - self.fps_start_time
-            if elapsed_time > 0:
-                self.current_fps = self.fps_update_interval / elapsed_time
-                print(f"FPS: {self.current_fps:.1f}")
-            self.fps_start_time = current_time
-        
-        # Start detailed timing for bottleneck analysis
-        preprocess_start = time.time()
+        # self.get_logger().info(f"Using dt for this frame: {dt:.4f}s") # Too verbose
 
         original_height, original_width = frame.shape[:2]
 
+
+        # if self.show: cv2.imshow("1. Raw Input", frame); cv2.waitKey(1)
+
         # Robust Padding/Resizing (Letterboxing)
-        target_h, target_w = self.imgsz, self.imgsz
+        target_h, target_w = self.imgsz_height, self.imgsz_width
         scale = 0.0
         if original_width > 0 and original_height > 0:
             scale = min(target_w / original_width, target_h / original_height)
         new_w, new_h = int(original_width * scale), int(original_height * scale)
         
-        padded_image = np.full((self.imgsz, self.imgsz, 3), (114, 114, 114), dtype=np.uint8)
+        padded_image = np.full((self.imgsz_height, self.imgsz_width, 3), (114, 114, 114), dtype=np.uint8) # Gray padding
         if new_w > 0 and new_h > 0:
             resized_image = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
             dw, dh = (target_w - new_w) // 2, (target_h - new_h) // 2
             padded_image[dh:dh+new_h, dw:dw+new_w] = resized_image
-        else:
-            print(f"Invalid resize dimensions ({new_w}x{new_h}). Resizing directly (may distort).")
-            padded_image = cv2.resize(frame, (self.imgsz, self.imgsz), interpolation=cv2.INTER_LINEAR)
+        else: # Fallback if resize dimensions are invalid
+            self.get_logger().warn(f"Invalid resize dimensions ({new_w}x{new_h}). Resizing directly (may distort).")
+            padded_image = cv2.resize(frame, (self.imgsz_width, self.imgsz_height), interpolation=cv2.INTER_LINEAR)
+        
+        # if self.show: cv2.imshow("2. Padded Input for YOLO", padded_image); cv2.waitKey(1)
 
-        preprocess_time = time.time() - preprocess_start
-        
         # YOLO Model Tracking
-        yolo_start = time.time()
-        track_kwargs = {
-            'half': self.half,
-            'imgsz': self.imgsz,
-            'show': False,
-            'conf': self.conf,
-            'persist': True,
-            'tracker': 'bytetrack.yaml',
-            'verbose': False  # Disable verbose output to avoid KeyError on unknown classes
-        }
-        
-        # Add device if specified
-        if self.device:
-            track_kwargs['device'] = self.device
-            
-        results = self.model.track(padded_image, **track_kwargs)
-        
-        yolo_time = time.time() - yolo_start
-        tracking_start = time.time()
+        # self.get_logger().info(f"Calling model.track() with conf: {self.conf}") # Too verbose
+        results = self.model.track(
+            padded_image,
+            half=self.half,
+            imgsz=(self.imgsz_width, self.imgsz_height), # Pass tuple for specific dimensions
+            show=False, # Manual visualization
+            conf=self.conf,
+            persist=True, # Keep tracks between frames
+            tracker='bytetrack.yaml' # Specify a robust tracker
+        )
         
         vis_frame = padded_image.copy() if self.show else None
         current_frame_processed_track_ids = set()
         published_bbox_this_frame = False
 
         if results and len(results) > 0:
-            res_obj = results[0]
+            res_obj = results[0] # Results for the first (and likely only) image
             
-            boxes_data = None
-            if hasattr(res_obj, "boxes") and res_obj.boxes is not None: 
-                boxes_data = res_obj.boxes
-            elif hasattr(res_obj, "obb") and res_obj.obb is not None and self.task == "obb": 
-                boxes_data = res_obj.obb
+            boxes_data = None # To hold r.boxes or r.obb
+            if hasattr(res_obj, "boxes") and res_obj.boxes is not None: boxes_data = res_obj.boxes
+            elif hasattr(res_obj, "obb") and res_obj.obb is not None and self.task == "obb": boxes_data = res_obj.obb
             
             if boxes_data is not None and hasattr(boxes_data, 'xyxy') and boxes_data.xyxy is not None:
                 bbox_coords_list = boxes_data.xyxy.cpu().int().tolist()
+                # self.get_logger().info(f"Number of raw boxes from YOLO: {len(bbox_coords_list)}") # Too verbose
 
                 track_ids_list = []
                 if hasattr(boxes_data, 'id') and boxes_data.id is not None:
                     track_ids_list = boxes_data.id.cpu().int().tolist()
-                else:
+                else: # Fallback if no track IDs
                     track_ids_list = [None] * len(bbox_coords_list)
                 
                 for i, bbox_xyxy in enumerate(bbox_coords_list):
                     track_id = track_ids_list[i]
                     x1, y1, x2, y2 = bbox_xyxy
 
-                    if self.show and vis_frame is not None:
+                    if self.show and vis_frame is not None: # Draw raw YOLO box
                         cv2.rectangle(vis_frame, (x1, y1), (x2, y2), BBOX_RAW_COLOR, BBOX_LINE_SIZE)
-                        if track_id is not None: 
-                            cv2.putText(vis_frame, f"ID:{track_id}", (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, BBOX_RAW_COLOR, 1)
+                        if track_id is not None: cv2.putText(vis_frame, f"ID:{track_id}", (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, BBOX_RAW_COLOR, 1)
 
-                    roi_img = padded_image[max(0,y1):min(y2, self.imgsz), max(0,x1):min(x2, self.imgsz)]
-                    if roi_img.shape[0] == 0 or roi_img.shape[1] == 0: 
-                        continue
+                    roi_img = padded_image[max(0,y1):min(y2, self.imgsz_height), max(0,x1):min(x2, self.imgsz_width)]
+                    if roi_img.shape[0] == 0 or roi_img.shape[1] == 0: continue # Skip empty ROIs
                     
-                    is_enemy, _ = self.check_enemy(roi_img)
+                    is_enemy, _ = self.check_enemy(roi_img) # check_enemy logs its own decision
+                    # self.get_logger().info(f"Raw detection {i} (ID: {track_id}): check_enemy result: {is_enemy}") # Too verbose
 
-                    if is_enemy and track_id is not None:
+                    if is_enemy and track_id is not None: # Must be an enemy AND have a track ID for KF
                         current_frame_processed_track_ids.add(track_id)
                         center_x, center_y = (x1 + x2) / 2.0, (y1 + y2) / 2.0
                         width_det, height_det = float(abs(x2 - x1)), float(abs(y2 - y1))
 
                         if track_id not in self.active_trackers:
-                            print(f"Creating new Kalman tracker for enemy ID: {track_id}")
+                            self.get_logger().info(f"Creating new Kalman tracker for enemy ID: {track_id}")
                             self.active_trackers[track_id] = TrackerWrapper(ArmorPlateTracker(center_x, center_y, width_det, height_det))
                         else:
+                            # self.get_logger().info(f"Updating Kalman tracker for enemy ID: {track_id}") # Too verbose
                             self.active_trackers[track_id].tracker.update(center_x, center_y, width_det, height_det)
                         self.active_trackers[track_id].lost_frames = 0
+            else:
+                # self.get_logger().info("No bounding boxes (xyxy) in YOLO results[0].") # Too verbose
+                pass
+        else:
+            # self.get_logger().info("YOLO model.track() returned no results or empty list.") # Too verbose
+            pass
 
         # Manage and predict from active Kalman trackers
         active_ids_to_remove = []
@@ -321,11 +341,11 @@ class YOLOv8Node:
             
             if tw_wrapper.lost_frames >= self.tracker_timeout_val:
                 active_ids_to_remove.append(track_id)
-                print(f"Removing tracker ID {track_id} (lost {tw_wrapper.lost_frames} frames).")
+                self.get_logger().info(f"Removing tracker ID {track_id} (lost {tw_wrapper.lost_frames} frames).")
                 continue
 
-            if not published_bbox_this_frame and tw_wrapper.lost_frames == 0:
-                pred_x_curr, pred_y_curr = tw_wrapper.tracker.predict(dt)
+            if not published_bbox_this_frame and tw_wrapper.lost_frames == 0: # Publish for first active, non-lost track
+                pred_x_curr, pred_y_curr = tw_wrapper.tracker.predict(dt) # Standard KF prediction for t+dt
 
                 # Get latest corrected velocity and acceleration for lookahead
                 last_corrected_state = tw_wrapper.tracker.kf.statePost.flatten()
@@ -336,88 +356,67 @@ class YOLOv8Node:
                 
                 pred_x_final = pred_x_curr + vx * additional_lookahead_time + 0.5 * ax * (additional_lookahead_time**2)
                 pred_y_final = pred_y_curr + vy * additional_lookahead_time + 0.5 * ay * (additional_lookahead_time**2)
+                
+                # self.get_logger().info(f"KF ID {track_id}: BasePred({pred_x_curr},{pred_y_curr}), Vel({vx:.1f},{vy:.1f}), Acc({ax:.1f},{ay:.1f}), LookAheadT({additional_lookahead_time:.3f}), FinalPred({pred_x_final:.0f},{pred_y_final:.0f})") # Too verbose
 
                 kf_width, kf_height = tw_wrapper.tracker.width, tw_wrapper.tracker.height
-                pub_x1 = int(pred_x_final - kf_width / 2)
-                pub_y1 = int(pred_y_final - kf_height / 2)
-                pub_x2 = int(pred_x_final + kf_width / 2)
-                pub_y2 = int(pred_y_final + kf_height / 2)
+                pub_x1 = int(pred_x_final - kf_width / 2); pub_y1 = int(pred_y_final - kf_height / 2)
+                pub_x2 = int(pred_x_final + kf_width / 2); pub_y2 = int(pred_y_final + kf_height / 2)
                 
                 # Clamp coordinates to image boundaries
-                pub_x1 = max(0, min(pub_x1, self.imgsz -1))
-                pub_y1 = max(0, min(pub_y1, self.imgsz -1))
-                pub_x2 = max(0, min(pub_x2, self.imgsz -1))
-                pub_y2 = max(0, min(pub_y2, self.imgsz -1))
+                pub_x1 = max(0, min(pub_x1, self.imgsz_width -1)); pub_y1 = max(0, min(pub_y1, self.imgsz_height -1))
+                pub_x2 = max(0, min(pub_x2, self.imgsz_width -1)); pub_y2 = max(0, min(pub_y2, self.imgsz_height -1))
 
-                if pub_x1 < pub_x2 and pub_y1 < pub_y2:
-                    self.bbox_data = [pub_x1, pub_y1, pub_x2, pub_y2]
-                    self.override_active = True
+                if pub_x1 < pub_x2 and pub_y1 < pub_y2: # Check for valid box
+                    self.bbox_msg.data = [pub_x1, pub_y1, pub_x2, pub_y2]
+                    self.override.data = True
+                    self.bbox_publisher.publish(self.bbox_msg)
+                    self.override_publisher.publish(self.override)
                     published_bbox_this_frame = True
-                    print(f"Updated KF BBox ID {track_id} (Lookahead): {self.bbox_data}")
+                    self.get_logger().info(f"Published KF BBox ID {track_id} (Lookahead): {[pub_x1, pub_y1, pub_x2, pub_y2]}")
 
-                    if self.show and vis_frame is not None:
+                    if self.show and vis_frame is not None: # Draw KF box
                         cv2.rectangle(vis_frame, (pub_x1, pub_y1), (pub_x2, pub_y2), BBOX_KF_COLOR, BBOX_LINE_SIZE)
-                        text_y_pos = pub_y1 - 25 if pub_y1 > 25 else pub_y1 + int(kf_height) + 15
+                        text_y_pos = pub_y1 - 25 if pub_y1 > 25 else pub_y1 + int(kf_height) + 15 # Adjust text position
                         cv2.putText(vis_frame, f"KF_ID:{track_id}", (pub_x1, text_y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.5, BBOX_KF_COLOR, 1)
                 else:
-                    print(f"KF ID {track_id} produced invalid lookahead box ({[pub_x1, pub_y1, pub_x2, pub_y2]}). Not updating.")
+                     self.get_logger().warn(f"KF ID {track_id} produced invalid lookahead box ({[pub_x1, pub_y1, pub_x2, pub_y2]}). Not publishing.")
         
         for track_id_to_remove in active_ids_to_remove:
-            if track_id_to_remove in self.active_trackers: 
-                del self.active_trackers[track_id_to_remove]
+            if track_id_to_remove in self.active_trackers: del self.active_trackers[track_id_to_remove]
 
-        if not published_bbox_this_frame:
-            default_center = self.imgsz // 2
-            self.bbox_data = [default_center, default_center, default_center, default_center]
-            self.override_active = False
-
-        tracking_time = time.time() - tracking_start
-        display_start = time.time()
+        if not published_bbox_this_frame: # Publish default if no valid KF track was published
+            default_center_x = self.imgsz_width // 2
+            default_center_y = self.imgsz_height // 2
+            self.bbox_msg.data = [default_center_x, default_center_y, default_center_x, default_center_y]
+            self.override.data = False
+            self.bbox_publisher.publish(self.bbox_msg)
+            self.override_publisher.publish(self.override)
+            # self.get_logger().info("No KF-tracked enemy published. Sent default bbox.") # Too verbose
 
         if self.show and vis_frame is not None:
-            # Add FPS display to visualization
-            fps_text = f"FPS: {self.current_fps:.1f}"
-            cv2.putText(vis_frame, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-            
-            # Add frame count display
-            frame_text = f"Frame: {self.fps_frame_count}"
-            cv2.putText(vis_frame, frame_text, (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            
-            # Add timing info to display
-            timing_text = f"YOLO: {yolo_time*1000:.1f}ms | Track: {tracking_time*1000:.1f}ms"
-            cv2.putText(vis_frame, timing_text, (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
-            
-            try:
-                cv2.imshow("YOLOv8 Kalman Tracking", vis_frame)
-                cv2.waitKey(1)
-            except cv2.error as e:
-                if "GTK backend" in str(e):
-                    print("Warning: Cannot initialize display (GTK backend error). Disabling visualization.")
-                    self.show = False  # Disable further attempts to show windows
-                else:
-                    raise e
+            cv2.imshow("3. YOLOv8 Kalman Tracking", vis_frame)
+            cv2.waitKey(1) # Essential for imshow to refresh
 
-        display_time = time.time() - display_start
-        total_frame_time = time.time() - current_time
-        
-        # Print detailed timing every N frames for performance analysis
-        if self.profile and self.fps_frame_count % (self.fps_update_interval * 2) == 0:  # Print less frequently
-            print(f"Performance Breakdown (ms):")
-            print(f"  Preprocessing: {preprocess_time*1000:.1f}ms")
-            print(f"  YOLO Inference: {yolo_time*1000:.1f}ms")
-            print(f"  Tracking/Kalman: {tracking_time*1000:.1f}ms")
-            print(f"  Display: {display_time*1000:.1f}ms")
-            print(f"  Total Frame: {total_frame_time*1000:.1f}ms")
-            print(f"  Theoretical Max FPS: {1000/total_frame_time:.1f}")
-            print("---")
+    # --- ROS Callback for Robot ID ---
+    def id_listener_callback(self, msg: Int32):
+        robot_id = msg.data
+        self.get_logger().info(f"Received robot_id: {robot_id}")
+        if robot_id in RED_TEAM:
+            self.target_class = BLUE_CLASS
+            self.get_logger().info(f"Robot ID {robot_id} is RED_TEAM. Targeting BLUE_CLASS.")
+        elif robot_id in BLUE_TEAM:
+            self.target_class = RED_CLASS
+            self.get_logger().info(f"Robot ID {robot_id} is BLUE_TEAM. Targeting RED_CLASS.")
+        else:
+            current_target_str = 'BLUE' if self.target_class == BLUE_CLASS else 'RED'
+            self.get_logger().warn(f"Robot ID {robot_id} not in known teams. Maintaining current target_class: {current_target_str}")
 
-        return vis_frame
-
-    def check_enemy(self, roi_image):
-        """Enemy validation method"""
+    # --- Enemy Validation Method (from user's original code) ---
+    def check_enemy(self, roi_image): # roi_image is a crop from padded_image
         if roi_image.shape[0] == 0 or roi_image.shape[1] == 0:
-            print("check_enemy: Invalid ROI shape (0 dimension); returning False.")
-            return False, None
+            self.get_logger().warn("check_enemy: Invalid ROI shape (0 dimension); returning False.")
+            return False, None # Return a tuple
 
         hsv_roi = cv2.cvtColor(roi_image, cv2.COLOR_BGR2HSV)
         target_ranges = BLUE_RANGES if self.target_class == BLUE_CLASS else RED_RANGES
@@ -428,132 +427,38 @@ class YOLOv8Node:
             final_mask = cv2.bitwise_or(final_mask, current_mask)
             
         color_area = np.count_nonzero(final_mask)
+        
+        # Using the 0.01 (1%) area threshold from your original code. This is tunable.
         min_color_area_threshold = roi_image.shape[0] * roi_image.shape[1] * 0.01 
+
         is_it_enemy = color_area > min_color_area_threshold
         
-        return is_it_enemy, color_area
+        # target_color_str = 'BLUE' if self.target_class == BLUE_CLASS else 'RED' # Too verbose
+        # self.get_logger().info( # Too verbose
+        #     f"check_enemy: Target: {target_color_str}. "
+        #     f"ROI Shape: {roi_image.shape}, Color Area: {color_area}, Threshold Req: {min_color_area_threshold:.2f}. Result: {is_it_enemy}"
+        # )
+        return is_it_enemy, color_area # Return tuple
 
-    def get_bbox_data(self):
-        """Get current bounding box data"""
-        return self.bbox_data, self.override_active
-    
-    def get_fps(self):
-        """Get current FPS"""
-        return self.current_fps
-
-    def run(self):
-        """Main execution loop"""
-        print("Starting detection loop. Press 'q' to quit, 't' to toggle target class...")
-        
-        frame_count = 0
-        max_frames_headless = 1000  # Run max 1000 frames if no display available
-        
-        try:
-            while True:
-                frame = self.get_frame()
-                if frame is None:
-                    print("Failed to get frame")
-                    continue
-
-                # Process frame
-                processed_frame = self.process_frame(frame)
-                frame_count += 1
-                
-                # In headless mode, exit after processing some frames
-                if not self.show and frame_count >= max_frames_headless:
-                    print(f"Processed {frame_count} frames in headless mode. Exiting.")
-                    break
-
-                # Handle key presses
-                try:
-                    key = cv2.waitKey(1) & 0xFF
-                    if key == ord('q'):
-                        break
-                    elif key == ord('t'):
-                        self.target_class = BLUE_CLASS if self.target_class == RED_CLASS else RED_CLASS
-                        target_str = 'BLUE' if self.target_class == BLUE_CLASS else 'RED'
-                        print(f"Switched target class to: {target_str}")
-                    elif key == ord('s'):
-                        # Save current bbox data to file for external access
-                        bbox_data, override = self.get_bbox_data()
-                        with open('/tmp/bbox_data.txt', 'w') as f:
-                            f.write(f"{bbox_data[0]},{bbox_data[1]},{bbox_data[2]},{bbox_data[3]},{override}\n")
-                        print(f"Saved bbox data: {bbox_data}, override: {override}")
-                except cv2.error:
-                    # If waitKey fails due to display issues, just continue
-                    pass
-
-        except KeyboardInterrupt:
-            print("Keyboard interrupt received, shutting down.")
-        finally:
-            self.cleanup()
-
-    def cleanup(self):
-        """Clean up resources"""
-        if self.pipeline:
-            self.pipeline.stop()
-        if self.cap:
-            self.cap.release()
-        cv2.destroyAllWindows()
-        print("Cleanup complete.")
+    def destroy_node(self):
+        self.get_logger().info("Stopping Realsense pipeline...")
+        self.pipeline.stop()
+        super().destroy_node()
 
 # --- Main Execution ---
-def main():
-    parser = argparse.ArgumentParser(description='YOLOv8 Detection with Kalman Filter using RealSense/Webcam')
-    parser.add_argument('--model_path', default='/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine', help='Path to YOLO model')
-    parser.add_argument('--task', default='detect', choices=['detect', 'obb'], help='Detection task')
-    parser.add_argument('--type', default='yolo', choices=['yolo', 'rtdetr', 'nas'], help='Model type')
-    parser.add_argument('--half', action='store_true', default=True, help='Use FP16 precision')
-    parser.add_argument('--imgsz', type=int, default=640, help='Model input image size')
-    parser.add_argument('--show', action='store_true', default=True, help='Show visualization')
-    parser.add_argument('--headless', action='store_true', help='Run in headless mode (no display)')
-    parser.add_argument('--conf', type=float, default=0.05, help='Confidence threshold')
-    parser.add_argument('--tracker_timeout', type=int, default=15, help='Frames to keep lost track')
-    parser.add_argument('--fps_interval', type=int, default=30, help='FPS update interval (frames)')
-    parser.add_argument('--kalman_dt', type=float, default=1.0/60.0, help='Initial Kalman dt')
-    parser.add_argument('--lookahead', type=float, default=0.5, help='Prediction lookahead steps')
-    parser.add_argument('--robot_id', type=int, default=1, help='Robot ID for fallback target assignment')
-    parser.add_argument('--target_class', type=int, choices=[0, 1], help='Target class: 0=BLUE, 1=RED')
-    
-    # Performance optimization arguments
-    parser.add_argument('--device', default='', help='Device to run on (e.g., 0 for GPU, cpu for CPU)')
-    parser.add_argument('--batch_size', type=int, default=1, help='Batch size for inference')
-    parser.add_argument('--workers', type=int, default=1, help='Number of worker threads')
-    parser.add_argument('--profile', action='store_true', help='Enable detailed performance profiling')
-    
-    parser.add_argument('--webcam', action='store_true', help='Use webcam instead of RealSense')
-    parser.add_argument('--width', type=int, default=640, help='Camera width')
-    parser.add_argument('--height', type=int, default=480, help='Camera height')
-    
-    args = parser.parse_args()
-    
-    # Override show parameter if headless mode is requested
-    show_visualization = args.show and not args.headless
-    if args.headless:
-        print("Running in headless mode - visualization disabled")
-    
-    detector = YOLOv8Node(
-        model_path=args.model_path,
-        task=args.task,
-        model_type=args.type,
-        half=args.half,
-        imgsz=args.imgsz,
-        show=show_visualization,
-        conf=args.conf,
-        tracker_timeout=args.tracker_timeout,
-        kalman_initial_dt=args.kalman_dt,
-        prediction_lookahead_steps=args.lookahead,
-        robot_id=args.robot_id,
-        target_class=args.target_class,
-        fps_interval=args.fps_interval,
-        device=args.device,
-        profile=args.profile,
-        use_webcam=args.webcam,
-        camera_width=args.width,
-        camera_height=args.height
-    )
-    
-    detector.run()
+def main(args=None):
+    rclpy.init(args=args)
+    node = YOLOv8Node()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info("Keyboard interrupt received, shutting down.")
+    finally:
+        node.destroy_node()
+        if rclpy.ok(): # Check if rclpy is still initialized
+            rclpy.shutdown()
+        cv2.destroyAllWindows()
+        node.get_logger().info("Node cleanup complete.")
 
 if __name__ == "__main__":
     main()
