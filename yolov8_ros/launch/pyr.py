@@ -19,8 +19,8 @@ def generate_launch_description():
             # YOLOv8 Node
             Node(
                 package="yolov8_ros",
-                executable="yolov8_node",
-                name="yolov8_node",
+                executable="yolov8_noRos",
+                name="yolov8_noRos",
                 remappings=[("video_frames", "/camera/camera/color/image_raw")],
                 parameters=[
                     {
@@ -30,7 +30,7 @@ def generate_launch_description():
                     {"show": False},
                     {"conf": 0.05},
                 ],
+        
             ),
-           
         ]
     )
