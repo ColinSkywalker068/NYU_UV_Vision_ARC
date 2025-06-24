@@ -45,10 +45,10 @@ def generate_launch_description():
                     "rgb_camera.enable_auto_white_balance": "true",  # Manual WB
                     "rgb_camera.global_time_enabled": "true",  # Disable global timing
                     "enable_sync": "true",
-                    'image_format': 'MJPG',
-                    'rgb_camera.width': 640,
-                    'rgb_camera.height': 480,
-                    'rgb_camera.fps': 60,
+                    'image_format': "MJPG",
+                    'rgb_camera.width': "640",
+                    'rgb_camera.height': "480",
+                    'rgb_camera.fps': "60",
 
                     #"rgb_camera.gain": "0",  # Gain set to 0
                     #"rgb_camera.gamma": "250",  # Gamma correction
