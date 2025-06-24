@@ -126,7 +126,8 @@ class YOLOv8Node(Node):
         self.get_logger().info(f"Frame shape: {frame.shape}")
         dt = .0001
         current_time = self.get_clock().now()
-        if last_frame_time is not None:
+        last_frame_time=-1
+        if last_frame_time !=-1:
             time_diff_s = (current_time - last_frame_time).nanoseconds / 1e9
             if 0.001 < time_diff_s < 1.0: # Sanity check for dt
                 dt = time_diff_s
