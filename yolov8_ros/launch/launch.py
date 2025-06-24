@@ -21,13 +21,10 @@ def generate_launch_description():
                 package="yolov8_ros",
                 executable="yolov8_node",
                 name="yolov8_node",
-                # remappings=[("video_frames", "/camera/camera/color/image_raw")],
+                remappings=[("video_frames", "/camera/camera/color/image_raw")],
                 parameters=[
                     {
                         "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine"
-                    },
-                    {
-                        "image_topic": "/camera/camera/color/image_raw/compressed"
                     },
                     {"task": "obb"},
                     {"show": False},
