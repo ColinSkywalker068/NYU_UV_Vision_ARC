@@ -9,10 +9,7 @@ from ultralytics import YOLO, RTDETR, NAS
 
 os.environ["GDK_SYNCHRONIZE"] = "1" # If using GTK-based cv2.imshow concurrently
 
-# Team and Class Definitions
-RED_TEAM = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
-BLUE_TEAM = (101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111)
-
+# Class Definitions
 RED_CLASS = 1
 BLUE_CLASS = 0
 
@@ -100,10 +97,10 @@ class TrackerWrapper:
 # Main Detection Class
 # ──────────────────────────────────────────────────────────────
 class YOLOv8Node:
-    def __init__(self, model_path="/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.engine", 
+    def __init__(self, model_path="/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine", 
                  task="detect", model_type="yolo", half=True, imgsz=640, show=True, conf=0.05,
                  tracker_timeout=15, kalman_initial_dt=1.0/60.0, prediction_lookahead_steps=0.5,
-                 robot_id=1, use_webcam=False, camera_width=640, camera_height=480):
+                 robot_id=1, target_class=None, use_webcam=False, camera_width=640, camera_height=480):
         
         print("Initializing YOLOv8Node with Kalman Filter & Lag Compensation...")
         
@@ -124,16 +121,19 @@ class YOLOv8Node:
         print(f"Kalman Initial dt: {kalman_initial_dt:.4f}s")
         print(f"Prediction Lookahead Steps: {prediction_lookahead_steps}")
         
-        # Set target class based on robot_id
-        if robot_id in RED_TEAM:
-            self.target_class = BLUE_CLASS
-            print(f"Robot ID {robot_id} is RED_TEAM. Targeting BLUE_CLASS.")
-        elif robot_id in BLUE_TEAM:
-            self.target_class = RED_CLASS
-            print(f"Robot ID {robot_id} is BLUE_TEAM. Targeting RED_CLASS.")
+        # Set target class (simplified - no team logic)
+        if target_class is not None:
+            self.target_class = target_class
+            target_str = 'RED' if target_class == RED_CLASS else 'BLUE'
+            print(f"Using specified target class: {target_str}_CLASS")
         else:
-            self.target_class = BLUE_CLASS
-            print(f"Robot ID {robot_id} not in known teams. Defaulting to BLUE_CLASS.")
+            # Fallback: Use robot_id to determine target: even IDs target RED, odd IDs target BLUE
+            if robot_id % 2 == 0:
+                self.target_class = RED_CLASS
+                print(f"Robot ID {robot_id} (even). Targeting RED_CLASS.")
+            else:
+                self.target_class = BLUE_CLASS
+                print(f"Robot ID {robot_id} (odd). Targeting BLUE_CLASS.")
 
         # Model Initialization
         if model_type == "yolo": 
@@ -219,7 +219,8 @@ class YOLOv8Node:
             show=False,
             conf=self.conf,
             persist=True,
-            tracker='bytetrack.yaml'
+            tracker='bytetrack.yaml',
+            verbose=False  # Disable verbose output to avoid KeyError on unknown classes
         )
         
         vis_frame = padded_image.copy() if self.show else None
@@ -405,7 +406,7 @@ class YOLOv8Node:
 # --- Main Execution ---
 def main():
     parser = argparse.ArgumentParser(description='YOLOv8 Detection with Kalman Filter using RealSense/Webcam')
-    parser.add_argument('--model_path', default='/home/ultraviolet/CV_Detection/yolov8_ros/yolov8_ros/best.engine', help='Path to YOLO model')
+    parser.add_argument('--model_path', default='/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine', help='Path to YOLO model')
     parser.add_argument('--task', default='detect', choices=['detect', 'obb'], help='Detection task')
     parser.add_argument('--type', default='yolo', choices=['yolo', 'rtdetr', 'nas'], help='Model type')
     parser.add_argument('--half', action='store_true', default=True, help='Use FP16 precision')
@@ -415,7 +416,8 @@ def main():
     parser.add_argument('--tracker_timeout', type=int, default=15, help='Frames to keep lost track')
     parser.add_argument('--kalman_dt', type=float, default=1.0/60.0, help='Initial Kalman dt')
     parser.add_argument('--lookahead', type=float, default=0.5, help='Prediction lookahead steps')
-    parser.add_argument('--robot_id', type=int, default=1, help='Robot ID for team assignment')
+    parser.add_argument('--robot_id', type=int, default=1, help='Robot ID for fallback target assignment')
+    parser.add_argument('--target_class', type=int, choices=[0, 1], help='Target class: 0=BLUE, 1=RED')
     parser.add_argument('--webcam', action='store_true', help='Use webcam instead of RealSense')
     parser.add_argument('--width', type=int, default=640, help='Camera width')
     parser.add_argument('--height', type=int, default=480, help='Camera height')
@@ -434,6 +436,7 @@ def main():
         kalman_initial_dt=args.kalman_dt,
         prediction_lookahead_steps=args.lookahead,
         robot_id=args.robot_id,
+        target_class=args.target_class,
         use_webcam=args.webcam,
         camera_width=args.width,
         camera_height=args.height
