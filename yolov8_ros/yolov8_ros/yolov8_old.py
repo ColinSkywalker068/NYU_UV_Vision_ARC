@@ -124,7 +124,7 @@ class YOLOv8Node(Node):
         frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         height, width = frame.shape[:2]
         self.get_logger().info(f"Frame shape: {frame.shape}")
-        dt = .0001
+        dt = 0.1
         current_time = self.get_clock().now()
         last_frame_time=-1
         if last_frame_time !=-1:
