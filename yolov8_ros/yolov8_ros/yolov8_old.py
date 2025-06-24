@@ -46,6 +46,8 @@ class YOLOv8Node(Node):
         self.declare_parameter("imgsz", 640)
         self.declare_parameter("show_video", False)
         self.declare_parameter("conf", 0.5)
+        self.declare_parameter("camera_exposure", 100)
+
 
         # --- Get ROS Parameters ---
         model_path = self.get_parameter("model_path").get_parameter_value().string_value
@@ -55,6 +57,8 @@ class YOLOv8Node(Node):
         self.show = self.get_parameter("show_video").get_parameter_value().bool_value
         self.conf = self.get_parameter("conf").get_parameter_value().double_value
         self.target_class = BLUE_CLASS
+        self.camera_exposure = self.get_parameter("camera_exposure").get_parameter_value().integer_value
+
 
         # --- Model Initialization ---
         self.get_logger().info(f"Loading model: {model_path}")
@@ -85,6 +89,22 @@ class YOLOv8Node(Node):
         config.enable_stream(rs.stream.color, IMG_WIDTH, IMG_HEIGHT, rs.format.bgr8, FPS)
         
         try:
+            profile = self.pipeline.start(config)
+            self.get_logger().info(f"RealSense camera started at {IMG_WIDTH}x{IMG_HEIGHT} @ {FPS} FPS.")
+
+            # --- SET EXPOSURE USING THE ROS PARAMETER ---
+            color_sensor = profile.get_device().first_color_sensor()
+            # 1. Disable Auto-Exposure
+            if color_sensor.supports(rs.option.enable_auto_exposure):
+                color_sensor.set_option(rs.option.enable_auto_exposure, 0)
+                self.get_logger().info("Auto-exposure disabled.")
+
+            # 2. Set Manual Exposure using the value from the parameter
+            if color_sensor.supports(rs.option.exposure):
+                # Set the exposure to the value you retrieved from the parameters
+                color_sensor.set_option(rs.option.exposure, self.camera_exposure)
+                self.get_logger().info(f"Manual exposure set to: {self.camera_exposure} us.")
+            # --- END OF MODIFIED SECTION ---
             self.pipeline.start(config)
             self.get_logger().info(f"RealSense camera started at {IMG_WIDTH}x{IMG_HEIGHT} @ {FPS} FPS.")
         except Exception as e:
