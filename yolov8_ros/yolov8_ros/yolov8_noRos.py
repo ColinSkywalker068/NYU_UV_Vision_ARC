@@ -100,7 +100,7 @@ class YOLOv8Node:
     def __init__(self, model_path="/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine", 
                  task="detect", model_type="yolo", half=True, imgsz=640, show=True, conf=0.05,
                  tracker_timeout=15, kalman_initial_dt=1.0/60.0, prediction_lookahead_steps=0.5,
-                 robot_id=1, target_class=None, use_webcam=False, camera_width=640, camera_height=480):
+                 robot_id=1, target_class=None, fps_interval=30, use_webcam=False, camera_width=640, camera_height=480):
         
         print("Initializing YOLOv8Node with Kalman Filter & Lag Compensation...")
         
@@ -120,6 +120,7 @@ class YOLOv8Node:
         print(f"Tracker Timeout: {tracker_timeout} frames")
         print(f"Kalman Initial dt: {kalman_initial_dt:.4f}s")
         print(f"Prediction Lookahead Steps: {prediction_lookahead_steps}")
+        print(f"FPS Update Interval: {fps_interval} frames")
         
         # Set target class (simplified - no team logic)
         if target_class is not None:
@@ -167,6 +168,12 @@ class YOLOv8Node:
         self.last_frame_time = None
         self.bbox_data = [imgsz//2, imgsz//2, imgsz//2, imgsz//2]  # Default bbox
         self.override_active = False
+        
+        # FPS tracking
+        self.fps_start_time = time.time()
+        self.fps_frame_count = 0
+        self.current_fps = 0.0
+        self.fps_update_interval = fps_interval  # Update FPS display every N frames
 
     def get_frame(self):
         """Get frame from either RealSense or webcam"""
@@ -192,6 +199,15 @@ class YOLOv8Node:
             else:
                 print(f"Unusual dt calculated ({time_diff_s:.4f}s), using fallback dt: {dt:.4f}s")
         self.last_frame_time = current_time
+        
+        # Update FPS calculation
+        self.fps_frame_count += 1
+        if self.fps_frame_count % self.fps_update_interval == 0:
+            elapsed_time = current_time - self.fps_start_time
+            if elapsed_time > 0:
+                self.current_fps = self.fps_update_interval / elapsed_time
+                print(f"FPS: {self.current_fps:.1f}")
+            self.fps_start_time = current_time
 
         original_height, original_width = frame.shape[:2]
 
@@ -331,6 +347,14 @@ class YOLOv8Node:
             self.override_active = False
 
         if self.show and vis_frame is not None:
+            # Add FPS display to visualization
+            fps_text = f"FPS: {self.current_fps:.1f}"
+            cv2.putText(vis_frame, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            
+            # Add frame count display
+            frame_text = f"Frame: {self.fps_frame_count}"
+            cv2.putText(vis_frame, frame_text, (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            
             try:
                 cv2.imshow("YOLOv8 Kalman Tracking", vis_frame)
                 cv2.waitKey(1)
@@ -366,6 +390,10 @@ class YOLOv8Node:
     def get_bbox_data(self):
         """Get current bounding box data"""
         return self.bbox_data, self.override_active
+    
+    def get_fps(self):
+        """Get current FPS"""
+        return self.current_fps
 
     def run(self):
         """Main execution loop"""
@@ -435,6 +463,7 @@ def main():
     parser.add_argument('--headless', action='store_true', help='Run in headless mode (no display)')
     parser.add_argument('--conf', type=float, default=0.05, help='Confidence threshold')
     parser.add_argument('--tracker_timeout', type=int, default=15, help='Frames to keep lost track')
+    parser.add_argument('--fps_interval', type=int, default=30, help='FPS update interval (frames)')
     parser.add_argument('--kalman_dt', type=float, default=1.0/60.0, help='Initial Kalman dt')
     parser.add_argument('--lookahead', type=float, default=0.5, help='Prediction lookahead steps')
     parser.add_argument('--robot_id', type=int, default=1, help='Robot ID for fallback target assignment')
@@ -463,6 +492,7 @@ def main():
         prediction_lookahead_steps=args.lookahead,
         robot_id=args.robot_id,
         target_class=args.target_class,
+        fps_interval=args.fps_interval,
         use_webcam=args.webcam,
         camera_width=args.width,
         camera_height=args.height
