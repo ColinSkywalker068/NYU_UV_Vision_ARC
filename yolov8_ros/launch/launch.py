@@ -44,7 +44,9 @@ def generate_launch_description():
                     #"rgb_camera.exposure": "100",  # Exposure value
                     #"rgb_camera.brightness": "50",  # Brightness tweak
                     "rgb_camera.enable_auto_white_balance": "true",  # Manual WB
-                    "rgb_camera.global_time_enabled": "true",  # Disable global timing
+                    "rgb_camera.global_time_enabled": "false",  # Disable global timing
+                    "queue_size": "1",
+                    "rgb_camera.queue_size": "1",
                     # "enable_sync": "true",
                     # 'image_format': "MJPG",
                     'rgb_camera.width': "640",
