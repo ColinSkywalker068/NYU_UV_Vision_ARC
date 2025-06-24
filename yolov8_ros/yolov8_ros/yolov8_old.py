@@ -125,12 +125,16 @@ class YOLOv8Node(Node):
         height, width = frame.shape[:2]
         self.get_logger().info(f"Frame shape: {frame.shape}")
         dt = .0001
-        if self.last_frame_time is not None:
-            time_diff_s = (current_time - self.last_frame_time).nanoseconds / 1e9
+        current_time = self.get_clock().now()
+        if last_frame_time is not None:
+            time_diff_s = (current_time - last_frame_time).nanoseconds / 1e9
             if 0.001 < time_diff_s < 1.0: # Sanity check for dt
                 dt = time_diff_s
             else:
                 self.get_logger().warn(f"Unusual dt calculated ({time_diff_s:.4f}s), using fallback dt: {dt:.4f}s")
+        else:
+            last_frame_time = self.get_clock().now()
+
         
         self.get_logger().info(f"Current FPS: {1.0 / dt:.2f}")
 
