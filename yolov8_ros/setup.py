@@ -27,6 +27,7 @@ setup(
         "console_scripts": [
             "yolov8_node = yolov8_ros.yolov8_node:main",
             "frame_grabber = yolov8_ros.frame_grabber:main",
+            "yolov8_noRos = yolov8_ros.yolov8_noRos:main", 
         ],
     },
 )
