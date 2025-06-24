@@ -1,6 +1,6 @@
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Int32, Int32MultiArray, Bool
 from cv_bridge import CvBridge
 from ultralytics import YOLO, RTDETR, NAS # Ensure ultralytics is installed
@@ -127,6 +127,9 @@ class YOLOv8Node(Node):
         self.declare_parameter("tracker_timeout", 15)      # Frames to keep a lost track before deleting
         self.declare_parameter("kalman_initial_dt", 1.0/60.0) # Initial/fallback dt for Kalman filter (e.g., for 30fps)
         self.declare_parameter("prediction_lookahead_steps", 0.5) # How many extra 'dt' steps to look ahead (0=std KF, 0.5=half dt ahead, 1.0=full dt ahead)
+        self.declare_parameter("image_topic", "/camera/color/image_raw/compressed")
+        image_topic = self.get_parameter("image_topic").get_parameter_value().string_value
+        self.get_logger().info(f"Subscribing to compressed image topic: {image_topic}")
 
         # Get parameter values
         model_path = self.get_parameter("model_path").get_parameter_value().string_value
@@ -159,7 +162,7 @@ class YOLOv8Node(Node):
         self.get_logger().debug(f"YOLO Model '{model_type}' initialized successfully.")
 
         # --- ROS Subscriptions and Publishers ---
-        self.subscription = self.create_subscription(Image, "video_frames", self.listener_callback, 10)
+        self.subscription = self.create_subscription(CompressedImage, "video_frames", self.listener_callback, 10)
         self.bridge = CvBridge()
         self.int_subscription = self.create_subscription(Int32, "robot_id", self.id_listener_callback, 10)
         self.bbox_publisher = self.create_publisher(Int32MultiArray, "bounding_box", 10)
@@ -175,6 +178,7 @@ class YOLOv8Node(Node):
         self.last_frame_time = None # For dynamic dt calculation
     # --- Main Image Processing Callback ---
     def listener_callback(self, msg: Image):
+        self.get_logger().debug("Received compressed image message.")
         # Calculate dynamic dt
         current_time = self.get_clock().now()
         dt = self.kalman_initial_dt_val 
@@ -190,8 +194,15 @@ class YOLOv8Node(Node):
         self.get_logger().debug(f"Using dt for this frame: {dt:.4f}s")
 
         self.get_logger().debug("Received image message.")
-        frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        # frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        np_arr = np.array(msg.data, dtype=np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        # Check if decompression was successful
+        if frame is None:
+            self.get_logger().error("Failed to decompress image.")
+            return
         original_height, original_width = frame.shape[:2]
+
 
         # if self.show: cv2.imshow("1. Raw Input", frame); cv2.waitKey(1)
 
