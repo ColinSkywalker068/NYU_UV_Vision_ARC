@@ -1,4 +1,15 @@
 FROM nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper
 
-ENTRYPOINT /bin/bash -c "source /opt/ros/humble/install/setup.bash && cd /home/ultraviolet/CV_Detection && source install/local_setup.bash && ros2 launch yolov8_ros launch.py"
+# Set the working directory to simplify the commands in the ENTRYPOINT
+WORKDIR /home/ultraviolet/CV_Detection
 
+# The ENTRYPOINT contains the full sequence of commands to run on container start
+ENTRYPOINT ["/bin/bash", "-c", "set -e; \
+    echo '--- Sourcing ROS 2 environment ---'; \
+    source install/setup.bash; \
+    echo '--- Step 1: Running uv clean ---'; \
+    uv clean; \
+    echo '--- Step 2: Running uv build ---'; \
+    uv build; \
+    echo '--- Step 3: Running yolov8_ros ---'; \
+    uv run yolov8_ros launch_old.py"]
