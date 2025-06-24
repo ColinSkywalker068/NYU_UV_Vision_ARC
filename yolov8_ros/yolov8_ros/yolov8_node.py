@@ -1,6 +1,6 @@
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import CompressedImage
+from sensor_msgs.msg import Image
 from std_msgs.msg import Int32, Int32MultiArray, Bool
 from cv_bridge import CvBridge
 from ultralytics import YOLO, RTDETR, NAS # Ensure ultralytics is installed
@@ -127,9 +127,6 @@ class YOLOv8Node(Node):
         self.declare_parameter("tracker_timeout", 15)      # Frames to keep a lost track before deleting
         self.declare_parameter("kalman_initial_dt", 1.0/60.0) # Initial/fallback dt for Kalman filter (e.g., for 30fps)
         self.declare_parameter("prediction_lookahead_steps", 0.5) # How many extra 'dt' steps to look ahead (0=std KF, 0.5=half dt ahead, 1.0=full dt ahead)
-        self.declare_parameter("image_topic", "/camera/color/image_raw/compressed")
-        image_topic = self.get_parameter("image_topic").get_parameter_value().string_value
-        self.get_logger().info(f"Subscribing to compressed image topic: {image_topic}")
 
         # Get parameter values
         model_path = self.get_parameter("model_path").get_parameter_value().string_value
@@ -162,12 +159,7 @@ class YOLOv8Node(Node):
         self.get_logger().info(f"YOLO Model '{model_type}' initialized successfully.")
 
         # --- ROS Subscriptions and Publishers ---
-        self.subscription = self.create_subscription(
-            CompressedImage, 
-            image_topic, # Use the variable here
-            self.listener_callback, 
-            10
-        )
+        self.subscription = self.create_subscription(Image, "video_frames", self.listener_callback, 10)
         self.bridge = CvBridge()
         self.int_subscription = self.create_subscription(Int32, "robot_id", self.id_listener_callback, 10)
         self.bbox_publisher = self.create_publisher(Int32MultiArray, "bounding_box", 10)
@@ -182,8 +174,7 @@ class YOLOv8Node(Node):
         self.active_trackers = {}  # Stores {track_id: TrackerWrapper}
         self.last_frame_time = None # For dynamic dt calculation
     # --- Main Image Processing Callback ---
-    def listener_callback(self, msg: CompressedImage):
-        self.get_logger().info("Received compressed image message.")
+    def listener_callback(self, msg: Image):
         # Calculate dynamic dt
         current_time = self.get_clock().now()
         dt = self.kalman_initial_dt_val 
@@ -196,18 +187,11 @@ class YOLOv8Node(Node):
         if dt > 0:
             self.get_logger().info(f"Current FPS: {1.0 / dt:.2f}")
         self.last_frame_time = current_time
-        self.get_logger().info(f"Using dt for this frame: {dt:.4f}s")
+        self.get_logger().debug(f"Using dt for this frame: {dt:.4f}s")
 
-        self.get_logger().info("Received image message.")
-        # frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-        np_arr = np.array(msg.data, dtype=np.uint8)
-        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        # Check if decompression was successful
-        if frame is None:
-            self.get_logger().error("Failed to decompress image.")
-            return
+        self.get_logger().debug("Received image message.")
+        frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         original_height, original_width = frame.shape[:2]
-
 
         # if self.show: cv2.imshow("1. Raw Input", frame); cv2.waitKey(1)
 
@@ -230,7 +214,7 @@ class YOLOv8Node(Node):
         # if self.show: cv2.imshow("2. Padded Input for YOLO", padded_image); cv2.waitKey(1)
 
         # YOLO Model Tracking
-        self.get_logger().info(f"Calling model.track() with conf: {self.conf}")
+        self.get_logger().debug(f"Calling model.track() with conf: {self.conf}")
         results = self.model.track(
             padded_image,
             half=self.half,
@@ -254,7 +238,7 @@ class YOLOv8Node(Node):
             
             if boxes_data is not None and hasattr(boxes_data, 'xyxy') and boxes_data.xyxy is not None:
                 bbox_coords_list = boxes_data.xyxy.cpu().int().tolist()
-                self.get_logger().info(f"Number of raw boxes from YOLO: {len(bbox_coords_list)}")
+                self.get_logger().debug(f"Number of raw boxes from YOLO: {len(bbox_coords_list)}")
 
                 track_ids_list = []
                 if hasattr(boxes_data, 'id') and boxes_data.id is not None:
@@ -274,7 +258,7 @@ class YOLOv8Node(Node):
                     if roi_img.shape[0] == 0 or roi_img.shape[1] == 0: continue # Skip empty ROIs
                     
                     is_enemy, _ = self.check_enemy(roi_img) # check_enemy logs its own decision
-                    self.get_logger().info(f"Raw detection {i} (ID: {track_id}): check_enemy result: {is_enemy}")
+                    self.get_logger().debug(f"Raw detection {i} (ID: {track_id}): check_enemy result: {is_enemy}")
 
                     if is_enemy and track_id is not None: # Must be an enemy AND have a track ID for KF
                         current_frame_processed_track_ids.add(track_id)
@@ -285,13 +269,13 @@ class YOLOv8Node(Node):
                             self.get_logger().info(f"Creating new Kalman tracker for enemy ID: {track_id}")
                             self.active_trackers[track_id] = TrackerWrapper(ArmorPlateTracker(center_x, center_y, width_det, height_det))
                         else:
-                            self.get_logger().info(f"Updating Kalman tracker for enemy ID: {track_id}")
+                            self.get_logger().debug(f"Updating Kalman tracker for enemy ID: {track_id}")
                             self.active_trackers[track_id].tracker.update(center_x, center_y, width_det, height_det)
                         self.active_trackers[track_id].lost_frames = 0
             else:
-                self.get_logger().info("No bounding boxes (xyxy) in YOLO results[0].")
+                self.get_logger().debug("No bounding boxes (xyxy) in YOLO results[0].")
         else:
-            self.get_logger().info("YOLO model.track() returned no results or empty list.")
+            self.get_logger().debug("YOLO model.track() returned no results or empty list.")
 
         # Manage and predict from active Kalman trackers
         active_ids_to_remove = []
@@ -317,7 +301,7 @@ class YOLOv8Node(Node):
                 pred_x_final = pred_x_curr + vx * additional_lookahead_time + 0.5 * ax * (additional_lookahead_time**2)
                 pred_y_final = pred_y_curr + vy * additional_lookahead_time + 0.5 * ay * (additional_lookahead_time**2)
                 
-                self.get_logger().info(f"KF ID {track_id}: BasePred({pred_x_curr},{pred_y_curr}), Vel({vx:.1f},{vy:.1f}), Acc({ax:.1f},{ay:.1f}), LookAheadT({additional_lookahead_time:.3f}), FinalPred({pred_x_final:.0f},{pred_y_final:.0f})")
+                self.get_logger().debug(f"KF ID {track_id}: BasePred({pred_x_curr},{pred_y_curr}), Vel({vx:.1f},{vy:.1f}), Acc({ax:.1f},{ay:.1f}), LookAheadT({additional_lookahead_time:.3f}), FinalPred({pred_x_final:.0f},{pred_y_final:.0f})")
 
                 kf_width, kf_height = tw_wrapper.tracker.width, tw_wrapper.tracker.height
                 pub_x1 = int(pred_x_final - kf_width / 2); pub_y1 = int(pred_y_final - kf_height / 2)
@@ -351,7 +335,7 @@ class YOLOv8Node(Node):
             self.override.data = False
             self.bbox_publisher.publish(self.bbox_msg)
             self.override_publisher.publish(self.override)
-            self.get_logger().info("No KF-tracked enemy published. Sent default bbox.")
+            self.get_logger().debug("No KF-tracked enemy published. Sent default bbox.")
 
         if self.show and vis_frame is not None:
             cv2.imshow("3. YOLOv8 Kalman Tracking", vis_frame)
@@ -393,7 +377,7 @@ class YOLOv8Node(Node):
         is_it_enemy = color_area > min_color_area_threshold
         
         target_color_str = 'BLUE' if self.target_class == BLUE_CLASS else 'RED'
-        self.get_logger().info(
+        self.get_logger().debug(
             f"check_enemy: Target: {target_color_str}. "
             f"ROI Shape: {roi_image.shape}, Color Area: {color_area}, Threshold Req: {min_color_area_threshold:.2f}. Result: {is_it_enemy}"
         )
