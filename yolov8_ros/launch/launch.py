@@ -36,34 +36,17 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(realsense_launch_file),
                 launch_arguments={
-                    # -- Core Performance Settings --
-
-                    # Use a single profile to set resolution and FPS. This is more reliable.
-                    "rgb_camera.profile": "640x480x60",
-
-                    # Use a raw, uncompressed format to avoid CPU overhead from decompression.
-                    # YUYV is a common and performant choice.
-                    'rgb_camera.color_format': "YUYV",
-
-                    # Disable all other streams to maximize bandwidth and performance for the color stream.
-                    "enable_depth": "false",
+                    "rgb_camera.color_profile": "640x480x60",
+                    "rgb_camera.enable_auto_exposure": "true",  # Manual exposure
+                    "enable_depth": "false",  # Turn off depth
                     'enable_infra1': "false",
                     'enable_infra2': "false",
-
-                    # Disable sync; it's not needed when only one stream (color) is active.
-                    "enable_sync": "false",
-                    
-                    # Disable pointcloud and align_depth, which are computationally expensive.
-                    "pointcloud.enable": "false",
-                    "align_depth.enable": "false",
-
-                    # -- Image Quality Settings (with minimal performance impact) --
-                    "rgb_camera.enable_auto_exposure": "true",
-                    "rgb_camera.enable_auto_white_balance": "true",
-                    
-                    # This setting can sometimes help with timestamping consistency.
-                    "rgb_camera.global_time_enabled": "true",
-
+                    #"rgb_camera.exposure": "100",  # Exposure value
+                    #"rgb_camera.brightness": "50",  # Brightness tweak
+                    "rgb_camera.enable_auto_white_balance": "true",  # Manual WB
+                    "rgb_camera.global_time_enabled": "true",  # Disable global timing
+                    # "enable_sync": "true",
+                    # 'image_format': "MJPG",
                     'rgb_camera.width': "640",
                     'rgb_camera.height': "480",
                     'rgb_camera.fps': "60",
@@ -71,6 +54,7 @@ def generate_launch_description():
                     #"rgb_camera.gain": "0",  # Gain set to 0
                     #"rgb_camera.gamma": "250",  # Gamma correction
                     #"rgb_camera.white_balance": "4800",  # White balance in K
+
                 }.items(),
             ),
         ]
