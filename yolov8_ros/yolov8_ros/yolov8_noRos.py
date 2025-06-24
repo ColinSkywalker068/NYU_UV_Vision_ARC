@@ -331,8 +331,15 @@ class YOLOv8Node:
             self.override_active = False
 
         if self.show and vis_frame is not None:
-            cv2.imshow("YOLOv8 Kalman Tracking", vis_frame)
-            cv2.waitKey(1)
+            try:
+                cv2.imshow("YOLOv8 Kalman Tracking", vis_frame)
+                cv2.waitKey(1)
+            except cv2.error as e:
+                if "GTK backend" in str(e):
+                    print("Warning: Cannot initialize display (GTK backend error). Disabling visualization.")
+                    self.show = False  # Disable further attempts to show windows
+                else:
+                    raise e
 
         return vis_frame
 
@@ -364,6 +371,9 @@ class YOLOv8Node:
         """Main execution loop"""
         print("Starting detection loop. Press 'q' to quit, 't' to toggle target class...")
         
+        frame_count = 0
+        max_frames_headless = 1000  # Run max 1000 frames if no display available
+        
         try:
             while True:
                 frame = self.get_frame()
@@ -373,21 +383,31 @@ class YOLOv8Node:
 
                 # Process frame
                 processed_frame = self.process_frame(frame)
+                frame_count += 1
+                
+                # In headless mode, exit after processing some frames
+                if not self.show and frame_count >= max_frames_headless:
+                    print(f"Processed {frame_count} frames in headless mode. Exiting.")
+                    break
 
                 # Handle key presses
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord('q'):
-                    break
-                elif key == ord('t'):
-                    self.target_class = BLUE_CLASS if self.target_class == RED_CLASS else RED_CLASS
-                    target_str = 'BLUE' if self.target_class == BLUE_CLASS else 'RED'
-                    print(f"Switched target class to: {target_str}")
-                elif key == ord('s'):
-                    # Save current bbox data to file for external access
-                    bbox_data, override = self.get_bbox_data()
-                    with open('/tmp/bbox_data.txt', 'w') as f:
-                        f.write(f"{bbox_data[0]},{bbox_data[1]},{bbox_data[2]},{bbox_data[3]},{override}\n")
-                    print(f"Saved bbox data: {bbox_data}, override: {override}")
+                try:
+                    key = cv2.waitKey(1) & 0xFF
+                    if key == ord('q'):
+                        break
+                    elif key == ord('t'):
+                        self.target_class = BLUE_CLASS if self.target_class == RED_CLASS else RED_CLASS
+                        target_str = 'BLUE' if self.target_class == BLUE_CLASS else 'RED'
+                        print(f"Switched target class to: {target_str}")
+                    elif key == ord('s'):
+                        # Save current bbox data to file for external access
+                        bbox_data, override = self.get_bbox_data()
+                        with open('/tmp/bbox_data.txt', 'w') as f:
+                            f.write(f"{bbox_data[0]},{bbox_data[1]},{bbox_data[2]},{bbox_data[3]},{override}\n")
+                        print(f"Saved bbox data: {bbox_data}, override: {override}")
+                except cv2.error:
+                    # If waitKey fails due to display issues, just continue
+                    pass
 
         except KeyboardInterrupt:
             print("Keyboard interrupt received, shutting down.")
@@ -412,6 +432,7 @@ def main():
     parser.add_argument('--half', action='store_true', default=True, help='Use FP16 precision')
     parser.add_argument('--imgsz', type=int, default=640, help='Model input image size')
     parser.add_argument('--show', action='store_true', default=True, help='Show visualization')
+    parser.add_argument('--headless', action='store_true', help='Run in headless mode (no display)')
     parser.add_argument('--conf', type=float, default=0.05, help='Confidence threshold')
     parser.add_argument('--tracker_timeout', type=int, default=15, help='Frames to keep lost track')
     parser.add_argument('--kalman_dt', type=float, default=1.0/60.0, help='Initial Kalman dt')
@@ -424,13 +445,18 @@ def main():
     
     args = parser.parse_args()
     
+    # Override show parameter if headless mode is requested
+    show_visualization = args.show and not args.headless
+    if args.headless:
+        print("Running in headless mode - visualization disabled")
+    
     detector = YOLOv8Node(
         model_path=args.model_path,
         task=args.task,
         model_type=args.type,
         half=args.half,
         imgsz=args.imgsz,
-        show=args.show,
+        show=show_visualization,
         conf=args.conf,
         tracker_timeout=args.tracker_timeout,
         kalman_initial_dt=args.kalman_dt,
