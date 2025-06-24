@@ -240,7 +240,7 @@ class YOLOv8Node(Node):
             else:
                 # self.get_logger().warn(f"Unusual dt calculated ({time_diff_s:.4f}s), using fallback dt: {dt:.4f}s") # Too verbose
                 pass
-        # if dt > 0: self.get_logger().info(f"Current FPS: {1.0 / dt:.2f}") # Too verbose
+        if dt > 0: self.get_logger().info(f"Current FPS: {1.0 / dt:.2f}") # Too verbose
         self.last_frame_time = current_time
         # self.get_logger().info(f"Using dt for this frame: {dt:.4f}s") # Too verbose
 
