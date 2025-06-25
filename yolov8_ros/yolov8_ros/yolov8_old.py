@@ -31,7 +31,6 @@ BBOX_COLOR = (0, 255, 0)
 BBOX_LINE_SIZE = 2
 IMG_WIDTH = 640
 IMG_HEIGHT = 480
-# --- MODIFIED: Changed FPS from 60 to 30 for better stability ---
 FPS = 60
 
 
@@ -41,13 +40,12 @@ class YOLOv8Node(Node):
         self.get_logger().info("Initializing YOLOv8 RealSense Node...")
 
         # --- ROS Parameter Declaration ---
-        self.declare_parameter("model_path", "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine")
-        self.declare_parameter("task", "obb")
+        self.declare_parameter("model_path", "/path/to/your/model.engine")
+        self.declare_parameter("task", "detect")  # Can be 'detect' or 'obb'
         self.declare_parameter("half", True)
         self.declare_parameter("imgsz", 640)
         self.declare_parameter("show_video", False)
         self.declare_parameter("conf", 0.5)
-        self.declare_parameter("camera_exposure", 100)
 
         # --- Get ROS Parameters ---
         model_path = self.get_parameter("model_path").get_parameter_value().string_value
@@ -56,7 +54,6 @@ class YOLOv8Node(Node):
         self.imgsz = self.get_parameter("imgsz").get_parameter_value().integer_value
         self.show = self.get_parameter("show_video").get_parameter_value().bool_value
         self.conf = self.get_parameter("conf").get_parameter_value().double_value
-        self.camera_exposure = self.get_parameter("camera_exposure").get_parameter_value().integer_value
         self.target_class = BLUE_CLASS
 
         # --- Model Initialization ---
@@ -88,82 +85,71 @@ class YOLOv8Node(Node):
         config.enable_stream(rs.stream.color, IMG_WIDTH, IMG_HEIGHT, rs.format.bgr8, FPS)
         
         try:
-            profile = self.pipeline.start(config)
+            self.pipeline.start(config)
             self.get_logger().info(f"RealSense camera started at {IMG_WIDTH}x{IMG_HEIGHT} @ {FPS} FPS.")
-            
-            color_sensor = profile.get_device().first_color_sensor()
-            if color_sensor.supports(rs.option.enable_auto_exposure):
-                color_sensor.set_option(rs.option.enable_auto_exposure, 0)
-                self.get_logger().info("Auto-exposure disabled.")
-
-            if color_sensor.supports(rs.option.exposure):
-                color_sensor.set_option(rs.option.exposure, float(self.camera_exposure))
-                self.get_logger().info(f"Manual exposure set to: {self.camera_exposure} us.")
         except Exception as e:
             self.get_logger().error(f"Failed to start RealSense camera: {e}")
             self.is_running = False
             return
         
+        # Start the camera polling thread
         self.camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
         self.camera_thread.start()
         self.get_logger().info("Camera polling thread started.")
 
         # --- ROS Timer for Main Loop ---
-        self.timer_period = 1.0 / (FPS * 2)
+        self.timer_period = 1.0 / (FPS * 2) # Run processing loop faster than camera
         self.timer = self.create_timer(self.timer_period, self.process_frame_callback)
         self.last_frame_time = None
-        
         self.get_logger().info("YOLOv8 RealSense Node has been initialized and is running.")
 
     def _camera_loop(self):
         """This function runs in a separate thread to continuously poll the camera."""
         while self.is_running:
             try:
-                # --- MODIFIED: Added a timeout to prevent the thread from blocking forever ---
-                frames = self.pipeline.wait_for_frames(timeout_ms=5000)
+                frames = self.pipeline.wait_for_frames()
                 color_frame = frames.get_color_frame()
                 if color_frame:
+                    # Convert to numpy array
                     frame_data = np.asanyarray(color_frame.get_data())
                     with self.frame_lock:
                         self.latest_frame = frame_data
             except Exception as e:
-                # --- MODIFIED: Added more specific error logging ---
-                self.get_logger().error(
-                    f"Error in camera loop: {e}. "
-                    "This may be due to a disconnected camera, USB bandwidth issues, or a driver problem.",
-                    throttle_duration_sec=5
-                )
-                time.sleep(1)
+                self.get_logger().error(f"Error in camera loop: {e}")
+                time.sleep(1) # Wait a bit before retrying
 
     def process_frame_callback(self):
         """Main loop to process frames and publish results."""
+        # --- FPS Calculation ---
         current_time = self.get_clock().now()
         if self.last_frame_time is not None:
             time_diff_s = (current_time - self.last_frame_time).nanoseconds / 1e9
             if time_diff_s > 0:
                 fps = 1.0 / time_diff_s
-                self.get_logger().info(f"Processing FPS: {fps:.2f}", throttle_duration_sec=2.0)
+                self.get_logger().info(f"Processing FPS: {fps:.2f}")
         self.last_frame_time = current_time
 
+        # --- Get Latest Frame from Camera Thread ---
         with self.frame_lock:
             if self.latest_frame is None:
                 self.get_logger().warn("No frame available from camera thread yet.", throttle_duration_sec=5)
                 return
-            frame = self.latest_frame.copy()
+            frame = self.latest_frame.copy() # Make a copy for processing
 
         height, width = frame.shape[:2]
         required_padding = max(0, width - height)
         padding = required_padding // 2
         padded_image = cv2.copyMakeBorder(frame, padding, padding, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0])
 
-        results = self.model(padded_image, half=self.half, imgsz=self.imgsz, show=False, conf=self.conf, verbose=False)
+        results = self.model(padded_image, half=self.half, imgsz=self.imgsz, show=self.show, conf=self.conf, verbose=False)
 
         valid_detections = []
         for r in results:
-            bboxes = []
-            if self.task == 'obb' and hasattr(r, "obb") and r.obb is not None:
+            if self.task == 'obb':
+                if not hasattr(r, "obb") or r.obb is None: continue
                 bboxes = r.obb.xyxy.cpu().int().tolist()
-            elif self.task == 'detect' and hasattr(r, "boxes") and r.boxes is not None:
+            else:
+                if not hasattr(r, "boxes") or r.boxes is None: continue
                 bboxes = r.boxes.xyxy.cpu().int().tolist()
             
             for bbox in bboxes:
@@ -190,11 +176,12 @@ class YOLOv8Node(Node):
         if self.show:
             cv2.imshow("YOLOv8 RealSense Detection", padded_image)
             if cv2.waitKey(1) & 0xFF == ord('q'):
-                self.get_logger().info("'q' pressed, raising KeyboardInterrupt to shut down.")
-                raise KeyboardInterrupt
+                self.get_logger().info("'q' pressed, shutting down.")
+                self.context.try_shutdown()
 
     def id_listener_callback(self, msg):
         self.target_class = BLUE_CLASS if msg.data in RED_TEAM else RED_CLASS
+        self.get_logger().info(f"Set target class to {'BLUE' if self.target_class == BLUE_CLASS else 'RED'}.")
 
     def check_enemy(self, roi_image):
         if roi_image.size == 0: return False, 0
@@ -209,10 +196,11 @@ class YOLOv8Node(Node):
         return color_area > color_threshold, color_area
 
     def destroy_node(self):
+        """Custom cleanup function to shutdown threads and hardware."""
         self.get_logger().info("Shutting down...")
-        self.is_running = False
+        self.is_running = False # Signal the camera thread to stop
         if hasattr(self, 'camera_thread'):
-            self.camera_thread.join(timeout=2)
+            self.camera_thread.join(timeout=1) # Wait for the thread to finish
         if hasattr(self, 'pipeline'):
             self.get_logger().info("Stopping RealSense pipeline.")
             self.pipeline.stop()
@@ -225,7 +213,7 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info("KeyboardInterrupt caught, shutting down cleanly.")
+        pass
     finally:
         node.destroy_node()
         rclpy.shutdown()
