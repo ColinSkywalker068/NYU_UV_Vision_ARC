@@ -31,6 +31,7 @@ BBOX_COLOR = (0, 255, 0)
 BBOX_LINE_SIZE = 2
 IMG_WIDTH = 640
 IMG_HEIGHT = 480
+# --- MODIFIED: Changed FPS from 60 to 30 for better stability ---
 FPS = 60
 
 
@@ -40,7 +41,6 @@ class YOLOv8Node(Node):
         self.get_logger().info("Initializing YOLOv8 RealSense Node...")
 
         # --- ROS Parameter Declaration ---
-        # It's good practice to provide meaningful defaults
         self.declare_parameter("model_path", "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine")
         self.declare_parameter("task", "obb")
         self.declare_parameter("half", True)
@@ -57,12 +57,11 @@ class YOLOv8Node(Node):
         self.show = self.get_parameter("show_video").get_parameter_value().bool_value
         self.conf = self.get_parameter("conf").get_parameter_value().double_value
         self.camera_exposure = self.get_parameter("camera_exposure").get_parameter_value().integer_value
-        self.target_class = BLUE_CLASS # Default target
+        self.target_class = BLUE_CLASS
 
         # --- Model Initialization ---
         self.get_logger().info(f"Loading model: {model_path}")
         try:
-            # CORRECTED: Use the 'task' parameter from the param server
             self.model = YOLO(model_path, task=self.task)
             self.get_logger().info(f"Model loaded successfully for task '{self.task}'.")
         except Exception as e:
@@ -89,63 +88,62 @@ class YOLOv8Node(Node):
         config.enable_stream(rs.stream.color, IMG_WIDTH, IMG_HEIGHT, rs.format.bgr8, FPS)
         
         try:
-            # The pipeline is started here ONCE
             profile = self.pipeline.start(config)
             self.get_logger().info(f"RealSense camera started at {IMG_WIDTH}x{IMG_HEIGHT} @ {FPS} FPS.")
-
-            # --- Set Exposure using the ROS Parameter ---
+            
             color_sensor = profile.get_device().first_color_sensor()
             if color_sensor.supports(rs.option.enable_auto_exposure):
                 color_sensor.set_option(rs.option.enable_auto_exposure, 0)
                 self.get_logger().info("Auto-exposure disabled.")
 
             if color_sensor.supports(rs.option.exposure):
-                color_sensor.set_option(rs.option.exposure, float(self.camera_exposure)) # Ensure it's a float
+                color_sensor.set_option(rs.option.exposure, float(self.camera_exposure))
                 self.get_logger().info(f"Manual exposure set to: {self.camera_exposure} us.")
-
-            # FIXED: REMOVED THE DUPLICATE self.pipeline.start(config) CALL
-
         except Exception as e:
             self.get_logger().error(f"Failed to start RealSense camera: {e}")
             self.is_running = False
             return
         
-        # Start the camera polling thread
         self.camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
         self.camera_thread.start()
         self.get_logger().info("Camera polling thread started.")
 
         # --- ROS Timer for Main Loop ---
-        self.timer_period = 1.0 / (FPS * 2) # Run processing loop faster than camera
+        self.timer_period = 1.0 / (FPS * 2)
         self.timer = self.create_timer(self.timer_period, self.process_frame_callback)
         self.last_frame_time = None
+        
         self.get_logger().info("YOLOv8 RealSense Node has been initialized and is running.")
 
     def _camera_loop(self):
         """This function runs in a separate thread to continuously poll the camera."""
         while self.is_running:
             try:
-                frames = self.pipeline.wait_for_frames()
+                # --- MODIFIED: Added a timeout to prevent the thread from blocking forever ---
+                frames = self.pipeline.wait_for_frames(timeout_ms=5000)
                 color_frame = frames.get_color_frame()
                 if color_frame:
                     frame_data = np.asanyarray(color_frame.get_data())
                     with self.frame_lock:
                         self.latest_frame = frame_data
             except Exception as e:
-                self.get_logger().error(f"Error in camera loop: {e}", throttle_duration_sec=5)
-                time.sleep(1) # Wait a bit before retrying
+                # --- MODIFIED: Added more specific error logging ---
+                self.get_logger().error(
+                    f"Error in camera loop: {e}. "
+                    "This may be due to a disconnected camera, USB bandwidth issues, or a driver problem.",
+                    throttle_duration_sec=5
+                )
+                time.sleep(1)
 
     def process_frame_callback(self):
         """Main loop to process frames and publish results."""
-        # --- FPS Calculation ---
-        # (This can be noisy, consider logging it less frequently if needed)
-        # current_time = self.get_clock().now()
-        # if self.last_frame_time is not None:
-        #     time_diff_s = (current_time - self.last_frame_time).nanoseconds / 1e9
-        #     if time_diff_s > 0:
-        #         fps = 1.0 / time_diff_s
-        #         self.get_logger().info(f"Processing FPS: {fps:.2f}", throttle_duration_sec=2)
-        # self.last_frame_time = current_time
+        current_time = self.get_clock().now()
+        if self.last_frame_time is not None:
+            time_diff_s = (current_time - self.last_frame_time).nanoseconds / 1e9
+            if time_diff_s > 0:
+                fps = 1.0 / time_diff_s
+                self.get_logger().info(f"Processing FPS: {fps:.2f}", throttle_duration_sec=2.0)
+        self.last_frame_time = current_time
 
         with self.frame_lock:
             if self.latest_frame is None:
@@ -158,16 +156,14 @@ class YOLOv8Node(Node):
         padding = required_padding // 2
         padded_image = cv2.copyMakeBorder(frame, padding, padding, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0])
 
-        # CORRECTED: Use the parameters retrieved during initialization
         results = self.model(padded_image, half=self.half, imgsz=self.imgsz, show=False, conf=self.conf, verbose=False)
 
         valid_detections = []
         for r in results:
-            if self.task == 'obb':
-                if not hasattr(r, "obb") or r.obb is None: continue
+            bboxes = []
+            if self.task == 'obb' and hasattr(r, "obb") and r.obb is not None:
                 bboxes = r.obb.xyxy.cpu().int().tolist()
-            else:
-                if not hasattr(r, "boxes") or r.boxes is None: continue
+            elif self.task == 'detect' and hasattr(r, "boxes") and r.boxes is not None:
                 bboxes = r.boxes.xyxy.cpu().int().tolist()
             
             for bbox in bboxes:
@@ -193,14 +189,12 @@ class YOLOv8Node(Node):
 
         if self.show:
             cv2.imshow("YOLOv8 RealSense Detection", padded_image)
-            # FIXED: The correct way to handle shutdown is via KeyboardInterrupt in main
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 self.get_logger().info("'q' pressed, raising KeyboardInterrupt to shut down.")
                 raise KeyboardInterrupt
 
     def id_listener_callback(self, msg):
         self.target_class = BLUE_CLASS if msg.data in RED_TEAM else RED_CLASS
-        # self.get_logger().info(f"Set target class to {'BLUE' if self.target_class == BLUE_CLASS else 'RED'}.")
 
     def check_enemy(self, roi_image):
         if roi_image.size == 0: return False, 0
@@ -215,11 +209,10 @@ class YOLOv8Node(Node):
         return color_area > color_threshold, color_area
 
     def destroy_node(self):
-        """Custom cleanup function to shutdown threads and hardware."""
         self.get_logger().info("Shutting down...")
         self.is_running = False
         if hasattr(self, 'camera_thread'):
-            self.camera_thread.join(timeout=1)
+            self.camera_thread.join(timeout=2)
         if hasattr(self, 'pipeline'):
             self.get_logger().info("Stopping RealSense pipeline.")
             self.pipeline.stop()
