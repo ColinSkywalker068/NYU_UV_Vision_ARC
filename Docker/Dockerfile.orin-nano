@@ -1,0 +1,145 @@
+FROM dustynv/ros:humble-ros-core-l4t-r36.2.0
+
+# Update ROS GPG key
+RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
+    echo "deb [arch=arm64 signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu jammy main" > /etc/apt/sources.list.d/ros2.list
+
+# Install Python
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-dev && apt-get update && apt-get clean all
+
+# Install basic dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+	libssl-dev \
+	libusb-1.0-0-dev \
+        libgtk-3-dev \
+        libglfw3-dev \
+	libgl1-mesa-dev \
+	libglu1-mesa-dev \
+	libusb-1.0-0 \
+        udev \
+        apt-transport-https \
+        ca-certificates \
+        curl \
+        dirmngr \
+        gnupg2 \
+        software-properties-common \
+	qtcreator && \
+    rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Realsense Library
+# https://github.com/IntelRealSense/librealsense/issues/11931
+ARG LIBREALSENSE_VERSION=development
+RUN git clone --branch ${LIBREALSENSE_VERSION} --depth=1 https://github.com/IntelRealSense/librealsense && \
+    cd librealsense && \
+    mkdir build && \
+    cd build && \
+    cmake \
+        -DBUILD_EXAMPLES=true \
+	-DFORCE_RSUSB_BACKEND=true \
+	-DBUILD_WITH_CUDA=true \
+	-DCMAKE_BUILD_TYPE=release \
+	-DBUILD_PYTHON_BINDINGS=bool:true \
+	-DPYTHON_EXECUTABLE=/usr/bin/python3 \
+	../ && \
+    make -j$(($(nproc)-1)) && \
+    make install && \
+    cd ../ && \
+    cp -r . /usr/local/ && \
+    cp ./config/99-realsense-libusb.rules /etc/udev/rules.d/ && \
+    cp ./config/99-realsense-d4xx-mipi-dfu.rules /etc/udev/rules.d/ && \
+    rm -rf librealsense
+
+# Install CV dependencies
+ENV PIP_INDEX_URL=https://pypi.org/simple
+
+RUN pip3 install --no-cache-dir lapx \
+    torch==2.1.0 \
+    torchvision==0.16.0 \
+    torchaudio==2.1.0 \
+    onnxruntime==1.16.3 \
+    lapx
+
+# Fix numpy2 incompatibility with CV libraries
+RUN pip3 install "numpy<2" --force-reinstall
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# CV Bridge: https://github.com/ros-perception/vision_opencv
+ENV WS_DIR_BRIDGE="/ros2_bridge_ws"
+WORKDIR ${WS_DIR_BRIDGE}
+
+RUN apt-get update \
+ && mkdir src \
+ && cd src \
+ && git clone https://github.com/ros-perception/vision_opencv.git -b humble \
+ && cd .. \
+ && bash -c "source /opt/ros/${ROS_DISTRO}/install/setup.bash" \
+ && colcon build
+RUN bash -c "source ./install/local_setup.sh"
+
+# Realsense ROS: https://github.com/IntelRealSense/realsense-ros/tree/ros2-development
+ENV WS_DIR_REALSENSE="/ros2_realsense_ws"
+WORKDIR ${WS_DIR_REALSENSE}
+
+RUN apt-get update -y \
+ && mkdir src \
+ && cd src \
+ && git clone https://github.com/IntelRealSense/realsense-ros.git -b ros2-development \
+ && cd .. \
+ && apt-get install -y python3-rosdep \
+ && bash -c "source /opt/ros/${ROS_DISTRO}/install/setup.bash" \
+ && rm /etc/ros/rosdep/sources.list.d/20-default.list \
+ && rosdep init \
+ && rosdep update \
+ && rosdep install -i --from-path src --rosdistro ${ROS_DISTRO} --skip-keys=librealsense2 -y \
+ && bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash" \
+ && colcon build
+RUN bash -c "source ./install/local_setup.sh"
+
+# YOLOv8 ROS
+ENV WS_DIR_YOLOV8="/ros2_yolov8_ws"
+WORKDIR ${WS_DIR_YOLOV8}
+RUN apt-get update -y \
+ && mkdir src \
+ && cd src \
+ && git clone https://github.com/mgonzs13/yolov8_ros.git \
+ && pip3 install ultralytics --no-cache-dir --no-deps \
+ && pip3 install --no-cache-dir py-cpuinfo psutil scipy seaborn thop tqdm pandas onnxsim \
+ && pip3 install --no-cache-dir --upgrade matplotlib gitpython \
+ && cd .. \
+ && bash -c "source /opt/ros/${ROS_DISTRO}/install/setup.bash" \
+ && rm /etc/ros/rosdep/sources.list.d/20-default.list \
+ && rosdep init \
+ && rosdep update \
+ && rosdep install --from-paths src --ignore-src -r -y \
+ && bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash" \
+ && colcon build
+RUN bash -c "source ${WS_DIR_YOLOV8}/install/local_setup.sh"
+
+# Install application dependencies
+RUN apt-get update && apt-get install -y \
+    ros-${ROS_DISTRO}-rqt \
+    ros-${ROS_DISTRO}-rqt-plot \
+    psmisc
+
+# Make setup scripts run every time the shell starts
+RUN echo 'git config --global --add safe.directory "*"' >> ~/.bashrc \
+    && echo 'git config --global user.email "jetson.service@gmail.com"' >> ~/.bashrc \
+    && echo 'git config --global user.email "jetson-service"' >> ~/.bashrc \
+    && echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> ~/.bashrc \
+    && echo 'source "${WS_DIR_BRIDGE}/install/local_setup.sh"' >> ~/.bashrc \
+    && echo 'source "${WS_DIR_YOLOV8}/install/local_setup.sh"' >> ~/.bashrc \
+    && echo 'source "${WS_DIR_REALSENSE}/install/local_setup.sh"' >> ~/.bashrc
+
+RUN cd /librealsense/build && make install
+
+ENV DEBIAN_FRONTEND=dialog
+
+WORKDIR /home/ultraviolet
+
+CMD ["/bin/bash"]

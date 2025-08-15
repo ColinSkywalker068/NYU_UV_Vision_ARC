@@ -1,4 +1,4 @@
-FROM osrf/ros:humble-desktop
+FROM ros:humble-perception
 
 # Install Python
 RUN apt-get update && \
@@ -104,7 +104,7 @@ RUN apt-get update && apt-get install -y \
     python3-tk \
     psmisc
 
-# Fix error numpy2 incompatibility with CV libraries
+# Fix numpy2 incompatibility with CV libraries
 RUN pip3 install "numpy<2" --force-reinstall
 
 # Run commands when shell starts
