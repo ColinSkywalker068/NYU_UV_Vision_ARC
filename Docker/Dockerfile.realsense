@@ -3,9 +3,7 @@ ARG BASE_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt
 FROM ${BASE_IMAGE}
 
 # Update ROS2 GPG key to fix apt errors: https://github.com/ros2/ros2/issues/1696
-RUN rm -f /etc/apt/sources.list.d/ros2-latest.list \
- && apt-get update \
- && apt-get install curl \
+RUN apt-get install curl \
  && curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
 
@@ -18,19 +16,19 @@ RUN apt-get install -y --no-install-recommends \
 # Install build dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-	libssl-dev \
-	libusb-1.0-0-dev \
+    libssl-dev \
+    libusb-1.0-0-dev \
     libgtk-3-dev \
     libglfw3-dev \
-	libgl1-mesa-dev \
-	libglu1-mesa-dev \
-	libusb-1.0-0 \
+    libgl1-mesa-dev \
+    libglu1-mesa-dev \
+    libusb-1.0-0 \
     udev \
     apt-transport-https \
     ca-certificates \
     curl \
     software-properties-common \
-	qtcreator && \
+    qtcreator && \
     rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -81,35 +79,15 @@ RUN bash -c "apt-get update -y \
  && colcon build"
 RUN bash -c "source ./install/local_setup.sh"
 
-# YOLOv8 ROS: https://github.com/mgonzs13/yolo_ros
-ENV WS_DIR_YOLOV8="/ros2_yolov8_ws"
-WORKDIR ${WS_DIR_YOLOV8}
-RUN bash -c "apt-get update -y \
- && mkdir src \
- && cd src \
- && git clone https://github.com/mgonzs13/yolov8_ros.git \
- && pip3 install ultralytics --no-cache-dir --no-deps \
- && pip3 install --no-cache-dir py-cpuinfo psutil scipy seaborn thop tqdm pandas onnxsim \
- && pip3 install --no-cache-dir --upgrade matplotlib gitpython \
- && cd .. \
- && source /opt/ros/${ROS_DISTRO}/setup.bash \
- && rm /etc/ros/rosdep/sources.list.d/20-default.list \
- && rosdep init \
- && rosdep update \
- && rosdep install --from-paths src --ignore-src -r -y \
- && source /opt/ros/${ROS_DISTRO}/setup.bash \
- && colcon build"
-RUN source ${WS_DIR_YOLOV8}/install/local_setup.sh
-
 # Install application dependencies
+RUN pip3 install ultralytics --no-cache-dir --no-deps \
+ && pip3 install --no-cache-dir py-cpuinfo psutil scipy seaborn thop tqdm pandas onnxsim lapx \
+ && pip3 install --no-cache-dir --upgrade matplotlib gitpython
+
 RUN apt-get update && apt-get install -y \
-    ros-${ROS_DISTRO}-rviz2 \
     ros-${ROS_DISTRO}-rqt \
     ros-${ROS_DISTRO}-rqt-plot \
-    python3-tk \
     psmisc
-
-RUN pip3 install --no-cache-dir lapx
 
 # Run commands when shell starts
 RUN echo 'git config --global --add safe.directory "*"' >> ~/.bashrc \
