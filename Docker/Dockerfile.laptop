@@ -73,9 +73,9 @@ RUN bash -c "apt-get update -y \
 
 # Install application dependencies
 RUN pip3 install \
-    torch==2.1.0+cpu \
-    torchvision==0.16.0+cpu \
-    torchaudio==2.1.0+cpu \
+    torch==2.1.0 \
+    torchvision==0.16.0 \
+    torchaudio==2.1.0 \
     --index-url https://download.pytorch.org/whl/cpu
 
 RUN pip3 install --no-cache-dir lapx \
@@ -100,10 +100,11 @@ RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-slam-toolbox \
     ros-${ROS_DISTRO}-navigation2 \
     ros-${ROS_DISTRO}-nav2-bringup \
+    ros-${ROS_DISTRO}-ros-gz \
     psmisc
 
-# Install turtlebot (includes Gazebo)
-RUN apt install -y ros-humble-turtlebot3*
+# Install turtlebot
+RUN apt-get update && apt install -y ros-humble-turtlebot4-simulator ros-humble-irobot-create-nodes
 
 # Fix numpy2 incompatibility with CV libraries
 RUN pip3 install "numpy<2" --force-reinstall
