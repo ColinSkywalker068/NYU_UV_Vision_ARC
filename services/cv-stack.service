@@ -1,7 +1,7 @@
 [Unit]
 Description=UV Docker Stack Service
-Requires=docker.service uv-can-enable.service
-After=docker.service uv-can-enable.service
+Requires=docker.service
+After=docker.service
 
 [Service]
 Type=simple

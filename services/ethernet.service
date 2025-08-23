@@ -1,0 +1,11 @@
+[Unit]
+Description=Set up Ethernet (Jetson)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "sudo nmcli con mod 'Wired connection 1' ipv4.addresses 192.168.2.3/24 && sudo nmcli con mod 'Wired connection 1' ipv4.method manual && sudo nmcli con up 'Wired connection 1'"
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -24,8 +24,6 @@ if [ $? -eq 0 ]; then
 
 		# enable SSH X11 forwarding inside container (https://stackoverflow.com/q/48235040)
 		XAUTH=/tmp/.docker.xauth
-		xauth nlist $DISPLAY | sed -e 's/^..../ffff/' | xauth -f $XAUTH nmerge -
-		chmod 777 $XAUTH
 		DISPLAY_DEVICE="-e DISPLAY=$DISPLAY -v /tmp/.X11-unix/:/tmp/.X11-unix -v $XAUTH:$XAUTH -e XAUTHORITY=$XAUTH"
 	fi
 
@@ -49,18 +47,10 @@ if [ $? -eq 0 ]; then
 		SUDO="sudo"
 	fi
 
-	# Check if default image is needed
-	if [ $# -eq 0 ]; then
-		DEFAULT_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper"
-	else
-		DEFAULT_IMAGE=""
-	fi
-
 	# This file shows what Jetson board is running
 	# /proc or /sys files aren't mountable into docker
 	cat /proc/device-tree/model > /tmp/nv_jetson_model
 
-	set -x
 	$SUDO docker run --runtime nvidia --rm --privileged --network host \
 		--volume /tmp/argus_socket:/tmp/argus_socket \
 		--volume /etc/enctune.conf:/etc/enctune.conf \
@@ -82,12 +72,11 @@ if [ $? -eq 0 ]; then
 		$DISPLAY_DEVICE \
 		$V4L2_DEVICES \
 		$HUGGINGFACE \
-		$DEFAULT_IMAGE \
 		"$@"
 # MacOS
 else
 	winpty docker run -it --rm --privileged --network host \
 		--volume $ROOT/..:/home/ultraviolet/CV_Detection \
 		--env DISPLAY=host.docker.internal:0.0 \
-		nyuultraviolet/cv-dockerfile:macos
+		nyuultraviolet/cv-dockerfile:nav-arm64
 fi
