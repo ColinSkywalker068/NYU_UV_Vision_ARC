@@ -64,22 +64,28 @@ class YOLOv8Node(Node):
             raise
 
         # --- ROS Publishers and Subscribers ---
-        self.int_subscription = self.create_subscription(Int32, "robot_id", self.id_listener_callback, 10)
+        self.int_subscription = self.create_subscription(
+            Int32, "robot_id", self.id_listener_callback, 10
+        )
         self.bbox_publisher = self.create_publisher(Int32MultiArray, "bounding_box", 10)
         self.override_publisher = self.create_publisher(Bool, "override", 10)
-        
+
         self.override = Bool()
         self.bbox_msg = Int32MultiArray()
-        self.bbox_msg.data = [320, 320, 320, 320] # Default center
+        self.bbox_msg.data = [320, 320, 320, 320]  # Default center
 
         # --- RealSense Camera Initialization ---
         self.pipeline = rs.pipeline()
         config = rs.config()
-        config.enable_stream(rs.stream.color, IMG_WIDTH, IMG_HEIGHT, rs.format.bgr8, FPS)
-        
+        config.enable_stream(
+            rs.stream.color, IMG_WIDTH, IMG_HEIGHT, rs.format.bgr8, FPS
+        )
+
         try:
             self.pipeline.start(config)
-            self.get_logger().info(f"RealSense camera started at {IMG_WIDTH}x{IMG_HEIGHT} @ {FPS} FPS.")
+            self.get_logger().info(
+                f"RealSense camera started at {IMG_WIDTH}x{IMG_HEIGHT} @ {FPS} FPS."
+            )
         except Exception as e:
             self.get_logger().error(f"Failed to start RealSense camera: {e}")
             return
@@ -88,8 +94,9 @@ class YOLOv8Node(Node):
         self.timer_period = 1.0 / FPS
         self.timer = self.create_timer(self.timer_period, self.process_frame_callback)
         self.last_frame_time = None
-        self.get_logger().info("YOLOv8 RealSense Node has been initialized and is running.")
-
+        self.get_logger().info(
+            "YOLOv8 RealSense Node has been initialized and is running."
+        )
 
     def process_frame_callback(self):
         """
@@ -128,34 +135,36 @@ class YOLOv8Node(Node):
             imgsz=self.imgsz,
             show=self.show,
             conf=self.conf,
-            verbose=False
+            verbose=False,
         )
 
         valid_detections = []
         for r in results:
             # --- Bounding Box Extraction (Handles OBB and Detect) ---
-            if self.task == 'obb':
-                if not hasattr(r, "obb") or r.obb is None: continue
+            if self.task == "obb":
+                if not hasattr(r, "obb") or r.obb is None:
+                    continue
                 # .xyxy provides the upright bounding box for the oriented box
                 bboxes = r.obb.xyxy.cpu().int().tolist()
-            else: # Default to standard detection
-                if not hasattr(r, "boxes") or r.boxes is None: continue
+            else:  # Default to standard detection
+                if not hasattr(r, "boxes") or r.boxes is None:
+                    continue
                 bboxes = r.boxes.xyxy.cpu().int().tolist()
-            
+
             for bbox in bboxes:
-                roi_bbox = padded_image[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+                roi_bbox = padded_image[bbox[1] : bbox[3], bbox[0] : bbox[2]]
                 is_enemy, _ = self.check_enemy(roi_bbox)
                 if is_enemy:
                     area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
-                    valid_detections.append({'box': bbox, 'area': area})
+                    valid_detections.append({"box": bbox, "area": area})
 
         if valid_detections:
-            biggest_detection = max(valid_detections, key=lambda d: d['area'])
-            biggest_bbox = biggest_detection['box']
-            
+            biggest_detection = max(valid_detections, key=lambda d: d["area"])
+            biggest_bbox = biggest_detection["box"]
+
             self.bbox_msg.data = biggest_bbox
             self.override.data = True
-            
+
             if self.show:
                 cv2.rectangle(
                     padded_image,
@@ -173,7 +182,7 @@ class YOLOv8Node(Node):
 
         if self.show:
             cv2.imshow("YOLOv8 RealSense Detection", padded_image)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(1) & 0xFF == ord("q"):
                 self.get_logger().info("'q' pressed, shutting down.")
                 # This will trigger the main loop to exit and call destroy_node
                 self.context.try_shutdown()
@@ -185,11 +194,12 @@ class YOLOv8Node(Node):
         )
 
     def check_enemy(self, roi_image):
-        if roi_image.size == 0: return False, 0
+        if roi_image.size == 0:
+            return False, 0
         color_threshold = roi_image.shape[0] * roi_image.shape[1] * 0.01
         target_ranges = BLUE_RANGES if self.target_class == BLUE_CLASS else RED_RANGES
         hsv_roi = cv2.cvtColor(roi_image, cv2.COLOR_BGR2HSV)
-        
+
         mask = cv2.inRange(hsv_roi, target_ranges[0][0], target_ranges[0][1])
         if len(target_ranges) > 1:
             for low, high in target_ranges[1:]:
@@ -216,6 +226,7 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
+
 
 if __name__ == "__main__":
     main()

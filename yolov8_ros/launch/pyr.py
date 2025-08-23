@@ -30,7 +30,6 @@ def generate_launch_description():
                     {"show": False},
                     {"conf": 0.05},
                 ],
-        
             ),
         ]
     )

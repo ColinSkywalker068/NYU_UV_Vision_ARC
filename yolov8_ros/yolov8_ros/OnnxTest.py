@@ -10,7 +10,9 @@ config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
 pipeline.start(config)
 
 # Load ONNX model once (outside the loop for efficiency)
-session = ort.InferenceSession("/home/ultraviolet/CV_Detection/yolov8_ros/models/HUST_model.onnx")
+session = ort.InferenceSession(
+    "/home/ultraviolet/CV_Detection/yolov8_ros/models/HUST_model.onnx"
+)
 input_name = session.get_inputs()[0].name
 
 try:
@@ -40,8 +42,8 @@ try:
         # (Optional) You can process outputs here to draw boxes, etc.
 
         # Show the frame
-        cv2.imshow('RealSense Stream', img_resized)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        cv2.imshow("RealSense Stream", img_resized)
+        if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
 finally:

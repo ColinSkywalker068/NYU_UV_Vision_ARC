@@ -30,7 +30,6 @@ def generate_launch_description():
                     {"show": False},
                     {"conf": 0.25},
                 ],
-                
             ),
             # RealSense2 Camera with only two key parameters
             IncludeLaunchDescription(
@@ -39,24 +38,22 @@ def generate_launch_description():
                     "rgb_camera.color_profile": "640x480x60",
                     "rgb_camera.enable_auto_exposure": "true",  # Manual exposure
                     "enable_depth": "false",  # Turn off depth
-                    'enable_infra1': "false",
-                    'enable_infra2': "false",
-                    #"rgb_camera.exposure": "100",  # Exposure value
-                    #"rgb_camera.brightness": "50",  # Brightness tweak
+                    "enable_infra1": "false",
+                    "enable_infra2": "false",
+                    # "rgb_camera.exposure": "100",  # Exposure value
+                    # "rgb_camera.brightness": "50",  # Brightness tweak
                     "rgb_camera.enable_auto_white_balance": "true",  # Manual WB
                     "rgb_camera.global_time_enabled": "false",  # Disable global timing
                     "queue_size": "1",
                     "rgb_camera.queue_size": "1",
                     # "enable_sync": "true",
                     # 'image_format': "MJPG",
-                    'rgb_camera.width': "640",
-                    'rgb_camera.height': "480",
-                    'rgb_camera.fps': "60",
-
-                    #"rgb_camera.gain": "0",  # Gain set to 0
-                    #"rgb_camera.gamma": "250",  # Gamma correction
-                    #"rgb_camera.white_balance": "4800",  # White balance in K
-
+                    "rgb_camera.width": "640",
+                    "rgb_camera.height": "480",
+                    "rgb_camera.fps": "60",
+                    # "rgb_camera.gain": "0",  # Gain set to 0
+                    # "rgb_camera.gamma": "250",  # Gamma correction
+                    # "rgb_camera.white_balance": "4800",  # White balance in K
                 }.items(),
             ),
         ]

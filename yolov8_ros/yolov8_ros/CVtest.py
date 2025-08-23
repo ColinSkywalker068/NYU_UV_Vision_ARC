@@ -21,8 +21,9 @@ BLUE_RANGES = [
 ]
 RED_RANGES = [
     (np.array([0, 150, 150], np.uint8), np.array([10, 255, 255], np.uint8)),
-    (np.array([170, 150, 150], np.uint8), np.array([180, 255, 255], np.uint8))
+    (np.array([170, 150, 150], np.uint8), np.array([180, 255, 255], np.uint8)),
 ]
+
 
 def reduce_white_regions(hsv):
     """Reduce brightness in white regions to enhance color visibility."""
@@ -30,12 +31,14 @@ def reduce_white_regions(hsv):
     hsv[:, :, 2][white_mask > 0] = (hsv[:, :, 2][white_mask > 0] * 0.7).astype(np.uint8)
     return white_mask
 
+
 def create_color_mask(hsv, color_ranges):
     """Create a mask for specified color ranges."""
     mask = np.zeros_like(hsv[:, :, 0])
     for low, high in color_ranges:
         mask = cv2.bitwise_or(mask, cv2.inRange(hsv, low, high))
     return mask
+
 
 def enhance_image(frame):
     """Enhance image by reducing white regions and isolating red/blue colors."""
@@ -46,7 +49,9 @@ def enhance_image(frame):
     blue_mask = create_color_mask(hsv, BLUE_RANGES)
     color_mask = cv2.bitwise_or(red_mask, blue_mask)
 
-    hsv[:, :, 2] = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(hsv[:, :, 2])
+    hsv[:, :, 2] = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(
+        hsv[:, :, 2]
+    )
     enhanced = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
     color_regions = cv2.bitwise_and(enhanced, enhanced, mask=color_mask)
@@ -61,6 +66,8 @@ def enhance_image(frame):
     white_vis[white_mask > 0] = [255, 255, 255]
 
     return result, color_vis, white_vis
+
+
 pipeline = rs.pipeline()
 config = rs.config()
 config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
@@ -83,7 +90,7 @@ try:
         cv2.imshow("Original Frame", frame)
         cv2.imshow("Detection Results", output_frame)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
 except KeyboardInterrupt:
