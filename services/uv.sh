@@ -75,7 +75,10 @@ case $1 in
     fi
     # Run setup script
     source install/setup.bash 2> /dev/null
-    uv build
+    if [[ $? != 0 ]]; then
+      uv build
+      source install/setup.bash
+    fi
     # Find the package
     packages=$(colcon list --names-only)
     if [[ $packages[*] == *$2* ]]; then
