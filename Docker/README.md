@@ -1,6 +1,20 @@
 # How to Run the Object Detection Pipeline
 https://limewire.com/d/Ha8tz#M7d4qSlJjH
 
+Shortcut:
+Instead of two windows, you can run with just one:
+Open a window, run `uv update`
+Then run:
+```
+uv docker
+uv build yolov8_ros launch.py
+uv run yolov8_ros launch.py
+```
+This runs both nodes using the launch file in /yolov8_ros/launch/launch.py
+Unlike the manual run, the arguments have to be configured directly in launch, 
+so make sure to check if it is the right configuration.
+I would recommend running the two terminal window method first to understand the parameters, before using the launch.
+
 You will need two terminal windows:
 In either of the windows, run `uv update` to make sure the Jetson software is up to date. 
 In the first run the yolov8_node:
