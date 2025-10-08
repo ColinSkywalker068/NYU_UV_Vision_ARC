@@ -7,7 +7,9 @@ import pyrealsense2 as rs
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Barebones YOLOv8 detection FPS test with Intel RealSense color stream.")
+    parser = argparse.ArgumentParser(
+        description="Barebones YOLOv8 detection FPS test with Intel RealSense color stream."
+    )
     parser.add_argument(
         "--model",
         type=str,
@@ -17,11 +19,15 @@ def parse_args():
     parser.add_argument("--width", type=int, default=640, help="Color stream width.")
     parser.add_argument("--height", type=int, default=480, help="Color stream height.")
     parser.add_argument("--fps", type=int, default=30, help="Color stream FPS.")
-    parser.add_argument("--warmup", type=int, default=5, help="Warmup frames before measuring.")
+    parser.add_argument(
+        "--warmup", type=int, default=5, help="Warmup frames before measuring."
+    )
     return parser.parse_args()
 
 
-def run_benchmark(model_path: str, width: int, height: int, stream_fps: int, warmup_frames: int) -> None:
+def run_benchmark(
+    model_path: str, width: int, height: int, stream_fps: int, warmup_frames: int
+) -> None:
     cv2.setUseOptimized(True)
     cv2.setNumThreads(2)
 
@@ -70,7 +76,7 @@ def run_benchmark(model_path: str, width: int, height: int, stream_fps: int, war
                 frames_in_window = 0
                 infer_time_accum = 0.0
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 
     except KeyboardInterrupt:
@@ -89,5 +95,3 @@ if __name__ == "__main__":
         stream_fps=args.fps,
         warmup_frames=args.warmup,
     )
-
-
