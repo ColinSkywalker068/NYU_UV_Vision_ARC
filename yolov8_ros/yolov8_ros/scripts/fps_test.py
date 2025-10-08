@@ -21,7 +21,7 @@ def parse_args():
     )
     parser.add_argument("--width", type=int, default=640, help="Color stream width.")
     parser.add_argument("--height", type=int, default=480, help="Color stream height.")
-    parser.add_argument("--fps", type=int, default=30, help="Color stream FPS.")
+    parser.add_argument("--fps", type=int, default=90, help="Color stream FPS.")
     parser.add_argument(
         "--warmup", type=int, default=5, help="Warmup frames before measuring."
     )
