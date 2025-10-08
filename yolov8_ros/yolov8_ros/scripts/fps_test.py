@@ -1,7 +1,8 @@
 import argparse
 import time
 import signal
-import gc
+import threading
+import queue
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -62,82 +63,109 @@ def run_benchmark(
     config.enable_stream(rs.stream.color, width, height, rs.format.bgr8, stream_fps)
     profile = pipeline.start(config)
 
-    try:
-        stop_requested = False
+    stop_event = threading.Event()
+    frame_queue: "queue.Queue[rs.video_frame]" = queue.Queue(maxsize=1)
 
-        def handle_signal(_sig, _frm):
-            nonlocal stop_requested
-            stop_requested = True
+    def handle_signal(_sig, _frm):
+        stop_event.set()
 
-        signal.signal(signal.SIGINT, handle_signal)
-        signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
 
-        if show:
-            cv2.namedWindow("Color", cv2.WINDOW_NORMAL)
+    if show:
+        cv2.namedWindow("Color", cv2.WINDOW_NORMAL)
 
-        # Warmup
-        for _ in range(max(0, warmup_frames)):
+    def put_latest(q: "queue.Queue[rs.video_frame]", item: rs.video_frame) -> None:
+        try:
+            q.put_nowait(item)
+            return
+        except queue.Full:
+            try:
+                _ = q.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                q.put_nowait(item)
+            except queue.Full:
+                pass
+
+    def producer_loop() -> None:
+        while not stop_event.is_set():
             frames = pipeline.wait_for_frames()
             color_frame = frames.get_color_frame()
             if not color_frame:
                 continue
-            frame = np.asanyarray(color_frame.get_data()).copy()
-            _ = model(frame, verbose=False)
+            put_latest(frame_queue, color_frame)
 
-        # Measurement loop
-        window_start_time = time.perf_counter()
-        frames_in_window = 0
-        infer_time_accum = 0.0
-        total_frames = 0
-        start_time = time.perf_counter()
+    # Warmup on a few frames to stabilize model/runtime
+    for _ in range(max(0, warmup_frames)):
+        frames = pipeline.wait_for_frames()
+        color_frame = frames.get_color_frame()
+        if not color_frame:
+            continue
+        warmup_img = np.asanyarray(color_frame.get_data())
+        _ = model(warmup_img, verbose=False)
 
-        print("Starting detection FPS measurement. Press Ctrl+C to stop.")
-        while True:
-            if stop_requested:
-                break
-            if duration_s > 0 and (time.perf_counter() - start_time) >= duration_s:
-                break
-            if max_frames > 0 and total_frames >= max_frames:
-                break
-            frames = pipeline.wait_for_frames()
-            color_frame = frames.get_color_frame()
-            if not color_frame:
+    ewma_alpha = 0.2
+    ewma_infer_s: float | None = None
+    total_infer_s = 0.0
+    processed_frames = 0
+    start_time = time.perf_counter()
+    last_report = start_time
+
+    def consumer_loop() -> None:
+        nonlocal ewma_infer_s, total_infer_s, processed_frames, last_report
+        while not stop_event.is_set():
+            try:
+                color_frame = frame_queue.get(timeout=0.5)
+            except queue.Empty:
                 continue
-            frame = np.asanyarray(color_frame.get_data()).copy()
-
+            frame = np.asanyarray(color_frame.get_data())
             t0 = time.perf_counter()
             _ = model(frame, verbose=False)
-            infer_time = time.perf_counter() - t0
-
-            infer_time_accum += infer_time
-            frames_in_window += 1
-            total_frames += 1
-
+            infer_s = time.perf_counter() - t0
+            total_infer_s += infer_s
+            processed_frames += 1
+            ewma_infer_s = (
+                infer_s if ewma_infer_s is None else (ewma_alpha * infer_s + (1.0 - ewma_alpha) * ewma_infer_s)
+            )
             if show:
                 cv2.imshow("Color", frame)
-                # Only poll for 'q' when a window is present
                 if cv2.waitKey(1) & 0xFF == ord("q"):
-                    break
-
+                    stop_event.set()
             now = time.perf_counter()
-            if now - window_start_time >= 1.0 and infer_time_accum > 0:
-                det_fps = frames_in_window / infer_time_accum
-                print(f"Det FPS: {det_fps:.2f} | Frames: {frames_in_window}")
-                window_start_time = now
-                frames_in_window = 0
-                infer_time_accum = 0.0
+            if now - last_report >= 1.0:
+                elapsed = max(1e-6, now - start_time)
+                avg_fps = processed_frames / elapsed
+                ewma_fps = (1.0 / ewma_infer_s) if (ewma_infer_s and ewma_infer_s > 0) else 0.0
+                print(f"AVG FPS: {avg_fps:.2f} | EWMA Det FPS: {ewma_fps:.2f} | Frames: {processed_frames}")
+                last_report = now
+            if max_frames > 0 and processed_frames >= max_frames:
+                stop_event.set()
+            if duration_s > 0 and (now - start_time) >= duration_s:
+                stop_event.set()
+            frame_queue.task_done()
 
+    try:
+        prod = threading.Thread(target=producer_loop, name="producer", daemon=True)
+        cons = threading.Thread(target=consumer_loop, name="consumer", daemon=True)
+        prod.start()
+        cons.start()
+        print("Starting detection FPS measurement. Press Ctrl+C or 'q' to stop.")
+        while not stop_event.is_set():
+            time.sleep(0.1)
     except KeyboardInterrupt:
-        pass
+        stop_event.set()
     finally:
-        # Ensure frame objects are dereferenced before stopping the pipeline
+        stop_event.set()
         try:
-            frames = None
-            color_frame = None
-            frame = None
-        except NameError:
+            prod.join(timeout=2.0)
+        except Exception:
             pass
-        time.sleep(0.05)
+        try:
+            cons.join(timeout=2.0)
+        except Exception:
+            pass
         try:
             pipeline.stop()
         except Exception:
@@ -146,9 +174,6 @@ def run_benchmark(
             cv2.destroyAllWindows()
         except Exception:
             pass
-        del pipeline
-        del model
-        gc.collect()
 
 
 if __name__ == "__main__":
