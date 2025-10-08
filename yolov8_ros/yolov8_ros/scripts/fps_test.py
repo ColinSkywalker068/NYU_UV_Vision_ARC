@@ -24,7 +24,9 @@ def parse_args():
     parser.add_argument(
         "--warmup", type=int, default=5, help="Warmup frames before measuring."
     )
-    parser.add_argument("--show", action="store_true", help="Display color stream window.")
+    parser.add_argument(
+        "--show", action="store_true", help="Display color stream window."
+    )
     parser.add_argument(
         "--duration",
         type=float,
@@ -41,8 +43,14 @@ def parse_args():
 
 
 def run_benchmark(
-    model_path: str, width: int, height: int, stream_fps: int, warmup_frames: int,
-    show: bool, duration_s: float, max_frames: int
+    model_path: str,
+    width: int,
+    height: int,
+    stream_fps: int,
+    warmup_frames: int,
+    show: bool,
+    duration_s: float,
+    max_frames: int,
 ) -> None:
     cv2.setUseOptimized(True)
     cv2.setNumThreads(2)
