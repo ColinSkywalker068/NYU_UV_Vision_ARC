@@ -91,10 +91,13 @@ class YOLOv8Node_visFilt(Node):
         self.override = Bool()
         self.bbox_msg = Int32MultiArray()
         self.bbox_msg.data = [320, 320, 320, 320]
+
     def reduce_white_regions(self, hsv):
         """Reduce brightness in white regions to enhance color visibility."""
         white_mask = cv2.inRange(hsv, np.array([0, 0, 200]), np.array([180, 30, 255]))
-        hsv[:, :, 2][white_mask > 0] = (hsv[:, :, 2][white_mask > 0] * 0.7).astype(np.uint8)
+        hsv[:, :, 2][white_mask > 0] = (hsv[:, :, 2][white_mask > 0] * 0.7).astype(
+            np.uint8
+        )
         return white_mask
 
     def create_color_mask(self, hsv, color_ranges):
@@ -112,7 +115,9 @@ class YOLOv8Node_visFilt(Node):
         red_mask = self.create_color_mask(hsv, RED_RANGES)
         blue_mask = self.create_color_mask(hsv, BLUE_RANGES)
         color_mask = cv2.bitwise_or(red_mask, blue_mask)
-        hsv[:, :, 2] = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(hsv[:, :, 2])
+        hsv[:, :, 2] = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(
+            hsv[:, :, 2]
+        )
         enhanced = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
         color_regions = cv2.bitwise_and(enhanced, enhanced, mask=color_mask)
         result = cv2.addWeighted(enhanced, 0.7, color_regions, 0.3, 0)
