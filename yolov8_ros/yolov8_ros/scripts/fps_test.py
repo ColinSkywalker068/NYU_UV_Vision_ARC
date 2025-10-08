@@ -25,7 +25,9 @@ def parse_args():
     parser.add_argument(
         "--warmup", type=int, default=5, help="Warmup frames before measuring."
     )
-    parser.add_argument("--show", action="store_true", help="Display color stream window.")
+    parser.add_argument(
+        "--show", action="store_true", help="Display color stream window."
+    )
     parser.add_argument(
         "--duration",
         type=float,
@@ -42,8 +44,14 @@ def parse_args():
 
 
 def run_benchmark(
-    model_path: str, width: int, height: int, stream_fps: int, warmup_frames: int,
-    show: bool, duration_s: float, max_frames: int
+    model_path: str,
+    width: int,
+    height: int,
+    stream_fps: int,
+    warmup_frames: int,
+    show: bool,
+    duration_s: float,
+    max_frames: int,
 ) -> None:
     cv2.setUseOptimized(True)
     cv2.setNumThreads(2)
@@ -119,7 +127,9 @@ def run_benchmark(
             total_infer_s += infer_s
             processed_frames += 1
             ewma_infer_s = (
-                infer_s if ewma_infer_s is None else (ewma_alpha * infer_s + (1.0 - ewma_alpha) * ewma_infer_s)
+                infer_s
+                if ewma_infer_s is None
+                else (ewma_alpha * infer_s + (1.0 - ewma_alpha) * ewma_infer_s)
             )
             if show:
                 cv2.imshow("Color", frame)
@@ -129,8 +139,12 @@ def run_benchmark(
             if now - last_report >= 1.0:
                 elapsed = max(1e-6, now - start_time)
                 avg_fps = processed_frames / elapsed
-                ewma_fps = (1.0 / ewma_infer_s) if (ewma_infer_s and ewma_infer_s > 0) else 0.0
-                print(f"AVG FPS: {avg_fps:.2f} | EWMA Det FPS: {ewma_fps:.2f} | Frames: {processed_frames}")
+                ewma_fps = (
+                    (1.0 / ewma_infer_s) if (ewma_infer_s and ewma_infer_s > 0) else 0.0
+                )
+                print(
+                    f"AVG FPS: {avg_fps:.2f} | EWMA Det FPS: {ewma_fps:.2f} | Frames: {processed_frames}"
+                )
                 last_report = now
             if max_frames > 0 and processed_frames >= max_frames:
                 stop_event.set()
