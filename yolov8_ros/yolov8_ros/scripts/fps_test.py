@@ -116,6 +116,7 @@ def run_benchmark(
             t0 = time.perf_counter()
             _ = model(frame, verbose=False)
             infer_s = time.perf_counter() - t0
+            print(f"Inference Time: {infer_s*1000:.2f} ms | Theoretical Max FPS: {1/infer_s:.2f}") 
             total_infer_s += infer_s
             processed_frames += 1
             ewma_infer_s = (
