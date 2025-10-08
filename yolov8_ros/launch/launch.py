@@ -24,7 +24,7 @@ def generate_launch_description():
                     "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine"
                 },
                 {"task": "obb"},
-                {"show_video": True},
+                {"show": True},
                 {"conf": 0.25},
             ],
         )
