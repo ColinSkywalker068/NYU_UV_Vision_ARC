@@ -19,9 +19,16 @@ def parse_args():
         default="/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine",
         help="Absolute path to YOLO model (.pt/.engine).",
     )
+    parser.add_argument(
+        "--task",
+        type=str,
+        default="obb",
+        choices=["detect", "obb"],
+        help="YOLO task type to use.",
+    )
     parser.add_argument("--width", type=int, default=640, help="Color stream width.")
     parser.add_argument("--height", type=int, default=480, help="Color stream height.")
-    parser.add_argument("--fps", type=int, default=90, help="Color stream FPS.")
+    parser.add_argument("--fps", type=int, default=60, help="Color stream FPS.")
     parser.add_argument(
         "--warmup", type=int, default=5, help="Warmup frames before measuring."
     )
@@ -45,6 +52,7 @@ def parse_args():
 
 def run_benchmark(
     model_path: str,
+    task: str,
     width: int,
     height: int,
     stream_fps: int,
@@ -56,7 +64,7 @@ def run_benchmark(
     cv2.setUseOptimized(True)
     cv2.setNumThreads(2)
 
-    model = YOLO(model_path)
+    model = YOLO(model_path, task=task)
 
     pipeline = rs.pipeline()
     config = rs.config()
@@ -189,6 +197,7 @@ if __name__ == "__main__":
     args = parse_args()
     run_benchmark(
         model_path=args.model,
+        task=args.task,
         width=args.width,
         height=args.height,
         stream_fps=args.fps,
