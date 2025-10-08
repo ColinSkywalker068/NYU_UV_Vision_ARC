@@ -16,7 +16,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        default="/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.pt",
+        default="/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine",
         help="Absolute path to YOLO model (.pt/.engine).",
     )
     parser.add_argument("--width", type=int, default=640, help="Color stream width.")
