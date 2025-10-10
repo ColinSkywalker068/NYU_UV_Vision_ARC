@@ -101,19 +101,31 @@ def run_benchmark(
                 continue
         return profiles
 
-    def select_profile(all_profiles: list[dict], req_w: int, req_h: int, req_fps: int) -> dict | None:
+    def select_profile(
+        all_profiles: list[dict], req_w: int, req_h: int, req_fps: int
+    ) -> dict | None:
         if not all_profiles:
             return None
         prefer_formats = [rs.format.bgr8, rs.format.rgb8]
         same_res = [
-            pr for pr in all_profiles if pr["width"] == req_w and pr["height"] == req_h and pr["format"] in prefer_formats
+            pr
+            for pr in all_profiles
+            if pr["width"] == req_w
+            and pr["height"] == req_h
+            and pr["format"] in prefer_formats
         ]
         if same_res:
-            same_res.sort(key=lambda pr: (abs(pr["fps"] - req_fps), prefer_formats.index(pr["format"])) )
+            same_res.sort(
+                key=lambda pr: (
+                    abs(pr["fps"] - req_fps),
+                    prefer_formats.index(pr["format"]),
+                )
+            )
             return same_res[0]
         # Fallback: closest aspect ratio, then nearest fps
         def aspect_ratio(w: int, h: int) -> float:
             return w / float(h) if h else 0.0
+
         req_ar = aspect_ratio(req_w, req_h)
         candidates = [pr for pr in all_profiles if pr["format"] in prefer_formats]
         if not candidates:
@@ -150,7 +162,15 @@ def run_benchmark(
         )
         profile = pipeline.start(config)
         selected_format = chosen["format"]
-        fmt_name = "BGR8" if selected_format == rs.format.bgr8 else ("RGB8" if selected_format == rs.format.rgb8 else str(int(selected_format)))
+        fmt_name = (
+            "BGR8"
+            if selected_format == rs.format.bgr8
+            else (
+                "RGB8"
+                if selected_format == rs.format.rgb8
+                else str(int(selected_format))
+            )
+        )
         print(
             f"Selected Color Stream: {chosen['width']}x{chosen['height']} @ {chosen['fps']} ({fmt_name})"
         )
