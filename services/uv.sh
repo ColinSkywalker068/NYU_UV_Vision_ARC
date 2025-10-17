@@ -1,5 +1,5 @@
 #!/bin/bash
-HOME_DIR="/home/ultraviolet"
+HOME_DIR="/home/nyu"
 SCRIPTS_DIR="$HOME_DIR/CV_Detection/services"
 
 # Check if the script is running in the background

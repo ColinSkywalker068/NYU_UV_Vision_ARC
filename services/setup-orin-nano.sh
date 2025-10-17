@@ -24,7 +24,7 @@ if ! sudo grep -q "$RULE" /etc/sudoers; then
 fi
 
 # Add uv as a shell command
-sudo ln -s "/home/ultraviolet/CV_Detection/services/uv.sh" /usr/local/bin/uv
+sudo ln -s "/home/nyu/CV_Detection/services/uv.sh" /usr/local/bin/uv
 
 # Install Docker
 sudo apt-get update
