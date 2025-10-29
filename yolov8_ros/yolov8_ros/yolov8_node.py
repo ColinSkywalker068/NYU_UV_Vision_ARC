@@ -81,7 +81,7 @@ class YOLOv8Node(Node):
             self.get_logger().error("No RealSense camera detected!")
             raise RuntimeError("No RealSense camera found")
         self.get_logger().info(f"Found {len(devices)} RealSense device(s)")
-        
+
         self.pipeline = rs.pipeline()
         config = rs.config()
         config.enable_stream(
