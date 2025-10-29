@@ -5,8 +5,8 @@ WORKDIR /home/ultraviolet/CV_Detection
 
 # The ENTRYPOINT contains the full sequence of commands to run on container start
 ENTRYPOINT ["/bin/bash", "-c", "set -e; \
-    echo '--- Sourcing ROS 2 environment ---'; \
-    source install/setup.bash; \
+    echo '--- Sourcing ROS 2 environment (if exists) ---'; \
+    source install/setup.bash 2>/dev/null || echo 'install/setup.bash not found, will create after build'; \
     echo '--- Step 1: Running uv clean ---'; \
     uv clean; \
     echo '--- Step 2: Running uv build ---'; \

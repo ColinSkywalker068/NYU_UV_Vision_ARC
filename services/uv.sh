@@ -24,6 +24,12 @@ if [[ ($1 == "run" && $# -ge 3) || $1 == "build" || $1 == "topic" || $1 == "exec
   fi
 fi
 
+# Detect if we're in a ROS2 workspace
+IS_ROS2_WORKSPACE=false
+if (([ -d src ] && find src -name "package.xml" -print | grep -q .) || find * -maxdepth 1 -name "package.xml" -print | grep -q .); then
+  IS_ROS2_WORKSPACE=true
+fi
+
 case $1 in
   # Start Docker container
   "docker")
