@@ -75,6 +75,13 @@ class YOLOv8Node(Node):
         self.bbox_msg.data = [320, 320, 320, 320]  # Default center
 
         # --- RealSense Camera Initialization ---
+        ctx = rs.context()
+        devices = ctx.query_devices()
+        if len(devices) == 0:
+            self.get_logger().error("No RealSense camera detected!")
+            raise RuntimeError("No RealSense camera found")
+        self.get_logger().info(f"Found {len(devices)} RealSense device(s)")
+        
         self.pipeline = rs.pipeline()
         config = rs.config()
         config.enable_stream(
