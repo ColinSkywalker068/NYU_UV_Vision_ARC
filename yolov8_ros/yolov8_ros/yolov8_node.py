@@ -227,14 +227,14 @@ class YOLOv8Node(Node):
     def destroy_node(self):
         self.get_logger().info("Stopping RealSense pipeline.")
         try:
-            if hasattr(self, 'pipeline') and self.pipeline:
+            if hasattr(self, "pipeline") and self.pipeline:
                 self.pipeline.stop()
         except Exception as e:
             self.get_logger().warn(f"Error stopping pipeline: {e}")
-        
+
         # Close CV windows before calling parent
         cv2.destroyAllWindows()
-        
+
         super().destroy_node()
 
 
