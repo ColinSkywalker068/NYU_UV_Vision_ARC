@@ -2,9 +2,9 @@ FROM ros:humble-perception
 
 # Install Python
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3 \
-        python3-pip \
-        python3-dev && apt-get update && apt-get clean all
+    python3 \
+    python3-pip \
+    python3-dev && apt-get update && apt-get clean all
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -27,23 +27,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # https://github.com/IntelRealSense/librealsense/issues/11931
 ARG LIBREALSENSE_VERSION=development
 RUN git clone --branch ${LIBREALSENSE_VERSION} --depth=1 https://github.com/IntelRealSense/librealsense \
- && cd librealsense \
- && mkdir build \
- && cd build \
- && cmake \
-        -DBUILD_EXAMPLES=true \
-        -DFORCE_RSUSB_BACKEND=true \
-        -DCMAKE_BUILD_TYPE=release \
-        -DBUILD_PYTHON_BINDINGS=bool:true \
-        -DPYTHON_EXECUTABLE=/usr/bin/python3 \
-        ../ \
- && make -j$(($(nproc)-1)) \
- && make install \
- && cd .. \
- && cp -r . /usr/local/ \
- && cp ./config/99-realsense-libusb.rules /etc/udev/rules.d/ \
- && cp ./config/99-realsense-d4xx-mipi-dfu.rules /etc/udev/rules.d/ \
- && rm -rf librealsense
+    && cd librealsense \
+    && mkdir build \
+    && cd build \
+    && cmake \
+    -DBUILD_EXAMPLES=true \
+    -DFORCE_RSUSB_BACKEND=true \
+    -DCMAKE_BUILD_TYPE=release \
+    -DBUILD_PYTHON_BINDINGS=bool:true \
+    -DPYTHON_EXECUTABLE=/usr/bin/python3 \
+    ../ \
+    && make -j$(($(nproc)-1)) \
+    && make install \
+    && cd .. \
+    && cp -r . /usr/local/ \
+    && cp ./config/99-realsense-libusb.rules /etc/udev/rules.d/ \
+    && cp ./config/99-realsense-d4xx-mipi-dfu.rules /etc/udev/rules.d/ \
+    && rm -rf librealsense
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -51,18 +51,18 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV WS_DIR_REALSENSE="/ros2_realsense_ws"
 WORKDIR ${WS_DIR_REALSENSE}
 RUN bash -c "apt-get update -y \
- && mkdir src \
- && cd src \
- && git clone https://github.com/IntelRealSense/realsense-ros.git -b ros2-development \
- && cd .. \
- && apt-get install -y python3-rosdep \
- && source /opt/ros/${ROS_DISTRO}/setup.bash \
- && rm /etc/ros/rosdep/sources.list.d/20-default.list \
- && rosdep init \
- && rosdep update \
- && rosdep install -i --from-path src --rosdistro ${ROS_DISTRO} --skip-keys=librealsense2 -y \
- && source /opt/ros/${ROS_DISTRO}/setup.bash \
- && colcon build"
+    && mkdir src \
+    && cd src \
+    && git clone https://github.com/IntelRealSense/realsense-ros.git -b ros2-development \
+    && cd .. \
+    && apt-get install -y python3-rosdep \
+    && source /opt/ros/${ROS_DISTRO}/setup.bash \
+    && rm /etc/ros/rosdep/sources.list.d/20-default.list \
+    && rosdep init \
+    && rosdep update \
+    && rosdep install -i --from-path src --rosdistro ${ROS_DISTRO} --skip-keys=librealsense2 -y \
+    && source /opt/ros/${ROS_DISTRO}/setup.bash \
+    && colcon build"
 
 # Install application dependencies
 RUN pip3 install \
@@ -93,6 +93,7 @@ RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-slam-toolbox \
     ros-${ROS_DISTRO}-navigation2 \
     ros-${ROS_DISTRO}-nav2-bringup \
+    ros-${ROS_DISTRO}-rplidar-ros \
     ros-${ROS_DISTRO}-ros-gz \
     psmisc
 
