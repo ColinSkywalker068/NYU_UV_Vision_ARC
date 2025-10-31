@@ -8,6 +8,9 @@ import os
 import time
 import pyrealsense2 as rs
 
+# Prevent memory corruption on Jetson with TensorRT
+os.environ["MALLOC_CHECK_"] = "0"  # Disable glibc malloc checks
+os.environ["PYTHONMALLOC"] = "malloc"  # Use system malloc
 # Ensure the display is available for cv2.imshow if used
 os.environ["GDK_SYNCHRONIZE"] = "1"
 
@@ -83,11 +86,7 @@ class YOLOv8Node(Node):
             raise RuntimeError("No RealSense camera found")
         self.get_logger().info(f"Found {len(devices)} RealSense device(s)")
 
-        # Reset devices to clear any existing streams
-        for dev in devices:
-            dev.hardware_reset()
-        self.get_logger().info("Reset RealSense device(s)")
-        time.sleep(2)  # Wait for device to reset
+        # Note: hardware_reset() removed - causes double free with TensorRT on Jetson unified memory
 
         self.pipeline = rs.pipeline()
         config = rs.config()
@@ -227,9 +226,15 @@ class YOLOv8Node(Node):
 
     def destroy_node(self):
         self.get_logger().info("Stopping RealSense pipeline.")
-        if self.pipeline:
-            self.pipeline.stop()
+        try:
+            if hasattr(self, 'pipeline') and self.pipeline:
+                self.pipeline.stop()
+        except Exception as e:
+            self.get_logger().warn(f"Error stopping pipeline: {e}")
+        
+        # Close CV windows before calling parent
         cv2.destroyAllWindows()
+        
         super().destroy_node()
 
 
@@ -241,8 +246,13 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            node.destroy_node()
+        except Exception as e:
+            print(f"Error in cleanup: {e}")
+        finally:
+            if rclpy.ok():
+                rclpy.shutdown()
 
 
 if __name__ == "__main__":

@@ -11,6 +11,9 @@ import time
 import random  # For Kalman
 import pyrealsense2 as rs  # Import pyrealsense2
 
+# Prevent memory corruption on Jetson with TensorRT
+os.environ["MALLOC_CHECK_"] = "0"  # Disable glibc malloc checks
+os.environ["PYTHONMALLOC"] = "malloc"  # Use system malloc
 os.environ["GDK_SYNCHRONIZE"] = "1"  # If using GTK-based cv2.imshow concurrently
 
 # Team and Class Definitions
@@ -254,7 +257,7 @@ class YOLOv8Node(Node):
         self.pipeline = rs.pipeline()
         self.config = rs.config()
 
-        # Reset devices to clear any existing streams
+        # Check for devices (no hardware reset on Jetson to avoid memory corruption)
         ctx = rs.context()
         devices = ctx.query_devices()
         if len(devices) == 0:
@@ -262,10 +265,7 @@ class YOLOv8Node(Node):
             raise RuntimeError("No RealSense camera found")
         self.get_logger().info(f"Found {len(devices)} RealSense device(s)")
         
-        for dev in devices:
-            dev.hardware_reset()
-        self.get_logger().info("Reset RealSense device(s)")
-        time.sleep(2)  # Wait for device to reset
+        # Note: hardware_reset() removed - causes double free with TensorRT on Jetson unified memory
 
         # Enable color stream with desired resolution and FPS
         self.config.enable_stream(
@@ -684,7 +684,15 @@ class YOLOv8Node(Node):
 
     def destroy_node(self):
         self.get_logger().info("Stopping Realsense pipeline...")
-        self.pipeline.stop()
+        try:
+            if hasattr(self, 'pipeline') and self.pipeline:
+                self.pipeline.stop()
+        except Exception as e:
+            self.get_logger().warn(f"Error stopping pipeline: {e}")
+        
+        # Close CV windows before calling parent
+        cv2.destroyAllWindows()
+        
         super().destroy_node()
 
 
@@ -697,11 +705,13 @@ def main(args=None):
     except KeyboardInterrupt:
         node.get_logger().info("Keyboard interrupt received, shutting down.")
     finally:
-        node.destroy_node()
-        if rclpy.ok():  # Check if rclpy is still initialized
-            rclpy.shutdown()
-        cv2.destroyAllWindows()
-        node.get_logger().info("Node cleanup complete.")
+        try:
+            node.destroy_node()
+        except Exception as e:
+            print(f"Error in cleanup: {e}")
+        finally:
+            if rclpy.ok():  # Check if rclpy is still initialized
+                rclpy.shutdown()
 
 
 if __name__ == "__main__":
