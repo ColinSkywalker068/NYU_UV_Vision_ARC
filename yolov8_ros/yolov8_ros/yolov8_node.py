@@ -5,6 +5,7 @@ from ultralytics import YOLO
 import cv2
 import numpy as np
 import os
+import time
 import pyrealsense2 as rs
 
 # Ensure the display is available for cv2.imshow if used
@@ -82,6 +83,12 @@ class YOLOv8Node(Node):
             raise RuntimeError("No RealSense camera found")
         self.get_logger().info(f"Found {len(devices)} RealSense device(s)")
 
+        # Reset devices to clear any existing streams
+        for dev in devices:
+            dev.hardware_reset()
+        self.get_logger().info("Reset RealSense device(s)")
+        time.sleep(2)  # Wait for device to reset
+
         self.pipeline = rs.pipeline()
         config = rs.config()
         config.enable_stream(
@@ -95,7 +102,8 @@ class YOLOv8Node(Node):
             )
         except Exception as e:
             self.get_logger().error(f"Failed to start RealSense camera: {e}")
-            return
+            self.get_logger().error("Try unplugging and replugging the camera, or stop other RealSense processes")
+            raise RuntimeError(f"Camera initialization failed: {e}")
 
         # --- ROS Timer for Main Loop ---
         self.timer_period = 1.0 / FPS
