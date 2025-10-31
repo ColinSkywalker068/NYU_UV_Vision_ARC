@@ -261,7 +261,7 @@ class YOLOv8Node(Node):
             self.get_logger().error("No RealSense camera detected!")
             raise RuntimeError("No RealSense camera found")
         self.get_logger().info(f"Found {len(devices)} RealSense device(s)")
-        
+
         for dev in devices:
             dev.hardware_reset()
         self.get_logger().info("Reset RealSense device(s)")
@@ -281,7 +281,9 @@ class YOLOv8Node(Node):
             profile = self.pipeline.start(self.config)
         except Exception as e:
             self.get_logger().error(f"Failed to start RealSense camera: {e}")
-            self.get_logger().error("Try unplugging and replugging the camera, or stop other RealSense processes")
+            self.get_logger().error(
+                "Try unplugging and replugging the camera, or stop other RealSense processes"
+            )
             raise RuntimeError(f"Camera initialization failed: {e}")
         self.get_logger().info(
             f"Realsense pipeline started with color stream: {self.realsense_width}x{self.realsense_height} @ {self.realsense_fps} FPS."
@@ -412,7 +414,7 @@ class YOLOv8Node(Node):
             imgsz_value = self.imgsz_width
         else:
             imgsz_value = (self.imgsz_height, self.imgsz_width)  # YOLO expects (H, W)
-        
+
         results = self.model.track(
             padded_image,
             half=self.half,
