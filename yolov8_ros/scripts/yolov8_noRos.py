@@ -7,6 +7,7 @@ from ultralytics import YOLO, RTDETR, NAS  # Ensure ultralytics is installed
 import cv2
 import numpy as np
 import os
+import time
 import random  # For Kalman
 import pyrealsense2 as rs  # Import pyrealsense2
 
@@ -253,6 +254,19 @@ class YOLOv8Node(Node):
         self.pipeline = rs.pipeline()
         self.config = rs.config()
 
+        # Reset devices to clear any existing streams
+        ctx = rs.context()
+        devices = ctx.query_devices()
+        if len(devices) == 0:
+            self.get_logger().error("No RealSense camera detected!")
+            raise RuntimeError("No RealSense camera found")
+        self.get_logger().info(f"Found {len(devices)} RealSense device(s)")
+        
+        for dev in devices:
+            dev.hardware_reset()
+        self.get_logger().info("Reset RealSense device(s)")
+        time.sleep(2)  # Wait for device to reset
+
         # Enable color stream with desired resolution and FPS
         self.config.enable_stream(
             rs.stream.color,
@@ -263,7 +277,12 @@ class YOLOv8Node(Node):
         )
 
         # Start streaming
-        profile = self.pipeline.start(self.config)
+        try:
+            profile = self.pipeline.start(self.config)
+        except Exception as e:
+            self.get_logger().error(f"Failed to start RealSense camera: {e}")
+            self.get_logger().error("Try unplugging and replugging the camera, or stop other RealSense processes")
+            raise RuntimeError(f"Camera initialization failed: {e}")
         self.get_logger().info(
             f"Realsense pipeline started with color stream: {self.realsense_width}x{self.realsense_height} @ {self.realsense_fps} FPS."
         )
@@ -309,8 +328,8 @@ class YOLOv8Node(Node):
     # --- Timer Callback for Frame Acquisition and Processing ---
     def timer_callback(self):
         try:
-            # Wait for a new set of Realsense frames
-            frames = self.pipeline.wait_for_frames()
+            # Wait for a new set of Realsense frames with timeout
+            frames = self.pipeline.wait_for_frames(timeout_ms=1000)  # 1 second timeout
             color_frame = frames.get_color_frame()
             if not color_frame:
                 self.get_logger().warn(
@@ -324,6 +343,13 @@ class YOLOv8Node(Node):
 
             self.listener_callback(frame)  # Call the existing processing logic
 
+        except RuntimeError as e:
+            if "Frame didn't arrive within" in str(e) or "timeout" in str(e).lower():
+                self.get_logger().warn(f"Frame timeout: {e}. Skipping frame.")
+            else:
+                self.get_logger().error(
+                    f"Error in Realsense frame acquisition or processing: {e}"
+                )
         except Exception as e:
             self.get_logger().error(
                 f"Error in Realsense frame acquisition or processing: {e}"
@@ -381,13 +407,16 @@ class YOLOv8Node(Node):
 
         # YOLO Model Tracking
         # self.get_logger().info(f"Calling model.track() with conf: {self.conf}") # Too verbose
+        # Use single integer for imgsz if square, otherwise use tuple (height, width) format
+        if self.imgsz_width == self.imgsz_height:
+            imgsz_value = self.imgsz_width
+        else:
+            imgsz_value = (self.imgsz_height, self.imgsz_width)  # YOLO expects (H, W)
+        
         results = self.model.track(
             padded_image,
             half=self.half,
-            imgsz=(
-                self.imgsz_width,
-                self.imgsz_height,
-            ),  # Pass tuple for specific dimensions
+            imgsz=imgsz_value,
             show=False,  # Manual visualization
             conf=self.conf,
             persist=True,  # Keep tracks between frames
