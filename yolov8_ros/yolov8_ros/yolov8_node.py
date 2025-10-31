@@ -102,7 +102,9 @@ class YOLOv8Node(Node):
             )
         except Exception as e:
             self.get_logger().error(f"Failed to start RealSense camera: {e}")
-            self.get_logger().error("Try unplugging and replugging the camera, or stop other RealSense processes")
+            self.get_logger().error(
+                "Try unplugging and replugging the camera, or stop other RealSense processes"
+            )
             raise RuntimeError(f"Camera initialization failed: {e}")
 
         # --- ROS Timer for Main Loop ---
