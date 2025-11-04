@@ -90,15 +90,29 @@ RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-rviz2 \
     ros-${ROS_DISTRO}-rqt \
     ros-${ROS_DISTRO}-rqt-plot \
+    ros-${ROS_DISTRO}-rqt-common-plugins \
     ros-${ROS_DISTRO}-slam-toolbox \
+    ros-${ROS_DISTRO}-cartographer \
+    ros-${ROS_DISTRO}-cartographer-ros \
     ros-${ROS_DISTRO}-navigation2 \
     ros-${ROS_DISTRO}-nav2-bringup \
     ros-${ROS_DISTRO}-rplidar-ros \
+    ros-${ROS_DISTRO}-pcl-ros \
+    ros-${ROS_DISTRO}-pcl-conversions \
+    ros-${ROS_DISTRO}-laser-geometry \
+    ros-${ROS_DISTRO}-pointcloud-to-laserscan \
+    ros-${ROS_DISTRO}-tf2-tools \
+    ros-${ROS_DISTRO}-robot-localization \
+    ros-${ROS_DISTRO}-twist-mux \
     ros-${ROS_DISTRO}-ros-gz \
-    psmisc
+    psmisc \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install turtlebot
-RUN apt-get update && apt install -y ros-humble-turtlebot4-simulator ros-humble-irobot-create-nodes
+RUN apt-get update && apt-get install -y \
+    ros-humble-turtlebot4-simulator \
+    ros-humble-irobot-create-nodes \
+    && rm -rf /var/lib/apt/lists/*
 
 # Fix numpy2 incompatibility with CV libraries
 RUN pip3 install "numpy<2" --force-reinstall
