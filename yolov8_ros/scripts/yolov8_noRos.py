@@ -153,7 +153,7 @@ class YOLOv8Node(Node):
         self.get_logger().info(
             "Initializing YOLOv8Node with Kalman Filter & Lag Compensation (Pyrealsense2)..."
         )
-        fps = 60
+        fps = 30
         # --- ROS Parameters ---
         self.declare_parameter(
             "model_path",
