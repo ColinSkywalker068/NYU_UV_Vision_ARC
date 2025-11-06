@@ -164,7 +164,7 @@ class YOLOv8Node(Node):
         self.declare_parameter("half", True)  # Use FP16 precision
         # Set imgsz to match Realsense resolution
         self.declare_parameter("imgsz_width", 640)
-        self.declare_parameter("imgsz_height", 640)
+        self.declare_parameter("imgsz_height", 480)
         self.declare_parameter(
             "show", True
         )  # Enable/disable OpenCV visualization windows
@@ -187,6 +187,10 @@ class YOLOv8Node(Node):
         self.declare_parameter(
             "realsense_fps", fps
         )  # Will attempt to get max FPS supported by the camera
+        # Diagnostics/toggles for acquisition and inference
+        self.declare_parameter("realsense_timeout_ms", 1000)
+        self.declare_parameter("enable_inference", True)
+        self.declare_parameter("use_poll_for_frames", False)
 
         # Get parameter values
         model_path = self.get_parameter("model_path").get_parameter_value().string_value
@@ -221,6 +225,15 @@ class YOLOv8Node(Node):
         )
         self.realsense_fps = (
             self.get_parameter("realsense_fps").get_parameter_value().integer_value
+        )
+        self.realsense_timeout_ms = (
+            self.get_parameter("realsense_timeout_ms").get_parameter_value().integer_value
+        )
+        self.enable_inference = (
+            self.get_parameter("enable_inference").get_parameter_value().bool_value
+        )
+        self.use_poll_for_frames = (
+            self.get_parameter("use_poll_for_frames").get_parameter_value().bool_value
         )
 
         self.get_logger().info(f"Model Path: {model_path}")
@@ -330,8 +343,16 @@ class YOLOv8Node(Node):
     # --- Timer Callback for Frame Acquisition and Processing ---
     def timer_callback(self):
         try:
-            # Wait for a new set of Realsense frames with timeout
-            frames = self.pipeline.wait_for_frames(timeout_ms=1000)  # 1 second timeout
+            # Wait for a new set of Realsense frames with timeout or poll
+            if self.use_poll_for_frames:
+                frames = self.pipeline.poll_for_frames()
+                if not frames:
+                    self.get_logger().warn(
+                        "No frames available (poll). Skipping this frame."
+                    )
+                    return
+            else:
+                frames = self.pipeline.wait_for_frames(timeout_ms=self.realsense_timeout_ms)
             color_frame = frames.get_color_frame()
             if not color_frame:
                 self.get_logger().warn(
@@ -343,19 +364,40 @@ class YOLOv8Node(Node):
             frame = np.asanyarray(color_frame.get_data())
             # frame is now a BGR8 OpenCV image
 
+            if not self.enable_inference:
+                return
+
             self.listener_callback(frame)  # Call the existing processing logic
 
         except RuntimeError as e:
             if "Frame didn't arrive within" in str(e) or "timeout" in str(e).lower():
                 self.get_logger().warn(f"Frame timeout: {e}. Skipping frame.")
+                try:
+                    self.get_logger().debug(
+                        f"Exception type: {type(e).__name__} repr: {repr(e)}"
+                    )
+                except Exception:
+                    pass
             else:
                 self.get_logger().error(
                     f"Error in Realsense frame acquisition or processing: {e}"
                 )
+                try:
+                    self.get_logger().error(
+                        f"Exception type: {type(e).__name__} repr: {repr(e)}"
+                    )
+                except Exception:
+                    pass
         except Exception as e:
             self.get_logger().error(
                 f"Error in Realsense frame acquisition or processing: {e}"
             )
+            try:
+                self.get_logger().error(
+                    f"Exception type: {type(e).__name__} repr: {repr(e)}"
+                )
+            except Exception:
+                pass
 
     # --- Main Image Processing Logic (now takes a cv2 image directly) ---
     def listener_callback(self, frame):
