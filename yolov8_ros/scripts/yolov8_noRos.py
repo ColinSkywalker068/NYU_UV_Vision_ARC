@@ -227,7 +227,9 @@ class YOLOv8Node(Node):
             self.get_parameter("realsense_fps").get_parameter_value().integer_value
         )
         self.realsense_timeout_ms = (
-            self.get_parameter("realsense_timeout_ms").get_parameter_value().integer_value
+            self.get_parameter("realsense_timeout_ms")
+            .get_parameter_value()
+            .integer_value
         )
         self.enable_inference = (
             self.get_parameter("enable_inference").get_parameter_value().bool_value
@@ -352,7 +354,9 @@ class YOLOv8Node(Node):
                     )
                     return
             else:
-                frames = self.pipeline.wait_for_frames(timeout_ms=self.realsense_timeout_ms)
+                frames = self.pipeline.wait_for_frames(
+                    timeout_ms=self.realsense_timeout_ms
+                )
             color_frame = frames.get_color_frame()
             if not color_frame:
                 self.get_logger().warn(
