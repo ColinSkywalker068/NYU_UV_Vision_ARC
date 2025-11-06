@@ -164,7 +164,7 @@ class YOLOv8Node(Node):
         self.declare_parameter("half", True)  # Use FP16 precision
         # Set imgsz to match Realsense resolution
         self.declare_parameter("imgsz_width", 640)
-        self.declare_parameter("imgsz_height", 480)
+        self.declare_parameter("imgsz_height", 640)
         self.declare_parameter(
             "show", True
         )  # Enable/disable OpenCV visualization windows
