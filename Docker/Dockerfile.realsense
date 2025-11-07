@@ -4,8 +4,8 @@ FROM ${BASE_IMAGE}
 
 # Update ROS2 GPG key to fix apt errors: https://github.com/ros2/ros2/issues/1696
 RUN apt-get install curl \
- && curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
- && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+    && curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
 
 # Install Python
 RUN apt-get install -y --no-install-recommends \
@@ -28,8 +28,16 @@ RUN apt-get update && \
     ca-certificates \
     curl \
     software-properties-common \
-    screen \
     qtcreator && \
+    rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Install runtime/user tools (separate layer for better caching)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    vim \
+    screen \
+    bash-completion && \
     rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -37,53 +45,53 @@ RUN apt-get update && \
 # https://github.com/IntelRealSense/librealsense/issues/11931
 ARG LIBREALSENSE_VERSION=development
 RUN git clone --branch ${LIBREALSENSE_VERSION} --depth=1 https://github.com/IntelRealSense/librealsense \
- && cd librealsense \
- && mkdir build \
- && cd build \
- && cmake \
-        -DBUILD_EXAMPLES=true \
-        -DFORCE_RSUSB_BACKEND=true \
-        -DBUILD_WITH_CUDA=true \
-        -DCMAKE_BUILD_TYPE=release \
-        -DBUILD_PYTHON_BINDINGS=bool:true \
-        -DPYTHON_EXECUTABLE=/usr/bin/python3 \
-        ../ \
- && make -j$(($(nproc)-1)) \
- && make install \
- && cd .. \
- && cp -r . /usr/local/ \
- && cp ./config/99-realsense-libusb.rules /etc/udev/rules.d/ \
- && cp ./config/99-realsense-d4xx-mipi-dfu.rules /etc/udev/rules.d/ \
- && rm -rf librealsense
+    && cd librealsense \
+    && mkdir build \
+    && cd build \
+    && cmake \
+    -DBUILD_EXAMPLES=true \
+    -DFORCE_RSUSB_BACKEND=true \
+    -DBUILD_WITH_CUDA=true \
+    -DCMAKE_BUILD_TYPE=release \
+    -DBUILD_PYTHON_BINDINGS=bool:true \
+    -DPYTHON_EXECUTABLE=/usr/bin/python3 \
+    ../ \
+    && make -j$(($(nproc)-1)) \
+    && make install \
+    && cd .. \
+    && cp -r . /usr/local/ \
+    && cp ./config/99-realsense-libusb.rules /etc/udev/rules.d/ \
+    && cp ./config/99-realsense-d4xx-mipi-dfu.rules /etc/udev/rules.d/ \
+    && rm -rf librealsense
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Move the base image's custom ROS2 installation to the default path apt expects
 RUN mv /opt/ros/humble/install/* /opt/ros/humble/ \
- && rm -r /opt/ros/humble/install
+    && rm -r /opt/ros/humble/install
 
 # Realsense ROS: https://github.com/IntelRealSense/realsense-ros/tree/ros2-development
 ENV WS_DIR_REALSENSE="/ros2_realsense_ws"
 WORKDIR ${WS_DIR_REALSENSE}
 RUN bash -c "apt-get update -y \
- && mkdir src \
- && cd src \
- && git clone https://github.com/IntelRealSense/realsense-ros.git -b ros2-development \
- && cd .. \
- && apt-get install -y python3-rosdep \
- && source /opt/ros/${ROS_DISTRO}/setup.bash \
- && rm /etc/ros/rosdep/sources.list.d/20-default.list \
- && rosdep init \
- && rosdep update \
- && rosdep install -i --from-path src --rosdistro ${ROS_DISTRO} --skip-keys=librealsense2 -y \
- && source /opt/ros/${ROS_DISTRO}/setup.bash \
- && colcon build"
+    && mkdir src \
+    && cd src \
+    && git clone https://github.com/IntelRealSense/realsense-ros.git -b ros2-development \
+    && cd .. \
+    && apt-get install -y python3-rosdep \
+    && source /opt/ros/${ROS_DISTRO}/setup.bash \
+    && rm /etc/ros/rosdep/sources.list.d/20-default.list \
+    && rosdep init \
+    && rosdep update \
+    && rosdep install -i --from-path src --rosdistro ${ROS_DISTRO} --skip-keys=librealsense2 -y \
+    && source /opt/ros/${ROS_DISTRO}/setup.bash \
+    && colcon build"
 RUN bash -c "source ./install/local_setup.sh"
 
 # Install application dependencies
 RUN pip3 install ultralytics --no-cache-dir --no-deps \
- && pip3 install --no-cache-dir py-cpuinfo psutil scipy seaborn thop tqdm pandas onnxsim lapx \
- && pip3 install --no-cache-dir --upgrade matplotlib gitpython
+    && pip3 install --no-cache-dir py-cpuinfo psutil scipy seaborn thop tqdm pandas onnxsim lapx \
+    && pip3 install --no-cache-dir --upgrade matplotlib gitpython
 
 RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-rqt \
@@ -92,16 +100,16 @@ RUN apt-get update && apt-get install -y \
 
 # Run commands when shell starts
 RUN echo 'git config --global --add safe.directory "*"' >> ~/.bashrc \
- && echo 'git config --global user.email "jetson.service@gmail.com"' >> ~/.bashrc \
- && echo 'git config --global user.email "jetson-service"' >> ~/.bashrc \
- && echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> ~/.bashrc \
- && echo 'source "${WS_DIR_REALSENSE}/install/local_setup.sh"' >> ~/.bashrc
+    && echo 'git config --global user.email "jetson.service@gmail.com"' >> ~/.bashrc \
+    && echo 'git config --global user.email "jetson-service"' >> ~/.bashrc \
+    && echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> ~/.bashrc \
+    && echo 'source "${WS_DIR_REALSENSE}/install/local_setup.sh"' >> ~/.bashrc
 
 # Fix realsense error by reinstalling realsense dependencies
 RUN cd /librealsense/build && make install
 
 ENV DEBIAN_FRONTEND=dialog
 
-WORKDIR /home/ultraviolet
+WORKDIR /home/ultraviolet/CV_Detection
 
 CMD ["/bin/bash"]
