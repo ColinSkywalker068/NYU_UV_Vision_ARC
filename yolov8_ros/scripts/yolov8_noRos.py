@@ -10,6 +10,7 @@ import os
 import time
 import random  # For Kalman
 import pyrealsense2 as rs  # Import pyrealsense2
+import traceback
 
 # Prevent memory corruption on Jetson with TensorRT
 os.environ["MALLOC_CHECK_"] = "0"  # Disable glibc malloc checks
@@ -191,6 +192,8 @@ class YOLOv8Node(Node):
         self.declare_parameter("realsense_timeout_ms", 1000)
         self.declare_parameter("enable_inference", True)
         self.declare_parameter("use_poll_for_frames", False)
+        self.declare_parameter("enable_tracking", True)
+        self.declare_parameter("persist_tracking", True)
 
         # Get parameter values
         model_path = self.get_parameter("model_path").get_parameter_value().string_value
@@ -236,6 +239,12 @@ class YOLOv8Node(Node):
         )
         self.use_poll_for_frames = (
             self.get_parameter("use_poll_for_frames").get_parameter_value().bool_value
+        )
+        self.enable_tracking = (
+            self.get_parameter("enable_tracking").get_parameter_value().bool_value
+        )
+        self.persist_tracking = (
+            self.get_parameter("persist_tracking").get_parameter_value().bool_value
         )
 
         self.get_logger().info(f"Model Path: {model_path}")
@@ -380,6 +389,7 @@ class YOLOv8Node(Node):
                     self.get_logger().debug(
                         f"Exception type: {type(e).__name__} repr: {repr(e)}"
                     )
+                    self.get_logger().debug(traceback.format_exc())
                 except Exception:
                     pass
             else:
@@ -390,6 +400,7 @@ class YOLOv8Node(Node):
                     self.get_logger().error(
                         f"Exception type: {type(e).__name__} repr: {repr(e)}"
                     )
+                    self.get_logger().error(traceback.format_exc())
                 except Exception:
                     pass
         except Exception as e:
@@ -400,6 +411,7 @@ class YOLOv8Node(Node):
                 self.get_logger().error(
                     f"Exception type: {type(e).__name__} repr: {repr(e)}"
                 )
+                self.get_logger().error(traceback.format_exc())
             except Exception:
                 pass
 
@@ -461,15 +473,25 @@ class YOLOv8Node(Node):
         else:
             imgsz_value = (self.imgsz_height, self.imgsz_width)  # YOLO expects (H, W)
 
-        results = self.model.track(
-            padded_image,
-            half=self.half,
-            imgsz=imgsz_value,
-            show=False,  # Manual visualization
-            conf=self.conf,
-            persist=True,  # Keep tracks between frames
-            tracker="bytetrack.yaml",  # Specify a robust tracker
-        )
+        if self.enable_tracking:
+            results = self.model.track(
+                padded_image,
+                half=self.half,
+                imgsz=imgsz_value,
+                show=False,  # Manual visualization
+                conf=self.conf,
+                persist=self.persist_tracking,  # Keep tracks between frames
+                tracker="bytetrack.yaml",  # Specify a robust tracker
+            )
+        else:
+            results = self.model(
+                padded_image,
+                half=self.half,
+                imgsz=imgsz_value,
+                show=False,
+                conf=self.conf,
+                verbose=False,
+            )
 
         vis_frame = padded_image.copy() if self.show else None
         current_frame_processed_track_ids = set()
