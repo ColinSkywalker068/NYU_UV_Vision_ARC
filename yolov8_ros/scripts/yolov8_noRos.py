@@ -571,7 +571,9 @@ class YOLOv8Node(Node):
                         ):  # Must be an enemy AND have a track ID for KF
                             current_frame_processed_track_ids.add(track_id)
                             center_x, center_y = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-                            width_det, height_det = float(abs(x2 - x1)), float(abs(y2 - y1))
+                            width_det, height_det = float(abs(x2 - x1)), float(
+                                abs(y2 - y1)
+                            )
 
                             if track_id not in self.active_trackers:
                                 self.get_logger().info(
@@ -673,7 +675,9 @@ class YOLOv8Node(Node):
                                 BBOX_LINE_SIZE,
                             )
                             text_y_pos = (
-                                pub_y1 - 25 if pub_y1 > 25 else pub_y1 + int(kf_height) + 15
+                                pub_y1 - 25
+                                if pub_y1 > 25
+                                else pub_y1 + int(kf_height) + 15
                             )  # Adjust text position
                             cv2.putText(
                                 vis_frame,
