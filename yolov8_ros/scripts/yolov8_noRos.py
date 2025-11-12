@@ -158,7 +158,7 @@ class YOLOv8Node(Node):
         # --- ROS Parameters ---
         self.declare_parameter(
             "model_path",
-            "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine",
+            "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb.engine",
         )
         self.declare_parameter("task", "detect")  # e.g., "detect", "obb"
         self.declare_parameter("type", "yolo")  # "yolo", "rtdetr", "nas"
