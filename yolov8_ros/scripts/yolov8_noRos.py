@@ -194,6 +194,9 @@ class YOLOv8Node(Node):
         self.declare_parameter("use_poll_for_frames", False)
         self.declare_parameter("enable_tracking", True)
         self.declare_parameter("persist_tracking", True)
+        # Acquisition tuning
+        self.declare_parameter("color_frames_queue_size", 1)
+        self.declare_parameter("poll_idle_sleep_ms", 2)
         # Color sensor controls
         self.declare_parameter("color_auto_exposure", False)
         self.declare_parameter("color_exposure", 120.0)
@@ -254,6 +257,14 @@ class YOLOv8Node(Node):
         )
         self.persist_tracking = (
             self.get_parameter("persist_tracking").get_parameter_value().bool_value
+        )
+        self.color_frames_queue_size = (
+            self.get_parameter("color_frames_queue_size")
+            .get_parameter_value()
+            .integer_value
+        )
+        self.poll_idle_sleep_ms = (
+            self.get_parameter("poll_idle_sleep_ms").get_parameter_value().integer_value
         )
         # Color control values
         self.color_auto_exposure = (
@@ -371,6 +382,12 @@ class YOLOv8Node(Node):
                     color_sensor = sensor
                     break
             if color_sensor is not None:
+                # Keep queue short to reduce latency/backlog
+                if color_sensor.supports(rs.option.frames_queue_size):
+                    color_sensor.set_option(
+                        rs.option.frames_queue_size,
+                        float(max(1, self.color_frames_queue_size)),
+                    )
                 # Auto exposure on/off
                 if color_sensor.supports(rs.option.enable_auto_exposure):
                     color_sensor.set_option(
@@ -410,7 +427,8 @@ class YOLOv8Node(Node):
                     f"Exp={self.color_exposure:.1f}, Gain={self.color_gain:.1f}, "
                     f"AWB={'on' if self.color_auto_white_balance else 'off'}, "
                     f"WB={self.color_white_balance:.1f}, "
-                    f"PLF={self.color_power_line_frequency})"
+                    f"PLF={self.color_power_line_frequency}, "
+                    f"Queue={max(1, self.color_frames_queue_size)})"
                 )
             else:
                 self.get_logger().warn(
@@ -479,9 +497,9 @@ class YOLOv8Node(Node):
             if self.use_poll_for_frames:
                 frames = self.pipeline.poll_for_frames()
                 if not frames:
-                    self.get_logger().warn(
-                        "No frames available (poll). Skipping this frame."
-                    )
+                    # Avoid busy spin; sleep briefly if configured
+                    if self.poll_idle_sleep_ms and self.poll_idle_sleep_ms > 0:
+                        time.sleep(self.poll_idle_sleep_ms / 1000.0)
                     return
             else:
                 frames = self.pipeline.wait_for_frames(
