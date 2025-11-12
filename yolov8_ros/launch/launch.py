@@ -41,8 +41,9 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(realsense_launch_file),
                 launch_arguments={
-                    # Stream profiles: keep only color at lower res/fps to reduce USB/CPU
-                    "rgb_camera.profile": "640x480x60",
+                    # Stream profile: keep only color to reduce USB/CPU
+                    "rgb_camera.color_profile": "640x480x30",
+                    "enable_color": "true",
                     # Disable unused streams and features to cut overhead
                     "enable_depth": "false",
                     "enable_infra1": "false",
@@ -54,15 +55,12 @@ def generate_launch_description():
                     "pointcloud.enable": "false",
                     "align_depth.enable": "false",
                     "colorizer.enable": "false",
-                    # Keep queue small to lower latency/memory
-                    "frames_queue_size": "2",
-                    # QoS optimized for sensor data
-                    "color_qos": "SENSOR_DATA",
-                    # Keep constant fps under AE (avoid dropping fps in low light)
+                    # Color AE on (priority not supported for RGB)
                     "rgb_camera.enable_auto_exposure": "true",
-                    "rgb_camera.auto_exposure_priority": "false",
                     # Minor overhead saving, not using TFs downstream
                     "publish_tf": "false",
+                    # Reduce log noise from the wrapper itself
+                    "log_level": "error",
                 }.items(),
             )
         )
