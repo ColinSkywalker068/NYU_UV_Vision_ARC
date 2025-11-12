@@ -194,6 +194,7 @@ class YOLOv8Node(Node):
         self.declare_parameter("use_poll_for_frames", False)
         self.declare_parameter("enable_tracking", True)
         self.declare_parameter("persist_tracking", True)
+        self.declare_parameter("use_kalman", False)  # Gate Kalman usage
 
         # Get parameter values
         model_path = self.get_parameter("model_path").get_parameter_value().string_value
@@ -246,6 +247,9 @@ class YOLOv8Node(Node):
         self.persist_tracking = (
             self.get_parameter("persist_tracking").get_parameter_value().bool_value
         )
+        self.use_kalman = (
+            self.get_parameter("use_kalman").get_parameter_value().bool_value
+        )
 
         self.get_logger().info(f"Model Path: {model_path}")
         self.get_logger().info(
@@ -262,6 +266,7 @@ class YOLOv8Node(Node):
         self.get_logger().info(
             f"Realsense Config - Width: {self.realsense_width}, Height: {self.realsense_height}, FPS: {self.realsense_fps}"
         )
+        self.get_logger().info(f"Kalman enabled: {self.use_kalman}")
 
         self.target_class = BLUE_CLASS  # Default target class
 
@@ -429,7 +434,7 @@ class YOLOv8Node(Node):
                 # self.get_logger().warn(f"Unusual dt calculated ({time_diff_s:.4f}s), using fallback dt: {dt:.4f}s") # Too verbose
                 pass
         if dt > 0:
-            self.get_logger().info(f"Current FPS: {1.0 / dt:.2f}")  # Too verbose
+            pass  # Avoid per-frame logging for FPS to reduce overhead
         self.last_frame_time = current_time
         # self.get_logger().info(f"Using dt for this frame: {dt:.4f}s") # Too verbose
 
@@ -496,6 +501,7 @@ class YOLOv8Node(Node):
         vis_frame = padded_image.copy() if self.show else None
         current_frame_processed_track_ids = set()
         published_bbox_this_frame = False
+        best_enemy_bbox_xyxy = None  # For direct YOLO publish when Kalman is disabled
 
         if results and len(results) > 0:
             res_obj = results[0]  # Results for the first (and likely only) image
@@ -559,28 +565,32 @@ class YOLOv8Node(Node):
                     )  # check_enemy logs its own decision
                     # self.get_logger().info(f"Raw detection {i} (ID: {track_id}): check_enemy result: {is_enemy}") # Too verbose
 
-                    if (
-                        is_enemy and track_id is not None
-                    ):  # Must be an enemy AND have a track ID for KF
-                        current_frame_processed_track_ids.add(track_id)
-                        center_x, center_y = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-                        width_det, height_det = float(abs(x2 - x1)), float(abs(y2 - y1))
+                    if self.use_kalman:
+                        if (
+                            is_enemy and track_id is not None
+                        ):  # Must be an enemy AND have a track ID for KF
+                            current_frame_processed_track_ids.add(track_id)
+                            center_x, center_y = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+                            width_det, height_det = float(abs(x2 - x1)), float(abs(y2 - y1))
 
-                        if track_id not in self.active_trackers:
-                            self.get_logger().info(
-                                f"Creating new Kalman tracker for enemy ID: {track_id}"
-                            )
-                            self.active_trackers[track_id] = TrackerWrapper(
-                                ArmorPlateTracker(
+                            if track_id not in self.active_trackers:
+                                self.get_logger().info(
+                                    f"Creating new Kalman tracker for enemy ID: {track_id}"
+                                )
+                                self.active_trackers[track_id] = TrackerWrapper(
+                                    ArmorPlateTracker(
+                                        center_x, center_y, width_det, height_det
+                                    )
+                                )
+                            else:
+                                # self.get_logger().info(f"Updating Kalman tracker for enemy ID: {track_id}") # Too verbose
+                                self.active_trackers[track_id].tracker.update(
                                     center_x, center_y, width_det, height_det
                                 )
-                            )
-                        else:
-                            # self.get_logger().info(f"Updating Kalman tracker for enemy ID: {track_id}") # Too verbose
-                            self.active_trackers[track_id].tracker.update(
-                                center_x, center_y, width_det, height_det
-                            )
-                        self.active_trackers[track_id].lost_frames = 0
+                            self.active_trackers[track_id].lost_frames = 0
+                    else:
+                        if is_enemy and best_enemy_bbox_xyxy is None:
+                            best_enemy_bbox_xyxy = (x1, y1, x2, y2)
             else:
                 # self.get_logger().info("No bounding boxes (xyxy) in YOLO results[0].") # Too verbose
                 pass
@@ -588,115 +598,150 @@ class YOLOv8Node(Node):
             # self.get_logger().info("YOLO model.track() returned no results or empty list.") # Too verbose
             pass
 
-        # Manage and predict from active Kalman trackers
-        active_ids_to_remove = []
-        for track_id, tw_wrapper in self.active_trackers.items():
-            if track_id not in current_frame_processed_track_ids:
-                tw_wrapper.lost_frames += 1
+        if self.use_kalman:
+            # Manage and predict from active Kalman trackers
+            active_ids_to_remove = []
+            for track_id, tw_wrapper in self.active_trackers.items():
+                if track_id not in current_frame_processed_track_ids:
+                    tw_wrapper.lost_frames += 1
 
-            if tw_wrapper.lost_frames >= self.tracker_timeout_val:
-                active_ids_to_remove.append(track_id)
-                self.get_logger().info(
-                    f"Removing tracker ID {track_id} (lost {tw_wrapper.lost_frames} frames)."
-                )
-                continue
+                if tw_wrapper.lost_frames >= self.tracker_timeout_val:
+                    active_ids_to_remove.append(track_id)
+                    self.get_logger().info(
+                        f"Removing tracker ID {track_id} (lost {tw_wrapper.lost_frames} frames)."
+                    )
+                    continue
+
+                if (
+                    not published_bbox_this_frame and tw_wrapper.lost_frames == 0
+                ):  # Publish for first active, non-lost track
+                    pred_x_curr, pred_y_curr = tw_wrapper.tracker.predict(
+                        dt
+                    )  # Standard KF prediction for t+dt
+
+                    # Get latest corrected velocity and acceleration for lookahead
+                    last_corrected_state = tw_wrapper.tracker.kf.statePost.flatten()
+                    vx, vy = last_corrected_state[2], last_corrected_state[3]
+                    ax, ay = last_corrected_state[4], last_corrected_state[5]
+
+                    additional_lookahead_time = self.prediction_lookahead_steps_val * dt
+
+                    pred_x_final = (
+                        pred_x_curr
+                        + vx * additional_lookahead_time
+                        + 0.5 * ax * (additional_lookahead_time**2)
+                    )
+                    pred_y_final = (
+                        pred_y_curr
+                        + vy * additional_lookahead_time
+                        + 0.5 * ay * (additional_lookahead_time**2)
+                    )
+
+                    # self.get_logger().info(f"KF ID {track_id}: BasePred({pred_x_curr},{pred_y_curr}), Vel({vx:.1f},{vy:.1f}), Acc({ax:.1f},{ay:.1f}), LookAheadT({additional_lookahead_time:.3f}), FinalPred({pred_x_final:.0f},{pred_y_final:.0f})") # Too verbose
+
+                    kf_width, kf_height = (
+                        tw_wrapper.tracker.width,
+                        tw_wrapper.tracker.height,
+                    )
+                    pub_x1 = int(pred_x_final - kf_width / 2)
+                    pub_y1 = int(pred_y_final - kf_height / 2)
+                    pub_x2 = int(pred_x_final + kf_width / 2)
+                    pub_y2 = int(pred_y_final + kf_height / 2)
+
+                    # Clamp coordinates to image boundaries
+                    pub_x1 = max(0, min(pub_x1, self.imgsz_width - 1))
+                    pub_y1 = max(0, min(pub_y1, self.imgsz_height - 1))
+                    pub_x2 = max(0, min(pub_x2, self.imgsz_width - 1))
+                    pub_y2 = max(0, min(pub_y2, self.imgsz_height - 1))
+
+                    if pub_x1 < pub_x2 and pub_y1 < pub_y2:  # Check for valid box
+                        self.bbox_msg.data = [pub_x1, pub_y1, pub_x2, pub_y2]
+                        self.override.data = True
+                        self.bbox_publisher.publish(self.bbox_msg)
+                        self.override_publisher.publish(self.override)
+                        published_bbox_this_frame = True
+                        self.get_logger().info(
+                            f"Published KF BBox ID {track_id} (Lookahead): {[pub_x1, pub_y1, pub_x2, pub_y2]}"
+                        )
+
+                        if self.show and vis_frame is not None:  # Draw KF box
+                            cv2.rectangle(
+                                vis_frame,
+                                (pub_x1, pub_y1),
+                                (pub_x2, pub_y2),
+                                BBOX_KF_COLOR,
+                                BBOX_LINE_SIZE,
+                            )
+                            text_y_pos = (
+                                pub_y1 - 25 if pub_y1 > 25 else pub_y1 + int(kf_height) + 15
+                            )  # Adjust text position
+                            cv2.putText(
+                                vis_frame,
+                                f"KF_ID:{track_id}",
+                                (pub_x1, text_y_pos),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5,
+                                BBOX_KF_COLOR,
+                                1,
+                            )
+                    else:
+                        self.get_logger().warn(
+                            f"KF ID {track_id} produced invalid lookahead box ({[pub_x1, pub_y1, pub_x2, pub_y2]}). Not publishing."
+                        )
+
+            for track_id_to_remove in active_ids_to_remove:
+                if track_id_to_remove in self.active_trackers:
+                    del self.active_trackers[track_id_to_remove]
 
             if (
-                not published_bbox_this_frame and tw_wrapper.lost_frames == 0
-            ):  # Publish for first active, non-lost track
-                pred_x_curr, pred_y_curr = tw_wrapper.tracker.predict(
-                    dt
-                )  # Standard KF prediction for t+dt
-
-                # Get latest corrected velocity and acceleration for lookahead
-                last_corrected_state = tw_wrapper.tracker.kf.statePost.flatten()
-                vx, vy = last_corrected_state[2], last_corrected_state[3]
-                ax, ay = last_corrected_state[4], last_corrected_state[5]
-
-                additional_lookahead_time = self.prediction_lookahead_steps_val * dt
-
-                pred_x_final = (
-                    pred_x_curr
-                    + vx * additional_lookahead_time
-                    + 0.5 * ax * (additional_lookahead_time**2)
-                )
-                pred_y_final = (
-                    pred_y_curr
-                    + vy * additional_lookahead_time
-                    + 0.5 * ay * (additional_lookahead_time**2)
-                )
-
-                # self.get_logger().info(f"KF ID {track_id}: BasePred({pred_x_curr},{pred_y_curr}), Vel({vx:.1f},{vy:.1f}), Acc({ax:.1f},{ay:.1f}), LookAheadT({additional_lookahead_time:.3f}), FinalPred({pred_x_final:.0f},{pred_y_final:.0f})") # Too verbose
-
-                kf_width, kf_height = (
-                    tw_wrapper.tracker.width,
-                    tw_wrapper.tracker.height,
-                )
-                pub_x1 = int(pred_x_final - kf_width / 2)
-                pub_y1 = int(pred_y_final - kf_height / 2)
-                pub_x2 = int(pred_x_final + kf_width / 2)
-                pub_y2 = int(pred_y_final + kf_height / 2)
-
-                # Clamp coordinates to image boundaries
-                pub_x1 = max(0, min(pub_x1, self.imgsz_width - 1))
-                pub_y1 = max(0, min(pub_y1, self.imgsz_height - 1))
-                pub_x2 = max(0, min(pub_x2, self.imgsz_width - 1))
-                pub_y2 = max(0, min(pub_y2, self.imgsz_height - 1))
-
-                if pub_x1 < pub_x2 and pub_y1 < pub_y2:  # Check for valid box
+                not published_bbox_this_frame
+            ):  # Publish default if no valid KF track was published
+                default_center_x = self.imgsz_width // 2
+                default_center_y = self.imgsz_height // 2
+                self.bbox_msg.data = [
+                    default_center_x,
+                    default_center_y,
+                    default_center_x,
+                    default_center_y,
+                ]
+                self.override.data = False
+                self.bbox_publisher.publish(self.bbox_msg)
+                self.override_publisher.publish(self.override)
+                # self.get_logger().info("No KF-tracked enemy published. Sent default bbox.") # Too verbose
+        else:
+            # Direct YOLO-based publish when Kalman is disabled
+            if best_enemy_bbox_xyxy is not None:
+                x1, y1, x2, y2 = best_enemy_bbox_xyxy
+                pub_x1 = max(0, min(int(x1), self.imgsz_width - 1))
+                pub_y1 = max(0, min(int(y1), self.imgsz_height - 1))
+                pub_x2 = max(0, min(int(x2), self.imgsz_width - 1))
+                pub_y2 = max(0, min(int(y2), self.imgsz_height - 1))
+                if pub_x1 < pub_x2 and pub_y1 < pub_y2:
                     self.bbox_msg.data = [pub_x1, pub_y1, pub_x2, pub_y2]
                     self.override.data = True
                     self.bbox_publisher.publish(self.bbox_msg)
                     self.override_publisher.publish(self.override)
                     published_bbox_this_frame = True
-                    self.get_logger().info(
-                        f"Published KF BBox ID {track_id} (Lookahead): {[pub_x1, pub_y1, pub_x2, pub_y2]}"
-                    )
-
-                    if self.show and vis_frame is not None:  # Draw KF box
+                    if self.show and vis_frame is not None:
                         cv2.rectangle(
                             vis_frame,
                             (pub_x1, pub_y1),
                             (pub_x2, pub_y2),
-                            BBOX_KF_COLOR,
+                            BBOX_RAW_COLOR,
                             BBOX_LINE_SIZE,
                         )
-                        text_y_pos = (
-                            pub_y1 - 25 if pub_y1 > 25 else pub_y1 + int(kf_height) + 15
-                        )  # Adjust text position
-                        cv2.putText(
-                            vis_frame,
-                            f"KF_ID:{track_id}",
-                            (pub_x1, text_y_pos),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5,
-                            BBOX_KF_COLOR,
-                            1,
-                        )
-                else:
-                    self.get_logger().warn(
-                        f"KF ID {track_id} produced invalid lookahead box ({[pub_x1, pub_y1, pub_x2, pub_y2]}). Not publishing."
-                    )
-
-        for track_id_to_remove in active_ids_to_remove:
-            if track_id_to_remove in self.active_trackers:
-                del self.active_trackers[track_id_to_remove]
-
-        if (
-            not published_bbox_this_frame
-        ):  # Publish default if no valid KF track was published
-            default_center_x = self.imgsz_width // 2
-            default_center_y = self.imgsz_height // 2
-            self.bbox_msg.data = [
-                default_center_x,
-                default_center_y,
-                default_center_x,
-                default_center_y,
-            ]
-            self.override.data = False
-            self.bbox_publisher.publish(self.bbox_msg)
-            self.override_publisher.publish(self.override)
-            # self.get_logger().info("No KF-tracked enemy published. Sent default bbox.") # Too verbose
+            if not published_bbox_this_frame:
+                default_center_x = self.imgsz_width // 2
+                default_center_y = self.imgsz_height // 2
+                self.bbox_msg.data = [
+                    default_center_x,
+                    default_center_y,
+                    default_center_x,
+                    default_center_y,
+                ]
+                self.override.data = False
+                self.bbox_publisher.publish(self.bbox_msg)
+                self.override_publisher.publish(self.override)
 
         if self.show and vis_frame is not None:
             cv2.imshow("3. YOLOv8 Kalman Tracking", vis_frame)
@@ -757,6 +802,7 @@ class YOLOv8Node(Node):
         try:
             if hasattr(self, "pipeline") and self.pipeline:
                 self.pipeline.stop()
+                self.pipeline = None
         except Exception as e:
             self.get_logger().warn(f"Error stopping pipeline: {e}")
 
