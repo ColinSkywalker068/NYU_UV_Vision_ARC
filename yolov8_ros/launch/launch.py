@@ -21,7 +21,7 @@ def generate_launch_description():
             remappings=[("video_frames", "/camera/camera/color/image_raw")],
             parameters=[
                 {
-                    "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb2.engine"
+                    "model_path": "/home/ultraviolet/CV_Detection/yolov8_ros/models/best.engine"
                 },
                 {"task": "obb"},
                 {"show": True},
@@ -41,7 +41,28 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(realsense_launch_file),
                 launch_arguments={
-                    "rgb_camera.color_profile": "640x480x60",
+                    # Stream profiles: keep only color at lower res/fps to reduce USB/CPU
+                    "rgb_camera.profile": "640x480x60",
+                    # Disable unused streams and features to cut overhead
+                    "enable_depth": "false",
+                    "enable_infra1": "false",
+                    "enable_infra2": "false",
+                    "enable_gyro": "false",
+                    "enable_accel": "false",
+                    "enable_sync": "false",
+                    # Turn off filters and heavy processing
+                    "pointcloud.enable": "false",
+                    "align_depth.enable": "false",
+                    "colorizer.enable": "false",
+                    # Keep queue small to lower latency/memory
+                    "frames_queue_size": "2",
+                    # QoS optimized for sensor data
+                    "color_qos": "SENSOR_DATA",
+                    # Keep constant fps under AE (avoid dropping fps in low light)
+                    "rgb_camera.enable_auto_exposure": "true",
+                    "rgb_camera.auto_exposure_priority": "false",
+                    # Minor overhead saving, not using TFs downstream
+                    "publish_tf": "false",
                 }.items(),
             )
         )
