@@ -167,7 +167,7 @@ class YOLOv8Node(Node):
         self.declare_parameter("imgsz_width", 640)
         self.declare_parameter("imgsz_height", 640)
         self.declare_parameter(
-            "show", False
+            "show", True
         )  # Enable/disable OpenCV visualization windows
         self.declare_parameter(
             "conf", 0.05
