@@ -266,13 +266,17 @@ class YOLOv8Node(Node):
             self.get_parameter("color_gain").get_parameter_value().double_value
         )
         self.color_auto_white_balance = (
-            self.get_parameter("color_auto_white_balance").get_parameter_value().bool_value
+            self.get_parameter("color_auto_white_balance")
+            .get_parameter_value()
+            .bool_value
         )
         self.color_white_balance = (
             self.get_parameter("color_white_balance").get_parameter_value().double_value
         )
         self.color_power_line_frequency = (
-            self.get_parameter("color_power_line_frequency").get_parameter_value().integer_value
+            self.get_parameter("color_power_line_frequency")
+            .get_parameter_value()
+            .integer_value
         )
         self.use_kalman = (
             self.get_parameter("use_kalman").get_parameter_value().bool_value
@@ -370,12 +374,15 @@ class YOLOv8Node(Node):
                 # Auto exposure on/off
                 if color_sensor.supports(rs.option.enable_auto_exposure):
                     color_sensor.set_option(
-                        rs.option.enable_auto_exposure, 1.0 if self.color_auto_exposure else 0.0
+                        rs.option.enable_auto_exposure,
+                        1.0 if self.color_auto_exposure else 0.0,
                     )
                 # Manual exposure/gain when AE is off
                 if not self.color_auto_exposure:
                     if color_sensor.supports(rs.option.exposure):
-                        color_sensor.set_option(rs.option.exposure, float(self.color_exposure))
+                        color_sensor.set_option(
+                            rs.option.exposure, float(self.color_exposure)
+                        )
                     if color_sensor.supports(rs.option.gain):
                         color_sensor.set_option(rs.option.gain, float(self.color_gain))
                 # Auto white balance on/off
@@ -385,14 +392,17 @@ class YOLOv8Node(Node):
                         1.0 if self.color_auto_white_balance else 0.0,
                     )
                 # Manual white balance when AWB is off
-                if not self.color_auto_white_balance and color_sensor.supports(rs.option.white_balance):
+                if not self.color_auto_white_balance and color_sensor.supports(
+                    rs.option.white_balance
+                ):
                     color_sensor.set_option(
                         rs.option.white_balance, float(self.color_white_balance)
                     )
                 # Power line frequency (helps flicker)
                 if color_sensor.supports(rs.option.power_line_frequency):
                     color_sensor.set_option(
-                        rs.option.power_line_frequency, float(self.color_power_line_frequency)
+                        rs.option.power_line_frequency,
+                        float(self.color_power_line_frequency),
                     )
                 self.get_logger().info(
                     "Applied color sensor options "
@@ -403,7 +413,9 @@ class YOLOv8Node(Node):
                     f"PLF={self.color_power_line_frequency})"
                 )
             else:
-                self.get_logger().warn("Color sensor not found; skipping color option configuration.")
+                self.get_logger().warn(
+                    "Color sensor not found; skipping color option configuration."
+                )
         except Exception as e:
             self.get_logger().warn(f"Failed applying color sensor options: {e}")
         # Attempt to verify that only color is active
