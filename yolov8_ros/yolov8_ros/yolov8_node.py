@@ -215,7 +215,12 @@ class YOLOv8Node(Node):
                 )
         else:
             default_center = self.imgsz // 2
-            self.bbox_msg.data = [default_center, default_center, default_center, default_center]
+            self.bbox_msg.data = [
+                default_center,
+                default_center,
+                default_center,
+                default_center,
+            ]
             self.override.data = False
 
         self.override_publisher.publish(self.override)
