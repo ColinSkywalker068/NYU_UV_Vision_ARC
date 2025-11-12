@@ -1,11 +1,12 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Int32, Int32MultiArray, Bool
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
 from ultralytics import YOLO
 import cv2
 import numpy as np
 import os
-import pyrealsense2 as rs
 
 # Prevent memory corruption on Jetson with TensorRT
 os.environ["MALLOC_CHECK_"] = "0"  # Disable glibc malloc checks
@@ -76,38 +77,11 @@ class YOLOv8Node(Node):
         self.override = Bool()
         self.bbox_msg = Int32MultiArray()
         self.bbox_msg.data = [320, 320, 320, 320]  # Default center
-
-        # --- RealSense Camera Initialization ---
-        ctx = rs.context()
-        devices = ctx.query_devices()
-        if len(devices) == 0:
-            self.get_logger().error("No RealSense camera detected!")
-            raise RuntimeError("No RealSense camera found")
-        self.get_logger().info(f"Found {len(devices)} RealSense device(s)")
-
-        # Note: hardware_reset() removed - causes double free with TensorRT on Jetson unified memory
-
-        self.pipeline = rs.pipeline()
-        config = rs.config()
-        config.enable_stream(
-            rs.stream.color, IMG_WIDTH, IMG_HEIGHT, rs.format.bgr8, FPS
+        # Subscribe to RealSense color topic (remapped via launch to actual topic)
+        self.bridge = CvBridge()
+        self.subscription = self.create_subscription(
+            Image, "video_frames", self.image_callback, 10
         )
-
-        try:
-            self.pipeline.start(config)
-            self.get_logger().info(
-                f"RealSense camera started at {IMG_WIDTH}x{IMG_HEIGHT} @ {FPS} FPS."
-            )
-        except Exception as e:
-            self.get_logger().error(f"Failed to start RealSense camera: {e}")
-            self.get_logger().error(
-                "Try unplugging and replugging the camera, or stop other RealSense processes"
-            )
-            raise RuntimeError(f"Camera initialization failed: {e}")
-
-        # --- ROS Timer for Main Loop ---
-        self.timer_period = 1.0 / FPS
-        self.timer = self.create_timer(self.timer_period, self.process_frame_callback)
         self.last_frame_time = None
         self.fps_frame_count = 0
         self.fps_time_accum_s = 0.0
@@ -115,9 +89,9 @@ class YOLOv8Node(Node):
             "YOLOv8 RealSense Node has been initialized and is running."
         )
 
-    def process_frame_callback(self):
+    def image_callback(self, msg: Image):
         """
-        Main loop to grab frames from RealSense, process them, and publish results.
+        Handle incoming color frames from RealSense wrapper, process them, and publish results.
         """
         # Aggregate FPS over 10 frames
         current_time = self.get_clock().now()
@@ -136,13 +110,11 @@ class YOLOv8Node(Node):
                     self.fps_frame_count = 0
                     self.fps_time_accum_s = 0.0
         self.last_frame_time = current_time
-        frames = self.pipeline.wait_for_frames()
-        color_frame = frames.get_color_frame()
-        if not color_frame:
-            self.get_logger().warn("No color frame received from RealSense camera.")
+        try:
+            frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        except Exception as e:
+            self.get_logger().warn(f"Failed to convert image: {e}")
             return
-
-        frame = np.asanyarray(color_frame.get_data())
         original_height, original_width = frame.shape[:2]
 
         # Robust square letterboxing to match model imgsz
@@ -255,17 +227,8 @@ class YOLOv8Node(Node):
         return color_area > color_threshold, color_area
 
     def destroy_node(self):
-        self.get_logger().info("Stopping RealSense pipeline.")
-        try:
-            if hasattr(self, "pipeline") and self.pipeline:
-                self.pipeline.stop()
-                self.pipeline = None
-        except Exception as e:
-            self.get_logger().warn(f"Error stopping pipeline: {e}")
-
-        # Close CV windows before calling parent
+        self.get_logger().info("Cleaning up display windows.")
         cv2.destroyAllWindows()
-
         super().destroy_node()
 
 
