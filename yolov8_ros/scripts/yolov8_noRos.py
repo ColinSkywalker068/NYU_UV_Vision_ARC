@@ -194,6 +194,14 @@ class YOLOv8Node(Node):
         self.declare_parameter("use_poll_for_frames", False)
         self.declare_parameter("enable_tracking", True)
         self.declare_parameter("persist_tracking", True)
+        # Color sensor controls
+        self.declare_parameter("color_auto_exposure", False)
+        self.declare_parameter("color_exposure", 120.0)
+        self.declare_parameter("color_gain", 64.0)
+        self.declare_parameter("color_auto_white_balance", False)
+        self.declare_parameter("color_white_balance", 4600.0)
+        # 1=50Hz, 2=60Hz; see rs.option.power_line_frequency enumeration
+        self.declare_parameter("color_power_line_frequency", 2)
         self.declare_parameter("use_kalman", False)  # Gate Kalman usage
 
         # Get parameter values
@@ -246,6 +254,25 @@ class YOLOv8Node(Node):
         )
         self.persist_tracking = (
             self.get_parameter("persist_tracking").get_parameter_value().bool_value
+        )
+        # Color control values
+        self.color_auto_exposure = (
+            self.get_parameter("color_auto_exposure").get_parameter_value().bool_value
+        )
+        self.color_exposure = (
+            self.get_parameter("color_exposure").get_parameter_value().double_value
+        )
+        self.color_gain = (
+            self.get_parameter("color_gain").get_parameter_value().double_value
+        )
+        self.color_auto_white_balance = (
+            self.get_parameter("color_auto_white_balance").get_parameter_value().bool_value
+        )
+        self.color_white_balance = (
+            self.get_parameter("color_white_balance").get_parameter_value().double_value
+        )
+        self.color_power_line_frequency = (
+            self.get_parameter("color_power_line_frequency").get_parameter_value().integer_value
         )
         self.use_kalman = (
             self.get_parameter("use_kalman").get_parameter_value().bool_value
@@ -327,6 +354,58 @@ class YOLOv8Node(Node):
         color_profile = profile.get_stream(rs.stream.color).as_video_stream_profile()
         actual_fps = color_profile.fps()
         self.get_logger().info(f"Actual Realsense color stream FPS: {actual_fps}")
+        # Apply color sensor options if available
+        try:
+            device = profile.get_device()
+            color_sensor = None
+            for sensor in device.sensors:
+                try:
+                    sname = sensor.get_info(rs.camera_info.name)
+                except Exception:
+                    sname = ""
+                if "RGB" in sname or "Color" in sname:
+                    color_sensor = sensor
+                    break
+            if color_sensor is not None:
+                # Auto exposure on/off
+                if color_sensor.supports(rs.option.enable_auto_exposure):
+                    color_sensor.set_option(
+                        rs.option.enable_auto_exposure, 1.0 if self.color_auto_exposure else 0.0
+                    )
+                # Manual exposure/gain when AE is off
+                if not self.color_auto_exposure:
+                    if color_sensor.supports(rs.option.exposure):
+                        color_sensor.set_option(rs.option.exposure, float(self.color_exposure))
+                    if color_sensor.supports(rs.option.gain):
+                        color_sensor.set_option(rs.option.gain, float(self.color_gain))
+                # Auto white balance on/off
+                if color_sensor.supports(rs.option.enable_auto_white_balance):
+                    color_sensor.set_option(
+                        rs.option.enable_auto_white_balance,
+                        1.0 if self.color_auto_white_balance else 0.0,
+                    )
+                # Manual white balance when AWB is off
+                if not self.color_auto_white_balance and color_sensor.supports(rs.option.white_balance):
+                    color_sensor.set_option(
+                        rs.option.white_balance, float(self.color_white_balance)
+                    )
+                # Power line frequency (helps flicker)
+                if color_sensor.supports(rs.option.power_line_frequency):
+                    color_sensor.set_option(
+                        rs.option.power_line_frequency, float(self.color_power_line_frequency)
+                    )
+                self.get_logger().info(
+                    "Applied color sensor options "
+                    f"(AE={'on' if self.color_auto_exposure else 'off'}, "
+                    f"Exp={self.color_exposure:.1f}, Gain={self.color_gain:.1f}, "
+                    f"AWB={'on' if self.color_auto_white_balance else 'off'}, "
+                    f"WB={self.color_white_balance:.1f}, "
+                    f"PLF={self.color_power_line_frequency})"
+                )
+            else:
+                self.get_logger().warn("Color sensor not found; skipping color option configuration.")
+        except Exception as e:
+            self.get_logger().warn(f"Failed applying color sensor options: {e}")
         # Attempt to verify that only color is active
         only_color_active = True
         try:
