@@ -109,6 +109,8 @@ class YOLOv8Node(Node):
         self.timer_period = 1.0 / FPS
         self.timer = self.create_timer(self.timer_period, self.process_frame_callback)
         self.last_frame_time = None
+        self.fps_frame_count = 0
+        self.fps_time_accum_s = 0.0
         self.get_logger().info(
             "YOLOv8 RealSense Node has been initialized and is running."
         )
@@ -117,6 +119,23 @@ class YOLOv8Node(Node):
         """
         Main loop to grab frames from RealSense, process them, and publish results.
         """
+        # Aggregate FPS over 10 frames
+        current_time = self.get_clock().now()
+        if self.last_frame_time is not None:
+            time_diff_s = (current_time - self.last_frame_time).nanoseconds / 1e9
+            if 0.001 < time_diff_s < 1.0:
+                self.fps_frame_count += 1
+                self.fps_time_accum_s += time_diff_s
+                if self.fps_frame_count >= 10:
+                    avg_fps = (
+                        self.fps_frame_count / self.fps_time_accum_s
+                        if self.fps_time_accum_s > 0
+                        else 0.0
+                    )
+                    self.get_logger().info(f"FPS (avg/10): {avg_fps:.2f}")
+                    self.fps_frame_count = 0
+                    self.fps_time_accum_s = 0.0
+        self.last_frame_time = current_time
         frames = self.pipeline.wait_for_frames()
         color_frame = frames.get_color_frame()
         if not color_frame:

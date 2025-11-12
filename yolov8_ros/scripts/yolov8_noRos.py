@@ -350,6 +350,8 @@ class YOLOv8Node(Node):
         ]  # Default bbox
         self.active_trackers = {}  # Stores {track_id: TrackerWrapper}
         self.last_frame_time = None  # For dynamic dt calculation
+        self.fps_frame_count = 0  # For aggregated FPS logging
+        self.fps_time_accum_s = 0.0  # Sum of dt across frames for FPS
 
         # Create a timer to capture frames and process them
         self.timer = self.create_timer(
@@ -430,6 +432,18 @@ class YOLOv8Node(Node):
             time_diff_s = (current_time - self.last_frame_time).nanoseconds / 1e9
             if 0.001 < time_diff_s < 1.0:  # Sanity check for dt
                 dt = time_diff_s
+                # Aggregate FPS over 10 frames
+                self.fps_frame_count += 1
+                self.fps_time_accum_s += time_diff_s
+                if self.fps_frame_count >= 10:
+                    avg_fps = (
+                        self.fps_frame_count / self.fps_time_accum_s
+                        if self.fps_time_accum_s > 0
+                        else 0.0
+                    )
+                    self.get_logger().info(f"FPS (avg/10): {avg_fps:.2f}")
+                    self.fps_frame_count = 0
+                    self.fps_time_accum_s = 0.0
             else:
                 # self.get_logger().warn(f"Unusual dt calculated ({time_diff_s:.4f}s), using fallback dt: {dt:.4f}s") # Too verbose
                 pass
