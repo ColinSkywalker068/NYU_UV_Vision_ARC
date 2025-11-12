@@ -342,7 +342,9 @@ class YOLOv8Node(Node):
         if only_color_active:
             self.get_logger().info("Active streams verified: COLOR only (no depth/IR).")
         else:
-            self.get_logger().warn("Detected additional streams besides COLOR; check configuration.")
+            self.get_logger().warn(
+                "Detected additional streams besides COLOR; check configuration."
+            )
         self.kalman_initial_dt_val = (
             1.0 / actual_fps if actual_fps > 0 else self.kalman_initial_dt_val
         )
