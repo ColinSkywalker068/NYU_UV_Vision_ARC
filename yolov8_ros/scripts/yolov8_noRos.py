@@ -297,6 +297,11 @@ class YOLOv8Node(Node):
         # Note: hardware_reset() removed - causes double free with TensorRT on Jetson unified memory
 
         # Enable color stream with desired resolution and FPS
+        # Ensure only color is enabled
+        try:
+            self.config.disable_all_streams()
+        except Exception:
+            pass
         self.config.enable_stream(
             rs.stream.color,
             self.realsense_width,
@@ -322,6 +327,22 @@ class YOLOv8Node(Node):
         color_profile = profile.get_stream(rs.stream.color).as_video_stream_profile()
         actual_fps = color_profile.fps()
         self.get_logger().info(f"Actual Realsense color stream FPS: {actual_fps}")
+        # Attempt to verify that only color is active
+        only_color_active = True
+        try:
+            _ = profile.get_stream(rs.stream.depth)
+            only_color_active = False
+        except Exception:
+            pass
+        try:
+            _ = profile.get_stream(rs.stream.infrared)
+            only_color_active = False
+        except Exception:
+            pass
+        if only_color_active:
+            self.get_logger().info("Active streams verified: COLOR only (no depth/IR).")
+        else:
+            self.get_logger().warn("Detected additional streams besides COLOR; check configuration.")
         self.kalman_initial_dt_val = (
             1.0 / actual_fps if actual_fps > 0 else self.kalman_initial_dt_val
         )
