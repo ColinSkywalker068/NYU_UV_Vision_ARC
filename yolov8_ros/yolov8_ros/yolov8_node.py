@@ -5,7 +5,6 @@ from ultralytics import YOLO
 import cv2
 import numpy as np
 import os
-import time
 import pyrealsense2 as rs
 
 # Prevent memory corruption on Jetson with TensorRT
@@ -118,16 +117,6 @@ class YOLOv8Node(Node):
         """
         Main loop to grab frames from RealSense, process them, and publish results.
         """
-        # --- FPS Calculation ---
-        current_time = self.get_clock().now()
-        if self.last_frame_time is not None:
-            time_diff = current_time - self.last_frame_time
-            time_diff_s = time_diff.nanoseconds / 1e9
-            if time_diff_s > 0:
-                fps = 1.0 / time_diff_s
-                self.get_logger().info(f"Actual FPS: {fps:.2f}")
-        self.last_frame_time = current_time
-
         frames = self.pipeline.wait_for_frames()
         color_frame = frames.get_color_frame()
         if not color_frame:
@@ -135,13 +124,29 @@ class YOLOv8Node(Node):
             return
 
         frame = np.asanyarray(color_frame.get_data())
-        height, width = frame.shape[:2]
+        original_height, original_width = frame.shape[:2]
 
-        required_padding = max(0, width - height)
-        padding = required_padding // 2
-        padded_image = cv2.copyMakeBorder(
-            frame, padding, padding, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0]
-        )
+        # Robust square letterboxing to match model imgsz
+        target = self.imgsz
+        scale = 0.0
+        if original_width > 0 and original_height > 0:
+            scale = min(target / original_width, target / original_height)
+        new_w, new_h = int(original_width * scale), int(original_height * scale)
+
+        padded_image = np.full((target, target, 3), (114, 114, 114), dtype=np.uint8)
+        if new_w > 0 and new_h > 0:
+            resized_image = cv2.resize(
+                frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR
+            )
+            dw, dh = (target - new_w) // 2, (target - new_h) // 2
+            padded_image[dh : dh + new_h, dw : dw + new_w] = resized_image
+        else:
+            self.get_logger().warn(
+                f"Invalid resize dimensions ({new_w}x{new_h}). Resizing directly (may distort)."
+            )
+            padded_image = cv2.resize(
+                frame, (target, target), interpolation=cv2.INTER_LINEAR
+            )
 
         # --- Model Inference (FIXED) ---
         # Use the model directly as a callable, which works for all tasks
@@ -190,7 +195,8 @@ class YOLOv8Node(Node):
                     BBOX_LINE_SIZE,
                 )
         else:
-            self.bbox_msg.data = [320, 320, 320, 320]
+            default_center = self.imgsz // 2
+            self.bbox_msg.data = [default_center, default_center, default_center, default_center]
             self.override.data = False
 
         self.override_publisher.publish(self.override)
@@ -200,8 +206,8 @@ class YOLOv8Node(Node):
             cv2.imshow("YOLOv8 RealSense Detection", padded_image)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 self.get_logger().info("'q' pressed, shutting down.")
-                # This will trigger the main loop to exit and call destroy_node
-                self.context.try_shutdown()
+                # Trigger graceful shutdown
+                self.destroy_node()
 
     def id_listener_callback(self, msg):
         self.target_class = BLUE_CLASS if msg.data in RED_TEAM else RED_CLASS
@@ -229,6 +235,7 @@ class YOLOv8Node(Node):
         try:
             if hasattr(self, "pipeline") and self.pipeline:
                 self.pipeline.stop()
+                self.pipeline = None
         except Exception as e:
             self.get_logger().warn(f"Error stopping pipeline: {e}")
 

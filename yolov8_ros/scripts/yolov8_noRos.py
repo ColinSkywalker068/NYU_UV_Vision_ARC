@@ -154,11 +154,11 @@ class YOLOv8Node(Node):
         self.get_logger().info(
             "Initializing YOLOv8Node with Kalman Filter & Lag Compensation (Pyrealsense2)..."
         )
-        fps = 30
+        fps = 60
         # --- ROS Parameters ---
         self.declare_parameter(
             "model_path",
-            "/home/ultraviolet/CV_Detection/yolov8_ros/models/bestObb.engine",
+            "/home/ultraviolet/CV_Detection/yolov8_ros/models/best.engine",
         )
         self.declare_parameter("task", "detect")  # e.g., "detect", "obb"
         self.declare_parameter("type", "yolo")  # "yolo", "rtdetr", "nas"
