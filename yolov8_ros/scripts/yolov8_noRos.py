@@ -191,9 +191,11 @@ class YOLOv8Node(Node):
         # Diagnostics/toggles for acquisition and inference
         self.declare_parameter("realsense_timeout_ms", 1000)
         self.declare_parameter("enable_inference", True)
-        self.declare_parameter("use_poll_for_frames", True)
-        self.declare_parameter("enable_tracking", False)
-        self.declare_parameter("persist_tracking", False)
+        self.declare_parameter("use_poll_for_frames", False)
+        self.declare_parameter("enable_tracking", True)
+        self.declare_parameter("persist_tracking", True)
+        # Preallocate letterbox to minimize per-frame allocations
+        self.declare_parameter("preallocate_letterbox", True)
         # Acquisition tuning
         self.declare_parameter("color_frames_queue_size", 1)
         self.declare_parameter("poll_idle_sleep_ms", 2)
@@ -257,6 +259,9 @@ class YOLOv8Node(Node):
         )
         self.persist_tracking = (
             self.get_parameter("persist_tracking").get_parameter_value().bool_value
+        )
+        self.preallocate_letterbox = (
+            self.get_parameter("preallocate_letterbox").get_parameter_value().bool_value
         )
         self.color_frames_queue_size = (
             self.get_parameter("color_frames_queue_size")
@@ -460,6 +465,37 @@ class YOLOv8Node(Node):
         self.get_logger().info(
             f"Updated Kalman initial dt based on actual FPS: {self.kalman_initial_dt_val:.4f}s"
         )
+        # Precompute letterbox geometry and preallocate buffer if enabled
+        self.lb_ready = False
+        if self.preallocate_letterbox:
+            try:
+                # Prefer the actual profile width/height if available
+                try:
+                    actual_w = color_profile.width()
+                    actual_h = color_profile.height()
+                except Exception:
+                    actual_w = self.realsense_width
+                    actual_h = self.realsense_height
+                target_w = self.imgsz_width
+                target_h = self.imgsz_height
+                if actual_w > 0 and actual_h > 0 and target_w > 0 and target_h > 0:
+                    scale = min(target_w / actual_w, target_h / actual_h)
+                    new_w = int(actual_w * scale)
+                    new_h = int(actual_h * scale)
+                    dw = (target_w - new_w) // 2
+                    dh = (target_h - new_h) // 2
+                    self.prealloc_padded_image = np.full(
+                        (target_h, target_w, 3), (114, 114, 114), dtype=np.uint8
+                    )
+                    self.lb_slice_rows = (dh, dh + new_h)
+                    self.lb_slice_cols = (dw, dw + new_w)
+                    self.lb_target_size = (new_w, new_h)
+                    self.lb_ready = True
+                    self.get_logger().info(
+                        f"Preallocated letterbox: in {actual_w}x{actual_h} -> out {target_w}x{target_h} scale={scale:.4f}"
+                    )
+            except Exception as e:
+                self.get_logger().warn(f"Preallocate letterbox failed; falling back to dynamic: {e}")
 
         # --- ROS Publishers ---
         # We no longer subscribe to CompressedImage, as we get frames directly from Realsense
@@ -589,30 +625,60 @@ class YOLOv8Node(Node):
         # if self.show: cv2.imshow("1. Raw Input", frame); cv2.waitKey(1)
 
         # Robust Padding/Resizing (Letterboxing)
-        target_h, target_w = self.imgsz_height, self.imgsz_width
-        scale = 0.0
-        if original_width > 0 and original_height > 0:
-            scale = min(target_w / original_width, target_h / original_height)
-        new_w, new_h = int(original_width * scale), int(original_height * scale)
-
-        padded_image = np.full(
-            (self.imgsz_height, self.imgsz_width, 3), (114, 114, 114), dtype=np.uint8
-        )  # Gray padding
-        if new_w > 0 and new_h > 0:
-            resized_image = cv2.resize(
-                frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR
+        if self.lb_ready:
+            try:
+                resized_image = cv2.resize(
+                    frame, self.lb_target_size, interpolation=cv2.INTER_LINEAR
+                )
+                rs0, rs1 = self.lb_slice_rows
+                cs0, cs1 = self.lb_slice_cols
+                self.prealloc_padded_image[rs0:rs1, cs0:cs1] = resized_image
+                padded_image = self.prealloc_padded_image
+            except Exception:
+                # Fallback to dynamic path on failure
+                target_h, target_w = self.imgsz_height, self.imgsz_width
+                scale = 0.0
+                if original_width > 0 and original_height > 0:
+                    scale = min(target_w / original_width, target_h / original_height)
+                new_w, new_h = int(original_width * scale), int(original_height * scale)
+                padded_image = np.full(
+                    (self.imgsz_height, self.imgsz_width, 3), (114, 114, 114), dtype=np.uint8
+                )
+                if new_w > 0 and new_h > 0:
+                    resized_image = cv2.resize(
+                        frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR
+                    )
+                    dw, dh = (target_w - new_w) // 2, (target_h - new_h) // 2
+                    padded_image[dh : dh + new_h, dw : dw + new_w] = resized_image
+                else:
+                    self.get_logger().warn(
+                        f"Invalid resize dimensions ({new_w}x{new_h}). Resizing directly (may distort)."
+                    )
+                    padded_image = cv2.resize(
+                        frame, (self.imgsz_width, self.imgsz_height), interpolation=cv2.INTER_LINEAR
+                    )
+        else:
+            target_h, target_w = self.imgsz_height, self.imgsz_width
+            scale = 0.0
+            if original_width > 0 and original_height > 0:
+                scale = min(target_w / original_width, target_h / original_height)
+            new_w, new_h = int(original_width * scale), int(original_height * scale)
+            padded_image = np.full(
+                (self.imgsz_height, self.imgsz_width, 3), (114, 114, 114), dtype=np.uint8
             )
-            dw, dh = (target_w - new_w) // 2, (target_h - new_h) // 2
-            padded_image[dh : dh + new_h, dw : dw + new_w] = resized_image
-        else:  # Fallback if resize dimensions are invalid
-            self.get_logger().warn(
-                f"Invalid resize dimensions ({new_w}x{new_h}). Resizing directly (may distort)."
-            )
-            padded_image = cv2.resize(
-                frame,
-                (self.imgsz_width, self.imgsz_height),
-                interpolation=cv2.INTER_LINEAR,
-            )
+            if new_w > 0 and new_h > 0:
+                resized_image = cv2.resize(
+                    frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR
+                )
+                dw, dh = (target_w - new_w) // 2, (target_h - new_h) // 2
+                padded_image[dh : dh + new_h, dw : dw + new_w] = resized_image
+            else:
+                self.get_logger().warn(
+                    f"Invalid resize dimensions ({new_w}x{new_h}). Resizing directly (may distort)."
+                )
+                padded_image = cv2.resize(
+                    frame, (self.imgsz_width, self.imgsz_height), interpolation=cv2.INTER_LINEAR
+                )
 
         # if self.show: cv2.imshow("2. Padded Input for YOLO", padded_image); cv2.waitKey(1)
 
