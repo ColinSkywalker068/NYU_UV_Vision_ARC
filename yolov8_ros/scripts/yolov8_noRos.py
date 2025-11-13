@@ -192,8 +192,8 @@ class YOLOv8Node(Node):
         self.declare_parameter("realsense_timeout_ms", 1000)
         self.declare_parameter("enable_inference", True)
         self.declare_parameter("use_poll_for_frames", True)
-        self.declare_parameter("enable_tracking", True)
-        self.declare_parameter("persist_tracking", True)
+        self.declare_parameter("enable_tracking", False)
+        self.declare_parameter("persist_tracking", False)
         # Acquisition tuning
         self.declare_parameter("color_frames_queue_size", 1)
         self.declare_parameter("poll_idle_sleep_ms", 2)
