@@ -495,7 +495,9 @@ class YOLOv8Node(Node):
                         f"Preallocated letterbox: in {actual_w}x{actual_h} -> out {target_w}x{target_h} scale={scale:.4f}"
                     )
             except Exception as e:
-                self.get_logger().warn(f"Preallocate letterbox failed; falling back to dynamic: {e}")
+                self.get_logger().warn(
+                    f"Preallocate letterbox failed; falling back to dynamic: {e}"
+                )
 
         # --- ROS Publishers ---
         # We no longer subscribe to CompressedImage, as we get frames directly from Realsense
@@ -642,7 +644,9 @@ class YOLOv8Node(Node):
                     scale = min(target_w / original_width, target_h / original_height)
                 new_w, new_h = int(original_width * scale), int(original_height * scale)
                 padded_image = np.full(
-                    (self.imgsz_height, self.imgsz_width, 3), (114, 114, 114), dtype=np.uint8
+                    (self.imgsz_height, self.imgsz_width, 3),
+                    (114, 114, 114),
+                    dtype=np.uint8,
                 )
                 if new_w > 0 and new_h > 0:
                     resized_image = cv2.resize(
@@ -655,7 +659,9 @@ class YOLOv8Node(Node):
                         f"Invalid resize dimensions ({new_w}x{new_h}). Resizing directly (may distort)."
                     )
                     padded_image = cv2.resize(
-                        frame, (self.imgsz_width, self.imgsz_height), interpolation=cv2.INTER_LINEAR
+                        frame,
+                        (self.imgsz_width, self.imgsz_height),
+                        interpolation=cv2.INTER_LINEAR,
                     )
         else:
             target_h, target_w = self.imgsz_height, self.imgsz_width
@@ -664,7 +670,9 @@ class YOLOv8Node(Node):
                 scale = min(target_w / original_width, target_h / original_height)
             new_w, new_h = int(original_width * scale), int(original_height * scale)
             padded_image = np.full(
-                (self.imgsz_height, self.imgsz_width, 3), (114, 114, 114), dtype=np.uint8
+                (self.imgsz_height, self.imgsz_width, 3),
+                (114, 114, 114),
+                dtype=np.uint8,
             )
             if new_w > 0 and new_h > 0:
                 resized_image = cv2.resize(
@@ -677,7 +685,9 @@ class YOLOv8Node(Node):
                     f"Invalid resize dimensions ({new_w}x{new_h}). Resizing directly (may distort)."
                 )
                 padded_image = cv2.resize(
-                    frame, (self.imgsz_width, self.imgsz_height), interpolation=cv2.INTER_LINEAR
+                    frame,
+                    (self.imgsz_width, self.imgsz_height),
+                    interpolation=cv2.INTER_LINEAR,
                 )
 
         # if self.show: cv2.imshow("2. Padded Input for YOLO", padded_image); cv2.waitKey(1)
