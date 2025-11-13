@@ -191,7 +191,7 @@ class YOLOv8Node(Node):
         # Diagnostics/toggles for acquisition and inference
         self.declare_parameter("realsense_timeout_ms", 1000)
         self.declare_parameter("enable_inference", True)
-        self.declare_parameter("use_poll_for_frames", False)
+        self.declare_parameter("use_poll_for_frames", True)
         self.declare_parameter("enable_tracking", True)
         self.declare_parameter("persist_tracking", True)
         # Acquisition tuning
