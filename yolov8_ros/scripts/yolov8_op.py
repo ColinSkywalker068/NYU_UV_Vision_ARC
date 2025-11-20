@@ -97,14 +97,64 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def check_deepstream_plugins() -> bool:
+    """Check if DeepStream plugins are available."""
+    plugin_paths = [
+        "/opt/nvidia/deepstream/deepstream/lib/gst-plugins",
+        "/opt/nvidia/deepstream/deepstream/lib/gst-plugins/",
+    ]
+    
+    for path in plugin_paths:
+        if os.path.exists(path):
+            nvstreammux_so = os.path.join(path, "libgstnvstreammux.so")
+            if os.path.exists(nvstreammux_so):
+                return True
+    return False
+
+
 def set_gst_env(log_level: str) -> None:
+    """Set GStreamer environment variables and verify DeepStream plugins."""
     os.environ.setdefault("GST_DEBUG", log_level)
-    os.environ.setdefault(
-        "GST_PLUGIN_PATH", "/opt/nvidia/deepstream/deepstream/lib/gst-plugins/"
-    )
-    os.environ.setdefault(
-        "GST_PLUGIN_PATH_1_0", "/opt/nvidia/deepstream/deepstream/lib/gst-plugins/"
-    )
+    
+    # DeepStream plugin paths (try both with and without trailing slash)
+    plugin_paths = [
+        "/opt/nvidia/deepstream/deepstream/lib/gst-plugins",
+        "/opt/nvidia/deepstream/deepstream/lib/gst-plugins/",
+    ]
+    
+    # Find the correct plugin path
+    found_path = None
+    for path in plugin_paths:
+        if os.path.exists(path):
+            nvstreammux_so = os.path.join(path, "libgstnvstreammux.so")
+            if os.path.exists(nvstreammux_so):
+                found_path = path
+                break
+    
+    if found_path:
+        # Append to existing path if set, otherwise set new
+        existing_path = os.environ.get("GST_PLUGIN_PATH", "")
+        if existing_path:
+            os.environ["GST_PLUGIN_PATH"] = f"{existing_path}:{found_path}"
+        else:
+            os.environ["GST_PLUGIN_PATH"] = found_path
+        
+        existing_path_1_0 = os.environ.get("GST_PLUGIN_PATH_1_0", "")
+        if existing_path_1_0:
+            os.environ["GST_PLUGIN_PATH_1_0"] = f"{existing_path_1_0}:{found_path}"
+        else:
+            os.environ["GST_PLUGIN_PATH_1_0"] = found_path
+        
+        print(f"Using DeepStream plugins from: {found_path}", file=sys.stderr)
+    else:
+        print(
+            "WARNING: DeepStream plugin path not found. Expected: /opt/nvidia/deepstream/deepstream/lib/gst-plugins",
+            file=sys.stderr,
+        )
+        print(
+            "Please verify DeepStream is installed correctly.",
+            file=sys.stderr,
+        )
 
 
 def on_bus_message(bus, message, loop):
@@ -123,6 +173,14 @@ def on_bus_message(bus, message, loop):
 
 def build_pipeline(args: argparse.Namespace) -> Gst.Pipeline:
     Gst.init(None)
+    
+    # Verify DeepStream plugins are available before building pipeline
+    if not check_deepstream_plugins():
+        raise RuntimeError(
+            "DeepStream plugins not found. Please verify DeepStream installation:\n"
+            "  - Check: ls /opt/nvidia/deepstream/deepstream/lib/gst-plugins/\n"
+            "  - Verify: gst-inspect-1.0 nvstreammux"
+        )
 
     pipeline = Gst.Pipeline.new("yolov8-nvmm-pipeline")
     if not pipeline:
@@ -164,7 +222,12 @@ def build_pipeline(args: argparse.Namespace) -> Gst.Pipeline:
     # Stream muxer (DeepStream requires nvstreammux before nvinfer)
     streammux = Gst.ElementFactory.make("nvstreammux", "streammux")
     if not streammux:
-        raise RuntimeError("Failed to create nvstreammux")
+        plugin_path = os.environ.get("GST_PLUGIN_PATH", "not set")
+        raise RuntimeError(
+            f"Failed to create nvstreammux. GST_PLUGIN_PATH={plugin_path}\n"
+            "Try: gst-inspect-1.0 nvstreammux\n"
+            "Verify DeepStream plugins exist at: /opt/nvidia/deepstream/deepstream/lib/gst-plugins/"
+        )
     streammux.set_property("batch-size", 1)
     streammux.set_property("width", args.width)
     streammux.set_property("height", args.height)
@@ -276,6 +339,23 @@ def main() -> int:
         return 1
 
     set_gst_env(args.log_level)
+    
+    # Check for DeepStream plugins before initializing GStreamer
+    if not check_deepstream_plugins():
+        print(
+            "ERROR: DeepStream plugins not found. Cannot proceed.",
+            file=sys.stderr,
+        )
+        print(
+            "Please verify DeepStream installation:",
+            file=sys.stderr,
+        )
+        print(
+            "  ls /opt/nvidia/deepstream/deepstream/lib/gst-plugins/",
+            file=sys.stderr,
+        )
+        return 1
+    
     GObject.threads_init()
     Gst.init(None)
 

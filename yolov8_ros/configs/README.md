@@ -31,11 +31,19 @@ That's it! The script uses defaults and auto-generates the config file.
 
 ### Prerequisites
 
-1. **Docker container must be running** with the RealSense image:
+1. **Docker container must be running** with the RealSense image that has DeepStream installed:
 
    ```bash
+   # Use the run-deepstream.sh script (uses cv-realsense:latest)
    ./services/run-deepstream.sh
+
+   # OR if using uv docker, ensure the image has DeepStream
+   # The image should be built from Docker/Dockerfile.realsense
    ```
+
+   **Important**: The Docker image must have DeepStream 6.4 installed.
+   If you see "no such element factory nvstreammux", the image may not have DeepStream.
+   Check with: `./yolov8_ros/scripts/check_deepstream.sh`
 
    Or manually:
 
@@ -174,11 +182,42 @@ python3 yolov8_ros/scripts/yolov8_op.py \
 - Run without `--display` flag for headless mode
 - Ensure X11 forwarding if using display: `xhost +local:root`
 
-**Pipeline fails to start:**
+**Pipeline fails to start / "no such element factory nvstreammux":**
 
-- Check GStreamer plugins: `gst-inspect-1.0 nvinfer`
-- Verify DeepStream is installed: `ls /opt/nvidia/deepstream/deepstream`
-- Check log level: `--log-level 4` for more verbose output
+This means DeepStream plugins aren't being found. Run diagnostics:
+
+```bash
+# Run diagnostic script
+./yolov8_ros/scripts/check_deepstream.sh
+
+# Or manually check:
+ls /opt/nvidia/deepstream/deepstream/lib/gst-plugins/
+gst-inspect-1.0 nvstreammux
+```
+
+**Common fixes:**
+
+1. **Wrong Docker image**: Ensure you're using an image with DeepStream installed:
+
+   ```bash
+   # The image should be built from Dockerfile.realsense which installs DeepStream
+   # Check: docker images | grep realsense
+   ```
+
+2. **Plugin path not set**: Manually set the path:
+
+   ```bash
+   export GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream/lib/gst-plugins
+   export GST_PLUGIN_PATH_1_0=/opt/nvidia/deepstream/deepstream/lib/gst-plugins
+   ```
+
+3. **DeepStream not installed**: If the directory doesn't exist, DeepStream wasn't installed:
+
+   - Rebuild the Docker image from `Docker/Dockerfile.realsense`
+   - Or install DeepStream manually in the container
+
+4. **Check GStreamer plugins**: `gst-inspect-1.0 nvinfer`
+5. **Check log level**: `--log-level 4` for more verbose output
 
 ## Config File Parameters
 
