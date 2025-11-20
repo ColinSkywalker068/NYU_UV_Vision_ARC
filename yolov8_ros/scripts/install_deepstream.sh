@@ -40,16 +40,36 @@ DEEPSTREAM_DEB="/tmp/deepstream-6.4_6.4.0-1_arm64.deb"
 # 2. Copy it into the container
 # 3. Run: dpkg -i /path/to/deepstream-6.4_6.4.0-1_arm64.deb
 
-if ! curl -L 'https://api.ngc.nvidia.com/v2/resources/org/nvidia/deepstream/6.4/files?redirect=true&path=deepstream-6.4_6.4.0-1_arm64.deb' \
-    -o "$DEEPSTREAM_DEB"; then
-    echo "ERROR: Failed to download DeepStream. Possible reasons:"
+# Try multiple download methods
+echo "Attempting to download DeepStream 6.4..."
+DEEPSTREAM_DEB="/tmp/deepstream-6.4_6.4.0-1_arm64.deb"
+
+# Method 1: Direct API download (may require authentication)
+if curl -L --fail --silent --show-error \
+    'https://api.ngc.nvidia.com/v2/resources/org/nvidia/deepstream/6.4/files?redirect=true&path=deepstream-6.4_6.4.0-1_arm64.deb' \
+    -o "$DEEPSTREAM_DEB" 2>&1; then
+    echo "✓ Downloaded via API"
+elif [ -f "$DEEPSTREAM_DEB" ] && [ -s "$DEEPSTREAM_DEB" ]; then
+    echo "✓ Found existing download file"
+else
+    echo "✗ Failed to download DeepStream. Possible reasons:"
     echo "  1. Network connectivity issue"
-    echo "  2. NGC authentication required (may need API key)"
+    echo "  2. NGC authentication required"
     echo "  3. URL changed"
     echo ""
-    echo "Alternative: Download manually from NVIDIA NGC and copy into container:"
-    echo "  docker cp deepstream-6.4_6.4.0-1_arm64.deb <container>:/tmp/"
-    echo "  Then run this script again or: dpkg -i /tmp/deepstream-6.4_6.4.0-1_arm64.deb"
+    echo "SOLUTION: Download manually from NVIDIA NGC:"
+    echo "  1. Go to: https://catalog.ngc.nvidia.com/orgs/nvidia/containers/deepstream"
+    echo "  2. Or search for 'deepstream-6.4_6.4.0-1_arm64.deb'"
+    echo "  3. Download the .deb file"
+    echo "  4. Copy into container:"
+    echo "     docker cp deepstream-6.4_6.4.0-1_arm64.deb <container>:/tmp/"
+    echo "  5. Then run: dpkg -i /tmp/deepstream-6.4_6.4.0-1_arm64.deb && apt-get -y -f install"
+    echo ""
+    read -p "Do you have the .deb file ready to copy? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo "Please copy the file to /tmp/deepstream-6.4_6.4.0-1_arm64.deb and run this script again."
+    fi
     exit 1
 fi
 

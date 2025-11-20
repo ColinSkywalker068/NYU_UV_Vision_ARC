@@ -123,13 +123,20 @@ RUN cd /librealsense/build && make install
 ENV DEBIAN_FRONTEND=dialog
 
 # Install DeepStream 6.4 (Jetson L4T R36/JP6) runtime inside this image.
-# Note: This requires NGC authentication. If build fails, install manually in container.
-RUN set -e; \
+# Note: DeepStream installation often fails during build due to NGC authentication requirements.
+# It's recommended to install DeepStream manually in the container using:
+#   ./yolov8_ros/scripts/install_deepstream.sh
+# This RUN command will attempt installation but won't fail the build if it doesn't work.
+RUN set +e; \
     curl -L 'https://api.ngc.nvidia.com/v2/resources/org/nvidia/deepstream/6.4/files?redirect=true&path=deepstream-6.4_6.4.0-1_arm64.deb' \
-    -o /tmp/deepstream-6.4_6.4.0-1_arm64.deb && \
-    dpkg -i /tmp/deepstream-6.4_6.4.0-1_arm64.deb || (apt-get update && apt-get -y -f install) && \
-    rm -f /tmp/deepstream-6.4_6.4.0-1_arm64.deb && \
-    test -d /opt/nvidia/deepstream/deepstream || (echo "ERROR: DeepStream installation failed!" && exit 1)
+    -o /tmp/deepstream-6.4_6.4.0-1_arm64.deb 2>/dev/null && \
+    (dpkg -i /tmp/deepstream-6.4_6.4.0-1_arm64.deb || (apt-get update && apt-get -y -f install)) 2>/dev/null && \
+    rm -f /tmp/deepstream-6.4_6.4.0-1_arm64.deb; \
+    if [ ! -d "/opt/nvidia/deepstream/deepstream" ]; then \
+        echo "WARNING: DeepStream installation failed during build. Install manually with:"; \
+        echo "  ./yolov8_ros/scripts/install_deepstream.sh"; \
+    fi; \
+    set -e
 
 # If DeepStream is installed in the image at /opt/nvidia/deepstream/deepstream,
 # expose its plugins and libs for NVMM pipeline (safe even if absent).
