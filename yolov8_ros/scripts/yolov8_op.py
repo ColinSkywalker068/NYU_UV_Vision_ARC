@@ -103,7 +103,7 @@ def check_deepstream_plugins() -> bool:
         "/opt/nvidia/deepstream/deepstream/lib/gst-plugins",
         "/opt/nvidia/deepstream/deepstream/lib/gst-plugins/",
     ]
-    
+
     for path in plugin_paths:
         if os.path.exists(path):
             nvstreammux_so = os.path.join(path, "libgstnvstreammux.so")
@@ -115,13 +115,13 @@ def check_deepstream_plugins() -> bool:
 def set_gst_env(log_level: str) -> None:
     """Set GStreamer environment variables and verify DeepStream plugins."""
     os.environ.setdefault("GST_DEBUG", log_level)
-    
+
     # DeepStream plugin paths (try both with and without trailing slash)
     plugin_paths = [
         "/opt/nvidia/deepstream/deepstream/lib/gst-plugins",
         "/opt/nvidia/deepstream/deepstream/lib/gst-plugins/",
     ]
-    
+
     # Find the correct plugin path
     found_path = None
     for path in plugin_paths:
@@ -130,7 +130,7 @@ def set_gst_env(log_level: str) -> None:
             if os.path.exists(nvstreammux_so):
                 found_path = path
                 break
-    
+
     if found_path:
         # Append to existing path if set, otherwise set new
         existing_path = os.environ.get("GST_PLUGIN_PATH", "")
@@ -138,13 +138,13 @@ def set_gst_env(log_level: str) -> None:
             os.environ["GST_PLUGIN_PATH"] = f"{existing_path}:{found_path}"
         else:
             os.environ["GST_PLUGIN_PATH"] = found_path
-        
+
         existing_path_1_0 = os.environ.get("GST_PLUGIN_PATH_1_0", "")
         if existing_path_1_0:
             os.environ["GST_PLUGIN_PATH_1_0"] = f"{existing_path_1_0}:{found_path}"
         else:
             os.environ["GST_PLUGIN_PATH_1_0"] = found_path
-        
+
         print(f"Using DeepStream plugins from: {found_path}", file=sys.stderr)
     else:
         print(
@@ -173,7 +173,7 @@ def on_bus_message(bus, message, loop):
 
 def build_pipeline(args: argparse.Namespace) -> Gst.Pipeline:
     Gst.init(None)
-    
+
     # Verify DeepStream plugins are available before building pipeline
     if not check_deepstream_plugins():
         raise RuntimeError(
@@ -339,7 +339,7 @@ def main() -> int:
         return 1
 
     set_gst_env(args.log_level)
-    
+
     # Check for DeepStream plugins before initializing GStreamer
     if not check_deepstream_plugins():
         print(
@@ -355,7 +355,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    
+
     GObject.threads_init()
     Gst.init(None)
 
