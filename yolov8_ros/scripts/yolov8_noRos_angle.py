@@ -304,8 +304,12 @@ class YOLOv8Node(Node):
         )
 
         # FOV initialization
-        self.hfov_rad = math.radians(self.get_parameter("hfov_degrees").get_parameter_value().double_value)
-        self.vfov_rad = math.radians(self.get_parameter("vfov_degrees").get_parameter_value().double_value)
+        self.hfov_rad = math.radians(
+            self.get_parameter("hfov_degrees").get_parameter_value().double_value
+        )
+        self.vfov_rad = math.radians(
+            self.get_parameter("vfov_degrees").get_parameter_value().double_value
+        )
 
         self.get_logger().info(f"Model Path: {model_path}")
         self.get_logger().info(
@@ -323,8 +327,9 @@ class YOLOv8Node(Node):
             f"Realsense Config - Width: {self.realsense_width}, Height: {self.realsense_height}, FPS: {self.realsense_fps}"
         )
         self.get_logger().info(f"Kalman enabled: {self.use_kalman}")
-        self.get_logger().info(f"Angle Calc - HFOV: {math.degrees(self.hfov_rad):.2f}, VFOV: {math.degrees(self.vfov_rad):.2f}")
-
+        self.get_logger().info(
+            f"Angle Calc - HFOV: {math.degrees(self.hfov_rad):.2f}, VFOV: {math.degrees(self.vfov_rad):.2f}"
+        )
 
         self.target_class = BLUE_CLASS  # Default target class
 
@@ -517,8 +522,10 @@ class YOLOv8Node(Node):
         )
         self.bbox_publisher = self.create_publisher(Int32MultiArray, "bounding_box", 10)
         self.override_publisher = self.create_publisher(Bool, "override", 10)
-        self.angle_publisher = self.create_publisher(Float32MultiArray, "bounding_box_angles", 10)
-        
+        self.angle_publisher = self.create_publisher(
+            Float32MultiArray, "bounding_box_angles", 10
+        )
+
         self.get_logger().info("ROS Publishers/Subscribers initialized.")
 
         # --- Node State Variables ---
@@ -545,14 +552,14 @@ class YOLOv8Node(Node):
     def calculate_angles(self, x1, y1, x2, y2):
         center_x = x1 + (x2 - x1) / 2
         center_y = y1 + (y2 - y1) / 2
-        
+
         # Normalize pixel offset to [-1, 1] based on image dimensions
         pixel_offset_x = (center_x - self.imgsz_width / 2) / (self.imgsz_width / 2)
         pixel_offset_y = (center_y - self.imgsz_height / 2) / (self.imgsz_height / 2)
-        
+
         yaw_angle = math.atan(pixel_offset_x * math.tan(self.hfov_rad / 2))
         pitch_angle = math.atan(pixel_offset_y * math.tan(self.vfov_rad / 2))
-        
+
         return yaw_angle, pitch_angle
 
     def publish_bbox_and_angles(self, x1, y1, x2, y2, override_bool):
@@ -560,7 +567,7 @@ class YOLOv8Node(Node):
         self.override.data = override_bool
         self.bbox_publisher.publish(self.bbox_msg)
         self.override_publisher.publish(self.override)
-        
+
         yaw, pitch = self.calculate_angles(x1, y1, x2, y2)
         angle_msg = Float32MultiArray()
         angle_msg.data = [float(yaw), float(pitch)]
@@ -917,7 +924,9 @@ class YOLOv8Node(Node):
                     pub_y2 = max(0, min(pub_y2, self.imgsz_height - 1))
 
                     if pub_x1 < pub_x2 and pub_y1 < pub_y2:  # Check for valid box
-                        self.publish_bbox_and_angles(pub_x1, pub_y1, pub_x2, pub_y2, True)
+                        self.publish_bbox_and_angles(
+                            pub_x1, pub_y1, pub_x2, pub_y2, True
+                        )
                         published_bbox_this_frame = True
                         self.get_logger().info(
                             f"Published KF BBox ID {track_id} (Lookahead): {[pub_x1, pub_y1, pub_x2, pub_y2]}"
@@ -959,7 +968,13 @@ class YOLOv8Node(Node):
             ):  # Publish default if no valid KF track was published
                 default_center_x = self.imgsz_width // 2
                 default_center_y = self.imgsz_height // 2
-                self.publish_bbox_and_angles(default_center_x, default_center_y, default_center_x, default_center_y, False)
+                self.publish_bbox_and_angles(
+                    default_center_x,
+                    default_center_y,
+                    default_center_x,
+                    default_center_y,
+                    False,
+                )
                 # self.get_logger().info("No KF-tracked enemy published. Sent default bbox.") # Too verbose
         else:
             # Direct YOLO-based publish when Kalman is disabled
@@ -983,7 +998,13 @@ class YOLOv8Node(Node):
             if not published_bbox_this_frame:
                 default_center_x = self.imgsz_width // 2
                 default_center_y = self.imgsz_height // 2
-                self.publish_bbox_and_angles(default_center_x, default_center_y, default_center_x, default_center_y, False)
+                self.publish_bbox_and_angles(
+                    default_center_x,
+                    default_center_y,
+                    default_center_x,
+                    default_center_y,
+                    False,
+                )
 
         if self.show and vis_frame is not None:
             cv2.imshow("3. YOLOv8 Kalman Tracking", vis_frame)
@@ -1074,4 +1095,3 @@ def main(args=None):
 
 if __name__ == "__main__":
     main()
-
