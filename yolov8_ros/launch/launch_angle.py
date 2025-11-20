@@ -53,7 +53,7 @@ def generate_launch_description():
                     "--ros-args",
                     "-p", "model_path:=/home/ultraviolet/CV_Detection/yolov8_ros/models/best.engine",
                     "-p", "task:=detect",
-                    "-p", "show:=False",
+                    "-p", "show:=True",
                     "-p", "conf:=0.05",
                     "-p", "hfov_degrees:=79.2",
                     "-p", "vfov_degrees:=63.78",
