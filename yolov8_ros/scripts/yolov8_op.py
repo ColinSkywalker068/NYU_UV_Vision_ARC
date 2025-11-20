@@ -3,10 +3,49 @@ import argparse
 import os
 import sys
 import signal
+from typing import Optional
 import gi
 
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst, GObject  # noqa: E402
+
+
+def generate_config_file(
+    model_engine_path: str,
+    num_classes: int = 1,
+    threshold: float = 0.5,
+    nms_threshold: float = 0.4,
+    output_path: Optional[str] = None,
+) -> str:
+    """Generate a DeepStream nvinfer config file from model path."""
+    if output_path is None:
+        # Generate config path next to the engine file
+        base_path = os.path.splitext(model_engine_path)[0]
+        output_path = f"{base_path}_nvinfer_config.txt"
+
+    config_content = f"""[property]
+gpu-id=0
+net-scale-factor=0.0039215697906911373
+model-engine-file={model_engine_path}
+batch-size=1
+process-mode=1
+num-detected-classes={num_classes}
+interval=0
+gie-unique-id=1
+output-blob-names=output0
+network-mode=0
+
+[class-attrs-all]
+threshold={threshold}
+nms-iou-threshold={nms_threshold}
+topk=20
+"""
+
+    with open(output_path, "w") as f:
+        f.write(config_content)
+
+    print(f"Generated config file: {output_path}", file=sys.stderr)
+    return output_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,7 +59,34 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--height", type=int, default=480, help="Input height")
     parser.add_argument("--fps", type=int, default=30, help="Input FPS")
     parser.add_argument(
-        "--config", type=str, required=True, help="nvinfer config-file-path"
+        "--config",
+        type=str,
+        default=None,
+        help="nvinfer config-file-path (optional if --model-engine is provided)",
+    )
+    parser.add_argument(
+        "--model-engine",
+        type=str,
+        default=None,
+        help="Path to TensorRT engine file (will auto-generate config if --config not provided)",
+    )
+    parser.add_argument(
+        "--num-classes",
+        type=int,
+        default=1,
+        help="Number of classes in model (used when auto-generating config)",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+        help="Detection threshold (used when auto-generating config)",
+    )
+    parser.add_argument(
+        "--nms-threshold",
+        type=float,
+        default=0.4,
+        help="NMS IoU threshold (used when auto-generating config)",
     )
     parser.add_argument(
         "--display", action="store_true", help="Enable display sink (nveglglessink)"
@@ -184,6 +250,31 @@ def build_pipeline(args: argparse.Namespace) -> Gst.Pipeline:
 
 def main() -> int:
     args = parse_args()
+
+    # Auto-generate config file if not provided but model-engine is
+    if args.config is None:
+        if args.model_engine is None:
+            print(
+                "ERROR: Either --config or --model-engine must be provided",
+                file=sys.stderr,
+            )
+            return 1
+        if not os.path.exists(args.model_engine):
+            print(
+                f"ERROR: Model engine file not found: {args.model_engine}",
+                file=sys.stderr,
+            )
+            return 1
+        args.config = generate_config_file(
+            args.model_engine,
+            num_classes=args.num_classes,
+            threshold=args.threshold,
+            nms_threshold=args.nms_threshold,
+        )
+    elif not os.path.exists(args.config):
+        print(f"ERROR: Config file not found: {args.config}", file=sys.stderr)
+        return 1
+
     set_gst_env(args.log_level)
     GObject.threads_init()
     Gst.init(None)
