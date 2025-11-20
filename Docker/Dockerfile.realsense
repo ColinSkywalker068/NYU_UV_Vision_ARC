@@ -14,6 +14,7 @@ RUN apt-get install -y --no-install-recommends \
     python3-dev && apt-get update && apt-get clean all
 
 # GStreamer + gst-python (needed for yolov8_op.py DeepStream/GStreamer pipeline)
+# Also include dev packages needed for DeepStream installation
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3-gi python3-gst-1.0 gir1.2-gstreamer-1.0 \
@@ -22,7 +23,8 @@ RUN apt-get update && \
     gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
     gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
     gstreamer1.0-libav libgstrtspserver-1.0-0 \
-    libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 && \
+    libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev && \
     rm -rf /var/lib/apt/lists/* && apt-get clean
 
 # Install build dependencies
@@ -133,8 +135,8 @@ RUN set +e; \
     (dpkg -i /tmp/deepstream-6.4_6.4.0-1_arm64.deb || (apt-get update && apt-get -y -f install)) 2>/dev/null && \
     rm -f /tmp/deepstream-6.4_6.4.0-1_arm64.deb; \
     if [ ! -d "/opt/nvidia/deepstream/deepstream" ]; then \
-        echo "WARNING: DeepStream installation failed during build. Install manually with:"; \
-        echo "  ./yolov8_ros/scripts/install_deepstream.sh"; \
+    echo "WARNING: DeepStream installation failed during build. Install manually with:"; \
+    echo "  ./yolov8_ros/scripts/install_deepstream.sh"; \
     fi; \
     set -e
 

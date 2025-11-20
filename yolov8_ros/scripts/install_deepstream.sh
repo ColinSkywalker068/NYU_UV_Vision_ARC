@@ -73,12 +73,40 @@ else
     exit 1
 fi
 
-# Install
+# Install dependencies first (required by DeepStream)
+echo "Installing DeepStream dependencies..."
+apt-get update
+
+# Install GStreamer development packages (required by DeepStream)
+echo "Installing GStreamer development packages..."
+apt-get install -y \
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    || {
+        echo "ERROR: Failed to install GStreamer dev packages. These are required."
+        exit 1
+    }
+
+# Try to install libnvvpi3 (Jetson-specific, may not be in standard repos)
+echo "Checking for libnvvpi3..."
+if ! apt-get install -y libnvvpi3 2>/dev/null; then
+    echo "Warning: libnvvpi3 not found in apt repos."
+    echo "  This is Jetson-specific and may be in a Jetson SDK package."
+    echo "  DeepStream may still work, but some features may be limited."
+    echo "  Continuing installation..."
+fi
+
+# Install DeepStream
 echo "Installing DeepStream..."
 if ! dpkg -i "$DEEPSTREAM_DEB"; then
-    echo "Fixing dependencies..."
-    apt-get update
-    apt-get -y -f install
+    echo "Fixing remaining dependencies..."
+    apt-get -y -f install || {
+        echo "ERROR: Failed to resolve dependencies. Trying to install missing packages..."
+        # Try to install missing packages individually
+        apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev || true
+        # libnvvpi3 might need special handling - it's often in the Jetson SDK
+        apt-get -y -f install
+    }
 fi
 
 # Verify installation
