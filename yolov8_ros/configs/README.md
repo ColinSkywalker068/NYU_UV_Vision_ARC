@@ -4,6 +4,14 @@ This directory contains configuration files for the DeepStream nvinfer plugin us
 
 ## Quick Run (Copy & Paste)
 
+**⚠ If you get "DeepStream directory not found" error:**
+
+Run this inside the container to install DeepStream:
+
+```bash
+./yolov8_ros/scripts/install_deepstream.sh
+```
+
 **1. Start Docker:**
 
 ```bash
@@ -213,8 +221,25 @@ gst-inspect-1.0 nvstreammux
 
 3. **DeepStream not installed**: If the directory doesn't exist, DeepStream wasn't installed:
 
-   - Rebuild the Docker image from `Docker/Dockerfile.realsense`
-   - Or install DeepStream manually in the container
+   **Option A: Install manually in running container (Quick Fix)**
+
+   ```bash
+   # Inside the container
+   ./yolov8_ros/scripts/install_deepstream.sh
+   ```
+
+   **Option B: Rebuild Docker image**
+
+   ```bash
+   # From project root
+   docker build -f Docker/Dockerfile.realsense -t cv-realsense:latest .
+   ```
+
+   **Note**: DeepStream download may require NGC authentication. If download fails:
+
+   - Download DeepStream 6.4 manually from NVIDIA NGC
+   - Copy into container: `docker cp deepstream-6.4_6.4.0-1_arm64.deb <container>:/tmp/`
+   - Install: `dpkg -i /tmp/deepstream-6.4_6.4.0-1_arm64.deb && apt-get -y -f install`
 
 4. **Check GStreamer plugins**: `gst-inspect-1.0 nvinfer`
 5. **Check log level**: `--log-level 4` for more verbose output
