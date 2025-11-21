@@ -102,4 +102,3 @@ class STM32Serial:
     def __del__(self):
         """Cleanup on deletion."""
         self.close()
-

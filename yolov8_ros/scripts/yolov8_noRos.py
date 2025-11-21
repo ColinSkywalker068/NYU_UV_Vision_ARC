@@ -220,11 +220,17 @@ class YOLOv8Node(Node):
         self.declare_parameter("color_power_line_frequency", 2)
         self.declare_parameter("use_kalman", False)  # Gate Kalman usage
         # Serial communication parameters
-        self.declare_parameter("serial_enable", False)  # Enable STM32 serial communication
+        self.declare_parameter(
+            "serial_enable", False
+        )  # Enable STM32 serial communication
         self.declare_parameter("serial_port", "/dev/serial")  # Serial port path
         self.declare_parameter("serial_baudrate", 115200)  # Serial baud rate
-        self.declare_parameter("hfov_degrees", 60.0)  # Horizontal field of view in degrees
-        self.declare_parameter("vfov_degrees", 45.0)  # Vertical field of view in degrees
+        self.declare_parameter(
+            "hfov_degrees", 60.0
+        )  # Horizontal field of view in degrees
+        self.declare_parameter(
+            "vfov_degrees", 45.0
+        )  # Vertical field of view in degrees
 
         # Get parameter values
         model_path = self.get_parameter("model_path").get_parameter_value().string_value
@@ -601,7 +607,9 @@ class YOLOv8Node(Node):
 
         # Normalize pixel offset to [-1, 1] based on image dimensions
         pixel_offset_x = (center_x - self.imgsz_width / 2.0) / (self.imgsz_width / 2.0)
-        pixel_offset_y = (center_y - self.imgsz_height / 2.0) / (self.imgsz_height / 2.0)
+        pixel_offset_y = (center_y - self.imgsz_height / 2.0) / (
+            self.imgsz_height / 2.0
+        )
 
         # Convert pixel offset to angles using FOV
         yaw_angle = math.atan(pixel_offset_x * math.tan(self.hfov_rad / 2.0))
@@ -970,13 +978,20 @@ class YOLOv8Node(Node):
                         )
 
                         # Send to STM32 via serial if enabled
-                        if self.stm32_serial is not None and self.stm32_serial.connected:
+                        if (
+                            self.stm32_serial is not None
+                            and self.stm32_serial.connected
+                        ):
                             try:
-                                yaw, pitch = self.calculate_angles(pub_x1, pub_y1, pub_x2, pub_y2)
+                                yaw, pitch = self.calculate_angles(
+                                    pub_x1, pub_y1, pub_x2, pub_y2
+                                )
                                 has_target = 1  # Valid target detected
                                 self.stm32_serial.send_auto_aim(pitch, yaw, has_target)
                             except Exception as e:
-                                self.get_logger().warn(f"Failed to send serial data: {e}")
+                                self.get_logger().warn(
+                                    f"Failed to send serial data: {e}"
+                                )
 
                         if self.show and vis_frame is not None:  # Draw KF box
                             cv2.rectangle(
@@ -1042,7 +1057,9 @@ class YOLOv8Node(Node):
                     # Send to STM32 via serial if enabled
                     if self.stm32_serial is not None and self.stm32_serial.connected:
                         try:
-                            yaw, pitch = self.calculate_angles(pub_x1, pub_y1, pub_x2, pub_y2)
+                            yaw, pitch = self.calculate_angles(
+                                pub_x1, pub_y1, pub_x2, pub_y2
+                            )
                             has_target = 1  # Valid target detected
                             self.stm32_serial.send_auto_aim(pitch, yaw, has_target)
                         except Exception as e:
