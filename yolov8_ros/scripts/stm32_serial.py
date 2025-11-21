@@ -125,8 +125,7 @@ class STM32Serial:
                     f"bytes={bytes_written}/{len(msg)}"
                 )
                 logger.debug(
-                    f"[STM32 TX] Raw bytes: {msg.hex(' ')} "
-                    f"({len(msg)} bytes)"
+                    f"[STM32 TX] Raw bytes: {msg.hex(' ')} " f"({len(msg)} bytes)"
                 )
 
             return True

@@ -152,10 +152,12 @@ def main():
     status = stm32.get_status()
     print(f"  Messages sent: {status['message_count']}")
     print(f"  Connection: {'✓ Connected' if status['connected'] else '✗ Disconnected'}")
-    if status['last_sent']:
-        last = status['last_sent']
-        print(f"  Last sent: pitch={last['pitch']:.6f}, yaw={last['yaw']:.6f}, "
-              f"target={last['has_target']}, bytes={last['bytes_written']}")
+    if status["last_sent"]:
+        last = status["last_sent"]
+        print(
+            f"  Last sent: pitch={last['pitch']:.6f}, yaw={last['yaw']:.6f}, "
+            f"target={last['has_target']}, bytes={last['bytes_written']}"
+        )
 
     print()
     print("=" * 70)
@@ -180,4 +182,3 @@ if __name__ == "__main__":
 
         traceback.print_exc()
         sys.exit(1)
-
