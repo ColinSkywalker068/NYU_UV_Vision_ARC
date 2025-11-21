@@ -223,7 +223,9 @@ class YOLOv8Node(Node):
         self.declare_parameter(
             "serial_enable", True
         )  # Enable STM32 serial communication
-        self.declare_parameter("serial_port", "/dev/serial/by-path/platform-3610000.usb-usb-0:2.1:1.0")  # Serial port path
+        self.declare_parameter(
+            "serial_port", "/dev/serial/by-path/platform-3610000.usb-usb-0:2.1:1.0"
+        )  # Serial port path
         self.declare_parameter("serial_baudrate", 115200)  # Serial baud rate
         self.declare_parameter("serial_verbose", False)  # Verbose serial logging
         self.declare_parameter(
