@@ -56,6 +56,25 @@ If the script fails, download DeepStream manually:
    apt-get -y -f install
    ```
 
+### Handling `libnvvpi3`
+
+`libnvvpi3` ships with the Jetson Multimedia/VPI SDK and is not always
+available in standard apt repositories. The installer now handles it
+automatically, but you can control the behavior:
+
+```bash
+# Skip libnvvpi3 entirely (if you only need basic DeepStream features)
+./yolov8_ros/scripts/install_deepstream.sh --skip-libnvvpi
+
+# Provide a local .deb downloaded from NVIDIA SDK Manager / Jetson BSP
+./yolov8_ros/scripts/install_deepstream.sh --libnvvpi-deb /tmp/libnvvpi3.deb
+```
+
+If the package is still missing:
+- Download the Jetson Multimedia API / VPI package matching your Jetson release
+- Install the `libnvvpi3` .deb manually (`dpkg -i libnvvpi3_*.deb && apt-get -y -f install`)
+- Re-run the DeepStream installer
+
 4. **Verify installation:**
    ```bash
    ./yolov8_ros/scripts/check_deepstream.sh

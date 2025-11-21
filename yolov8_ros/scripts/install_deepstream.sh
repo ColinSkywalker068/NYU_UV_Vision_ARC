@@ -4,6 +4,90 @@
 
 set -e
 
+print_usage() {
+    cat <<EOF
+Usage: $(basename "$0") [options]
+
+Options:
+  --skip-libnvvpi           Skip libnvvpi3 installation (continue even if missing)
+  --libnvvpi-deb <path>     Provide local libnvvpi3 .deb file for installation
+  -h, --help                Show this message
+EOF
+}
+
+SKIP_LIBNVVPI=${SKIP_LIBNVVPI:-0}
+LIBNVVPI_DEB_PATH=${LIBNVVPI_DEB_PATH:-""}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --skip-libnvvpi)
+            SKIP_LIBNVVPI=1
+            shift
+            ;;
+        --libnvvpi-deb)
+            shift
+            if [[ -z "${1:-}" ]]; then
+                echo "ERROR: --libnvvpi-deb requires a file path"
+                exit 1
+            fi
+            LIBNVVPI_DEB_PATH="$1"
+            shift
+            ;;
+        -h|--help)
+            print_usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            print_usage
+            exit 1
+            ;;
+    esac
+done
+
+install_libnvvpi3() {
+    if dpkg -s libnvvpi3 >/dev/null 2>&1; then
+        echo "libnvvpi3 already installed."
+        return 0
+    fi
+
+    echo "Attempting to install libnvvpi3 via apt..."
+    if apt-get install -y libnvvpi3 >/dev/null 2>&1; then
+        echo "✓ libnvvpi3 installed via apt."
+        return 0
+    fi
+
+    if [[ -n "$LIBNVVPI_DEB_PATH" && -f "$LIBNVVPI_DEB_PATH" ]]; then
+        echo "Installing libnvvpi3 from provided .deb: $LIBNVVPI_DEB_PATH"
+        if dpkg -i "$LIBNVVPI_DEB_PATH"; then
+            apt-get -y -f install || true
+            if dpkg -s libnvvpi3 >/dev/null 2>&1; then
+                echo "✓ libnvvpi3 installed from provided .deb."
+                return 0
+            fi
+        fi
+    fi
+
+    echo "⚠ libnvvpi3 not found in apt repositories."
+    echo "  This package ships with the Jetson Multimedia/VPI SDK."
+    echo "  Download from https://developer.nvidia.com/embedded/jetson-linux or use NVIDIA SDK Manager."
+
+    if [[ "$SKIP_LIBNVVPI" -eq 1 ]]; then
+        echo "Skipping libnvvpi3 installation (per --skip-libnvvpi)."
+        return 1
+    fi
+
+    read -p "Continue without libnvvpi3? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Aborting until libnvvpi3 is provided."
+        exit 1
+    fi
+
+    echo "Continuing without libnvvpi3. Some DeepStream features may be unavailable."
+    return 1
+}
+
 echo "=== DeepStream 6.4 Manual Installation ==="
 echo ""
 
@@ -87,26 +171,29 @@ apt-get install -y \
         exit 1
     }
 
-# Try to install libnvvpi3 (Jetson-specific, may not be in standard repos)
-echo "Checking for libnvvpi3..."
-if ! apt-get install -y libnvvpi3 2>/dev/null; then
-    echo "Warning: libnvvpi3 not found in apt repos."
-    echo "  This is Jetson-specific and may be in a Jetson SDK package."
-    echo "  DeepStream may still work, but some features may be limited."
-    echo "  Continuing installation..."
-fi
-
 # Install DeepStream
 echo "Installing DeepStream..."
 if ! dpkg -i "$DEEPSTREAM_DEB"; then
     echo "Fixing remaining dependencies..."
-    apt-get -y -f install || {
-        echo "ERROR: Failed to resolve dependencies. Trying to install missing packages..."
-        # Try to install missing packages individually
+    # Try to fix dependencies
+    if ! apt-get -y -f install; then
+        echo "Attempting to install with dependency resolution..."
+        # Try installing missing packages that might be available
         apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev || true
-        # libnvvpi3 might need special handling - it's often in the Jetson SDK
-        apt-get -y -f install
-    }
+        
+        # Try to install libnvvpi3 if available (Jetson SDK package)
+        install_libnvvpi3 || true
+        
+        # Try installing DeepStream with --force-depends if regular install fails
+        echo "Attempting DeepStream installation with --force-depends..."
+        if ! dpkg -i --force-depends "$DEEPSTREAM_DEB"; then
+            echo "ERROR: DeepStream installation failed even with --force-depends"
+            echo "You may need to install libnvvpi3 manually from Jetson SDK (VPI package)."
+            exit 1
+        fi
+        # Fix broken dependencies after force install
+        apt-get -y -f install || true
+    fi
 fi
 
 # Verify installation
