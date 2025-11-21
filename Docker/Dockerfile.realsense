@@ -125,6 +125,37 @@ RUN cd /librealsense/build && make install
 
 ENV DEBIAN_FRONTEND=dialog
 
+# Install libnvvpi3 (required by DeepStream) - NVIDIA Vision Programming Interface
+# Option 1: Install from NVIDIA Jetson apt repository (recommended)
+# For JetPack 6.0 / L4T R36, use r36. Adjust r36/t234 if using different JetPack version.
+# Note: t234 is for Orin. Use t194 for Xavier, t186 for Nano, etc.
+RUN set +e; \
+    curl -fsSL https://repo.download.nvidia.com/jetson/jetson-ota-public.asc | \
+    gpg --dearmor -o /usr/share/keyrings/jetson-ota-public.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/jetson-ota-public.gpg] https://repo.download.nvidia.com/jetson/common r36 main" > /etc/apt/sources.list.d/nvidia-l4t-apt-source.list && \
+    echo "deb [signed-by=/usr/share/keyrings/jetson-ota-public.gpg] https://repo.download.nvidia.com/jetson/t234 r36 main" >> /etc/apt/sources.list.d/nvidia-l4t-apt-source.list && \
+    apt-get update && \
+    if apt-get install -y libnvvpi3; then \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get clean && \
+    echo "✓ libnvvpi3 installed successfully"; \
+    else \
+    echo "WARNING: Failed to install libnvvpi3 from NVIDIA repo."; \
+    echo "  This may be due to:"; \
+    echo "  1. Wrong JetPack version (adjust r36/t234 in Dockerfile)"; \
+    echo "  2. Network issues accessing NVIDIA repo"; \
+    echo "  3. Use Option 2 below with local .deb file instead"; \
+    rm -rf /var/lib/apt/lists/*; \
+    fi; \
+    set -e
+
+# Option 2: If you have libnvvpi3.deb file, comment out Option 1 above and uncomment this:
+# Place your libnvvpi3.deb file in Docker/debs/ directory first
+# COPY Docker/debs/libnvvpi3.deb /tmp/libnvvpi3.deb
+# RUN dpkg -i /tmp/libnvvpi3.deb || (apt-get update && apt-get -y -f install) && \
+#     rm -f /tmp/libnvvpi3.deb && \
+#     echo "✓ libnvvpi3 installed from local .deb file"
+
 # Install DeepStream 6.4 (Jetson L4T R36/JP6) runtime inside this image.
 # Note: DeepStream installation often fails during build due to NGC authentication requirements.
 # It's recommended to install DeepStream manually in the container using:

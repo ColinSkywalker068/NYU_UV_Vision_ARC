@@ -4,10 +4,21 @@ STM32 Serial Communication Module
 Sends pitch/yaw angles and target status to STM32 microcontroller via USB-C serial.
 """
 
-import serial
-import struct
-import logging
-from typing import Optional
+try:
+    import serial
+    import struct
+    import logging
+    from typing import Optional
+    
+    # Verify serial module has required attributes
+    if not hasattr(serial, 'Serial'):
+        raise ImportError("serial module does not have 'Serial' class. Wrong module imported?")
+    if not hasattr(serial, 'SerialException'):
+        raise ImportError("serial module does not have 'SerialException'. Is pyserial installed correctly?")
+except ImportError as e:
+    print(f"ERROR: Failed to import required modules for STM32Serial: {e}")
+    print("Please install pyserial: pip3 install pyserial")
+    raise
 
 logger = logging.getLogger(__name__)
 

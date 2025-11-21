@@ -16,7 +16,7 @@ setup(
             glob(os.path.join("launch", "*.[pxy][yma]*")),
         ),
     ],
-    install_requires=["setuptools"],
+    install_requires=["setuptools", "pyserial"],
     zip_safe=True,
     maintainer="parallels",
     maintainer_email="shubhamgupto@gmail.com",

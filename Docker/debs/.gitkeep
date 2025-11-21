@@ -1,0 +1,5 @@
+# Place libnvvpi3.deb file here if using Option 2 in Dockerfile.realsense
+# Get the .deb file from:
+# - Jetson SDK Manager installation
+# - Or download from NVIDIA Developer site
+

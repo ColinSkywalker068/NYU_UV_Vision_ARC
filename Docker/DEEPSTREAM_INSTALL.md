@@ -5,11 +5,15 @@
 DeepStream installation often fails during Docker build because:
 - NGC (NVIDIA GPU Cloud) requires authentication
 - Network issues during build
-- The download URL may change
+- Missing `libnvvpi3` dependency (NVIDIA VPI library)
 
 ## Solution
 
-The Dockerfile now makes DeepStream installation **optional** during build. The image will build successfully even if DeepStream isn't installed.
+The Dockerfile now:
+1. **Installs `libnvvpi3` automatically** from NVIDIA Jetson apt repository (baked into image)
+2. Makes DeepStream installation **optional** during build (can install manually after)
+
+This means `libnvvpi3` is already in your image, so DeepStream installation should work smoothly!
 
 ## Install DeepStream After Build
 
@@ -56,24 +60,17 @@ If the script fails, download DeepStream manually:
    apt-get -y -f install
    ```
 
-### Handling `libnvvpi3`
+### About `libnvvpi3`
 
-`libnvvpi3` ships with the Jetson Multimedia/VPI SDK and is not always
-available in standard apt repositories. The installer now handles it
-automatically, but you can control the behavior:
+**Good news:** `libnvvpi3` is now **automatically installed** in the Dockerfile from NVIDIA's Jetson apt repository. This means:
+- ✅ No manual installation needed
+- ✅ Available in every container built from this image
+- ✅ DeepStream installation should work without dependency errors
 
-```bash
-# Skip libnvvpi3 entirely (if you only need basic DeepStream features)
-./yolov8_ros/scripts/install_deepstream.sh --skip-libnvvpi
-
-# Provide a local .deb downloaded from NVIDIA SDK Manager / Jetson BSP
-./yolov8_ros/scripts/install_deepstream.sh --libnvvpi-deb /tmp/libnvvpi3.deb
-```
-
-If the package is still missing:
-- Download the Jetson Multimedia API / VPI package matching your Jetson release
-- Install the `libnvvpi3` .deb manually (`dpkg -i libnvvpi3_*.deb && apt-get -y -f install`)
-- Re-run the DeepStream installer
+**If the automatic installation fails** (wrong JetPack version, network issues):
+1. The Dockerfile will show a warning but continue building
+2. You can use Option 2 in the Dockerfile: place `libnvvpi3.deb` in `Docker/debs/` and uncomment the COPY section
+3. Or install manually in container: `apt-get install -y libnvvpi3` (if NVIDIA repo is accessible)
 
 4. **Verify installation:**
    ```bash
