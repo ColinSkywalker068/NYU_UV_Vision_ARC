@@ -358,10 +358,14 @@ class YOLOv8Node(Node):
                     )
             except ImportError as e:
                 self.get_logger().error(f"Failed to import serial module: {e}")
-                self.get_logger().error("Please install pyserial: pip3 install pyserial")
+                self.get_logger().error(
+                    "Please install pyserial: pip3 install pyserial"
+                )
                 self.stm32_serial = None
             except Exception as e:
-                self.get_logger().error(f"Failed to initialize STM32 serial: {type(e).__name__}: {e}")
+                self.get_logger().error(
+                    f"Failed to initialize STM32 serial: {type(e).__name__}: {e}"
+                )
                 self.get_logger().error(f"Full traceback: {traceback.format_exc()}")
                 self.stm32_serial = None
 

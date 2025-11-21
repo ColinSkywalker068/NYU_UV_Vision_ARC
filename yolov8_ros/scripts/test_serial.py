@@ -14,6 +14,7 @@ print("=" * 60)
 print("\n[1] Testing serial module import...")
 try:
     import serial
+
     print("✓ serial module imported successfully")
     print(f"  Module path: {serial.__file__}")
     print(f"  Module version: {getattr(serial, 'VERSION', 'unknown')}")
@@ -24,7 +25,13 @@ except ImportError as e:
 
 # Test 2: Check for required attributes
 print("\n[2] Checking serial module attributes...")
-required_attrs = ['Serial', 'SerialException', 'PARITY_NONE', 'STOPBITS_ONE', 'EIGHTBITS']
+required_attrs = [
+    "Serial",
+    "SerialException",
+    "PARITY_NONE",
+    "STOPBITS_ONE",
+    "EIGHTBITS",
+]
 for attr in required_attrs:
     if hasattr(serial, attr):
         print(f"✓ serial.{attr} exists")
@@ -36,6 +43,7 @@ for attr in required_attrs:
 print("\n[3] Listing available serial ports...")
 try:
     import serial.tools.list_ports
+
     ports = serial.tools.list_ports.comports()
     if ports:
         print(f"✓ Found {len(ports)} serial port(s):")
@@ -53,6 +61,7 @@ except Exception as e:
 print("\n[4] Checking /dev/serial...")
 try:
     from pathlib import Path
+
     serial_path = Path("/dev/serial")
     if serial_path.exists():
         print(f"✓ /dev/serial exists")
@@ -78,17 +87,19 @@ except Exception as e:
 print("\n[5] Testing STM32Serial import...")
 try:
     from stm32_serial import STM32Serial
+
     print("✓ STM32Serial imported successfully")
 except ImportError as e:
     print(f"✗ Failed to import STM32Serial: {e}")
     import traceback
+
     traceback.print_exc()
 except Exception as e:
     print(f"✗ Error importing STM32Serial: {type(e).__name__}: {e}")
     import traceback
+
     traceback.print_exc()
 
 print("\n" + "=" * 60)
 print("Test complete!")
 print("=" * 60)
-
