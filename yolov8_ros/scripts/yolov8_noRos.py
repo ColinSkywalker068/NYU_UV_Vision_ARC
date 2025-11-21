@@ -11,6 +11,17 @@ import time
 import random  # For Kalman
 import pyrealsense2 as rs  # Import pyrealsense2
 import traceback
+import struct
+import math
+import sys
+from pathlib import Path
+
+# Add scripts directory to path for local imports
+scripts_dir = Path(__file__).parent
+if str(scripts_dir) not in sys.path:
+    sys.path.insert(0, str(scripts_dir))
+
+from stm32_serial import STM32Serial
 
 # Prevent memory corruption on Jetson with TensorRT
 os.environ["MALLOC_CHECK_"] = "0"  # Disable glibc malloc checks
@@ -208,6 +219,12 @@ class YOLOv8Node(Node):
         # 1=50Hz, 2=60Hz; see rs.option.power_line_frequency enumeration
         self.declare_parameter("color_power_line_frequency", 2)
         self.declare_parameter("use_kalman", False)  # Gate Kalman usage
+        # Serial communication parameters
+        self.declare_parameter("serial_enable", False)  # Enable STM32 serial communication
+        self.declare_parameter("serial_port", "/dev/serial")  # Serial port path
+        self.declare_parameter("serial_baudrate", 115200)  # Serial baud rate
+        self.declare_parameter("hfov_degrees", 60.0)  # Horizontal field of view in degrees
+        self.declare_parameter("vfov_degrees", 45.0)  # Vertical field of view in degrees
 
         # Get parameter values
         model_path = self.get_parameter("model_path").get_parameter_value().string_value
@@ -297,6 +314,45 @@ class YOLOv8Node(Node):
         self.use_kalman = (
             self.get_parameter("use_kalman").get_parameter_value().bool_value
         )
+        # Serial communication parameters
+        self.serial_enable = (
+            self.get_parameter("serial_enable").get_parameter_value().bool_value
+        )
+        self.serial_port = (
+            self.get_parameter("serial_port").get_parameter_value().string_value
+        )
+        self.serial_baudrate = (
+            self.get_parameter("serial_baudrate").get_parameter_value().integer_value
+        )
+        self.hfov_degrees = (
+            self.get_parameter("hfov_degrees").get_parameter_value().double_value
+        )
+        self.vfov_degrees = (
+            self.get_parameter("vfov_degrees").get_parameter_value().double_value
+        )
+
+        # Convert FOV to radians for calculations
+        self.hfov_rad = math.radians(self.hfov_degrees)
+        self.vfov_rad = math.radians(self.vfov_degrees)
+
+        # Initialize STM32 serial if enabled
+        self.stm32_serial = None
+        if self.serial_enable:
+            try:
+                self.stm32_serial = STM32Serial(
+                    port=self.serial_port, baudrate=self.serial_baudrate
+                )
+                if self.stm32_serial.connected:
+                    self.get_logger().info(
+                        f"STM32 serial enabled: {self.serial_port} @ {self.serial_baudrate} baud"
+                    )
+                else:
+                    self.get_logger().warn(
+                        f"STM32 serial initialization failed, continuing without serial"
+                    )
+            except Exception as e:
+                self.get_logger().error(f"Failed to initialize STM32 serial: {e}")
+                self.stm32_serial = None
 
         self.get_logger().info(f"Model Path: {model_path}")
         self.get_logger().info(
@@ -527,6 +583,31 @@ class YOLOv8Node(Node):
         self.timer = self.create_timer(
             1.0 / self.realsense_fps, self.timer_callback
         )  # Use configured FPS for timer
+
+    # --- Helper for Angle Calculation ---
+    def calculate_angles(self, x1: int, y1: int, x2: int, y2: int):
+        """
+        Calculate pitch and yaw angles from bounding box coordinates.
+
+        Args:
+            x1, y1: Top-left corner of bounding box
+            x2, y2: Bottom-right corner of bounding box
+
+        Returns:
+            Tuple of (yaw_angle, pitch_angle) in radians
+        """
+        center_x = x1 + (x2 - x1) / 2.0
+        center_y = y1 + (y2 - y1) / 2.0
+
+        # Normalize pixel offset to [-1, 1] based on image dimensions
+        pixel_offset_x = (center_x - self.imgsz_width / 2.0) / (self.imgsz_width / 2.0)
+        pixel_offset_y = (center_y - self.imgsz_height / 2.0) / (self.imgsz_height / 2.0)
+
+        # Convert pixel offset to angles using FOV
+        yaw_angle = math.atan(pixel_offset_x * math.tan(self.hfov_rad / 2.0))
+        pitch_angle = math.atan(pixel_offset_y * math.tan(self.vfov_rad / 2.0))
+
+        return yaw_angle, pitch_angle
 
     # --- Timer Callback for Frame Acquisition and Processing ---
     def timer_callback(self):
@@ -888,6 +969,15 @@ class YOLOv8Node(Node):
                             f"Published KF BBox ID {track_id} (Lookahead): {[pub_x1, pub_y1, pub_x2, pub_y2]}"
                         )
 
+                        # Send to STM32 via serial if enabled
+                        if self.stm32_serial is not None and self.stm32_serial.connected:
+                            try:
+                                yaw, pitch = self.calculate_angles(pub_x1, pub_y1, pub_x2, pub_y2)
+                                has_target = 1  # Valid target detected
+                                self.stm32_serial.send_auto_aim(pitch, yaw, has_target)
+                            except Exception as e:
+                                self.get_logger().warn(f"Failed to send serial data: {e}")
+
                         if self.show and vis_frame is not None:  # Draw KF box
                             cv2.rectangle(
                                 vis_frame,
@@ -948,6 +1038,16 @@ class YOLOv8Node(Node):
                     self.bbox_publisher.publish(self.bbox_msg)
                     self.override_publisher.publish(self.override)
                     published_bbox_this_frame = True
+
+                    # Send to STM32 via serial if enabled
+                    if self.stm32_serial is not None and self.stm32_serial.connected:
+                        try:
+                            yaw, pitch = self.calculate_angles(pub_x1, pub_y1, pub_x2, pub_y2)
+                            has_target = 1  # Valid target detected
+                            self.stm32_serial.send_auto_aim(pitch, yaw, has_target)
+                        except Exception as e:
+                            self.get_logger().warn(f"Failed to send serial data: {e}")
+
                     if self.show and vis_frame is not None:
                         cv2.rectangle(
                             vis_frame,
@@ -1031,6 +1131,13 @@ class YOLOv8Node(Node):
                 self.pipeline = None
         except Exception as e:
             self.get_logger().warn(f"Error stopping pipeline: {e}")
+
+        # Close serial connection if enabled
+        if hasattr(self, "stm32_serial") and self.stm32_serial is not None:
+            try:
+                self.stm32_serial.close()
+            except Exception as e:
+                self.get_logger().warn(f"Error closing serial connection: {e}")
 
         # Close CV windows before calling parent
         cv2.destroyAllWindows()

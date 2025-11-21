@@ -105,7 +105,8 @@ RUN bash -c "source ./install/local_setup.sh"
 # Install application dependencies
 RUN pip3 install ultralytics --no-cache-dir --no-deps \
     && pip3 install --no-cache-dir py-cpuinfo psutil scipy seaborn thop tqdm pandas onnxsim lapx \
-    && pip3 install --no-cache-dir --upgrade matplotlib gitpython
+    && pip3 install --no-cache-dir --upgrade matplotlib gitpython \
+    && pip3 install --no-cache-dir pyserial
 
 RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-rqt \
