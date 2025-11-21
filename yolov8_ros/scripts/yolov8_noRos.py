@@ -225,6 +225,7 @@ class YOLOv8Node(Node):
         )  # Enable STM32 serial communication
         self.declare_parameter("serial_port", "/dev/serial/by-path/platform-3610000.usb-usb-0:2.1:1.0")  # Serial port path
         self.declare_parameter("serial_baudrate", 115200)  # Serial baud rate
+        self.declare_parameter("serial_verbose", False)  # Verbose serial logging
         self.declare_parameter(
             "hfov_degrees", 60.0
         )  # Horizontal field of view in degrees
@@ -330,6 +331,9 @@ class YOLOv8Node(Node):
         self.serial_baudrate = (
             self.get_parameter("serial_baudrate").get_parameter_value().integer_value
         )
+        self.serial_verbose = (
+            self.get_parameter("serial_verbose").get_parameter_value().bool_value
+        )
         self.hfov_degrees = (
             self.get_parameter("hfov_degrees").get_parameter_value().double_value
         )
@@ -346,12 +350,21 @@ class YOLOv8Node(Node):
         if self.serial_enable:
             try:
                 self.stm32_serial = STM32Serial(
-                    port=self.serial_port, baudrate=self.serial_baudrate
+                    port=self.serial_port,
+                    baudrate=self.serial_baudrate,
+                    verbose=self.serial_verbose,
                 )
                 if self.stm32_serial.connected:
                     self.get_logger().info(
                         f"STM32 serial enabled: {self.serial_port} @ {self.serial_baudrate} baud"
                     )
+                    if self.serial_verbose:
+                        self.get_logger().info("Serial verbose logging enabled")
+                        # Test connection
+                        if self.stm32_serial.test_connection():
+                            self.get_logger().info("✓ Serial connection test passed")
+                        else:
+                            self.get_logger().warn("⚠ Serial connection test failed")
                 else:
                     self.get_logger().warn(
                         f"STM32 serial initialization failed, continuing without serial"
@@ -996,10 +1009,16 @@ class YOLOv8Node(Node):
                                     pub_x1, pub_y1, pub_x2, pub_y2
                                 )
                                 has_target = 1  # Valid target detected
-                                self.stm32_serial.send_auto_aim(pitch, yaw, has_target)
+                                success = self.stm32_serial.send_auto_aim(
+                                    pitch, yaw, has_target
+                                )
+                                if not success and self.serial_verbose:
+                                    self.get_logger().warn(
+                                        f"Failed to send serial data (pitch={pitch:.4f}, yaw={yaw:.4f})"
+                                    )
                             except Exception as e:
                                 self.get_logger().warn(
-                                    f"Failed to send serial data: {e}"
+                                    f"Exception sending serial data: {e}"
                                 )
 
                         if self.show and vis_frame is not None:  # Draw KF box
@@ -1070,9 +1089,17 @@ class YOLOv8Node(Node):
                                 pub_x1, pub_y1, pub_x2, pub_y2
                             )
                             has_target = 1  # Valid target detected
-                            self.stm32_serial.send_auto_aim(pitch, yaw, has_target)
+                            success = self.stm32_serial.send_auto_aim(
+                                pitch, yaw, has_target
+                            )
+                            if not success and self.serial_verbose:
+                                self.get_logger().warn(
+                                    f"Failed to send serial data (pitch={pitch:.4f}, yaw={yaw:.4f})"
+                                )
                         except Exception as e:
-                            self.get_logger().warn(f"Failed to send serial data: {e}")
+                            self.get_logger().warn(
+                                f"Exception sending serial data: {e}"
+                            )
 
                     if self.show and vis_frame is not None:
                         cv2.rectangle(
