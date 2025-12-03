@@ -118,6 +118,23 @@ RUN apt-get update && apt-get install -y wget && \
     rm -f /tmp/deepstream-6.4_6.4.0-1_arm64.deb && \
     ldconfig
 
+# --- BASLER PYLON SETUP START ---
+
+# 1. Download Pylon 7.4.0 for ARM64
+# Note: This is a direct link to the Basler ace 2 compatible driver.
+RUN wget -q https://download.baslerweb.com/media/downloads/software/pylon_software/pylon_7.4.0.14900-deb_aarch64.deb -O /tmp/pylon.deb && \
+    apt-get install -y /tmp/pylon.deb && \
+    rm /tmp/pylon.deb
+
+# 2. Install pypylon (Python bindings)
+RUN pip3 install pypylon
+
+# 3. Add Pylon environment variables
+ENV PYLON_ROOT=/opt/pylon
+ENV PATH=$PATH:$PYLON_ROOT/bin
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PYLON_ROOT/lib
+
+# --- BASLER PYLON SETUP END ---
 # Expose DeepStream paths
 ENV GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream/lib/gst-plugins \
     GST_PLUGIN_PATH_1_0=/opt/nvidia/deepstream/deepstream/lib/gst-plugins \
