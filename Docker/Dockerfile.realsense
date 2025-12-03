@@ -1,67 +1,47 @@
 ARG BASE_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt
-
 FROM ${BASE_IMAGE}
 
-# Update ROS2 GPG key to fix apt errors: https://github.com/ros2/ros2/issues/1696
+# Update ROS2 GPG key
 RUN apt-get install curl \
     && curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
 
 # Install Python
 RUN apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    python3-dev && apt-get update && apt-get clean all
+    python3 python3-pip python3-dev && apt-get update && apt-get clean all
 
-# GStreamer + gst-python (needed for yolov8_op.py DeepStream/GStreamer pipeline)
-# Also include dev packages needed for DeepStream installation
+# GStreamer + gst-python
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3-gi python3-gst-1.0 gir1.2-gstreamer-1.0 \
     gir1.2-gst-plugins-base-1.0 gir1.2-gst-rtsp-server-1.0 \
-    gstreamer1.0-tools \
-    gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+    gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
     gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
     gstreamer1.0-libav libgstrtspserver-1.0-0 \
     libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
     libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev && \
     rm -rf /var/lib/apt/lists/* && apt-get clean
 
-# Install build dependencies
+# Install build dependencies (Added libyaml-cpp-dev for DS 6.4)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    libssl-dev \
-    libusb-1.0-0-dev \
-    libgtk-3-dev \
-    libglfw3-dev \
-    libgl1-mesa-dev \
-    libglu1-mesa-dev \
-    libusb-1.0-0 \
-    udev \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    software-properties-common \
-    qtcreator && \
-    rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    libssl-dev libusb-1.0-0-dev libgtk-3-dev libglfw3-dev \
+    libgl1-mesa-dev libglu1-mesa-dev libusb-1.0-0 udev \
+    apt-transport-https ca-certificates curl software-properties-common \
+    qtcreator libyaml-cpp-dev libjsoncpp-dev && \
+    rm -rf /var/lib/apt/lists/* && apt-get clean
 
-# Install runtime/user tools (separate layer for better caching)
+# Install runtime/user tools
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    vim \
-    screen \
-    bash-completion && \
-    rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    vim screen bash-completion && \
+    rm -rf /var/lib/apt/lists/* && apt-get clean
 
 # Build realsense library
-# https://github.com/IntelRealSense/librealsense/issues/11931
 ARG LIBREALSENSE_VERSION=development
 RUN git clone --branch ${LIBREALSENSE_VERSION} --depth=1 https://github.com/IntelRealSense/librealsense \
     && cd librealsense \
-    && mkdir build \
-    && cd build \
+    && mkdir build && cd build \
     && cmake \
     -DBUILD_EXAMPLES=true \
     -DFORCE_RSUSB_BACKEND=true \
@@ -75,28 +55,25 @@ RUN git clone --branch ${LIBREALSENSE_VERSION} --depth=1 https://github.com/Inte
     && cd .. \
     && cp -r . /usr/local/ \
     && cp ./config/99-realsense-libusb.rules /etc/udev/rules.d/ \
-    && cp ./config/99-realsense-d4xx-mipi-dfu.rules /etc/udev/rules.d/ \
-    && rm -rf librealsense
+    && cp ./config/99-realsense-d4xx-mipi-dfu.rules /etc/udev/rules.d/ 
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Move the base image's custom ROS2 installation to the default path apt expects
+# Move base image's custom ROS2 installation
 RUN mv /opt/ros/humble/install/* /opt/ros/humble/ \
     && rm -r /opt/ros/humble/install
 
-# Realsense ROS: https://github.com/IntelRealSense/realsense-ros/tree/ros2-development
+# Realsense ROS
 ENV WS_DIR_REALSENSE="/ros2_realsense_ws"
 WORKDIR ${WS_DIR_REALSENSE}
 RUN bash -c "apt-get update -y \
-    && mkdir src \
-    && cd src \
+    && mkdir src && cd src \
     && git clone https://github.com/IntelRealSense/realsense-ros.git -b ros2-development \
     && cd .. \
     && apt-get install -y python3-rosdep \
     && source /opt/ros/${ROS_DISTRO}/setup.bash \
     && rm /etc/ros/rosdep/sources.list.d/20-default.list \
-    && rosdep init \
-    && rosdep update \
+    && rosdep init && rosdep update \
     && rosdep install -i --from-path src --rosdistro ${ROS_DISTRO} --skip-keys=librealsense2 -y \
     && source /opt/ros/${ROS_DISTRO}/setup.bash \
     && colcon build"
@@ -109,75 +86,42 @@ RUN pip3 install ultralytics --no-cache-dir --no-deps \
     && pip3 install --no-cache-dir pyserial
 
 RUN apt-get update && apt-get install -y \
-    ros-${ROS_DISTRO}-rqt \
-    ros-${ROS_DISTRO}-rqt-plot \
-    psmisc
+    ros-${ROS_DISTRO}-rqt ros-${ROS_DISTRO}-rqt-plot psmisc
 
 # Run commands when shell starts
 RUN echo 'git config --global --add safe.directory "*"' >> ~/.bashrc \
     && echo 'git config --global user.email "jetson.service@gmail.com"' >> ~/.bashrc \
-    && echo 'git config --global user.email "jetson-service"' >> ~/.bashrc \
     && echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> ~/.bashrc \
     && echo 'source "${WS_DIR_REALSENSE}/install/local_setup.sh"' >> ~/.bashrc
 
-# Fix realsense error by reinstalling realsense dependencies
-RUN cd /librealsense/build && make install
+# Fix realsense error (Now this works because we didn't delete the folder earlier)
+RUN cd /librealsense/build && make install && cd / && rm -rf /librealsense
 
 ENV DEBIAN_FRONTEND=dialog
 
-# Install libnvvpi3 (required by DeepStream) - NVIDIA Vision Programming Interface
-# Option 1: Install from NVIDIA Jetson apt repository (recommended)
-# For JetPack 6.0 / L4T R36, use r36. Adjust r36/t234 if using different JetPack version.
-# Note: t234 is for Orin. Use t194 for Xavier, t186 for Nano, etc.
-RUN set +e; \
-    curl -fsSL https://repo.download.nvidia.com/jetson/jetson-ota-public.asc | \
-    gpg --dearmor -o /usr/share/keyrings/jetson-ota-public.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/jetson-ota-public.gpg] https://repo.download.nvidia.com/jetson/common r36 main" > /etc/apt/sources.list.d/nvidia-l4t-apt-source.list && \
-    echo "deb [signed-by=/usr/share/keyrings/jetson-ota-public.gpg] https://repo.download.nvidia.com/jetson/t234 r36 main" >> /etc/apt/sources.list.d/nvidia-l4t-apt-source.list && \
-    apt-get update && \
-    if apt-get install -y libnvvpi3; then \
-    rm -rf /var/lib/apt/lists/* && \
-    apt-get clean && \
-    echo "✓ libnvvpi3 installed successfully"; \
-    else \
-    echo "WARNING: Failed to install libnvvpi3 from NVIDIA repo."; \
-    echo "  This may be due to:"; \
-    echo "  1. Wrong JetPack version (adjust r36/t234 in Dockerfile)"; \
-    echo "  2. Network issues accessing NVIDIA repo"; \
-    echo "  3. Use Option 2 below with local .deb file instead"; \
-    rm -rf /var/lib/apt/lists/*; \
-    fi; \
-    set -e
+# --- CRITICAL FIXES FOR VPI AND DEEPSTREAM START HERE ---
 
-# Option 2: If you have libnvvpi3.deb file, comment out Option 1 above and uncomment this:
-# Place your libnvvpi3.deb file in Docker/debs/ directory first
-# COPY Docker/debs/libnvvpi3.deb /tmp/libnvvpi3.deb
-# RUN dpkg -i /tmp/libnvvpi3.deb || (apt-get update && apt-get -y -f install) && \
-#     rm -f /tmp/libnvvpi3.deb && \
-#     echo "✓ libnvvpi3 installed from local .deb file"
+# 1. Install libnvvpi3 cleanly
+# We remove the complex if/else block. If this fails, the build SHOULD fail.
+RUN curl -fsSL https://repo.download.nvidia.com/jetson/jetson-ota-public.asc | gpg --dearmor -o /usr/share/keyrings/jetson-ota-public.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/jetson-ota-public.gpg] https://repo.download.nvidia.com/jetson/common r36 main" > /etc/apt/sources.list.d/nvidia-l4t-apt-source.list \
+    && echo "deb [signed-by=/usr/share/keyrings/jetson-ota-public.gpg] https://repo.download.nvidia.com/jetson/t234 r36 main" >> /etc/apt/sources.list.d/nvidia-l4t-apt-source.list \
+    && apt-get update \
+    && apt-get install -y libnvvpi3
 
-# Install DeepStream 6.4 (Jetson L4T R36/JP6) runtime inside this image.
-# Note: DeepStream installation often fails during build due to NGC authentication requirements.
-# It's recommended to install DeepStream manually in the container using:
-#   ./yolov8_ros/scripts/install_deepstream.sh
-# This RUN command will attempt installation but won't fail the build if it doesn't work.
-RUN set +e; \
-    curl -L 'https://api.ngc.nvidia.com/v2/resources/org/nvidia/deepstream/6.4/files?redirect=true&path=deepstream-6.4_6.4.0-1_arm64.deb' \
-    -o /tmp/deepstream-6.4_6.4.0-1_arm64.deb 2>/dev/null && \
-    (dpkg -i /tmp/deepstream-6.4_6.4.0-1_arm64.deb || (apt-get update && apt-get -y -f install)) 2>/dev/null && \
-    rm -f /tmp/deepstream-6.4_6.4.0-1_arm64.deb; \
-    if [ ! -d "/opt/nvidia/deepstream/deepstream" ]; then \
-    echo "WARNING: DeepStream installation failed during build. Install manually with:"; \
-    echo "  ./yolov8_ros/scripts/install_deepstream.sh"; \
-    fi; \
-    set -e
+# 2. Install DeepStream 6.4
+# We use apt-get install ./package.deb instead of dpkg to handle dependencies automatically.
+# We also download via wget to avoid curl redirect issues.
+RUN apt-get update && apt-get install -y wget && \
+    wget --content-disposition 'https://api.ngc.nvidia.com/v2/resources/org/nvidia/deepstream/6.4/files?redirect=true&path=deepstream-6.4_6.4.0-1_arm64.deb' -O /tmp/deepstream-6.4_6.4.0-1_arm64.deb && \
+    apt-get install -y /tmp/deepstream-6.4_6.4.0-1_arm64.deb && \
+    rm -f /tmp/deepstream-6.4_6.4.0-1_arm64.deb && \
+    ldconfig
 
-# If DeepStream is installed in the image at /opt/nvidia/deepstream/deepstream,
-# expose its plugins and libs for NVMM pipeline (safe even if absent).
+# Expose DeepStream paths
 ENV GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream/lib/gst-plugins \
     GST_PLUGIN_PATH_1_0=/opt/nvidia/deepstream/deepstream/lib/gst-plugins \
     LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream/lib:/usr/lib/aarch64-linux-gnu/tegra:${LD_LIBRARY_PATH}
 
 WORKDIR /home/ultraviolet/CV_Detection
-
 CMD ["/bin/bash"]
