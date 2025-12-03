@@ -101,11 +101,11 @@ ENV DEBIAN_FRONTEND=dialog
 
 # --- CRITICAL FIXES FOR VPI AND DEEPSTREAM START HERE ---
 
-# 1. Install libnvvpi3 cleanly
-# We remove the complex if/else block. If this fails, the build SHOULD fail.
-RUN curl -fsSL https://repo.download.nvidia.com/jetson/jetson-ota-public.asc | gpg --dearmor -o /usr/share/keyrings/jetson-ota-public.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/jetson-ota-public.gpg] https://repo.download.nvidia.com/jetson/common r36 main" > /etc/apt/sources.list.d/nvidia-l4t-apt-source.list \
-    && echo "deb [signed-by=/usr/share/keyrings/jetson-ota-public.gpg] https://repo.download.nvidia.com/jetson/t234 r36 main" >> /etc/apt/sources.list.d/nvidia-l4t-apt-source.list \
+# 1. Install libnvvpi3 (Corrected for JetPack 6.0 / R36.3)
+RUN apt-get update && apt-get install -y gnupg curl \
+    && curl -fsSL https://repo.download.nvidia.com/jetson/jetson-ota-public.asc | gpg --dearmor -o /usr/share/keyrings/jetson-ota-public.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/jetson-ota-public.gpg] https://repo.download.nvidia.com/jetson/common r36.3 main" > /etc/apt/sources.list.d/nvidia-l4t-apt-source.list \
+    && echo "deb [signed-by=/usr/share/keyrings/jetson-ota-public.gpg] https://repo.download.nvidia.com/jetson/t234 r36.3 main" >> /etc/apt/sources.list.d/nvidia-l4t-apt-source.list \
     && apt-get update \
     && apt-get install -y libnvvpi3
 
