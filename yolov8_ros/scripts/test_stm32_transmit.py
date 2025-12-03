@@ -74,7 +74,7 @@ def print_packet_details(pitch: float, yaw: float, has_target: int):
     print(f"      Target: {has_target}")
     print(f"      Packet (hex): {format_packet_hex(packet)}")
     print(f"      Packet size: {len(packet)} bytes")
-    
+
     # Show byte breakdown
     print(f"      Breakdown:")
     print(f"        Header (7 bytes): {' '.join(f'{b:02X}' for b in packet[0:7])}")
@@ -136,7 +136,9 @@ def main():
 
     for i, (pitch, yaw, has_target, description) in enumerate(test_cases, 1):
         print(f"\n  Test {i}: {description}")
-        print(f"    Input: Pitch={pitch:.6f} rad, Yaw={yaw:.6f} rad, Target={has_target}")
+        print(
+            f"    Input: Pitch={pitch:.6f} rad, Yaw={yaw:.6f} rad, Target={has_target}"
+        )
         print_packet_details(pitch, yaw, has_target)
         success = stm32.send_auto_aim(pitch, yaw, has_target)
         if success:
