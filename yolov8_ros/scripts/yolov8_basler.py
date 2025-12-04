@@ -266,7 +266,9 @@ class YOLOv8Node(Node):
             self.get_parameter("basler_height").get_parameter_value().integer_value
         )
         self.basler_use_full_sensor = (
-            self.get_parameter("basler_use_full_sensor").get_parameter_value().bool_value
+            self.get_parameter("basler_use_full_sensor")
+            .get_parameter_value()
+            .bool_value
         )
         self.basler_fps = (
             self.get_parameter("basler_fps").get_parameter_value().integer_value
@@ -439,20 +441,28 @@ class YOLOv8Node(Node):
                 )
             else:
                 # Set resolution (if requested size is larger than max, use max)
-                actual_width = min(self.basler_width, max_width) if max_width else self.basler_width
-                actual_height = min(self.basler_height, max_height) if max_height else self.basler_height
-            
+                actual_width = (
+                    min(self.basler_width, max_width)
+                    if max_width
+                    else self.basler_width
+                )
+                actual_height = (
+                    min(self.basler_height, max_height)
+                    if max_height
+                    else self.basler_height
+                )
+
             # Reset AOI to full sensor first (centers the AOI)
             try:
                 self.camera.OffsetX.SetValue(0)
                 self.camera.OffsetY.SetValue(0)
             except Exception as e:
                 self.get_logger().warn(f"Could not reset AOI offset: {e}")
-            
+
             # Set resolution
             self.camera.Width.SetValue(actual_width)
             self.camera.Height.SetValue(actual_height)
-            
+
             if actual_width != self.basler_width or actual_height != self.basler_height:
                 self.get_logger().warn(
                     f"Requested resolution {self.basler_width}x{self.basler_height} "
