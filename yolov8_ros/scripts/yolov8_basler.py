@@ -197,7 +197,7 @@ class YOLOv8Node(Node):
         self.declare_parameter("basler_width", 640)
         self.declare_parameter("basler_height", 480)
         self.declare_parameter(
-            "basler_use_full_sensor", False
+            "basler_use_full_sensor", True
         )  # If True, use maximum sensor resolution instead of basler_width/height
         self.declare_parameter(
             "basler_fps", fps
