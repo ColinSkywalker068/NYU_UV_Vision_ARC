@@ -266,9 +266,7 @@ class YOLOv8Node(Node):
             self.get_parameter("basler_fps").get_parameter_value().integer_value
         )
         self.basler_timeout_ms = (
-            self.get_parameter("basler_timeout_ms")
-            .get_parameter_value()
-            .integer_value
+            self.get_parameter("basler_timeout_ms").get_parameter_value().integer_value
         )
         self.enable_inference = (
             self.get_parameter("enable_inference").get_parameter_value().bool_value
@@ -400,33 +398,35 @@ class YOLOv8Node(Node):
         try:
             # Get the transport layer factory
             tl_factory = pylon.TlFactory.GetInstance()
-            
+
             # Get all available devices
             devices = tl_factory.EnumerateDevices()
             if len(devices) == 0:
                 self.get_logger().error("No Basler camera detected!")
                 raise RuntimeError("No Basler camera found")
-            
+
             self.get_logger().info(f"Found {len(devices)} Basler device(s)")
-            
+
             # Create camera object (use first available camera)
             self.camera = pylon.InstantCamera(tl_factory.CreateDevice(devices[0]))
             self.camera.Open()
-            
+
             # Set camera parameters
             # Set resolution
             self.camera.Width.SetValue(self.basler_width)
             self.camera.Height.SetValue(self.basler_height)
-            
+
             # Set frame rate (if supported)
             try:
                 if self.camera.AcquisitionFrameRateEnable.GetValue():
                     self.camera.AcquisitionFrameRate.SetValue(float(self.basler_fps))
                 else:
-                    self.get_logger().warn("Frame rate control not available on this camera")
+                    self.get_logger().warn(
+                        "Frame rate control not available on this camera"
+                    )
             except Exception as e:
                 self.get_logger().warn(f"Could not set frame rate: {e}")
-            
+
             # Set exposure
             if self.camera_auto_exposure:
                 try:
@@ -438,10 +438,12 @@ class YOLOv8Node(Node):
                 try:
                     self.camera.ExposureAuto.SetValue("Off")
                     self.camera.ExposureTime.SetValue(float(self.camera_exposure))
-                    self.get_logger().info(f"Manual exposure set to: {self.camera_exposure} us")
+                    self.get_logger().info(
+                        f"Manual exposure set to: {self.camera_exposure} us"
+                    )
                 except Exception as e:
                     self.get_logger().warn(f"Could not set exposure: {e}")
-            
+
             # Set gain
             if self.camera_auto_gain:
                 try:
@@ -456,10 +458,10 @@ class YOLOv8Node(Node):
                     self.get_logger().info(f"Manual gain set to: {self.camera_gain}")
                 except Exception as e:
                     self.get_logger().warn(f"Could not set gain: {e}")
-            
+
             # Start grabbing
             self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
-            
+
             # Get actual resolution and frame rate
             actual_width = self.camera.Width.GetValue()
             actual_height = self.camera.Height.GetValue()
@@ -467,11 +469,11 @@ class YOLOv8Node(Node):
                 actual_fps = self.camera.ResultingFrameRate.GetValue()
             except Exception:
                 actual_fps = self.basler_fps
-            
+
             self.get_logger().info(
                 f"Basler camera started: {actual_width}x{actual_height} @ {actual_fps:.2f} FPS"
             )
-            
+
             # Update kalman dt based on actual FPS
             self.kalman_initial_dt_val = (
                 1.0 / actual_fps if actual_fps > 0 else self.kalman_initial_dt_val
@@ -479,14 +481,19 @@ class YOLOv8Node(Node):
             self.get_logger().info(
                 f"Updated Kalman initial dt based on actual FPS: {self.kalman_initial_dt_val:.4f}s"
             )
-            
+
             # Precompute letterbox geometry and preallocate buffer if enabled
             self.lb_ready = False
             if self.preallocate_letterbox:
                 try:
                     target_w = self.imgsz_width
                     target_h = self.imgsz_height
-                    if actual_width > 0 and actual_height > 0 and target_w > 0 and target_h > 0:
+                    if (
+                        actual_width > 0
+                        and actual_height > 0
+                        and target_w > 0
+                        and target_h > 0
+                    ):
                         scale = min(target_w / actual_width, target_h / actual_height)
                         new_w = int(actual_width * scale)
                         new_h = int(actual_height * scale)
@@ -506,7 +513,7 @@ class YOLOv8Node(Node):
                     self.get_logger().warn(
                         f"Preallocate letterbox failed; falling back to dynamic: {e}"
                     )
-            
+
         except Exception as e:
             self.get_logger().error(f"Failed to initialize Basler camera: {e}")
             self.get_logger().error(
@@ -586,7 +593,7 @@ class YOLOv8Node(Node):
                 grab_result = self.camera.RetrieveResult(
                     self.basler_timeout_ms, pylon.TimeoutHandling_ThrowException
                 )
-            
+
             if not grab_result.GrabSucceeded():
                 self.get_logger().warn(
                     "Failed to grab frame from Basler camera. Skipping this frame."
@@ -598,11 +605,11 @@ class YOLOv8Node(Node):
             converter = pylon.ImageFormatConverter()
             converter.OutputPixelFormat = pylon.PixelType_BGR8packed
             converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
-            
+
             image = converter.Convert(grab_result)
             frame = image.GetArray()
             grab_result.Release()
-            
+
             # frame is now a BGR8 OpenCV image
 
             if not self.enable_inference:
@@ -1116,4 +1123,3 @@ def main(args=None):
 
 if __name__ == "__main__":
     main()
-
