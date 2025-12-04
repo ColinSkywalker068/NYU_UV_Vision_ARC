@@ -197,6 +197,9 @@ class YOLOv8Node(Node):
         self.declare_parameter("basler_width", 640)
         self.declare_parameter("basler_height", 480)
         self.declare_parameter(
+            "basler_use_full_sensor", False
+        )  # If True, use maximum sensor resolution instead of basler_width/height
+        self.declare_parameter(
             "basler_fps", fps
         )  # Will attempt to get max FPS supported by the camera
         # Diagnostics/toggles for acquisition and inference
@@ -261,6 +264,9 @@ class YOLOv8Node(Node):
         )
         self.basler_height = (
             self.get_parameter("basler_height").get_parameter_value().integer_value
+        )
+        self.basler_use_full_sensor = (
+            self.get_parameter("basler_use_full_sensor").get_parameter_value().bool_value
         )
         self.basler_fps = (
             self.get_parameter("basler_fps").get_parameter_value().integer_value
@@ -411,10 +417,47 @@ class YOLOv8Node(Node):
             self.camera = pylon.InstantCamera(tl_factory.CreateDevice(devices[0]))
             self.camera.Open()
 
+            # Get maximum sensor resolution
+            try:
+                max_width = self.camera.WidthMax.GetValue()
+                max_height = self.camera.HeightMax.GetValue()
+                self.get_logger().info(
+                    f"Camera sensor maximum resolution: {max_width}x{max_height}"
+                )
+            except Exception as e:
+                self.get_logger().warn(f"Could not get max sensor resolution: {e}")
+                max_width = None
+                max_height = None
+
             # Set camera parameters
+            # Use full sensor if requested, otherwise use specified resolution
+            if self.basler_use_full_sensor and max_width and max_height:
+                actual_width = max_width
+                actual_height = max_height
+                self.get_logger().info(
+                    f"Using full sensor resolution: {actual_width}x{actual_height}"
+                )
+            else:
+                # Set resolution (if requested size is larger than max, use max)
+                actual_width = min(self.basler_width, max_width) if max_width else self.basler_width
+                actual_height = min(self.basler_height, max_height) if max_height else self.basler_height
+            
+            # Reset AOI to full sensor first (centers the AOI)
+            try:
+                self.camera.OffsetX.SetValue(0)
+                self.camera.OffsetY.SetValue(0)
+            except Exception as e:
+                self.get_logger().warn(f"Could not reset AOI offset: {e}")
+            
             # Set resolution
-            self.camera.Width.SetValue(self.basler_width)
-            self.camera.Height.SetValue(self.basler_height)
+            self.camera.Width.SetValue(actual_width)
+            self.camera.Height.SetValue(actual_height)
+            
+            if actual_width != self.basler_width or actual_height != self.basler_height:
+                self.get_logger().warn(
+                    f"Requested resolution {self.basler_width}x{self.basler_height} "
+                    f"adjusted to {actual_width}x{actual_height} (sensor max)"
+                )
 
             # Set frame rate (if supported)
             try:
