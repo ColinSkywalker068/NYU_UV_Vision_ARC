@@ -519,7 +519,7 @@ class YOLOv8Node(Node):
             self.converter.OutputPixelFormat = pylon.PixelType_BGR8packed
             self.converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
 
-           # Get actual resolution and frame rate (per Pylon documentation)
+            # Get actual resolution and frame rate (per Pylon documentation)
             actual_width = self.camera.Width.GetValue()
             actual_height = self.camera.Height.GetValue()
 
@@ -527,9 +527,9 @@ class YOLOv8Node(Node):
             actual_fps = None
             try:
                 # ResultingFrameRate is only available after acquisition starts
-                if hasattr(self.camera, 'ResultingFrameRate'):
+                if hasattr(self.camera, "ResultingFrameRate"):
                     actual_fps = self.camera.ResultingFrameRate.GetValue()
-                elif hasattr(self.camera, 'ResultingFrameRateAbs'):
+                elif hasattr(self.camera, "ResultingFrameRateAbs"):
                     actual_fps = self.camera.ResultingFrameRateAbs.GetValue()
             except Exception as e:
                 self.get_logger().warn(f"Could not read ResultingFrameRate: {e}")
@@ -545,7 +545,9 @@ class YOLOv8Node(Node):
             # Final fallback to configured value
             if actual_fps is None or actual_fps <= 0:
                 actual_fps = self.basler_fps
-                self.get_logger().warn(f"Using configured FPS {actual_fps} as actual FPS unavailable")
+                self.get_logger().warn(
+                    f"Using configured FPS {actual_fps} as actual FPS unavailable"
+                )
 
             self.get_logger().info(
                 f"Basler camera started: {actual_width}x{actual_height} @ {actual_fps:.2f} FPS"
@@ -677,7 +679,6 @@ class YOLOv8Node(Node):
                 grab_result.Release()
                 return
 
-            
             image = converter.Convert(grab_result)
             frame = image.GetArray()
             grab_result.Release()
