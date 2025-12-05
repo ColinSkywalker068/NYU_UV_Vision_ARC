@@ -9,7 +9,9 @@ print(f"Offset: {camera.OffsetX.GetValue()}, {camera.OffsetY.GetValue()}")
 
 # Try binning
 try:
-    print(f"Binning available: H={camera.BinningHorizontal.GetValue()}, V={camera.BinningVertical.GetValue()}")
+    print(
+        f"Binning available: H={camera.BinningHorizontal.GetValue()}, V={camera.BinningVertical.GetValue()}"
+    )
 except:
     print("Binning not available")
 
