@@ -218,8 +218,12 @@ class YOLOv8Node(Node):
         self.declare_parameter("camera_gain", 5.0)
         self.declare_parameter("camera_auto_gain", False)
         # Binning parameters (combines pixels to reduce resolution while keeping full FOV)
-        self.declare_parameter("binning_horizontal", 2)  # 1 = no binning, 2 = 2x2, 4 = 4x4
-        self.declare_parameter("binning_vertical", 2)  # 1 = no binning, 2 = 2x2, 4 = 4x4
+        self.declare_parameter(
+            "binning_horizontal", 2
+        )  # 1 = no binning, 2 = 2x2, 4 = 4x4
+        self.declare_parameter(
+            "binning_vertical", 2
+        )  # 1 = no binning, 2 = 2x2, 4 = 4x4
         self.declare_parameter("binning_mode", "Sum")  # "Sum" or "Average"
         self.declare_parameter("use_kalman", False)  # Gate Kalman usage
         # Serial communication parameters
@@ -457,7 +461,9 @@ class YOLOv8Node(Node):
                     )
                 except Exception as e:
                     self.get_logger().warn(f"Could not enable binning: {e}")
-                    self.get_logger().warn("Camera may not support binning, continuing without it")
+                    self.get_logger().warn(
+                        "Camera may not support binning, continuing without it"
+                    )
 
             # Get maximum sensor resolution (after binning is applied)
             try:
