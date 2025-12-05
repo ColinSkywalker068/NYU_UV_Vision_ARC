@@ -197,7 +197,7 @@ class YOLOv8Node(Node):
         self.declare_parameter("basler_width", 640)
         self.declare_parameter("basler_height", 480)
         self.declare_parameter(
-            "basler_use_full_sensor", True
+            "basler_use_full_sensor", False
         )  # If True, use maximum sensor resolution instead of basler_width/height
         self.declare_parameter(
             "basler_fps", fps
@@ -217,6 +217,10 @@ class YOLOv8Node(Node):
         self.declare_parameter("camera_exposure", 12000.0)  # in microseconds
         self.declare_parameter("camera_gain", 5.0)
         self.declare_parameter("camera_auto_gain", False)
+        # Binning parameters (combines pixels to reduce resolution while keeping full FOV)
+        self.declare_parameter("binning_horizontal", 2)  # 1 = no binning, 2 = 2x2, 4 = 4x4
+        self.declare_parameter("binning_vertical", 2)  # 1 = no binning, 2 = 2x2, 4 = 4x4
+        self.declare_parameter("binning_mode", "Sum")  # "Sum" or "Average"
         self.declare_parameter("use_kalman", False)  # Gate Kalman usage
         # Serial communication parameters
         self.declare_parameter(
@@ -307,6 +311,16 @@ class YOLOv8Node(Node):
         self.camera_auto_gain = (
             self.get_parameter("camera_auto_gain").get_parameter_value().bool_value
         )
+        # Binning values
+        self.binning_horizontal = (
+            self.get_parameter("binning_horizontal").get_parameter_value().integer_value
+        )
+        self.binning_vertical = (
+            self.get_parameter("binning_vertical").get_parameter_value().integer_value
+        )
+        self.binning_mode = (
+            self.get_parameter("binning_mode").get_parameter_value().string_value
+        )
         self.use_kalman = (
             self.get_parameter("use_kalman").get_parameter_value().bool_value
         )
@@ -386,6 +400,9 @@ class YOLOv8Node(Node):
         self.get_logger().info(
             f"Basler Config - Width: {self.basler_width}, Height: {self.basler_height}, FPS: {self.basler_fps}"
         )
+        self.get_logger().info(
+            f"Binning Config - Horizontal: {self.binning_horizontal}x, Vertical: {self.binning_vertical}x, Mode: {self.binning_mode}"
+        )
         self.get_logger().info(f"Kalman enabled: {self.use_kalman}")
 
         self.target_class = BLUE_CLASS  # Default target class
@@ -419,12 +436,35 @@ class YOLOv8Node(Node):
             self.camera = pylon.InstantCamera(tl_factory.CreateDevice(devices[0]))
             self.camera.Open()
 
-            # Get maximum sensor resolution
+            # Configure binning first (before setting resolution)
+            # Binning combines adjacent pixels, reducing resolution but keeping full FOV
+            if self.binning_horizontal > 1 or self.binning_vertical > 1:
+                try:
+                    # Set binning mode first (Sum adds pixel values, Average averages them)
+                    if hasattr(self.camera, "BinningHorizontalMode"):
+                        self.camera.BinningHorizontalMode.SetValue(self.binning_mode)
+                    if hasattr(self.camera, "BinningVerticalMode"):
+                        self.camera.BinningVerticalMode.SetValue(self.binning_mode)
+
+                    # Set binning values
+                    if self.binning_horizontal > 1:
+                        self.camera.BinningHorizontal.SetValue(self.binning_horizontal)
+                    if self.binning_vertical > 1:
+                        self.camera.BinningVertical.SetValue(self.binning_vertical)
+
+                    self.get_logger().info(
+                        f"Binning enabled: {self.binning_horizontal}x{self.binning_vertical} ({self.binning_mode} mode)"
+                    )
+                except Exception as e:
+                    self.get_logger().warn(f"Could not enable binning: {e}")
+                    self.get_logger().warn("Camera may not support binning, continuing without it")
+
+            # Get maximum sensor resolution (after binning is applied)
             try:
                 max_width = self.camera.WidthMax.GetValue()
                 max_height = self.camera.HeightMax.GetValue()
                 self.get_logger().info(
-                    f"Camera sensor maximum resolution: {max_width}x{max_height}"
+                    f"Camera effective maximum resolution (after binning): {max_width}x{max_height}"
                 )
             except Exception as e:
                 self.get_logger().warn(f"Could not get max sensor resolution: {e}")
