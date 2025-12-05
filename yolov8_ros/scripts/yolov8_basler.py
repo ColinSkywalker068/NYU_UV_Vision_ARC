@@ -679,7 +679,6 @@ class YOLOv8Node(Node):
                 grab_result.Release()
                 return
 
-            
             image = self.converter.Convert(grab_result)
             frame = image.GetArray()
             grab_result.Release()
