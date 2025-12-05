@@ -472,13 +472,21 @@ class YOLOv8Node(Node):
                 max_height = None
 
             # Set camera parameters
-            # Use full sensor if requested, otherwise use specified resolution
-            if self.basler_use_full_sensor and max_width and max_height:
+            # Use full sensor if requested OR if binning is enabled (to get full FOV with binning)
+            binning_enabled = self.binning_horizontal > 1 or self.binning_vertical > 1
+            use_full_sensor = self.basler_use_full_sensor or binning_enabled
+
+            if use_full_sensor and max_width and max_height:
                 actual_width = max_width
                 actual_height = max_height
-                self.get_logger().info(
-                    f"Using full sensor resolution: {actual_width}x{actual_height}"
-                )
+                if binning_enabled:
+                    self.get_logger().info(
+                        f"Using full sensor resolution with binning: {actual_width}x{actual_height}"
+                    )
+                else:
+                    self.get_logger().info(
+                        f"Using full sensor resolution: {actual_width}x{actual_height}"
+                    )
             else:
                 # Set resolution (if requested size is larger than max, use max)
                 actual_width = (
