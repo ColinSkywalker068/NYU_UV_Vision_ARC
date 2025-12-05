@@ -213,7 +213,7 @@ class YOLOv8Node(Node):
         # Acquisition tuning
         self.declare_parameter("poll_idle_sleep_ms", 2)
         # Camera controls
-        self.declare_parameter("camera_auto_exposure", True)
+        self.declare_parameter("camera_auto_exposure", False)
         self.declare_parameter("camera_exposure", 12000.0)  # in microseconds
         self.declare_parameter("camera_gain", 5.0)
         self.declare_parameter("camera_auto_gain", False)
