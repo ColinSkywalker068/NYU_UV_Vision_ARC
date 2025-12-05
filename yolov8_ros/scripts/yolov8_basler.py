@@ -433,7 +433,7 @@ class YOLOv8Node(Node):
 
             # Set camera parameters
             # Use full sensor if requested, otherwise use specified resolution
-            if self.basler_use_full_sensor and max_width and max_height:
+            if self.basler_use_full_sensor:
                 actual_width = max_width
                 actual_height = max_height
                 self.get_logger().info(
@@ -514,26 +514,49 @@ class YOLOv8Node(Node):
 
             # Start grabbing
             self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+            # Convert Basler frame to OpenCV image
+            self.converter = pylon.ImageFormatConverter()
+            self.converter.OutputPixelFormat = pylon.PixelType_BGR8packed
+            self.converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
 
-            # Get actual resolution and frame rate
+           # Get actual resolution and frame rate (per Pylon documentation)
             actual_width = self.camera.Width.GetValue()
             actual_height = self.camera.Height.GetValue()
+
+            # Get actual frame rate - check if ResultingFrameRate is available
+            actual_fps = None
             try:
-                actual_fps = self.camera.ResultingFrameRate.GetValue()
-            except Exception:
+                # ResultingFrameRate is only available after acquisition starts
+                if hasattr(self.camera, 'ResultingFrameRate'):
+                    actual_fps = self.camera.ResultingFrameRate.GetValue()
+                elif hasattr(self.camera, 'ResultingFrameRateAbs'):
+                    actual_fps = self.camera.ResultingFrameRateAbs.GetValue()
+            except Exception as e:
+                self.get_logger().warn(f"Could not read ResultingFrameRate: {e}")
+
+            # Fallback: try to get from AcquisitionFrameRate if set
+            if actual_fps is None or actual_fps <= 0:
+                try:
+                    if self.camera.AcquisitionFrameRateEnable.GetValue():
+                        actual_fps = self.camera.AcquisitionFrameRate.GetValue()
+                except Exception:
+                    pass
+
+            # Final fallback to configured value
+            if actual_fps is None or actual_fps <= 0:
                 actual_fps = self.basler_fps
+                self.get_logger().warn(f"Using configured FPS {actual_fps} as actual FPS unavailable")
 
             self.get_logger().info(
                 f"Basler camera started: {actual_width}x{actual_height} @ {actual_fps:.2f} FPS"
             )
 
             # Update kalman dt based on actual FPS
-            self.kalman_initial_dt_val = (
-                1.0 / actual_fps if actual_fps > 0 else self.kalman_initial_dt_val
-            )
-            self.get_logger().info(
-                f"Updated Kalman initial dt based on actual FPS: {self.kalman_initial_dt_val:.4f}s"
-            )
+            if actual_fps > 0:
+                self.kalman_initial_dt_val = 1.0 / actual_fps
+                self.get_logger().info(
+                    f"Updated Kalman initial dt based on actual FPS: {self.kalman_initial_dt_val:.4f}s"
+                )
 
             # Precompute letterbox geometry and preallocate buffer if enabled
             self.lb_ready = False
@@ -654,11 +677,7 @@ class YOLOv8Node(Node):
                 grab_result.Release()
                 return
 
-            # Convert Basler frame to OpenCV image
-            converter = pylon.ImageFormatConverter()
-            converter.OutputPixelFormat = pylon.PixelType_BGR8packed
-            converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
-
+            
             image = converter.Convert(grab_result)
             frame = image.GetArray()
             grab_result.Release()
