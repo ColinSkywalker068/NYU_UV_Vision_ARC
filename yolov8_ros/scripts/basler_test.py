@@ -222,7 +222,11 @@ def run_grab_test(
                     stop_requested = True
         if grab:
             grab.Release()
-        if duration_s > 0 and start is not None and (perf_counter() - start) >= duration_s:
+        if (
+            duration_s > 0
+            and start is not None
+            and (perf_counter() - start) >= duration_s
+        ):
             break
     end = perf_counter() if start is not None else None
     elapsed: float = (end - start) if (start is not None and end is not None) else 0.0
