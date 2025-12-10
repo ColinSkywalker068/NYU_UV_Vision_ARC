@@ -41,7 +41,7 @@ def configure_camera(
     exposure_us: float = DEFAULT_EXPOSURE_US,
     auto_gain: bool = False,
     gain_db: float = DEFAULT_GAIN_DB,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     max_width = camera.WidthMax.GetValue()
     max_height = camera.HeightMax.GetValue()
 
@@ -113,7 +113,9 @@ def build_converter() -> pylon.ImageFormatConverter:
     return converter
 
 
-def run_grab_test(camera: pylon.InstantCamera, converter: pylon.ImageFormatConverter) -> None:
+def run_grab_test(
+    camera: pylon.InstantCamera, converter: pylon.ImageFormatConverter
+) -> None:
     start = perf_counter()
     frames = 0
 
