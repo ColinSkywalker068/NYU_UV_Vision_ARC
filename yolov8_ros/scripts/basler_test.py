@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+from argparse import ArgumentParser, Namespace
 from time import perf_counter
 from typing import Dict
 
+import cv2
 from pypylon import pylon
 
 DURATION_SECONDS = 5.0
@@ -113,24 +115,48 @@ def build_converter() -> pylon.ImageFormatConverter:
     return converter
 
 
-def run_grab_test(camera: pylon.InstantCamera, converter: pylon.ImageFormatConverter) -> None:
-    start = perf_counter()
-    frames = 0
-
-    while (perf_counter() - start) < DURATION_SECONDS and camera.IsGrabbing():
+def run_grab_test(
+    camera: pylon.InstantCamera,
+    converter: pylon.ImageFormatConverter,
+    show: bool,
+) -> None:
+    window_name: str = "Basler Test" if show else ""
+    start: float = perf_counter()
+    frames: int = 0
+    stop_requested: bool = False
+    while (perf_counter() - start) < DURATION_SECONDS and camera.IsGrabbing() and not stop_requested:
         grab = camera.RetrieveResult(2000, pylon.TimeoutHandling_Return)
         if grab and grab.GrabSucceeded():
-            converter.Convert(grab)
+            image = converter.Convert(grab)
             frames += 1
+            if show:
+                frame = image.GetArray()
+                cv2.imshow(window_name, frame)
+                key: int = cv2.waitKey(1) & 0xFF
+                if key == ord("q") or key == 27:
+                    stop_requested = True
         if grab:
             grab.Release()
-
-    elapsed = perf_counter() - start
-    avg_fps = frames / elapsed if elapsed else 0.0
+    elapsed: float = perf_counter() - start
+    avg_fps: float = frames / elapsed if elapsed else 0.0
     print(f"Frames: {frames}, Elapsed: {elapsed:.3f}s, Avg FPS: {avg_fps:.2f}")
+    if show:
+        cv2.destroyAllWindows()
+
+
+def build_arg_parser() -> ArgumentParser:
+    parser: ArgumentParser = ArgumentParser(description="Basler grab test")
+    parser.add_argument(
+        "--show",
+        action="store_true",
+        help="Display frames in a simple OpenCV window (press q or ESC to exit)",
+    )
+    return parser
 
 
 def main() -> None:
+    parser: ArgumentParser = build_arg_parser()
+    args: Namespace = parser.parse_args()
     tl_factory = pylon.TlFactory.GetInstance()
     devices = tl_factory.EnumerateDevices()
     if not devices:
@@ -158,7 +184,7 @@ def main() -> None:
         )
 
         converter = build_converter()
-        run_grab_test(camera, converter)
+        run_grab_test(camera, converter, args.show)
 
     finally:
         if camera.IsGrabbing():
