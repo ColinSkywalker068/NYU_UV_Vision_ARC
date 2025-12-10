@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 from argparse import ArgumentParser, Namespace
 from time import perf_counter
-from typing import Dict
+from typing import Iterable
 
 import cv2
 from pypylon import pylon
+from ultralytics import YOLO
 
 DURATION_SECONDS = 5.0
 DEFAULT_WIDTH = 640
@@ -12,6 +13,7 @@ DEFAULT_HEIGHT = 480
 DEFAULT_FPS = 60
 DEFAULT_EXPOSURE_US = 5000.0
 DEFAULT_GAIN_DB = 5.0
+DEFAULT_MODEL_PATH = "yolov8_ros/models/best.engine"
 
 
 def get_actual_fps(camera: pylon.InstantCamera) -> float:
@@ -115,10 +117,24 @@ def build_converter() -> pylon.ImageFormatConverter:
     return converter
 
 
+def draw_boxes(frame: cv2.Mat, boxes: Iterable[Iterable[float]]) -> None:
+    for x1, y1, x2, y2 in boxes:
+        cv2.rectangle(
+            frame,
+            (int(x1), int(y1)),
+            (int(x2), int(y2)),
+            (0, 255, 0),
+            2,
+        )
+
+
 def run_grab_test(
     camera: pylon.InstantCamera,
     converter: pylon.ImageFormatConverter,
     show: bool,
+    model: YOLO,
+    mode: str,
+    conf: float,
 ) -> None:
     window_name: str = "Basler Test" if show else ""
     start: float = perf_counter()
@@ -129,8 +145,27 @@ def run_grab_test(
         if grab and grab.GrabSucceeded():
             image = converter.Convert(grab)
             frames += 1
+            frame = image.GetArray()
+            if mode == "track":
+                results = model.track(
+                    frame,
+                    imgsz=frame.shape[0],
+                    conf=conf,
+                    verbose=False,
+                    persist=True,
+                )
+            else:
+                results = model(
+                    frame,
+                    imgsz=frame.shape[0],
+                    conf=conf,
+                    verbose=False,
+                )
+            boxes = []
+            if results and results[0].boxes is not None:
+                boxes = results[0].boxes.xyxy.tolist()
             if show:
-                frame = image.GetArray()
+                draw_boxes(frame, boxes)
                 cv2.imshow(window_name, frame)
                 key: int = cv2.waitKey(1) & 0xFF
                 if key == ord("q") or key == 27:
@@ -150,6 +185,23 @@ def build_arg_parser() -> ArgumentParser:
         "--show",
         action="store_true",
         help="Display frames in a simple OpenCV window (press q or ESC to exit)",
+    )
+    parser.add_argument(
+        "--model-path",
+        default=DEFAULT_MODEL_PATH,
+        help="Path to YOLO engine/pt/onnx model",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["detect", "track"],
+        default="detect",
+        help="Run plain detection or ByteTrack-style tracking",
+    )
+    parser.add_argument(
+        "--conf",
+        type=float,
+        default=0.25,
+        help="Confidence threshold for detections",
     )
     return parser
 
@@ -184,7 +236,8 @@ def main() -> None:
         )
 
         converter = build_converter()
-        run_grab_test(camera, converter, args.show)
+        model = YOLO(args.model_path)
+        run_grab_test(camera, converter, args.show, model, args.mode, args.conf)
 
     finally:
         if camera.IsGrabbing():
