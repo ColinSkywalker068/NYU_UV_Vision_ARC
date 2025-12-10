@@ -124,7 +124,11 @@ def run_grab_test(
     start: float = perf_counter()
     frames: int = 0
     stop_requested: bool = False
-    while (perf_counter() - start) < DURATION_SECONDS and camera.IsGrabbing() and not stop_requested:
+    while (
+        (perf_counter() - start) < DURATION_SECONDS
+        and camera.IsGrabbing()
+        and not stop_requested
+    ):
         grab = camera.RetrieveResult(2000, pylon.TimeoutHandling_Return)
         if grab and grab.GrabSucceeded():
             image = converter.Convert(grab)
