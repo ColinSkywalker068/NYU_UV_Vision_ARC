@@ -7,8 +7,19 @@ DURATION_SECONDS = 5.0  # measurement window
 
 def set_enum(node_map: genicam.INodeMap, name: str, value: str) -> None:
     node = node_map.GetNode(name)
-    if node and genicam.IsWritable(node):
-        pylon.CEnumParameter(node_map, name).SetValue(value)
+    if not node or not genicam.IsWritable(node):
+        return
+
+    enum_node = genicam.CEnumerationPtr(node)
+    if not enum_node or not genicam.IsWritable(enum_node):
+        bool_node = genicam.CBooleanPtr(node)
+        if bool_node and genicam.IsWritable(bool_node):
+            bool_node.SetValue(value.lower() == "true")
+        return
+
+    entry = enum_node.GetEntryByName(value)
+    if genicam.IsAvailable(entry) and genicam.IsReadable(entry):
+        enum_node.SetIntValue(entry.GetValue())
 
 
 def set_float_min(node_map: genicam.INodeMap, name: str) -> None:
@@ -34,9 +45,11 @@ def configure_for_max_fps(camera: pylon.InstantCamera) -> None:
 
     pixel_node = node_map.GetNode("PixelFormat")
     if pixel_node and genicam.IsWritable(pixel_node):
-        symbols = pylon.CEnumParameter(node_map, "PixelFormat").GetSymbolics()
-        if "Mono8" in symbols:
-            set_enum(node_map, "PixelFormat", "Mono8")
+        pixel_enum = genicam.CEnumerationPtr(pixel_node)
+        if pixel_enum and genicam.IsWritable(pixel_enum):
+            mono_entry = pixel_enum.GetEntryByName("Mono8")
+            if genicam.IsAvailable(mono_entry) and genicam.IsReadable(mono_entry):
+                pixel_enum.SetIntValue(mono_entry.GetValue())
 
     set_enum(node_map, "AcquisitionFrameRateEnable", "True")
     set_float_max(node_map, "AcquisitionFrameRate")
