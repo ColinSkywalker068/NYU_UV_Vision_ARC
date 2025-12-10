@@ -137,17 +137,16 @@ def run_grab_test(
     conf: float,
 ) -> None:
     window_name: str = "Basler Test" if show else ""
-    start: float = perf_counter()
+    start: float | None = None
+    end: float | None = None
     frames: int = 0
     stop_requested: bool = False
-    while (
-        (perf_counter() - start) < DURATION_SECONDS
-        and camera.IsGrabbing()
-        and not stop_requested
-    ):
+    while camera.IsGrabbing() and not stop_requested:
         grab = camera.RetrieveResult(2000, pylon.TimeoutHandling_Return)
         if grab and grab.GrabSucceeded():
             image = converter.Convert(grab)
+            if start is None:
+                start = perf_counter()
             frames += 1
             frame = image.GetArray()
             if mode == "track":
@@ -172,11 +171,14 @@ def run_grab_test(
                 draw_boxes(frame, boxes)
                 cv2.imshow(window_name, frame)
                 key: int = cv2.waitKey(1) & 0xFF
-                if key == ord("q") or key == 27:
+                if key == ord("q") or key == 27 or key == ord("z"):
                     stop_requested = True
         if grab:
             grab.Release()
-    elapsed: float = perf_counter() - start
+        if start is not None and (perf_counter() - start) >= DURATION_SECONDS:
+            break
+    end = perf_counter() if start is not None else None
+    elapsed: float = (end - start) if (start is not None and end is not None) else 0.0
     avg_fps: float = frames / elapsed if elapsed else 0.0
     print(f"Frames: {frames}, Elapsed: {elapsed:.3f}s, Avg FPS: {avg_fps:.2f}")
     if show:
