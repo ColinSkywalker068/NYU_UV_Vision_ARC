@@ -167,11 +167,14 @@ def run_grab_test(
     duration_s: float,
     target_w: int,
     target_h: int,
+    fps_window: int,
 ) -> None:
     window_name: str = "Basler Test" if show else ""
-    start: float | None = None
+    start: float | None = None  # first good frame
+    batch_start: float | None = None  # batch timing start
     end: float | None = None
     frames: int = 0
+    last_batch_fps: float = 0.0
     stop_requested: bool = False
     while camera.IsGrabbing() and not stop_requested:
         grab = camera.RetrieveResult(2000, pylon.TimeoutHandling_Return)
@@ -179,6 +182,7 @@ def run_grab_test(
             image = converter.Convert(grab)
             if start is None:
                 start = perf_counter()
+                batch_start = start
             frames += 1
             frame = image.GetArray()
             # Letterbox to target size (keeps aspect ratio, minimal runtime)
@@ -201,14 +205,20 @@ def run_grab_test(
             boxes = []
             if results and results[0].boxes is not None:
                 boxes = results[0].boxes.xyxy.tolist()
+
+            if batch_start is not None and fps_window > 0 and frames % fps_window == 0:
+                now = perf_counter()
+                elapsed_batch = now - batch_start
+                if elapsed_batch > 0:
+                    last_batch_fps = fps_window / elapsed_batch
+                batch_start = now
+
             if show:
                 draw_boxes(letterboxed, boxes)
-                if start:
-                    elapsed_now = max(1e-6, perf_counter() - start)
-                    fps_now = frames / elapsed_now
+                if last_batch_fps > 0:
                     cv2.putText(
                         letterboxed,
-                        f"FPS: {fps_now:.2f}",
+                        f"FPS({fps_window}): {last_batch_fps:.2f}",
                         (12, 28),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.8,
@@ -284,6 +294,12 @@ def build_arg_parser() -> ArgumentParser:
         default=True,
         help="Use full sensor; disable to force cam width/height settings",
     )
+    parser.add_argument(
+        "--fps-window",
+        type=int,
+        default=10,
+        help="Frames per short-term FPS computation (e.g., 10)",
+    )
     return parser
 
 
@@ -328,6 +344,7 @@ def main() -> None:
             args.duration,
             args.img_width,
             args.img_height,
+            max(1, args.fps_window),
         )
 
     finally:
