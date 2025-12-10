@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from argparse import ArgumentParser, Namespace
 from time import perf_counter
-from typing import Iterable
+from collections.abc import Iterable
 
 import cv2
 from pypylon import pylon
