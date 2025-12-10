@@ -11,7 +11,7 @@ from ultralytics import YOLO
 DURATION_SECONDS = 5.0
 DEFAULT_WIDTH = 640
 DEFAULT_HEIGHT = 480
-DEFAULT_FPS = 60
+DEFAULT_FPS = 0  # 0 => do not set, let camera run max
 DEFAULT_EXPOSURE_US = 5000.0
 DEFAULT_GAIN_DB = 5.0
 DEFAULT_MODEL_PATH = "/home/ultraviolet/CV_Detection/yolov8_ros/models/best.engine"
@@ -68,11 +68,12 @@ def configure_camera(
     except Exception:
         pass
 
-    try:
-        if camera.AcquisitionFrameRateEnable.GetValue():
-            camera.AcquisitionFrameRate.SetValue(float(fps))
-    except Exception:
-        pass
+    if fps > 0:
+        try:
+            if camera.AcquisitionFrameRateEnable.GetValue():
+                camera.AcquisitionFrameRate.SetValue(float(fps))
+        except Exception:
+            pass
 
     if auto_exposure:
         try:
@@ -211,6 +212,7 @@ def run_grab_test(
                 elapsed_batch = now - batch_start
                 if elapsed_batch > 0:
                     last_batch_fps = fps_window / elapsed_batch
+                    print(f"FPS({fps_window}): {last_batch_fps:.2f}")
                 batch_start = now
 
             if show:
