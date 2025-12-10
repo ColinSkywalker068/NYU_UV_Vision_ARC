@@ -10,7 +10,8 @@ def set_enum(node_map: genicam.INodeMap, name: str, value: str) -> None:
     if not node or not genicam.IsWritable(node):
         return
 
-    enum_node = genicam.CEnumerationPtr(node)
+    enum_ctor = getattr(genicam, "CEnumerationPtr", None) or getattr(genicam, "IEnumeration", None)
+    enum_node = enum_ctor(node) if enum_ctor else None
     if not enum_node or not genicam.IsWritable(enum_node):
         bool_node = genicam.CBooleanPtr(node)
         if bool_node and genicam.IsWritable(bool_node):
@@ -45,7 +46,8 @@ def configure_for_max_fps(camera: pylon.InstantCamera) -> None:
 
     pixel_node = node_map.GetNode("PixelFormat")
     if pixel_node and genicam.IsWritable(pixel_node):
-        pixel_enum = genicam.CEnumerationPtr(pixel_node)
+        enum_ctor = getattr(genicam, "CEnumerationPtr", None) or getattr(genicam, "IEnumeration", None)
+        pixel_enum = enum_ctor(pixel_node) if enum_ctor else None
         if pixel_enum and genicam.IsWritable(pixel_enum):
             mono_entry = pixel_enum.GetEntryByName("Mono8")
             if genicam.IsAvailable(mono_entry) and genicam.IsReadable(mono_entry):
