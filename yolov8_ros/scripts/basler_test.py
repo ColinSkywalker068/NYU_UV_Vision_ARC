@@ -1,44 +1,48 @@
 #!/usr/bin/env python3
-"""
-Test Basler FPS by minimizing exposure and measuring average FPS.
-Run: python test_basler_fps.py
-"""
-
 from time import perf_counter
 from pypylon import pylon
 
-DURATION_SECONDS = 5.0  # how long to measure
+DURATION_SECONDS = 5.0  # measurement window
+
+
+def set_enum(node_map: pylon.NodeMap, name: str, value: str) -> None:
+    node = node_map.GetNode(name)
+    if node and pylon.IsWritable(node):
+        pylon.CEnumParameter(node_map, name).SetValue(value)
+
+
+def set_float_min(node_map: pylon.NodeMap, name: str) -> None:
+    node = node_map.GetNode(name)
+    if node and pylon.IsWritable(node):
+        param = pylon.CFloatParameter(node_map, name)
+        param.SetValue(param.GetMin())
+
+
+def set_float_max(node_map: pylon.NodeMap, name: str) -> None:
+    node = node_map.GetNode(name)
+    if node and pylon.IsWritable(node):
+        param = pylon.CFloatParameter(node_map, name)
+        param.SetValue(param.GetMax())
 
 
 def configure_for_max_fps(camera: pylon.InstantCamera) -> None:
     node_map = camera.GetNodeMap()
 
-    # Disable auto features to avoid overhead
-    if "ExposureAuto" in node_map:
-        camera.ExposureAuto.SetValue("Off")
-    if "GainAuto" in node_map:
-        camera.GainAuto.SetValue("Off")
+    set_enum(node_map, "ExposureAuto", "Off")
+    set_enum(node_map, "GainAuto", "Off")
+    set_float_min(node_map, "ExposureTime")
 
-    # Minimize exposure to reduce frame time
-    if "ExposureTime" in node_map:
-        try:
-            camera.ExposureTime.SetValue(camera.ExposureTime.GetMin())
-        except Exception:
-            pass
+    # Pixel format: prefer Mono8 if available
+    node = node_map.GetNode("PixelFormat")
+    if node and pylon.IsWritable(node):
+        symbols = pylon.CEnumParameter(node_map, "PixelFormat").GetSymbolics()
+        if "Mono8" in symbols:
+            set_enum(node_map, "PixelFormat", "Mono8")
 
-    # Use a simple, fast pixel format
-    if "PixelFormat" in node_map and "Mono8" in camera.PixelFormat.GetSymbolics():
-        camera.PixelFormat.SetValue("Mono8")
+    # Frame rate: enable and set to max if supported
+    set_enum(node_map, "AcquisitionFrameRateEnable", "True")
+    set_float_max(node_map, "AcquisitionFrameRate")
 
-    # Enable and set max frame rate if supported
-    if "AcquisitionFrameRateEnable" in node_map:
-        try:
-            camera.AcquisitionFrameRateEnable.SetValue(True)
-            camera.AcquisitionFrameRate.SetValue(camera.AcquisitionFrameRate.GetMax())
-        except Exception:
-            pass
-
-    # Use latest-image-only to avoid backlog
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
 
 
@@ -64,7 +68,7 @@ def main() -> None:
             grab.Release()
 
         elapsed = perf_counter() - start
-        avg_fps = frames / elapsed if elapsed > 0 else 0.0
+        avg_fps = frames / elapsed if elapsed else 0.0
         print(f"Frames: {frames}, Elapsed: {elapsed:.3f}s, Avg FPS: {avg_fps:.2f}")
 
     finally:
