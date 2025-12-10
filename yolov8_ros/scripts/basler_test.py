@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 from time import perf_counter
-from pypylon import pylon
+from pypylon import pylon, genicam
 
 DURATION_SECONDS = 5.0  # measurement window
 
 
-def set_enum(node_map: pylon.NodeMap, name: str, value: str) -> None:
+def set_enum(node_map: genicam.INodeMap, name: str, value: str) -> None:
     node = node_map.GetNode(name)
     if node and pylon.IsWritable(node):
         pylon.CEnumParameter(node_map, name).SetValue(value)
 
 
-def set_float_min(node_map: pylon.NodeMap, name: str) -> None:
+def set_float_min(node_map: genicam.INodeMap, name: str) -> None:
     node = node_map.GetNode(name)
     if node and pylon.IsWritable(node):
         param = pylon.CFloatParameter(node_map, name)
         param.SetValue(param.GetMin())
 
 
-def set_float_max(node_map: pylon.NodeMap, name: str) -> None:
+def set_float_max(node_map: genicam.INodeMap, name: str) -> None:
     node = node_map.GetNode(name)
     if node and pylon.IsWritable(node):
         param = pylon.CFloatParameter(node_map, name)
@@ -32,14 +32,12 @@ def configure_for_max_fps(camera: pylon.InstantCamera) -> None:
     set_enum(node_map, "GainAuto", "Off")
     set_float_min(node_map, "ExposureTime")
 
-    # Pixel format: prefer Mono8 if available
-    node = node_map.GetNode("PixelFormat")
-    if node and pylon.IsWritable(node):
+    pixel_node = node_map.GetNode("PixelFormat")
+    if pixel_node and pylon.IsWritable(pixel_node):
         symbols = pylon.CEnumParameter(node_map, "PixelFormat").GetSymbolics()
         if "Mono8" in symbols:
             set_enum(node_map, "PixelFormat", "Mono8")
 
-    # Frame rate: enable and set to max if supported
     set_enum(node_map, "AcquisitionFrameRateEnable", "True")
     set_float_max(node_map, "AcquisitionFrameRate")
 
