@@ -203,9 +203,22 @@ def run_grab_test(
                 boxes = results[0].boxes.xyxy.tolist()
             if show:
                 draw_boxes(letterboxed, boxes)
+                if start:
+                    elapsed_now = max(1e-6, perf_counter() - start)
+                    fps_now = frames / elapsed_now
+                    cv2.putText(
+                        letterboxed,
+                        f"FPS: {fps_now:.2f}",
+                        (12, 28),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.8,
+                        (0, 255, 255),
+                        2,
+                        cv2.LINE_AA,
+                    )
                 cv2.imshow(window_name, letterboxed)
                 key: int = cv2.waitKey(1) & 0xFF
-                if key == ord("q") or key == 27 or key == ord("z"):
+                if key in (ord("q"), ord("z"), 27):
                     stop_requested = True
         if grab:
             grab.Release()
