@@ -13,7 +13,7 @@ DEFAULT_HEIGHT = 480
 DEFAULT_FPS = 60
 DEFAULT_EXPOSURE_US = 5000.0
 DEFAULT_GAIN_DB = 5.0
-DEFAULT_MODEL_PATH = "yolov8_ros/models/best.engine"
+DEFAULT_MODEL_PATH = "/home/ultraviolet/CV_Detection/yolov8_ros/models/best.engine"
 
 
 def get_actual_fps(camera: pylon.InstantCamera) -> float:
