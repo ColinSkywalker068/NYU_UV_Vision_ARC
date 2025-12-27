@@ -18,6 +18,7 @@ RED_RANGES = [
     [np.array((170, 150, 150), np.uint8), np.array((180, 255, 255), np.uint8)],
 ]
 
+
 def letterbox_frame(frame: cv2.Mat, target_w: int, target_h: int) -> cv2.Mat:
     """
     Resizes and pads the image to fit the target dimensions while maintaining aspect ratio.
@@ -49,6 +50,7 @@ def letterbox_frame(frame: cv2.Mat, target_w: int, target_h: int) -> cv2.Mat:
         value=(114, 114, 114),
     )
 
+
 def calculate_angles(x1, y1, x2, y2, imgsz_width, imgsz_height, hfov_rad, vfov_rad):
     """
     Calculates yaw and pitch angles from bounding box coordinates.
@@ -64,6 +66,7 @@ def calculate_angles(x1, y1, x2, y2, imgsz_width, imgsz_height, hfov_rad, vfov_r
     pitch_angle = math.atan(pixel_offset_y * math.tan(vfov_rad / 2))
 
     return yaw_angle, pitch_angle
+
 
 def check_enemy(roi_image, target_class):
     """
