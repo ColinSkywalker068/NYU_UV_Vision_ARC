@@ -1,5 +1,6 @@
 from ultralytics import YOLO, RTDETR, NAS
 
+
 class YOLODetector:
     def __init__(self, model_path, task="detect", model_type="yolo"):
         self.model = None

@@ -2,9 +2,12 @@ import cv2
 import numpy as np
 import random
 
+
 class ArmorPlateTracker:
     def __init__(self, initial_x, initial_y, width, height):
-        self.kf = cv2.KalmanFilter(6, 2)  # 6 states (x,y,vx,vy,ax,ay), 2 measurements (x,y)
+        self.kf = cv2.KalmanFilter(
+            6, 2
+        )  # 6 states (x,y,vx,vy,ax,ay), 2 measurements (x,y)
 
         self.kf.measurementMatrix = np.array(
             [[1, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0]], np.float32
@@ -31,7 +34,7 @@ class ArmorPlateTracker:
 
         meas_noise = 0.15
         self.kf.measurementNoiseCov = np.eye(2, dtype=np.float32) * meas_noise
-        
+
         self.kf.errorCovPost = np.eye(6, dtype=np.float32) * 0.1
 
         # Initial state: [x, y, vx, vy, ax, ay]'
