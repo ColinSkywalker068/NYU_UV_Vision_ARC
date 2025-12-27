@@ -7,8 +7,7 @@ package_name = "yolov8_ros"
 setup(
     name=package_name,
     version="0.0.0",
-    packages=find_packages(where="scripts", exclude=["test"]),
-    package_dir={"": "scripts"},
+    packages=find_packages(exclude=["test"]),
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
