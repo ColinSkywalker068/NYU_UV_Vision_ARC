@@ -43,7 +43,7 @@ class YOLOv8Node(Node):
 
         # --- Parameters ---
         self.declare_parameter(
-            "model_path", "/home/ultraviolet/CV_Detection/yolov8_ros/models/best.engine"
+            "model_path", "/home/ultraviolet/CV_Detection/yolov8_ros/models/best_new.pt"
         )
         self.declare_parameter("task", "detect")
         self.declare_parameter("type", "yolo")
