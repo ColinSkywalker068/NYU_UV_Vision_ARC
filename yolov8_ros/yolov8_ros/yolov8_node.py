@@ -8,18 +8,32 @@ import traceback
 import time
 
 # Import components
-from .camera import BaslerCamera
-from .detector import YOLODetector
-from .tracker import ArmorPlateTracker, TrackerWrapper
-from .utils import (
-    RED_TEAM,
-    BLUE_TEAM,
-    RED_CLASS,
-    BLUE_CLASS,
-    letterbox_frame,
-    calculate_angles,
-    check_enemy,
-)
+try:
+    from .camera import BaslerCamera
+    from .detector import YOLODetector
+    from .tracker import ArmorPlateTracker, TrackerWrapper
+    from .utils import (
+        RED_TEAM,
+        BLUE_TEAM,
+        RED_CLASS,
+        BLUE_CLASS,
+        letterbox_frame,
+        calculate_angles,
+        check_enemy,
+    )
+except (ImportError, ValueError):
+    from camera import BaslerCamera
+    from detector import YOLODetector
+    from tracker import ArmorPlateTracker, TrackerWrapper
+    from utils import (
+        RED_TEAM,
+        BLUE_TEAM,
+        RED_CLASS,
+        BLUE_CLASS,
+        letterbox_frame,
+        calculate_angles,
+        check_enemy,
+    )
 
 
 class YOLOv8Node(Node):
