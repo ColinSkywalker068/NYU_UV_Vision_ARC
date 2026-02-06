@@ -12,6 +12,7 @@ class RealSenseCamera:
         self.gain = gain
         
         self.pipeline = None
+        self.ctx = None
         self.config = None
         self.profile = None
         self.is_grabbing = False
@@ -31,15 +32,18 @@ class RealSenseCamera:
         self.logger = logging.getLogger("RealSenseCamera")
 
     def initialize(self):
-        self.pipeline = rs.pipeline()
-        self.config = rs.config()
-
-        # Check for devices
-        ctx = rs.context()
-        devices = ctx.query_devices()
+        # 1. Create context ONCE
+        self.ctx = rs.context()
+        
+        # 2. Check devices using this context
+        devices = self.ctx.query_devices()
         if len(devices) == 0:
             raise RuntimeError("No RealSense camera found")
-        
+
+        # 3. Create pipeline using the SAME context
+        self.pipeline = rs.pipeline(self.ctx)
+        self.config = rs.config()
+
         # Disable all streams first to ensure clean state
         try:
             self.config.disable_all_streams()
