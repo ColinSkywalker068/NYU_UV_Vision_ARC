@@ -49,6 +49,7 @@ def run_test(show: bool = False, num_frames: int = 30) -> int:
             if show and i == num_frames - 1:
                 try:
                     import cv2
+
                     cv2.imshow("RealSense test", arr)
                     print("  Press any key in the window to exit.")
                     cv2.waitKey(0)
