@@ -139,7 +139,9 @@ class YOLOv8Node(Node):
                 raise ValueError(f"Unknown camera type: {self.camera_type}")
 
             self.camera.initialize()
-            self.get_logger().info(f"{self.camera_type.capitalize()} Camera Initialized.")
+            self.get_logger().info(
+                f"{self.camera_type.capitalize()} Camera Initialized."
+            )
         except Exception as e:
             self.get_logger().error(f"Failed to init camera: {e}")
             raise e
@@ -166,7 +168,7 @@ class YOLOv8Node(Node):
             timer_fps = self.basler_fps if self.basler_fps > 0 else 60
         else:
             timer_fps = self.realsense_fps if self.realsense_fps > 0 else 60
-            
+
         self.timer = self.create_timer(1.0 / timer_fps, self.timer_callback)
 
     def id_listener_callback(self, msg: Int32):
@@ -392,9 +394,13 @@ class YOLOv8Node(Node):
 
 def main(args=None):
     # Parse custom arguments if running as script
-    parser = argparse.ArgumentParser(description='YOLOv8 Node')
-    parser.add_argument('--show', type=str, default=None, help='Enable visualization (True/False)')
-    parser.add_argument('--camera_type', type=str, default=None, help='Camera type (basler/realsense)')
+    parser = argparse.ArgumentParser(description="YOLOv8 Node")
+    parser.add_argument(
+        "--show", type=str, default=None, help="Enable visualization (True/False)"
+    )
+    parser.add_argument(
+        "--camera_type", type=str, default=None, help="Camera type (basler/realsense)"
+    )
 
     # We use parse_known_args to separate our args from potential ROS args
     # When running via ros2 run, args are passed to main. When running python file, they are in sys.argv.
@@ -410,11 +416,13 @@ def main(args=None):
 
     param_overrides = []
     if parsed_args.show is not None:
-        val = parsed_args.show.lower() in ('true', '1', 'yes')
+        val = parsed_args.show.lower() in ("true", "1", "yes")
         param_overrides.append(Parameter("show", Parameter.Type.BOOL, val))
 
     if parsed_args.camera_type is not None:
-        param_overrides.append(Parameter("camera_type", Parameter.Type.STRING, parsed_args.camera_type))
+        param_overrides.append(
+            Parameter("camera_type", Parameter.Type.STRING, parsed_args.camera_type)
+        )
 
     node = YOLOv8Node(parameter_overrides=param_overrides)
     try:
