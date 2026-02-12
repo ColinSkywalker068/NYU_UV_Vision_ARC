@@ -38,19 +38,39 @@ class RealSenseCamera:
         if len(devices) == 0:
             raise RuntimeError("No RealSense camera found")
 
-        self.pipeline = rs.pipeline()
-        self.config = rs.config()
-        self.config.enable_stream(
-            rs.stream.color,
+        requested_profile = (
             int(self.target_width),
             int(self.target_height),
-            rs.format.bgr8,
             int(self.target_fps),
         )
-        try:
-            self.profile = self.pipeline.start(self.config)
-        except Exception as e:
-            raise RuntimeError(f"Failed to start RealSense camera: {e}")
+        fallback_profile = (640, 480, 30)
+        profile_attempts = [requested_profile]
+        if requested_profile != fallback_profile:
+            profile_attempts.append(fallback_profile)
+
+        self.profile = None
+        last_error = None
+        for width, height, fps in profile_attempts:
+            self.pipeline = rs.pipeline()
+            self.config = rs.config()
+            self.config.enable_stream(
+                rs.stream.color,
+                width,
+                height,
+                rs.format.bgr8,
+                fps,
+            )
+            try:
+                self.profile = self.pipeline.start(self.config)
+                self.target_width = width
+                self.target_height = height
+                self.target_fps = fps
+                break
+            except Exception as e:
+                last_error = e
+
+        if self.profile is None:
+            raise RuntimeError(f"Failed to start RealSense camera: {last_error}")
 
         self.is_grabbing = True
         self._configure_sensor()
