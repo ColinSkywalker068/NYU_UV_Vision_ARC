@@ -30,7 +30,8 @@ class YOLODetector:
             if isinstance(key, str) and key.isdigit():
                 normalized_key = int(key)
             normalized[normalized_key] = value
-        self.model.names = normalized
+        names.clear()
+        names.update(normalized)
 
     def track(self, image, **kwargs):
         """
