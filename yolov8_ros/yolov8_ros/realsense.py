@@ -38,13 +38,13 @@ class RealSenseCamera:
         if len(devices) == 0:
             raise RuntimeError("No RealSense camera found")
 
-        # Match realsense_test behavior by preferring safe default profiles.
+        # Try requested profile first, then fall back to safe defaults.
         stream_profiles = [
-            (640, 480, 30),
-            (640, 480, 60),
             (self.target_width, self.target_height, self.target_fps),
             (self.target_width, self.target_height, 30),
             (self.target_width, self.target_height, 60),
+            (640, 480, 60),
+            (640, 480, 30),
         ]
         unique_profiles = []
         for profile in stream_profiles:
@@ -74,7 +74,9 @@ class RealSenseCamera:
                 started = True
                 break
             except Exception as err:
-                start_errors.append(f"{width}x{height}@{fps} -> {err}")
+                error_message = f"{width}x{height}@{fps} -> {err}"
+                start_errors.append(error_message)
+                self.logger.warning(f"RealSense profile failed: {error_message}")
 
         if not started:
             raise RuntimeError(
