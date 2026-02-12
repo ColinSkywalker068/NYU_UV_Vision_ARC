@@ -33,25 +33,14 @@ class RealSenseCamera:
         self.logger = logging.getLogger("RealSenseCamera")
 
     def initialize(self):
-        # 1. Create context ONCE
+        # Keep config setup minimal like the working test file.
         self.ctx = rs.context()
-
-        # 2. Check devices using this context
         devices = self.ctx.query_devices()
         if len(devices) == 0:
             raise RuntimeError("No RealSense camera found")
 
-        # 3. Create pipeline using the SAME context
-        self.pipeline = rs.pipeline(self.ctx)
+        self.pipeline = rs.pipeline()
         self.config = rs.config()
-
-        # Disable all streams first to ensure clean state
-        try:
-            self.config.disable_all_streams()
-        except Exception:
-            pass
-
-        # Enable color stream
         self.config.enable_stream(
             rs.stream.color,
             self.target_width,
@@ -59,8 +48,6 @@ class RealSenseCamera:
             rs.format.bgr8,
             self.target_fps,
         )
-
-        # Start streaming
         try:
             self.profile = self.pipeline.start(self.config)
         except Exception as e:
@@ -68,8 +55,6 @@ class RealSenseCamera:
 
         self.is_grabbing = True
         self._configure_sensor()
-
-        # Verify streams
         self._verify_streams()
 
     def _configure_sensor(self):
