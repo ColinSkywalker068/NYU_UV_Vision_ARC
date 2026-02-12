@@ -38,51 +38,19 @@ class RealSenseCamera:
         if len(devices) == 0:
             raise RuntimeError("No RealSense camera found")
 
-        # Try requested profile first, then fall back to safe defaults.
-        stream_profiles = [
-            (self.target_width, self.target_height, self.target_fps),
-            (self.target_width, self.target_height, 30),
-            (self.target_width, self.target_height, 60),
-            (640, 480, 60),
-            (640, 480, 30),
-        ]
-        unique_profiles = []
-        for profile in stream_profiles:
-            if profile not in unique_profiles:
-                unique_profiles.append(profile)
-
-        start_errors = []
-        started = False
-        for width, height, fps in unique_profiles:
-            self.pipeline = rs.pipeline()
-            self.config = rs.config()
-            self.config.enable_stream(
-                rs.stream.color,
-                int(width),
-                int(height),
-                rs.format.bgr8,
-                int(fps),
-            )
-            try:
-                self.profile = self.pipeline.start(self.config)
-                self.target_width = int(width)
-                self.target_height = int(height)
-                self.target_fps = int(fps)
-                self.logger.info(
-                    f"RealSense stream started: {self.target_width}x{self.target_height}@{self.target_fps}"
-                )
-                started = True
-                break
-            except Exception as err:
-                error_message = f"{width}x{height}@{fps} -> {err}"
-                start_errors.append(error_message)
-                self.logger.warning(f"RealSense profile failed: {error_message}")
-
-        if not started:
-            raise RuntimeError(
-                "Failed to start RealSense color stream. Tried profiles: "
-                + " | ".join(start_errors)
-            )
+        self.pipeline = rs.pipeline()
+        self.config = rs.config()
+        self.config.enable_stream(
+            rs.stream.color,
+            int(self.target_width),
+            int(self.target_height),
+            rs.format.bgr8,
+            int(self.target_fps),
+        )
+        try:
+            self.profile = self.pipeline.start(self.config)
+        except Exception as e:
+            raise RuntimeError(f"Failed to start RealSense camera: {e}")
 
         self.is_grabbing = True
         self._configure_sensor()
