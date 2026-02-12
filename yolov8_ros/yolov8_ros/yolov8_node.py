@@ -238,7 +238,7 @@ class YOLOv8Node(Node):
                     imgsz=imgsz_val,
                     show=False,
                     conf=self.conf,
-                    verbose=False,
+                    verbose=True,
                     persist=self.persist_tracking,
                     tracker="bytetrack.yaml",
                 )
@@ -249,7 +249,7 @@ class YOLOv8Node(Node):
                     imgsz=imgsz_val,
                     show=False,
                     conf=self.conf,
-                    verbose=False,
+                    verbose=True,
                 )
 
             # 4. Process Results
