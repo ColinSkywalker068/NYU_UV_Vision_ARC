@@ -238,6 +238,7 @@ class YOLOv8Node(Node):
                     imgsz=imgsz_val,
                     show=False,
                     conf=self.conf,
+                    verbose=False,
                     persist=self.persist_tracking,
                     tracker="bytetrack.yaml",
                 )
