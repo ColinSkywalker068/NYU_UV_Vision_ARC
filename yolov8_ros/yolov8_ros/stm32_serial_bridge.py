@@ -44,7 +44,9 @@ class STM32SerialTransmitter:
                 timeout=1.0,
             )
             self.is_connected = True
-            LOGGER.info("STM32 serial connected: %s @ %d baud", self.port, self.baudrate)
+            LOGGER.info(
+                "STM32 serial connected: %s @ %d baud", self.port, self.baudrate
+            )
         except serial.SerialException as serial_error:
             self.is_connected = False
             LOGGER.warning(
@@ -67,7 +69,9 @@ class STM32SerialTransmitter:
             )
             pitch_integer: int = int(pitch * ANGLE_SCALE_FACTOR)
             yaw_integer: int = int(yaw * ANGLE_SCALE_FACTOR)
-            body: bytes = struct.pack("iiB", pitch_integer, yaw_integer, int(has_target))
+            body: bytes = struct.pack(
+                "iiB", pitch_integer, yaw_integer, int(has_target)
+            )
             footer: bytes = struct.pack("H", PACKET_FOOTER)
             packet: bytes = header + body + footer
             bytes_written: int = self.serial_device.write(packet)
@@ -102,7 +106,9 @@ class STM32SerialBridgeNode(Node):
     """Subscribe to YOLO topics and forward data to STM32 serial."""
 
     def __init__(self, parameter_overrides: Optional[list[Parameter]] = None) -> None:
-        super().__init__("stm32_serial_bridge_node", parameter_overrides=parameter_overrides)
+        super().__init__(
+            "stm32_serial_bridge_node", parameter_overrides=parameter_overrides
+        )
         self.declare_parameter("transmit_enable", True)
         self.declare_parameter("serial_port", "/dev/ttyUSB0")
         self.declare_parameter("serial_baudrate", 115200)
@@ -120,7 +126,9 @@ class STM32SerialBridgeNode(Node):
                 verbose=self.serial_verbose,
             )
         else:
-            self.get_logger().info("Transmit disabled. Set transmit_enable:=true to enable TX.")
+            self.get_logger().info(
+                "Transmit disabled. Set transmit_enable:=true to enable TX."
+            )
         self.create_subscription(Bool, "override", self.handle_override, 10)
         self.create_subscription(
             Float32MultiArray, "bounding_box_angles", self.handle_angles, 10
@@ -137,7 +145,9 @@ class STM32SerialBridgeNode(Node):
 
     def handle_angles(self, msg: Float32MultiArray) -> None:
         if len(msg.data) < 2:
-            self.get_logger().warning("Received malformed angle message: %s", str(msg.data))
+            self.get_logger().warning(
+                "Received malformed angle message: %s", str(msg.data)
+            )
             return
         if not self.transmit_enable:
             return
@@ -199,7 +209,9 @@ def main(args: Optional[list[str]] = None) -> None:
         )
     if parsed_args.serial_baudrate is not None:
         parameter_overrides.append(
-            Parameter("serial_baudrate", Parameter.Type.INTEGER, parsed_args.serial_baudrate)
+            Parameter(
+                "serial_baudrate", Parameter.Type.INTEGER, parsed_args.serial_baudrate
+            )
         )
     if parsed_args.serial_verbose is not None:
         is_serial_verbose: bool = parse_boolean_flag(parsed_args.serial_verbose)
