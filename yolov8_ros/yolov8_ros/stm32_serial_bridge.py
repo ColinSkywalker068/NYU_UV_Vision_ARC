@@ -175,17 +175,13 @@ class STM32SerialTransmitter:
             bytes_written: int = self.serial_device.write(packet)
             self.serial_device.flush()
             self.message_count += 1
-            if self.verbose:
-                LOGGER.info(
-                    "[Seasky TX #%d] cmd=0x%04X flags=0x%04X pitch=%.6f yaw=%.6f bytes=%d hex=%s",
-                    self.message_count,
-                    SEASKY_COMMAND_VISION_RECV,
-                    flags_register,
-                    float(pitch),
-                    float(yaw),
-                    bytes_written,
-                    packet.hex(" "),
-                )
+            # DEBUG: TX logging disabled; uncomment below to log each sent packet.
+            # if self.verbose:
+            #     LOGGER.info(
+            #         "[Seasky TX #%d] cmd=0x%04X flags=0x%04X pitch=%.6f yaw=%.6f bytes=%d hex=%s",
+            #         self.message_count, SEASKY_COMMAND_VISION_RECV, flags_register,
+            #         float(pitch), float(yaw), bytes_written, packet.hex(" "),
+            #     )
             return True
         except serial.SerialException as serial_error:
             self.is_connected = False
@@ -258,15 +254,15 @@ class STM32SerialTransmitter:
                             "command_id": int(command_id),
                         }
                     )
-                    if self.verbose:
-                        LOGGER.info(
-                            "[Seasky RX] cmd=0x%04X flags=0x%04X yaw=%.6f pitch=%.6f roll=%.6f",
-                            command_id,
-                            flags_register,
-                            float(yaw),
-                            float(pitch),
-                            float(roll),
-                        )
+                    # DEBUG: RX always logged; to gate behind serial_verbose, wrap in: if self.verbose:
+                    LOGGER.info(
+                        "[Seasky RX] cmd=0x%04X flags=0x%04X yaw=%.6f pitch=%.6f roll=%.6f",
+                        command_id,
+                        flags_register,
+                        float(yaw),
+                        float(pitch),
+                        float(roll),
+                    )
             del self.rx_buffer[:full_frame_size]
         return parsed_frames
 
