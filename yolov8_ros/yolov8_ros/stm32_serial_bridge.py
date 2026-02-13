@@ -342,7 +342,7 @@ class STM32SerialBridgeNode(Node):
     def handle_angles(self, msg: Float32MultiArray) -> None:
         if len(msg.data) < 2:
             self.get_logger().warning(
-                "Received malformed angle message: {}".format(str(msg.data))
+                f"Received malformed angle message: {str(msg.data)}"
             )
             return
         if not self.transmit_enable:
