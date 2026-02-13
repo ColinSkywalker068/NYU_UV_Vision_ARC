@@ -87,11 +87,15 @@ def build_vision_flags(fire_mode: int, target_state: int, target_type: int) -> i
 def parse_attitude_flags(flags_register: int) -> tuple[int, int, int]:
     enemy_color: int = flags_register & FLAG_ENEMY_COLOR_MASK
     work_mode: int = (flags_register >> FLAG_WORK_MODE_SHIFT) & FLAG_WORK_MODE_MASK
-    bullet_speed: int = (flags_register >> FLAG_BULLET_SPEED_SHIFT) & FLAG_BULLET_SPEED_MASK
+    bullet_speed: int = (
+        flags_register >> FLAG_BULLET_SPEED_SHIFT
+    ) & FLAG_BULLET_SPEED_MASK
     return enemy_color, work_mode, bullet_speed
 
 
-def build_seasky_frame(command_id: int, flags_register: int, float_payload: list[float]) -> bytes:
+def build_seasky_frame(
+    command_id: int, flags_register: int, float_payload: list[float]
+) -> bytes:
     payload_bytes: bytes = b"".join(
         struct.pack("<f", float(value)) for value in float_payload
     )
@@ -103,9 +107,11 @@ def build_seasky_frame(command_id: int, flags_register: int, float_payload: list
     )
     header_crc8: int = compute_crc8(header_without_crc)
     header: bytes = header_without_crc + bytes([header_crc8])
-    body: bytes = struct.pack("<H", int(command_id)) + struct.pack(
-        "<H", int(flags_register)
-    ) + payload_bytes
+    body: bytes = (
+        struct.pack("<H", int(command_id))
+        + struct.pack("<H", int(flags_register))
+        + payload_bytes
+    )
     frame_without_crc16: bytes = header + body
     frame_crc16: int = compute_crc16(frame_without_crc16)
     return frame_without_crc16 + struct.pack("<H", frame_crc16)
@@ -356,7 +362,9 @@ class STM32SerialBridgeNode(Node):
             return
         if self.transmitter is None:
             return
-        parsed_frames: list[dict[str, int | float]] = self.transmitter.read_attitude_frames()
+        parsed_frames: list[
+            dict[str, int | float]
+        ] = self.transmitter.read_attitude_frames()
         for frame_data in parsed_frames:
             attitude_msg = Float32MultiArray()
             attitude_msg.data = [
