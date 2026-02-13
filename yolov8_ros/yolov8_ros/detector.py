@@ -18,6 +18,8 @@ class YOLODetector:
         """
         Wrapper for model.track()
         """
+        if "verbose" not in kwargs:
+            kwargs["verbose"] = False
         return self.model.track(image, **kwargs)
 
     def predict(self, image, **kwargs):
