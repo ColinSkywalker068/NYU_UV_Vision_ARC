@@ -325,10 +325,8 @@ class STM32SerialBridgeNode(Node):
             DEFAULT_RX_POLL_PERIOD_SECONDS, self.handle_rx_poll
         )
         self.get_logger().info(
-            "STM32 serial bridge ready. transmit_enable=%s, port=%s, baud=%d",
-            str(self.transmit_enable).lower(),
-            self.serial_port,
-            self.serial_baudrate,
+            "STM32 serial bridge ready. transmit_enable=%s, port=%s, baud=%d"
+            % (str(self.transmit_enable).lower(), self.serial_port, self.serial_baudrate)
         )
 
     def handle_override(self, msg: Bool) -> None:
@@ -340,7 +338,7 @@ class STM32SerialBridgeNode(Node):
     def handle_angles(self, msg: Float32MultiArray) -> None:
         if len(msg.data) < 2:
             self.get_logger().warning(
-                "Received malformed angle message: %s", str(msg.data)
+                "Received malformed angle message: %s" % (str(msg.data),)
             )
             return
         if not self.transmit_enable:
