@@ -323,7 +323,11 @@ class STM32SerialBridgeNode(Node):
         )
         self.get_logger().info(
             "STM32 serial bridge ready. transmit_enable=%s, port=%s, baud=%d"
-            % (str(self.transmit_enable).lower(), self.serial_port, self.serial_baudrate)
+            % (
+                str(self.transmit_enable).lower(),
+                self.serial_port,
+                self.serial_baudrate,
+            )
         )
 
     def handle_override(self, msg: Bool) -> None:
