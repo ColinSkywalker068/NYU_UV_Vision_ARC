@@ -175,13 +175,28 @@ class STM32SerialTransmitter:
             bytes_written: int = self.serial_device.write(packet)
             self.serial_device.flush()
             self.message_count += 1
-            # DEBUG: TX logging disabled; uncomment below to log each sent packet.
-            # if self.verbose:
-            #     LOGGER.info(
-            #         "[Seasky TX #%d] cmd=0x%04X flags=0x%04X pitch=%.6f yaw=%.6f bytes=%d hex=%s",
-            #         self.message_count, SEASKY_COMMAND_VISION_RECV, flags_register,
-            #         float(pitch), float(yaw), bytes_written, packet.hex(" "),
-            #     )
+            has_detection: bool = target_state == TARGET_STATE_CONVERGING
+            if has_detection:
+                LOGGER.info(
+                    "[Seasky TX DETECT #%d] cmd=0x%04X flags=0x%04X pitch=%.6f yaw=%.6f bytes=%d hex=%s",
+                    self.message_count,
+                    SEASKY_COMMAND_VISION_RECV,
+                    flags_register,
+                    float(pitch),
+                    float(yaw),
+                    bytes_written,
+                    packet.hex(" "),
+                )
+            elif self.verbose:
+                LOGGER.info(
+                    "[Seasky TX #%d] cmd=0x%04X flags=0x%04X pitch=%.6f yaw=%.6f bytes=%d",
+                    self.message_count,
+                    SEASKY_COMMAND_VISION_RECV,
+                    flags_register,
+                    float(pitch),
+                    float(yaw),
+                    bytes_written,
+                )
             return True
         except serial.SerialException as serial_error:
             self.is_connected = False

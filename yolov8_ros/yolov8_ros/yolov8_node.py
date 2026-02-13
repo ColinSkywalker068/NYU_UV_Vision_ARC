@@ -79,6 +79,7 @@ class YOLOv8Node(Node):
         self.declare_parameter("enable_tracking", True)
         self.declare_parameter("persist_tracking", True)
         self.declare_parameter("use_kalman", False)
+        self.declare_parameter("enable_color_verification", False)
 
         # Angle calc
         self.declare_parameter(
@@ -112,6 +113,9 @@ class YOLOv8Node(Node):
         self.enable_tracking = self.get_parameter("enable_tracking").value
         self.persist_tracking = self.get_parameter("persist_tracking").value
         self.use_kalman = self.get_parameter("use_kalman").value
+        self.enable_color_verification = self.get_parameter(
+            "enable_color_verification"
+        ).value
 
         self.hfov_rad = math.radians(self.get_parameter("hfov_degrees").value)
         self.vfov_rad = math.radians(self.get_parameter("vfov_degrees").value)
@@ -301,7 +305,9 @@ class YOLOv8Node(Node):
                             max(0, y1) : min(y2, self.imgsz_height),
                             max(0, x1) : min(x2, self.imgsz_width),
                         ]
-                        is_enemy, _ = check_enemy(roi, self.target_class)
+                        is_enemy = True
+                        if self.enable_color_verification:
+                            is_enemy, _ = check_enemy(roi, self.target_class)
 
                         if is_enemy:
                             if self.use_kalman:
