@@ -15,6 +15,11 @@ setup(
             os.path.join("share", package_name, "launch"),
             glob(os.path.join("launch", "*.[pxy][yma]*")),
         ),
+        # Install models to share location (works with both regular and symlink installs)
+        (
+            os.path.join("share", package_name, "models"),
+            [f for f in glob(os.path.join("models", "*")) if os.path.isfile(f)],
+        ),
     ],
     install_requires=["setuptools", "pyserial"],
     zip_safe=True,

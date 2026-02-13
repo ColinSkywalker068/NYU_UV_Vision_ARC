@@ -46,9 +46,7 @@ class YOLOv8Node(Node):
     def __init__(self, parameter_overrides=None):
         super().__init__("yolov8_modular_node", parameter_overrides=parameter_overrides)
         self.get_logger().info("Initializing Modular YOLOv8 Node...")
-        default_model_path = (
-            Path(__file__).resolve().parents[1] / "models" / "best_new.engine"
-        )
+        default_model_path = Path(__file__).resolve().parents[2] / "models" / "best_new.engine"
 
         # --- Parameters ---
         self.declare_parameter("camera_type", "basler")
