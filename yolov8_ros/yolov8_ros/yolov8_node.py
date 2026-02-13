@@ -2,6 +2,7 @@ import rclpy
 import sys
 import argparse
 from pathlib import Path
+from ament_index_python.packages import get_package_share_directory
 from rclpy.parameter import Parameter
 from rclpy.node import Node
 from std_msgs.msg import Int32, Int32MultiArray, Bool, Float32MultiArray
@@ -46,7 +47,8 @@ class YOLOv8Node(Node):
     def __init__(self, parameter_overrides=None):
         super().__init__("yolov8_modular_node", parameter_overrides=parameter_overrides)
         self.get_logger().info("Initializing Modular YOLOv8 Node...")
-        default_model_path = Path(__file__).resolve().parents[2] / "models" / "best_new.engine"
+        package_share_dir = Path(get_package_share_directory("yolov8_ros"))
+        default_model_path = package_share_dir / "models" / "best_new.engine"
 
         # --- Parameters ---
         self.declare_parameter("camera_type", "basler")
