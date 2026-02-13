@@ -12,6 +12,7 @@ from std_msgs.msg import Bool, Float32MultiArray, Int32MultiArray
 
 
 LOGGER = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 # region Seasky Protocol Constants
 # Protocol frame structure
