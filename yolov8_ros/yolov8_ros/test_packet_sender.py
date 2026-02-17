@@ -53,7 +53,9 @@ def parse_positive_rate(rate_hz: float) -> float:
 
 def generate_random_sample(min_angle: float, max_angle: float) -> VisionTestSample:
     has_target: bool = bool(random.getrandbits(1))
-    target_state: int = TARGET_STATE_CONVERGING if has_target else TARGET_STATE_NO_TARGET
+    target_state: int = (
+        TARGET_STATE_CONVERGING if has_target else TARGET_STATE_NO_TARGET
+    )
     return VisionTestSample(
         yaw=random.uniform(min_angle, max_angle),
         pitch=random.uniform(min_angle, max_angle),
@@ -80,7 +82,9 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Send randomized Seasky vision packets to STM32 over serial"
     )
-    parser.add_argument("--port", type=str, default=DEFAULT_PORT, help="Serial device path")
+    parser.add_argument(
+        "--port", type=str, default=DEFAULT_PORT, help="Serial device path"
+    )
     parser.add_argument(
         "--baudrate", type=int, default=DEFAULT_BAUDRATE, help="Serial baudrate"
     )
