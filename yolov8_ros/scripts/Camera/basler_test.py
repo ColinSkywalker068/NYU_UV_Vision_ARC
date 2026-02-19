@@ -14,7 +14,7 @@ DEFAULT_HEIGHT = 480
 DEFAULT_FPS = 0  # 0 => do not set, let camera run max
 DEFAULT_EXPOSURE_US = 5000.0
 DEFAULT_GAIN_DB = 5.0
-DEFAULT_MODEL_PATH = "/home/ultraviolet/CV_Detection/yolov8_ros/models/best.engine"
+DEFAULT_MODEL_PATH = "/home/ultraviolet/CV_Detection/yolov8_ros/models/best_new.engine"
 
 
 def get_actual_fps(camera: pylon.InstantCamera) -> float:
@@ -263,7 +263,7 @@ def build_arg_parser() -> ArgumentParser:
     parser.add_argument(
         "--mode",
         choices=["detect", "track"],
-        default="detect",
+        default="track",
         help="Run plain detection or ByteTrack-style tracking",
     )
     parser.add_argument(
