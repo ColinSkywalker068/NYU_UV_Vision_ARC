@@ -169,6 +169,7 @@ def run_grab_test(
     target_w: int,
     target_h: int,
     fps_window: int,
+    model_size: int | None = None,
 ) -> None:
     window_name: str = "Basler Test" if show else ""
     start: float | None = None  # first good frame
@@ -188,10 +189,16 @@ def run_grab_test(
             frame = image.GetArray()
             # Letterbox to target size (keeps aspect ratio, minimal runtime)
             letterboxed = letterbox_frame(frame, target_w, target_h)
+            # Use model_size if specified (for quantized models with fixed input size),
+            # otherwise use target dimensions
+            if model_size is not None:
+                imgsz_val = model_size
+            else:
+                imgsz_val = max(target_h, target_w)
             if mode == "track":
                 results = model.track(
                     letterboxed,
-                    imgsz=(target_h, target_w),
+                    imgsz=imgsz_val,
                     conf=conf,
                     verbose=False,
                     persist=True,
@@ -199,7 +206,7 @@ def run_grab_test(
             else:
                 results = model(
                     letterboxed,
-                    imgsz=(target_h, target_w),
+                    imgsz=imgsz_val,
                     conf=conf,
                     verbose=False,
                 )
@@ -302,6 +309,12 @@ def build_arg_parser() -> ArgumentParser:
         default=10,
         help="Frames per short-term FPS computation (e.g., 10)",
     )
+    parser.add_argument(
+        "--model-size",
+        type=int,
+        default=None,
+        help="Model input size (square, e.g., 640). If not set, uses max(img-width, img-height)",
+    )
     return parser
 
 
@@ -347,6 +360,7 @@ def main() -> None:
             args.img_width,
             args.img_height,
             max(1, args.fps_window),
+            args.model_size,
         )
 
     finally:
