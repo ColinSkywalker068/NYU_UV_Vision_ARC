@@ -67,6 +67,7 @@ class YOLOv8Node(Node):
         self.declare_parameter("basler_exposure_us", 5000.0)
         self.declare_parameter("basler_gain_db", 5.0)
         self.declare_parameter("basler_fps", 0)  # 0 for max
+        self.declare_parameter("basler_use_full_sensor", True)
 
         # Realsense specific
         self.declare_parameter("realsense_width", 640)
@@ -102,6 +103,7 @@ class YOLOv8Node(Node):
         self.basler_exposure = self.get_parameter("basler_exposure_us").value
         self.basler_gain = self.get_parameter("basler_gain_db").value
         self.basler_fps = self.get_parameter("basler_fps").value
+        self.basler_use_full_sensor = self.get_parameter("basler_use_full_sensor").value
 
         self.realsense_width = self.get_parameter("realsense_width").value
         self.realsense_height = self.get_parameter("realsense_height").value
@@ -130,6 +132,7 @@ class YOLOv8Node(Node):
                     width=self.imgsz_width,
                     height=self.imgsz_height,
                     fps=self.basler_fps,
+                    use_full_sensor=self.basler_use_full_sensor,
                     exposure_us=self.basler_exposure,
                     gain_db=self.basler_gain,
                 )

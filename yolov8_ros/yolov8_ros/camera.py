@@ -3,10 +3,19 @@ import cv2
 
 
 class BaslerCamera:
-    def __init__(self, width=640, height=480, fps=0, exposure_us=5000.0, gain_db=5.0):
+    def __init__(
+        self,
+        width=640,
+        height=480,
+        fps=0,
+        use_full_sensor=True,
+        exposure_us=5000.0,
+        gain_db=5.0,
+    ):
         self.target_width = width
         self.target_height = height
         self.target_fps = fps
+        self.use_full_sensor = use_full_sensor
         self.exposure_us = exposure_us
         self.gain_db = gain_db
         self.camera = None
@@ -33,16 +42,16 @@ class BaslerCamera:
         self.is_grabbing = True
 
     def _configure_camera(self):
-        # Basic configuration logic from basler_test.py
+        # Keep behavior aligned with basler_test.py configuration flow.
         camera = self.camera
 
         max_width = camera.WidthMax.GetValue()
         max_height = camera.HeightMax.GetValue()
 
-        # Use full sensor logic if needed, or target dimensions
-        # Here we try to set target, capped by max
-        w = min(self.target_width, max_width)
-        h = min(self.target_height, max_height)
+        target_width = max_width if self.use_full_sensor else min(self.target_width, max_width)
+        target_height = (
+            max_height if self.use_full_sensor else min(self.target_height, max_height)
+        )
 
         try:
             camera.OffsetX.SetValue(0)
@@ -50,8 +59,8 @@ class BaslerCamera:
         except Exception:
             pass
 
-        camera.Width.SetValue(w)
-        camera.Height.SetValue(h)
+        camera.Width.SetValue(target_width)
+        camera.Height.SetValue(target_height)
 
         try:
             if camera.PixelFormat.IsWritable():
