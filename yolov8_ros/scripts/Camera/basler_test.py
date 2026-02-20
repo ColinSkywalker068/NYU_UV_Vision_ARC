@@ -58,6 +58,31 @@ def choose_mono8_format(symbolics: list[str]) -> str | None:
     return None
 
 
+def choose_preferred_color_format(symbolics: list[str]) -> str | None:
+    preferred_order = [
+        "BayerRG8",
+        "BayerBG8",
+        "BayerGB8",
+        "BayerGR8",
+        "RGB8",
+        "BGR8",
+    ]
+    for fmt in preferred_order:
+        if fmt in symbolics:
+            return fmt
+    return None
+
+
+def _set_node_value_if_writable(node: object, value: object) -> bool:
+    try:
+        if hasattr(node, "IsWritable") and not node.IsWritable():
+            return False
+        node.SetValue(value)
+        return True
+    except Exception:
+        return False
+
+
 def get_actual_fps(camera: pylon.InstantCamera) -> float:
     try:
         if hasattr(camera, "ResultingFrameRate"):
@@ -93,13 +118,10 @@ def configure_camera(
     max_height = camera.HeightMax.GetValue()
     target_width = max_width if use_full_sensor else min(width, max_width)
     target_height = max_height if use_full_sensor else min(height, max_height)
-    try:
-        camera.OffsetX.SetValue(0)
-        camera.OffsetY.SetValue(0)
-    except Exception:
-        pass
-    camera.Width.SetValue(target_width)
-    camera.Height.SetValue(target_height)
+    _set_node_value_if_writable(camera.OffsetX, 0)
+    _set_node_value_if_writable(camera.OffsetY, 0)
+    _set_node_value_if_writable(camera.Width, target_width)
+    _set_node_value_if_writable(camera.Height, target_height)
     if applied_settings is not None:
         _record_setting(applied_settings, "Width", lambda: camera.Width.GetValue())
         _record_setting(applied_settings, "Height", lambda: camera.Height.GetValue())
@@ -108,45 +130,37 @@ def configure_camera(
         applied_settings["PixelFormat_available"] = (
             ", ".join(symbolics) if symbolics else "(none)"
         )
-    try:
-        if camera.PixelFormat.IsWritable() and symbolics:
+    if symbolics:
+        # Prefer color-capable formats first. Falling back to mono can make
+        # the image appear dark/flat even with higher exposure.
+        chosen = choose_preferred_color_format(symbolics)
+        if chosen is None:
             chosen = choose_mono8_format(symbolics)
-            if chosen:
-                camera.PixelFormat.SetValue(chosen)
-    except Exception:
-        pass
+        if chosen is not None:
+            _set_node_value_if_writable(camera.PixelFormat, chosen)
     if applied_settings is not None:
         _record_setting(
             applied_settings, "PixelFormat", lambda: camera.PixelFormat.GetValue()
         )
     if fps > 0:
         try:
-            if camera.AcquisitionFrameRateEnable.GetValue():
+            if (
+                camera.AcquisitionFrameRateEnable.GetValue()
+                and camera.AcquisitionFrameRate.IsWritable()
+            ):
                 camera.AcquisitionFrameRate.SetValue(float(fps))
         except Exception:
             pass
     if auto_exposure:
-        try:
-            camera.ExposureAuto.SetValue("Continuous")
-        except Exception:
-            pass
+        _set_node_value_if_writable(camera.ExposureAuto, "Continuous")
     else:
-        try:
-            camera.ExposureAuto.SetValue("Off")
-            camera.ExposureTime.SetValue(float(exposure_us))
-        except Exception:
-            pass
+        _set_node_value_if_writable(camera.ExposureAuto, "Off")
+        _set_node_value_if_writable(camera.ExposureTime, float(exposure_us))
     if auto_gain:
-        try:
-            camera.GainAuto.SetValue("Continuous")
-        except Exception:
-            pass
+        _set_node_value_if_writable(camera.GainAuto, "Continuous")
     else:
-        try:
-            camera.GainAuto.SetValue("Off")
-            camera.Gain.SetValue(float(gain_db))
-        except Exception:
-            pass
+        _set_node_value_if_writable(camera.GainAuto, "Off")
+        _set_node_value_if_writable(camera.Gain, float(gain_db))
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
     actual_width = camera.Width.GetValue()
     actual_height = camera.Height.GetValue()
@@ -166,13 +180,15 @@ def build_converter() -> pylon.ImageFormatConverter:
 
 
 def letterbox_frame(frame: np.ndarray, target_w: int, target_h: int) -> np.ndarray:
+    if frame is None or frame.size == 0:
+        return frame
     src_h, src_w = frame.shape[:2]
     if src_h == target_h and src_w == target_w:
         return frame
 
     scale = min(target_w / src_w, target_h / src_h)
-    new_w = int(src_w * scale)
-    new_h = int(src_h * scale)
+    new_w = max(1, int(round(src_w * scale)))
+    new_h = max(1, int(round(src_h * scale)))
     resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
 
     pad_w = target_w - new_w
@@ -195,31 +211,37 @@ def letterbox_frame(frame: np.ndarray, target_w: int, target_h: int) -> np.ndarr
 
 def letterbox_frame_gpu(frame: np.ndarray, target_w: int, target_h: int) -> np.ndarray:
     """Letterbox resize+pad on GPU (PyTorch CUDA). Returns numpy HWC BGR for display/model."""
+    if frame is None or frame.size == 0:
+        return frame
     if not _TORCH_AVAILABLE or not torch.cuda.is_available():
         return letterbox_frame(frame, target_w, target_h)
-    src_h, src_w = frame.shape[:2]
-    if src_h == target_h and src_w == target_w:
-        return frame
-    scale = min(target_w / src_w, target_h / src_h)
-    new_w = int(src_w * scale)
-    new_h = int(src_h * scale)
-    pad_w = target_w - new_w
-    pad_h = target_h - new_h
-    top = pad_h // 2
-    bottom = pad_h - top
-    left = pad_w // 2
-    right = pad_w - left
-    device = torch.device("cuda")
-    x = torch.from_numpy(frame).to(device, non_blocking=True)
-    x = x.permute(2, 0, 1).unsqueeze(0).float()
-    x = torch.nn.functional.interpolate(
-        x, size=(new_h, new_w), mode="bilinear", align_corners=False
-    )
-    x = torch.nn.functional.pad(
-        x, (left, right, top, bottom), mode="constant", value=114.0
-    )
-    x = x.squeeze(0).permute(1, 2, 0).byte()
-    return x.cpu().numpy()
+    try:
+        src_h, src_w = frame.shape[:2]
+        if src_h == target_h and src_w == target_w:
+            return frame
+        scale = min(target_w / src_w, target_h / src_h)
+        new_w = max(1, int(round(src_w * scale)))
+        new_h = max(1, int(round(src_h * scale)))
+        pad_w = target_w - new_w
+        pad_h = target_h - new_h
+        top = pad_h // 2
+        bottom = pad_h - top
+        left = pad_w // 2
+        right = pad_w - left
+        device = torch.device("cuda")
+        contiguous_frame = np.ascontiguousarray(frame)
+        x = torch.from_numpy(contiguous_frame).to(device, non_blocking=True)
+        x = x.permute(2, 0, 1).unsqueeze(0).float()
+        x = torch.nn.functional.interpolate(
+            x, size=(new_h, new_w), mode="bilinear", align_corners=False
+        )
+        x = torch.nn.functional.pad(
+            x, (left, right, top, bottom), mode="constant", value=114.0
+        )
+        x = x.squeeze(0).permute(1, 2, 0).byte()
+        return x.cpu().numpy()
+    except Exception:
+        return letterbox_frame(frame, target_w, target_h)
 
 
 def draw_boxes(frame: cv2.Mat, boxes: Iterable[Iterable[float]]) -> None:
@@ -248,16 +270,10 @@ def run_grab_test(
     use_gpu_letterbox: bool = False,
 ) -> None:
     window_name: str = "Basler Test"
-    print(
-        f"run_grab_test started: show={show}, mode={mode}, "
-        f"use_gpu_letterbox={use_gpu_letterbox}, target={target_w}x{target_h}"
-    )
     if show:
         try:
             cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-            print("OpenCV window created")
-        except Exception as window_error:
-            print(f"OpenCV window creation failed: {window_error}")
+        except Exception:
             show = False
     start: float | None = None  # first good frame
     batch_start: float | None = None  # batch timing start
@@ -282,8 +298,7 @@ def run_grab_test(
                 try:
                     cv2.imshow(window_name, letterboxed)
                     key_preview: int = cv2.waitKey(1) & 0xFF
-                except Exception as display_error:
-                    print(f"OpenCV display failed: {display_error}")
+                except Exception:
                     show = False
                     key_preview = 0
                 if key_preview in (ord("q"), ord("z"), 27):
@@ -313,8 +328,7 @@ def run_grab_test(
                         conf=conf,
                         verbose=False,
                     )
-            except Exception as inference_error:
-                print(f"Inference error: {inference_error}")
+            except Exception:
                 results = []
             boxes = []
             if results:
@@ -378,8 +392,7 @@ def run_grab_test(
                 try:
                     cv2.imshow(window_name, letterboxed)
                     key: int = cv2.waitKey(1) & 0xFF
-                except Exception as display_error:
-                    print(f"OpenCV display failed: {display_error}")
+                except Exception:
                     show = False
                     key = 0
                 if key in (ord("q"), ord("z"), 27):
@@ -533,7 +546,6 @@ def main() -> None:
             else ("obb" if args.mode == "obb" else "detect")
         )
         model = YOLO(args.model_path, task=model_task)
-        print(f"Model task: {model_task}")
         run_grab_test(
             camera,
             converter,
