@@ -48,7 +48,7 @@ class YOLOv8Node(Node):
         super().__init__("yolov8_modular_node", parameter_overrides=parameter_overrides)
         self.get_logger().info("Initializing Modular YOLOv8 Node...")
         package_share_dir = Path(get_package_share_directory("yolov8_ros"))
-        default_model_path = package_share_dir / "models" / "best_new.engine"
+        default_model_path = package_share_dir / "models" / "best.engine"
 
         # --- Parameters ---
         self.declare_parameter("camera_type", "basler")
