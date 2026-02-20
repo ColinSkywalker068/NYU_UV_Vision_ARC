@@ -122,7 +122,10 @@ def _set_downsample_factor(
     except Exception:
         return
     aligned_factor = _align_to_node_increment(node, factor)
-    if _set_node_value_if_writable(node, aligned_factor) and applied_settings is not None:
+    if (
+        _set_node_value_if_writable(node, aligned_factor)
+        and applied_settings is not None
+    ):
         _record_setting(applied_settings, node_name, lambda: node.GetValue())
 
 
@@ -178,7 +181,9 @@ def configure_camera(
     offset_x = 0
     offset_y = 0
     if not use_full_sensor and centered_roi:
-        offset_x = _compute_centered_offset(int(max_width), int(target_width), camera.OffsetX)
+        offset_x = _compute_centered_offset(
+            int(max_width), int(target_width), camera.OffsetX
+        )
         offset_y = _compute_centered_offset(
             int(max_height), int(target_height), camera.OffsetY
         )
