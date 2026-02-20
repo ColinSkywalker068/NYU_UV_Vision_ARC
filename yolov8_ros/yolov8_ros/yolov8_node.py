@@ -67,6 +67,12 @@ class YOLOv8Node(Node):
         self.declare_parameter("basler_exposure_us", 5000.0)
         self.declare_parameter("basler_gain_db", 5.0)
         self.declare_parameter("basler_fps", 0)  # 0 for max
+        self.declare_parameter("basler_use_full_sensor", True)
+        self.declare_parameter("basler_centered_roi", True)
+        self.declare_parameter("basler_binning", 1)
+        self.declare_parameter("basler_decimation", 1)
+        self.declare_parameter("basler_auto_exposure", False)
+        self.declare_parameter("basler_auto_gain", False)
 
         # Realsense specific
         self.declare_parameter("realsense_width", 640)
@@ -103,6 +109,12 @@ class YOLOv8Node(Node):
         self.basler_exposure = self.get_parameter("basler_exposure_us").value
         self.basler_gain = self.get_parameter("basler_gain_db").value
         self.basler_fps = self.get_parameter("basler_fps").value
+        self.basler_use_full_sensor = self.get_parameter("basler_use_full_sensor").value
+        self.basler_centered_roi = self.get_parameter("basler_centered_roi").value
+        self.basler_binning = self.get_parameter("basler_binning").value
+        self.basler_decimation = self.get_parameter("basler_decimation").value
+        self.basler_auto_exposure = self.get_parameter("basler_auto_exposure").value
+        self.basler_auto_gain = self.get_parameter("basler_auto_gain").value
 
         self.realsense_width = self.get_parameter("realsense_width").value
         self.realsense_height = self.get_parameter("realsense_height").value
@@ -136,6 +148,12 @@ class YOLOv8Node(Node):
                     fps=self.basler_fps,
                     exposure_us=self.basler_exposure,
                     gain_db=self.basler_gain,
+                    use_full_sensor=bool(self.basler_use_full_sensor),
+                    centered_roi=bool(self.basler_centered_roi),
+                    binning=max(1, int(self.basler_binning)),
+                    decimation=max(1, int(self.basler_decimation)),
+                    auto_exposure=bool(self.basler_auto_exposure),
+                    auto_gain=bool(self.basler_auto_gain),
                 )
             elif self.camera_type == "realsense":
                 self.camera = RealSenseCamera(
@@ -152,6 +170,9 @@ class YOLOv8Node(Node):
             self.get_logger().info(
                 f"{self.camera_type.capitalize()} Camera Initialized."
             )
+            if self.camera_type == "basler" and hasattr(self.camera, "get_applied_settings"):
+                applied_settings = self.camera.get_applied_settings()
+                self.get_logger().info(f"Basler settings: {applied_settings}")
         except Exception as e:
             self.get_logger().error(f"Failed to init camera: {e}")
             raise e
