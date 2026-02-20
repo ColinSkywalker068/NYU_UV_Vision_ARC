@@ -90,7 +90,9 @@ def configure_camera(
             camera.PixelFormat.SetValue("Mono8")
     except Exception:
         pass
-    _record_setting(applied_settings, "PixelFormat", lambda: camera.PixelFormat.GetValue())
+    _record_setting(
+        applied_settings, "PixelFormat", lambda: camera.PixelFormat.GetValue()
+    )
 
     if fps > 0:
         try:
@@ -107,28 +109,38 @@ def configure_camera(
     if auto_exposure:
         try:
             camera.ExposureAuto.SetValue("Continuous")
-            _record_setting(applied_settings, "ExposureAuto", lambda: camera.ExposureAuto.GetValue())
+            _record_setting(
+                applied_settings, "ExposureAuto", lambda: camera.ExposureAuto.GetValue()
+            )
         except Exception:
             pass
     else:
         try:
             camera.ExposureAuto.SetValue("Off")
-            _record_setting(applied_settings, "ExposureAuto", lambda: camera.ExposureAuto.GetValue())
+            _record_setting(
+                applied_settings, "ExposureAuto", lambda: camera.ExposureAuto.GetValue()
+            )
             camera.ExposureTime.SetValue(float(exposure_us))
-            _record_setting(applied_settings, "ExposureTime", lambda: camera.ExposureTime.GetValue())
+            _record_setting(
+                applied_settings, "ExposureTime", lambda: camera.ExposureTime.GetValue()
+            )
         except Exception:
             pass
 
     if auto_gain:
         try:
             camera.GainAuto.SetValue("Continuous")
-            _record_setting(applied_settings, "GainAuto", lambda: camera.GainAuto.GetValue())
+            _record_setting(
+                applied_settings, "GainAuto", lambda: camera.GainAuto.GetValue()
+            )
         except Exception:
             pass
     else:
         try:
             camera.GainAuto.SetValue("Off")
-            _record_setting(applied_settings, "GainAuto", lambda: camera.GainAuto.GetValue())
+            _record_setting(
+                applied_settings, "GainAuto", lambda: camera.GainAuto.GetValue()
+            )
             camera.Gain.SetValue(float(gain_db))
             _record_setting(applied_settings, "Gain", lambda: camera.Gain.GetValue())
         except Exception:
@@ -139,7 +151,9 @@ def configure_camera(
     actual_width = camera.Width.GetValue()
     actual_height = camera.Height.GetValue()
     actual_fps = get_actual_fps(camera)
-    _record_setting(applied_settings, "ResultingFrameRate", lambda: get_actual_fps(camera))
+    _record_setting(
+        applied_settings, "ResultingFrameRate", lambda: get_actual_fps(camera)
+    )
 
     return {
         "width": float(actual_width),
