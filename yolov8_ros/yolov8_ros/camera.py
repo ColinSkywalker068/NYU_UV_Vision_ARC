@@ -48,7 +48,9 @@ class BaslerCamera:
         max_width = camera.WidthMax.GetValue()
         max_height = camera.HeightMax.GetValue()
 
-        target_width = max_width if self.use_full_sensor else min(self.target_width, max_width)
+        target_width = (
+            max_width if self.use_full_sensor else min(self.target_width, max_width)
+        )
         target_height = (
             max_height if self.use_full_sensor else min(self.target_height, max_height)
         )
