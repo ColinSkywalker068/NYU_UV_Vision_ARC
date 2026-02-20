@@ -287,8 +287,19 @@ def run_grab_test(
                     verbose=False,
                 )
             boxes = []
-            if results and results[0].boxes is not None:
-                boxes = results[0].boxes.xyxy.tolist()
+            if results:
+                first_result = results[0]
+                if mode == "obb" and hasattr(first_result, "obb") and first_result.obb is not None:
+                    if hasattr(first_result.obb, "xyxy") and first_result.obb.xyxy is not None:
+                        boxes = first_result.obb.xyxy.tolist()
+                    elif hasattr(first_result.obb, "xyxyxyxy") and first_result.obb.xyxyxyxy is not None:
+                        obb_points = first_result.obb.xyxyxyxy.cpu().numpy()
+                        for polygon in obb_points:
+                            xs = polygon[:, 0]
+                            ys = polygon[:, 1]
+                            boxes.append([float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max())])
+                elif first_result.boxes is not None:
+                    boxes = first_result.boxes.xyxy.tolist()
 
             if batch_start is not None and fps_window > 0 and frames % fps_window == 0:
                 now = perf_counter()
@@ -352,9 +363,9 @@ def build_arg_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "--mode",
-        choices=["detect", "track"],
-        default="track",
-        help="Run plain detection or ByteTrack-style tracking",
+        choices=["detect", "track", "obb"],
+        default="obb",
+        help="Run plain detection, ByteTrack-style tracking, or oriented bounding boxes (OBB)",
     )
     parser.add_argument(
         "--conf",
