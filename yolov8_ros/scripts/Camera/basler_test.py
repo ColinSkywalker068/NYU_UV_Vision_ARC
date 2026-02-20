@@ -431,6 +431,12 @@ def build_arg_parser() -> ArgumentParser:
         action="store_true",
         help="Do letterbox resize+pad on GPU with PyTorch (requires CUDA). Can improve FPS.",
     )
+    parser.add_argument(
+        "--task",
+        choices=["detect", "obb", "segment", "classify", "pose"],
+        default=None,
+        help="Explicit Ultralytics task. If omitted, inferred from --mode (obb->obb, otherwise detect).",
+    )
     return parser
 
 
@@ -463,7 +469,9 @@ def main() -> None:
             f"@ {settings['fps']:.2f} FPS"
         )
         converter = build_converter()
-        model = YOLO(args.model_path)
+        model_task = args.task if args.task is not None else ("obb" if args.mode == "obb" else "detect")
+        model = YOLO(args.model_path, task=model_task)
+        print(f"Model task: {model_task}")
         run_grab_test(
             camera,
             converter,
