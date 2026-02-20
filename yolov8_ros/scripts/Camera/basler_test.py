@@ -51,6 +51,28 @@ def _record_setting(
         applied[name] = "(unreadable)"
 
 
+def get_pixel_format_symbolics(camera: pylon.InstantCamera) -> list[str]:
+    """Return valid PixelFormat symbolic names from the camera (GenICam SDK)."""
+    try:
+        symbolics = camera.PixelFormat.Symbolics
+        if symbolics is not None:
+            return list(symbolics)
+    except Exception:
+        pass
+    return []
+
+
+def choose_mono8_format(symbolics: list[str]) -> str | None:
+    """Pick best Mono 8-bit format from camera's valid symbolics (no space, e.g. Mono8)."""
+    for name in ("Mono8", "Mono 8"):
+        if name in symbolics:
+            return name
+    for s in symbolics:
+        if "Mono" in s and "8" in s and "10" not in s and "12" not in s:
+            return s
+    return None
+
+
 def configure_camera(
     camera: pylon.InstantCamera,
     *,
@@ -85,9 +107,13 @@ def configure_camera(
     _record_setting(applied_settings, "Width", lambda: camera.Width.GetValue())
     _record_setting(applied_settings, "Height", lambda: camera.Height.GetValue())
 
+    symbolics = get_pixel_format_symbolics(camera)
+    applied_settings["PixelFormat_available"] = ", ".join(symbolics) if symbolics else "(none)"
     try:
-        if camera.PixelFormat.IsWritable():
-            camera.PixelFormat.SetValue("Mono10")
+        if camera.PixelFormat.IsWritable() and symbolics:
+            chosen = choose_mono8_format(symbolics)
+            if chosen:
+                camera.PixelFormat.SetValue(chosen)
     except Exception:
         pass
     _record_setting(
