@@ -47,6 +47,7 @@ def configure_camera(
     auto_gain: bool = False,
     gain_db: float = DEFAULT_GAIN_DB,
 ) -> dict[str, float]:
+    applied_settings: dict[str, float | str] = {}
     max_width = camera.WidthMax.GetValue()
     max_height = camera.HeightMax.GetValue()
 
@@ -55,7 +56,9 @@ def configure_camera(
 
     try:
         camera.OffsetX.SetValue(0)
+        applied_settings["OffsetX"] = float(camera.OffsetX.GetValue())
         camera.OffsetY.SetValue(0)
+        applied_settings["OffsetY"] = float(camera.OffsetY.GetValue())
     except Exception:
         pass
 
@@ -65,6 +68,7 @@ def configure_camera(
     try:
         if camera.PixelFormat.IsWritable():
             camera.PixelFormat.SetValue("Mono8")
+            applied_settings["PixelFormat"] = str(camera.PixelFormat.GetValue())
     except Exception:
         pass
 
@@ -72,30 +76,39 @@ def configure_camera(
         try:
             if camera.AcquisitionFrameRateEnable.GetValue():
                 camera.AcquisitionFrameRate.SetValue(float(fps))
+                applied_settings["AcquisitionFrameRate"] = float(
+                    camera.AcquisitionFrameRate.GetValue()
+                )
         except Exception:
             pass
 
     if auto_exposure:
         try:
             camera.ExposureAuto.SetValue("Continuous")
+            applied_settings["ExposureAuto"] = str(camera.ExposureAuto.GetValue())
         except Exception:
             pass
     else:
         try:
             camera.ExposureAuto.SetValue("Off")
+            applied_settings["ExposureAuto"] = str(camera.ExposureAuto.GetValue())
             camera.ExposureTime.SetValue(float(exposure_us))
+            applied_settings["ExposureTime"] = float(camera.ExposureTime.GetValue())
         except Exception:
             pass
 
     if auto_gain:
         try:
             camera.GainAuto.SetValue("Continuous")
+            applied_settings["GainAuto"] = str(camera.GainAuto.GetValue())
         except Exception:
             pass
     else:
         try:
             camera.GainAuto.SetValue("Off")
+            applied_settings["GainAuto"] = str(camera.GainAuto.GetValue())
             camera.Gain.SetValue(float(gain_db))
+            applied_settings["Gain"] = float(camera.Gain.GetValue())
         except Exception:
             pass
 
@@ -109,7 +122,19 @@ def configure_camera(
         "width": float(actual_width),
         "height": float(actual_height),
         "fps": float(actual_fps),
+        "applied_count": float(len(applied_settings)),
+        "applied": applied_settings,
     }
+
+
+def print_applied_settings(settings: dict[str, float]) -> None:
+    print("Applied camera settings (successful writes/read-backs):")
+    applied = settings.get("applied", {})
+    if not isinstance(applied, dict) or not applied:
+        print("- None captured.")
+        return
+    for key in sorted(applied):
+        print(f"- {key}: {applied[key]}")
 
 
 def build_converter() -> pylon.ImageFormatConverter:
@@ -315,6 +340,11 @@ def build_arg_parser() -> ArgumentParser:
         default=None,
         help="Model input size (square, e.g., 640). If not set, uses max(img-width, img-height)",
     )
+    parser.add_argument(
+        "--debug-config-exit",
+        action="store_true",
+        help="Print successfully applied camera settings and exit before running inference",
+    )
     return parser
 
 
@@ -346,6 +376,10 @@ def main() -> None:
             f"Basler started: {int(settings['width'])}x{int(settings['height'])} "
             f"@ {settings['fps']:.2f} FPS"
         )
+        if args.debug_config_exit:
+            print_applied_settings(settings)
+            print("Exiting after camera configuration (--debug-config-exit).")
+            return
 
         converter = build_converter()
         model = YOLO(args.model_path)
