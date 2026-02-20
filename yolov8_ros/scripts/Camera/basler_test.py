@@ -14,7 +14,7 @@ DEFAULT_HEIGHT = 480
 DEFAULT_FPS = 0  # 0 => do not set, let camera run max
 DEFAULT_EXPOSURE_US = 5000.0
 DEFAULT_GAIN_DB = 5.0
-DEFAULT_MODEL_PATH = "/home/ultraviolet/CV_Detection/yolov8_ros/models/best_new.engine"
+DEFAULT_MODEL_PATH = "/home/ultraviolet/CV_Detection/yolov8_ros/models/best.engine"
 
 
 def _record_setting(
@@ -299,7 +299,14 @@ def build_arg_parser() -> ArgumentParser:
     parser.add_argument(
         "--show",
         action="store_true",
+        default=True,
         help="Display frames in a simple OpenCV window (press q or ESC to exit)",
+    )
+    parser.add_argument(
+        "--no-show",
+        action="store_false",
+        dest="show",
+        help="Disable display window",
     )
     parser.add_argument(
         "--model-path",
