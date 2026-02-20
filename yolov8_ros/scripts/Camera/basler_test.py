@@ -386,6 +386,12 @@ def build_arg_parser() -> ArgumentParser:
         help="Use full sensor; disable to force cam width/height settings",
     )
     parser.add_argument(
+        "--no-use-full-sensor",
+        action="store_false",
+        dest="use_full_sensor",
+        help="Use native camera width/height settings (e.g., 640x480)",
+    )
+    parser.add_argument(
         "--fps-window",
         type=int,
         default=10,
