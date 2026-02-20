@@ -35,6 +35,22 @@ def get_actual_fps(camera: pylon.InstantCamera) -> float:
     return 0.0
 
 
+def _record_setting(
+    applied: dict[str, float | str],
+    name: str,
+    getter: object,
+) -> None:
+    """Record a single camera setting; store '(unreadable)' on failure."""
+    try:
+        val = getter()
+        if isinstance(val, (int, float)):
+            applied[name] = float(val)
+        else:
+            applied[name] = str(val)
+    except Exception:
+        applied[name] = "(unreadable)"
+
+
 def configure_camera(
     camera: pylon.InstantCamera,
     *,
@@ -50,39 +66,40 @@ def configure_camera(
     applied_settings: dict[str, float | str] = {}
     max_width = camera.WidthMax.GetValue()
     max_height = camera.HeightMax.GetValue()
+    _record_setting(applied_settings, "WidthMax", lambda: camera.WidthMax.GetValue())
+    _record_setting(applied_settings, "HeightMax", lambda: camera.HeightMax.GetValue())
 
     target_width = max_width if use_full_sensor else min(width, max_width)
     target_height = max_height if use_full_sensor else min(height, max_height)
 
     try:
         camera.OffsetX.SetValue(0)
-        applied_settings["OffsetX"] = float(camera.OffsetX.GetValue())
+        _record_setting(applied_settings, "OffsetX", lambda: camera.OffsetX.GetValue())
         camera.OffsetY.SetValue(0)
-        applied_settings["OffsetY"] = float(camera.OffsetY.GetValue())
+        _record_setting(applied_settings, "OffsetY", lambda: camera.OffsetY.GetValue())
     except Exception:
         pass
 
     camera.Width.SetValue(target_width)
     camera.Height.SetValue(target_height)
-    try:
-        applied_settings["Width"] = float(camera.Width.GetValue())
-        applied_settings["Height"] = float(camera.Height.GetValue())
-    except Exception:
-        pass
+    _record_setting(applied_settings, "Width", lambda: camera.Width.GetValue())
+    _record_setting(applied_settings, "Height", lambda: camera.Height.GetValue())
 
     try:
         if camera.PixelFormat.IsWritable():
             camera.PixelFormat.SetValue("Mono8")
-        applied_settings["PixelFormat"] = str(camera.PixelFormat.GetValue())
     except Exception:
         pass
+    _record_setting(applied_settings, "PixelFormat", lambda: camera.PixelFormat.GetValue())
 
     if fps > 0:
         try:
             if camera.AcquisitionFrameRateEnable.GetValue():
                 camera.AcquisitionFrameRate.SetValue(float(fps))
-                applied_settings["AcquisitionFrameRate"] = float(
-                    camera.AcquisitionFrameRate.GetValue()
+                _record_setting(
+                    applied_settings,
+                    "AcquisitionFrameRate",
+                    lambda: camera.AcquisitionFrameRate.GetValue(),
                 )
         except Exception:
             pass
@@ -90,30 +107,30 @@ def configure_camera(
     if auto_exposure:
         try:
             camera.ExposureAuto.SetValue("Continuous")
-            applied_settings["ExposureAuto"] = str(camera.ExposureAuto.GetValue())
+            _record_setting(applied_settings, "ExposureAuto", lambda: camera.ExposureAuto.GetValue())
         except Exception:
             pass
     else:
         try:
             camera.ExposureAuto.SetValue("Off")
-            applied_settings["ExposureAuto"] = str(camera.ExposureAuto.GetValue())
+            _record_setting(applied_settings, "ExposureAuto", lambda: camera.ExposureAuto.GetValue())
             camera.ExposureTime.SetValue(float(exposure_us))
-            applied_settings["ExposureTime"] = float(camera.ExposureTime.GetValue())
+            _record_setting(applied_settings, "ExposureTime", lambda: camera.ExposureTime.GetValue())
         except Exception:
             pass
 
     if auto_gain:
         try:
             camera.GainAuto.SetValue("Continuous")
-            applied_settings["GainAuto"] = str(camera.GainAuto.GetValue())
+            _record_setting(applied_settings, "GainAuto", lambda: camera.GainAuto.GetValue())
         except Exception:
             pass
     else:
         try:
             camera.GainAuto.SetValue("Off")
-            applied_settings["GainAuto"] = str(camera.GainAuto.GetValue())
+            _record_setting(applied_settings, "GainAuto", lambda: camera.GainAuto.GetValue())
             camera.Gain.SetValue(float(gain_db))
-            applied_settings["Gain"] = float(camera.Gain.GetValue())
+            _record_setting(applied_settings, "Gain", lambda: camera.Gain.GetValue())
         except Exception:
             pass
 
@@ -122,6 +139,7 @@ def configure_camera(
     actual_width = camera.Width.GetValue()
     actual_height = camera.Height.GetValue()
     actual_fps = get_actual_fps(camera)
+    _record_setting(applied_settings, "ResultingFrameRate", lambda: get_actual_fps(camera))
 
     return {
         "width": float(actual_width),
