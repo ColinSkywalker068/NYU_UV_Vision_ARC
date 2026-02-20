@@ -108,7 +108,9 @@ def configure_camera(
     _record_setting(applied_settings, "Height", lambda: camera.Height.GetValue())
 
     symbolics = get_pixel_format_symbolics(camera)
-    applied_settings["PixelFormat_available"] = ", ".join(symbolics) if symbolics else "(none)"
+    applied_settings["PixelFormat_available"] = (
+        ", ".join(symbolics) if symbolics else "(none)"
+    )
     try:
         if camera.PixelFormat.IsWritable() and symbolics:
             chosen = choose_mono8_format(symbolics)
