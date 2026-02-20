@@ -303,7 +303,13 @@ def run_grab_test(
                         hasattr(first_result.obb, "xyxyxyxy")
                         and first_result.obb.xyxyxyxy is not None
                     ):
-                        obb_points = first_result.obb.xyxyxyxy.cpu().numpy()
+                        obb_points_raw = first_result.obb.xyxyxyxy
+                        if hasattr(obb_points_raw, "cpu"):
+                            obb_points = obb_points_raw.cpu().numpy()
+                        elif hasattr(obb_points_raw, "numpy"):
+                            obb_points = obb_points_raw.numpy()
+                        else:
+                            obb_points = np.asarray(obb_points_raw)
                         for polygon in obb_points:
                             xs = polygon[:, 0]
                             ys = polygon[:, 1]
