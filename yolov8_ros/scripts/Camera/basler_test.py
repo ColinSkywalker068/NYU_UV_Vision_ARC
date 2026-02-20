@@ -83,6 +83,49 @@ def _set_node_value_if_writable(node: object, value: object) -> bool:
         return False
 
 
+def _get_int_node_value(node: object, attr_name: str, default_value: int) -> int:
+    try:
+        attr = getattr(node, attr_name)
+        return int(attr() if callable(attr) else attr)
+    except Exception:
+        return int(default_value)
+
+
+def _clamp_to_node_range(node: object, requested_value: int) -> int:
+    minimum = _get_int_node_value(node, "GetMin", requested_value)
+    maximum = _get_int_node_value(node, "GetMax", requested_value)
+    return max(minimum, min(maximum, int(requested_value)))
+
+
+def _align_to_node_increment(node: object, requested_value: int) -> int:
+    clamped_value = _clamp_to_node_range(node, requested_value)
+    increment = _get_int_node_value(node, "GetInc", 1)
+    if increment <= 1:
+        return clamped_value
+    minimum = _get_int_node_value(node, "GetMin", 0)
+    aligned_value = minimum + ((clamped_value - minimum) // increment) * increment
+    return _clamp_to_node_range(node, aligned_value)
+
+
+def _set_downsample_factor(
+    camera: pylon.InstantCamera,
+    node_name: str,
+    factor: int,
+    applied_settings: dict[str, str | float] | None = None,
+) -> None:
+    if factor <= 1 or not hasattr(camera, node_name):
+        return
+    node = getattr(camera, node_name)
+    aligned_factor = _align_to_node_increment(node, factor)
+    if _set_node_value_if_writable(node, aligned_factor) and applied_settings is not None:
+        _record_setting(applied_settings, node_name, lambda: node.GetValue())
+
+
+def _compute_centered_offset(full_size: int, roi_size: int, node: object) -> int:
+    centered_offset = max(0, (int(full_size) - int(roi_size)) // 2)
+    return _align_to_node_increment(node, centered_offset)
+
+
 def get_actual_fps(camera: pylon.InstantCamera) -> float:
     try:
         if hasattr(camera, "ResultingFrameRate"):
@@ -112,19 +155,39 @@ def configure_camera(
     exposure_us: float = DEFAULT_EXPOSURE_US,
     auto_gain: bool = False,
     gain_db: float = DEFAULT_GAIN_DB,
+    centered_roi: bool = True,
+    binning: int = 1,
+    decimation: int = 1,
     applied_settings: dict[str, str | float] | None = None,
 ) -> dict[str, float]:
+    _set_downsample_factor(camera, "BinningHorizontal", binning, applied_settings)
+    _set_downsample_factor(camera, "BinningVertical", binning, applied_settings)
+    _set_downsample_factor(camera, "DecimationHorizontal", decimation, applied_settings)
+    _set_downsample_factor(camera, "DecimationVertical", decimation, applied_settings)
     max_width = camera.WidthMax.GetValue()
     max_height = camera.HeightMax.GetValue()
     target_width = max_width if use_full_sensor else min(width, max_width)
     target_height = max_height if use_full_sensor else min(height, max_height)
+    target_width = _align_to_node_increment(camera.Width, int(target_width))
+    target_height = _align_to_node_increment(camera.Height, int(target_height))
+    offset_x = 0
+    offset_y = 0
+    if not use_full_sensor and centered_roi:
+        offset_x = _compute_centered_offset(int(max_width), int(target_width), camera.OffsetX)
+        offset_y = _compute_centered_offset(
+            int(max_height), int(target_height), camera.OffsetY
+        )
     _set_node_value_if_writable(camera.OffsetX, 0)
     _set_node_value_if_writable(camera.OffsetY, 0)
     _set_node_value_if_writable(camera.Width, target_width)
     _set_node_value_if_writable(camera.Height, target_height)
+    _set_node_value_if_writable(camera.OffsetX, int(offset_x))
+    _set_node_value_if_writable(camera.OffsetY, int(offset_y))
     if applied_settings is not None:
         _record_setting(applied_settings, "Width", lambda: camera.Width.GetValue())
         _record_setting(applied_settings, "Height", lambda: camera.Height.GetValue())
+        _record_setting(applied_settings, "OffsetX", lambda: camera.OffsetX.GetValue())
+        _record_setting(applied_settings, "OffsetY", lambda: camera.OffsetY.GetValue())
     symbolics = get_pixel_format_symbolics(camera)
     if applied_settings is not None:
         applied_settings["PixelFormat_available"] = (
@@ -479,6 +542,30 @@ def build_arg_parser() -> ArgumentParser:
         help="Use native camera width/height settings (e.g., 640x480)",
     )
     parser.add_argument(
+        "--centered-roi",
+        action="store_true",
+        default=True,
+        help="Center ROI when not using full sensor (avoids top-left crop).",
+    )
+    parser.add_argument(
+        "--top-left-roi",
+        action="store_false",
+        dest="centered_roi",
+        help="Use legacy top-left ROI when not using full sensor.",
+    )
+    parser.add_argument(
+        "--binning",
+        type=int,
+        default=1,
+        help="Sensor binning factor (if supported), e.g., 2 for 2x2 binning.",
+    )
+    parser.add_argument(
+        "--decimation",
+        type=int,
+        default=1,
+        help="Sensor decimation factor (if supported), e.g., 2.",
+    )
+    parser.add_argument(
         "--fps-window",
         type=int,
         default=10,
@@ -527,6 +614,7 @@ def main() -> None:
 
     try:
         camera.Open()
+        applied_settings: dict[str, str | float] = {}
         settings = configure_camera(
             camera,
             width=args.img_width,
@@ -537,12 +625,18 @@ def main() -> None:
             exposure_us=args.exposure_us,
             auto_gain=False,
             gain_db=DEFAULT_GAIN_DB,
+            centered_roi=args.centered_roi,
+            binning=max(1, int(args.binning)),
+            decimation=max(1, int(args.decimation)),
+            applied_settings=applied_settings,
         )
 
         print(
             f"Basler started: {int(settings['width'])}x{int(settings['height'])} "
             f"@ {settings['fps']:.2f} FPS"
         )
+        if applied_settings:
+            print(f"Camera settings: {applied_settings}")
         converter = build_converter()
         model_task = (
             args.task
