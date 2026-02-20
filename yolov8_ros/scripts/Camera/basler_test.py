@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from argparse import ArgumentParser, Namespace
 from time import perf_counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 import numpy as np
 
 import cv2
@@ -15,6 +15,40 @@ DEFAULT_FPS = 0  # 0 => do not set, let camera run max
 DEFAULT_EXPOSURE_US = 5000.0
 DEFAULT_GAIN_DB = 5.0
 DEFAULT_MODEL_PATH = "/home/ultraviolet/CV_Detection/yolov8_ros/models/best_new.engine"
+
+
+def _record_setting(
+    applied_settings: dict[str, str | float],
+    name: str,
+    getter: Callable[[], str | int | float],
+) -> None:
+    try:
+        applied_settings[name] = getter()
+    except Exception:
+        applied_settings[name] = "(error)"
+
+
+def get_pixel_format_symbolics(camera: pylon.InstantCamera) -> list[str]:
+    try:
+        if not hasattr(camera, "PixelFormat"):
+            return []
+        node = camera.PixelFormat
+        if hasattr(node, "GetSymbolics"):
+            return list(node.GetSymbolics())
+        if hasattr(node, "Symbolics"):
+            return list(node.Symbolics)
+        return []
+    except Exception:
+        return []
+
+
+def choose_mono8_format(symbolics: list[str]) -> str | None:
+    if "Mono8" in symbolics:
+        return "Mono8"
+    for s in symbolics:
+        if "Mono" in s and "8" in s:
+            return s
+    return None
 
 
 def get_actual_fps(camera: pylon.InstantCamera) -> float:
@@ -46,6 +80,7 @@ def configure_camera(
     exposure_us: float = DEFAULT_EXPOSURE_US,
     auto_gain: bool = False,
     gain_db: float = DEFAULT_GAIN_DB,
+    applied_settings: dict[str, str | float] | None = None,
 ) -> dict[str, float]:
     max_width = camera.WidthMax.GetValue()
     max_height = camera.HeightMax.GetValue()
@@ -58,6 +93,25 @@ def configure_camera(
         pass
     camera.Width.SetValue(target_width)
     camera.Height.SetValue(target_height)
+    if applied_settings is not None:
+        _record_setting(applied_settings, "Width", lambda: camera.Width.GetValue())
+        _record_setting(applied_settings, "Height", lambda: camera.Height.GetValue())
+    symbolics = get_pixel_format_symbolics(camera)
+    if applied_settings is not None:
+        applied_settings["PixelFormat_available"] = (
+            ", ".join(symbolics) if symbolics else "(none)"
+        )
+    try:
+        if camera.PixelFormat.IsWritable() and symbolics:
+            chosen = choose_mono8_format(symbolics)
+            if chosen:
+                camera.PixelFormat.SetValue(chosen)
+    except Exception:
+        pass
+    if applied_settings is not None:
+        _record_setting(
+            applied_settings, "PixelFormat", lambda: camera.PixelFormat.GetValue()
+        )
     if fps > 0:
         try:
             if camera.AcquisitionFrameRateEnable.GetValue():
