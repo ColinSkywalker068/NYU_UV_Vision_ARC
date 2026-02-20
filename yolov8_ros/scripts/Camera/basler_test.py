@@ -87,7 +87,7 @@ def configure_camera(
 
     try:
         if camera.PixelFormat.IsWritable():
-            camera.PixelFormat.SetValue("Mono 8")
+            camera.PixelFormat.SetValue("Mono10")
     except Exception:
         pass
     _record_setting(
