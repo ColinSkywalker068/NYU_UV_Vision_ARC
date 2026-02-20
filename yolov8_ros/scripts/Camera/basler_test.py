@@ -8,6 +8,12 @@ import cv2
 from pypylon import pylon
 from ultralytics import YOLO
 
+try:
+    import torch
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
+
 DURATION_SECONDS = 5.0
 DEFAULT_WIDTH = 640
 DEFAULT_HEIGHT = 480
@@ -158,7 +164,7 @@ def build_converter() -> pylon.ImageFormatConverter:
     return converter
 
 
-def letterbox_frame(frame: cv2.Mat, target_w: int, target_h: int) -> cv2.Mat:
+def letterbox_frame(frame: np.ndarray, target_w: int, target_h: int) -> np.ndarray:
     src_h, src_w = frame.shape[:2]
     if src_h == target_h and src_w == target_w:
         return frame
@@ -186,6 +192,35 @@ def letterbox_frame(frame: cv2.Mat, target_w: int, target_h: int) -> cv2.Mat:
     )
 
 
+def letterbox_frame_gpu(frame: np.ndarray, target_w: int, target_h: int) -> np.ndarray:
+    """Letterbox resize+pad on GPU (PyTorch CUDA). Returns numpy HWC BGR for display/model."""
+    if not _TORCH_AVAILABLE or not torch.cuda.is_available():
+        return letterbox_frame(frame, target_w, target_h)
+    src_h, src_w = frame.shape[:2]
+    if src_h == target_h and src_w == target_w:
+        return frame
+    scale = min(target_w / src_w, target_h / src_h)
+    new_w = int(src_w * scale)
+    new_h = int(src_h * scale)
+    pad_w = target_w - new_w
+    pad_h = target_h - new_h
+    top = pad_h // 2
+    bottom = pad_h - top
+    left = pad_w // 2
+    right = pad_w - left
+    device = torch.device("cuda")
+    x = torch.from_numpy(frame).to(device, non_blocking=True)
+    x = x.permute(2, 0, 1).unsqueeze(0).float()
+    x = torch.nn.functional.interpolate(
+        x, size=(new_h, new_w), mode="bilinear", align_corners=False
+    )
+    x = torch.nn.functional.pad(
+        x, (left, right, top, bottom), mode="constant", value=114.0
+    )
+    x = x.squeeze(0).permute(1, 2, 0).byte()
+    return x.cpu().numpy()
+
+
 def draw_boxes(frame: cv2.Mat, boxes: Iterable[Iterable[float]]) -> None:
     for x1, y1, x2, y2 in boxes:
         cv2.rectangle(
@@ -209,6 +244,7 @@ def run_grab_test(
     target_h: int,
     fps_window: int,
     model_size: int | None = None,
+    use_gpu_letterbox: bool = False,
 ) -> None:
     window_name: str = "Basler Test" if show else ""
     start: float | None = None  # first good frame
@@ -226,8 +262,8 @@ def run_grab_test(
                 batch_start = start
             frames += 1
             frame = image.GetArray()
-            # Letterbox to target size (keeps aspect ratio, minimal runtime)
-            letterboxed = letterbox_frame(frame, target_w, target_h)
+            letterbox_fn = letterbox_frame_gpu if use_gpu_letterbox else letterbox_frame
+            letterboxed = letterbox_fn(frame, target_w, target_h)
             # Use model_size if specified (for quantized models with fixed input size),
             # otherwise use target dimensions
             if model_size is not None:
@@ -361,6 +397,22 @@ def build_arg_parser() -> ArgumentParser:
         default=None,
         help="Model input size (square, e.g., 640). If not set, uses max(img-width, img-height)",
     )
+    parser.add_argument(
+        "--exposure-us",
+        type=float,
+        default=DEFAULT_EXPOSURE_US,
+        help="Manual exposure in microseconds (used when auto-exposure is off). Increase if too dark (e.g. 20000).",
+    )
+    parser.add_argument(
+        "--auto-exposure",
+        action="store_true",
+        help="Enable continuous auto-exposure (brightness adapts to scene).",
+    )
+    parser.add_argument(
+        "--use-gpu-letterbox",
+        action="store_true",
+        help="Do letterbox resize+pad on GPU with PyTorch (requires CUDA). Can improve FPS.",
+    )
     return parser
 
 
@@ -382,8 +434,8 @@ def main() -> None:
             height=args.img_height,
             fps=DEFAULT_FPS,
             use_full_sensor=args.use_full_sensor,
-            auto_exposure=False,
-            exposure_us=DEFAULT_EXPOSURE_US,
+            auto_exposure=args.auto_exposure,
+            exposure_us=args.exposure_us,
             auto_gain=False,
             gain_db=DEFAULT_GAIN_DB,
         )
@@ -406,6 +458,7 @@ def main() -> None:
             args.img_height,
             max(1, args.fps_window),
             args.model_size,
+            args.use_gpu_letterbox,
         )
 
     finally:
