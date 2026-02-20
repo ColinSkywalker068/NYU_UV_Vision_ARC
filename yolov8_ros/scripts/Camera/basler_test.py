@@ -486,7 +486,11 @@ def main() -> None:
             f"@ {settings['fps']:.2f} FPS"
         )
         converter = build_converter()
-        model_task = args.task if args.task is not None else ("obb" if args.mode == "obb" else "detect")
+        model_task = (
+            args.task
+            if args.task is not None
+            else ("obb" if args.mode == "obb" else "detect")
+        )
         model = YOLO(args.model_path, task=model_task)
         print(f"Model task: {model_task}")
         run_grab_test(
