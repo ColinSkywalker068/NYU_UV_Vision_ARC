@@ -64,11 +64,16 @@ def configure_camera(
 
     camera.Width.SetValue(target_width)
     camera.Height.SetValue(target_height)
+    try:
+        applied_settings["Width"] = float(camera.Width.GetValue())
+        applied_settings["Height"] = float(camera.Height.GetValue())
+    except Exception:
+        pass
 
     try:
         if camera.PixelFormat.IsWritable():
             camera.PixelFormat.SetValue("Mono8")
-            applied_settings["PixelFormat"] = str(camera.PixelFormat.GetValue())
+        applied_settings["PixelFormat"] = str(camera.PixelFormat.GetValue())
     except Exception:
         pass
 
