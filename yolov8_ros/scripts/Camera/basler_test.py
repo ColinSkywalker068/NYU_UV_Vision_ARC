@@ -35,44 +35,6 @@ def get_actual_fps(camera: pylon.InstantCamera) -> float:
     return 0.0
 
 
-def _record_setting(
-    applied: dict[str, float | str],
-    name: str,
-    getter: object,
-) -> None:
-    """Record a single camera setting; store '(unreadable)' on failure."""
-    try:
-        val = getter()
-        if isinstance(val, (int, float)):
-            applied[name] = float(val)
-        else:
-            applied[name] = str(val)
-    except Exception:
-        applied[name] = "(unreadable)"
-
-
-def get_pixel_format_symbolics(camera: pylon.InstantCamera) -> list[str]:
-    """Return valid PixelFormat symbolic names from the camera (GenICam SDK)."""
-    try:
-        symbolics = camera.PixelFormat.Symbolics
-        if symbolics is not None:
-            return list(symbolics)
-    except Exception:
-        pass
-    return []
-
-
-def choose_mono8_format(symbolics: list[str]) -> str | None:
-    """Pick best Mono 8-bit format from camera's valid symbolics (no space, e.g. Mono8)."""
-    for name in ("Mono8", "Mono 8"):
-        if name in symbolics:
-            return name
-    for s in symbolics:
-        if "Mono" in s and "8" in s and "10" not in s and "12" not in s:
-            return s
-    return None
-
-
 def configure_camera(
     camera: pylon.InstantCamera,
     *,
@@ -85,119 +47,54 @@ def configure_camera(
     auto_gain: bool = False,
     gain_db: float = DEFAULT_GAIN_DB,
 ) -> dict[str, float]:
-    applied_settings: dict[str, float | str] = {}
     max_width = camera.WidthMax.GetValue()
     max_height = camera.HeightMax.GetValue()
-    _record_setting(applied_settings, "WidthMax", lambda: camera.WidthMax.GetValue())
-    _record_setting(applied_settings, "HeightMax", lambda: camera.HeightMax.GetValue())
-
     target_width = max_width if use_full_sensor else min(width, max_width)
     target_height = max_height if use_full_sensor else min(height, max_height)
-
     try:
         camera.OffsetX.SetValue(0)
-        _record_setting(applied_settings, "OffsetX", lambda: camera.OffsetX.GetValue())
         camera.OffsetY.SetValue(0)
-        _record_setting(applied_settings, "OffsetY", lambda: camera.OffsetY.GetValue())
     except Exception:
         pass
-
     camera.Width.SetValue(target_width)
     camera.Height.SetValue(target_height)
-    _record_setting(applied_settings, "Width", lambda: camera.Width.GetValue())
-    _record_setting(applied_settings, "Height", lambda: camera.Height.GetValue())
-
-    symbolics = get_pixel_format_symbolics(camera)
-    applied_settings["PixelFormat_available"] = ", ".join(symbolics) if symbolics else "(none)"
-    try:
-        if camera.PixelFormat.IsWritable() and symbolics:
-            chosen = choose_mono8_format(symbolics)
-            if chosen:
-                camera.PixelFormat.SetValue(chosen)
-    except Exception:
-        pass
-    _record_setting(
-        applied_settings, "PixelFormat", lambda: camera.PixelFormat.GetValue()
-    )
-
     if fps > 0:
         try:
             if camera.AcquisitionFrameRateEnable.GetValue():
                 camera.AcquisitionFrameRate.SetValue(float(fps))
-                _record_setting(
-                    applied_settings,
-                    "AcquisitionFrameRate",
-                    lambda: camera.AcquisitionFrameRate.GetValue(),
-                )
         except Exception:
             pass
-
     if auto_exposure:
         try:
             camera.ExposureAuto.SetValue("Continuous")
-            _record_setting(
-                applied_settings, "ExposureAuto", lambda: camera.ExposureAuto.GetValue()
-            )
         except Exception:
             pass
     else:
         try:
             camera.ExposureAuto.SetValue("Off")
-            _record_setting(
-                applied_settings, "ExposureAuto", lambda: camera.ExposureAuto.GetValue()
-            )
             camera.ExposureTime.SetValue(float(exposure_us))
-            _record_setting(
-                applied_settings, "ExposureTime", lambda: camera.ExposureTime.GetValue()
-            )
         except Exception:
             pass
-
     if auto_gain:
         try:
             camera.GainAuto.SetValue("Continuous")
-            _record_setting(
-                applied_settings, "GainAuto", lambda: camera.GainAuto.GetValue()
-            )
         except Exception:
             pass
     else:
         try:
             camera.GainAuto.SetValue("Off")
-            _record_setting(
-                applied_settings, "GainAuto", lambda: camera.GainAuto.GetValue()
-            )
             camera.Gain.SetValue(float(gain_db))
-            _record_setting(applied_settings, "Gain", lambda: camera.Gain.GetValue())
         except Exception:
             pass
-
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
-
     actual_width = camera.Width.GetValue()
     actual_height = camera.Height.GetValue()
     actual_fps = get_actual_fps(camera)
-    _record_setting(
-        applied_settings, "ResultingFrameRate", lambda: get_actual_fps(camera)
-    )
-
     return {
         "width": float(actual_width),
         "height": float(actual_height),
         "fps": float(actual_fps),
-        "applied_count": float(len(applied_settings)),
-        "applied": applied_settings,
     }
-
-
-def print_applied_settings(settings: dict[str, float]) -> None:
-    print("Applied camera settings (successful writes/read-backs):")
-    applied = settings.get("applied", {})
-    if not isinstance(applied, dict) or not applied:
-        print("- None captured.")
-        return
-    for key in sorted(applied):
-        print(f"- {key}: {applied[key]}")
 
 
 def build_converter() -> pylon.ImageFormatConverter:
@@ -403,11 +300,6 @@ def build_arg_parser() -> ArgumentParser:
         default=None,
         help="Model input size (square, e.g., 640). If not set, uses max(img-width, img-height)",
     )
-    parser.add_argument(
-        "--debug-config-exit",
-        action="store_true",
-        help="Print successfully applied camera settings and exit before running inference",
-    )
     return parser
 
 
@@ -439,11 +331,6 @@ def main() -> None:
             f"Basler started: {int(settings['width'])}x{int(settings['height'])} "
             f"@ {settings['fps']:.2f} FPS"
         )
-        if args.debug_config_exit:
-            print_applied_settings(settings)
-            print("Exiting after camera configuration (--debug-config-exit).")
-            return
-
         converter = build_converter()
         model = YOLO(args.model_path)
         run_grab_test(
