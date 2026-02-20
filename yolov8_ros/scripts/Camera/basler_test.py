@@ -247,13 +247,18 @@ def run_grab_test(
     model_size: int | None = None,
     use_gpu_letterbox: bool = False,
 ) -> None:
-    window_name: str = "Basler Test" if show else ""
+    window_name: str = "Basler Test"
     print(
         f"run_grab_test started: show={show}, mode={mode}, "
         f"use_gpu_letterbox={use_gpu_letterbox}, target={target_w}x{target_h}"
     )
     if show:
-        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        try:
+            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+            print("OpenCV window created")
+        except Exception as window_error:
+            print(f"OpenCV window creation failed: {window_error}")
+            show = False
     start: float | None = None  # first good frame
     batch_start: float | None = None  # batch timing start
     end: float | None = None
@@ -274,8 +279,13 @@ def run_grab_test(
             if show:
                 # Show a live preview before inference so UI still appears
                 # even if model inference blocks or fails.
-                cv2.imshow(window_name, letterboxed)
-                key_preview: int = cv2.waitKey(1) & 0xFF
+                try:
+                    cv2.imshow(window_name, letterboxed)
+                    key_preview: int = cv2.waitKey(1) & 0xFF
+                except Exception as display_error:
+                    print(f"OpenCV display failed: {display_error}")
+                    show = False
+                    key_preview = 0
                 if key_preview in (ord("q"), ord("z"), 27):
                     stop_requested = True
                     if grab:
@@ -365,8 +375,13 @@ def run_grab_test(
                         2,
                         cv2.LINE_AA,
                     )
-                cv2.imshow(window_name, letterboxed)
-                key: int = cv2.waitKey(1) & 0xFF
+                try:
+                    cv2.imshow(window_name, letterboxed)
+                    key: int = cv2.waitKey(1) & 0xFF
+                except Exception as display_error:
+                    print(f"OpenCV display failed: {display_error}")
+                    show = False
+                    key = 0
                 if key in (ord("q"), ord("z"), 27):
                     stop_requested = True
         if grab:
