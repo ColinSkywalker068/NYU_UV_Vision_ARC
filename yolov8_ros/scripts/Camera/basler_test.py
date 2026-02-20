@@ -74,6 +74,8 @@ def choose_preferred_color_format(symbolics: list[str]) -> str | None:
 
 
 def _set_node_value_if_writable(node: object, value: object) -> bool:
+    if node is None:
+        return False
     try:
         if hasattr(node, "IsWritable") and not node.IsWritable():
             return False
@@ -113,9 +115,12 @@ def _set_downsample_factor(
     factor: int,
     applied_settings: dict[str, str | float] | None = None,
 ) -> None:
-    if factor <= 1 or not hasattr(camera, node_name):
+    if factor <= 1:
         return
-    node = getattr(camera, node_name)
+    try:
+        node = getattr(camera, node_name)
+    except Exception:
+        return
     aligned_factor = _align_to_node_increment(node, factor)
     if _set_node_value_if_writable(node, aligned_factor) and applied_settings is not None:
         _record_setting(applied_settings, node_name, lambda: node.GetValue())
