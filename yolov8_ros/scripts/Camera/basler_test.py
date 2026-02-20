@@ -289,15 +289,32 @@ def run_grab_test(
             boxes = []
             if results:
                 first_result = results[0]
-                if mode == "obb" and hasattr(first_result, "obb") and first_result.obb is not None:
-                    if hasattr(first_result.obb, "xyxy") and first_result.obb.xyxy is not None:
+                if (
+                    mode == "obb"
+                    and hasattr(first_result, "obb")
+                    and first_result.obb is not None
+                ):
+                    if (
+                        hasattr(first_result.obb, "xyxy")
+                        and first_result.obb.xyxy is not None
+                    ):
                         boxes = first_result.obb.xyxy.tolist()
-                    elif hasattr(first_result.obb, "xyxyxyxy") and first_result.obb.xyxyxyxy is not None:
+                    elif (
+                        hasattr(first_result.obb, "xyxyxyxy")
+                        and first_result.obb.xyxyxyxy is not None
+                    ):
                         obb_points = first_result.obb.xyxyxyxy.cpu().numpy()
                         for polygon in obb_points:
                             xs = polygon[:, 0]
                             ys = polygon[:, 1]
-                            boxes.append([float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max())])
+                            boxes.append(
+                                [
+                                    float(xs.min()),
+                                    float(ys.min()),
+                                    float(xs.max()),
+                                    float(ys.max()),
+                                ]
+                            )
                 elif first_result.boxes is not None:
                     boxes = first_result.boxes.xyxy.tolist()
 
