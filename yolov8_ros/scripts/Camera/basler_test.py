@@ -12,7 +12,7 @@ DURATION_SECONDS = 5.0
 DEFAULT_WIDTH = 640
 DEFAULT_HEIGHT = 480
 DEFAULT_FPS = 0  # 0 => do not set, let camera run max
-DEFAULT_EXPOSURE_US = 5000.0
+DEFAULT_EXPOSURE_US = 20000.0  # 20 ms fallback when auto-exposure off
 DEFAULT_GAIN_DB = 5.0
 DEFAULT_MODEL_PATH = "/home/ultraviolet/CV_Detection/yolov8_ros/models/best.engine"
 
@@ -382,7 +382,7 @@ def main() -> None:
             height=args.img_height,
             fps=DEFAULT_FPS,
             use_full_sensor=args.use_full_sensor,
-            auto_exposure=False,
+            auto_exposure=True,
             exposure_us=DEFAULT_EXPOSURE_US,
             auto_gain=False,
             gain_db=DEFAULT_GAIN_DB,
