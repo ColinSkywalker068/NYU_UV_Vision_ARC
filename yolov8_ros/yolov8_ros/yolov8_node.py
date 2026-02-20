@@ -170,7 +170,9 @@ class YOLOv8Node(Node):
             self.get_logger().info(
                 f"{self.camera_type.capitalize()} Camera Initialized."
             )
-            if self.camera_type == "basler" and hasattr(self.camera, "get_applied_settings"):
+            if self.camera_type == "basler" and hasattr(
+                self.camera, "get_applied_settings"
+            ):
                 applied_settings = self.camera.get_applied_settings()
                 self.get_logger().info(f"Basler settings: {applied_settings}")
         except Exception as e:
