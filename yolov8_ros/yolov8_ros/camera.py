@@ -159,7 +159,9 @@ class BaslerCamera:
         )
         max_width = camera.WidthMax.GetValue()
         max_height = camera.HeightMax.GetValue()
-        target_width = max_width if self.use_full_sensor else min(self.target_width, max_width)
+        target_width = (
+            max_width if self.use_full_sensor else min(self.target_width, max_width)
+        )
         target_height = (
             max_height if self.use_full_sensor else min(self.target_height, max_height)
         )
@@ -181,9 +183,15 @@ class BaslerCamera:
         _set_node_value_if_writable(camera.OffsetX, int(offset_x))
         _set_node_value_if_writable(camera.OffsetY, int(offset_y))
         _record_setting(self.applied_settings, "Width", lambda: camera.Width.GetValue())
-        _record_setting(self.applied_settings, "Height", lambda: camera.Height.GetValue())
-        _record_setting(self.applied_settings, "OffsetX", lambda: camera.OffsetX.GetValue())
-        _record_setting(self.applied_settings, "OffsetY", lambda: camera.OffsetY.GetValue())
+        _record_setting(
+            self.applied_settings, "Height", lambda: camera.Height.GetValue()
+        )
+        _record_setting(
+            self.applied_settings, "OffsetX", lambda: camera.OffsetX.GetValue()
+        )
+        _record_setting(
+            self.applied_settings, "OffsetY", lambda: camera.OffsetY.GetValue()
+        )
         symbolics = _get_pixel_format_symbolics(camera)
         self.applied_settings["PixelFormat_available"] = (
             ", ".join(symbolics) if symbolics else "(none)"
