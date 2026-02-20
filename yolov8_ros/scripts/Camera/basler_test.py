@@ -135,6 +135,7 @@ def configure_camera(
         # the image appear dark/flat even with higher exposure.
         chosen = choose_preferred_color_format(symbolics)
         if chosen is None:
+            print("No color-capable format found, falling back to mono8")
             chosen = choose_mono8_format(symbolics)
         if chosen is not None:
             _set_node_value_if_writable(camera.PixelFormat, chosen)
@@ -238,8 +239,9 @@ def letterbox_frame_gpu(frame: np.ndarray, target_w: int, target_h: int) -> np.n
         x = torch.nn.functional.pad(
             x, (left, right, top, bottom), mode="constant", value=114.0
         )
-        x = x.squeeze(0).permute(1, 2, 0).byte()
-        return x.cpu().numpy()
+        x = x.squeeze(0).permute(1, 2, 0).contiguous().byte()
+        result = x.cpu().numpy()
+        return np.ascontiguousarray(result, dtype=np.uint8)
     except Exception:
         return letterbox_frame(frame, target_w, target_h)
 
@@ -292,6 +294,8 @@ def run_grab_test(
             frame = image.GetArray()
             letterbox_fn = letterbox_frame_gpu if use_gpu_letterbox else letterbox_frame
             letterboxed = letterbox_fn(frame, target_w, target_h)
+            # OpenCV expects C-contiguous uint8 layout (cv::Mat-compatible).
+            letterboxed = np.ascontiguousarray(letterboxed, dtype=np.uint8)
             if show:
                 # Show a live preview before inference so UI still appears
                 # even if model inference blocks or fails.
