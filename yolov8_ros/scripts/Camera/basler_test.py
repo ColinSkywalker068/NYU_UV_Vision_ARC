@@ -248,6 +248,12 @@ def run_grab_test(
     use_gpu_letterbox: bool = False,
 ) -> None:
     window_name: str = "Basler Test" if show else ""
+    print(
+        f"run_grab_test started: show={show}, mode={mode}, "
+        f"use_gpu_letterbox={use_gpu_letterbox}, target={target_w}x{target_h}"
+    )
+    if show:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     start: float | None = None  # first good frame
     batch_start: float | None = None  # batch timing start
     end: float | None = None
@@ -265,27 +271,41 @@ def run_grab_test(
             frame = image.GetArray()
             letterbox_fn = letterbox_frame_gpu if use_gpu_letterbox else letterbox_frame
             letterboxed = letterbox_fn(frame, target_w, target_h)
+            if show:
+                # Show a live preview before inference so UI still appears
+                # even if model inference blocks or fails.
+                cv2.imshow(window_name, letterboxed)
+                key_preview: int = cv2.waitKey(1) & 0xFF
+                if key_preview in (ord("q"), ord("z"), 27):
+                    stop_requested = True
+                    if grab:
+                        grab.Release()
+                    continue
             # Use model_size if specified (for quantized models with fixed input size),
             # otherwise use target dimensions
             if model_size is not None:
                 imgsz_val = model_size
             else:
                 imgsz_val = max(target_h, target_w)
-            if mode == "track":
-                results = model.track(
-                    letterboxed,
-                    imgsz=imgsz_val,
-                    conf=conf,
-                    verbose=False,
-                    persist=True,
-                )
-            else:
-                results = model(
-                    letterboxed,
-                    imgsz=imgsz_val,
-                    conf=conf,
-                    verbose=False,
-                )
+            try:
+                if mode == "track":
+                    results = model.track(
+                        letterboxed,
+                        imgsz=imgsz_val,
+                        conf=conf,
+                        verbose=False,
+                        persist=True,
+                    )
+                else:
+                    results = model(
+                        letterboxed,
+                        imgsz=imgsz_val,
+                        conf=conf,
+                        verbose=False,
+                    )
+            except Exception as inference_error:
+                print(f"Inference error: {inference_error}")
+                results = []
             boxes = []
             if results:
                 first_result = results[0]
