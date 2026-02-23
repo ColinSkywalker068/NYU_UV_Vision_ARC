@@ -3,10 +3,32 @@
 
 # Get the absolute path of this script
 ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+REPO_ROOT="$(cd "$ROOT/.." >/dev/null 2>&1 && pwd)"
+IMAGE_NAME="$1"
+
+should_run_power_script() {
+	local image_name="$1"
+	[[ "$image_name" == *"realsense"* ]]
+}
+
+run_power_script_if_needed() {
+	local image_name="$1"
+	if ! should_run_power_script "$image_name"; then
+		return
+	fi
+	local power_script="$REPO_ROOT/power.sh"
+	if [ ! -f "$power_script" ]; then
+		echo "power.sh not found at $power_script, skipping power setup"
+		return
+	fi
+	echo "Running power.sh before starting CV RealSense container..."
+	bash "$power_script"
+}
 
 # Jetson
 grep -aq "NVIDIA" /proc/device-tree/model 2>/dev/null
 if [ $? -eq 0 ]; then
+	run_power_script_if_needed "$IMAGE_NAME"
 	# Check for V4L2 camera devices
 	V4L2_DEVICES=""
 	for i in {0..9}
