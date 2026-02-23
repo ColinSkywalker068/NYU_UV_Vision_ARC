@@ -15,6 +15,10 @@ setup(
             os.path.join("share", package_name, "launch"),
             glob(os.path.join("launch", "*.[pxy][yma]*")),
         ),
+        (
+            os.path.join("share", package_name, "models"),
+            [f for f in glob(os.path.join("models", "*")) if os.path.isfile(f)],
+        ),
     ],
     install_requires=["setuptools", "pyserial"],
     zip_safe=True,
@@ -26,6 +30,7 @@ setup(
     entry_points={
         "console_scripts": [
             "yolov8_modular_node = yolov8_ros.yolov8_node:main",
+            "stm32_serial_bridge = yolov8_ros.stm32_serial_bridge:main",
             # "frame_grabber = yolov8_ros.frame_grabber:main",
             # "yolov8_noRos = yolov8_ros.yolov8_noRos:main",
             # "yolov8_old = yolov8_ros.yolov8_old:main",

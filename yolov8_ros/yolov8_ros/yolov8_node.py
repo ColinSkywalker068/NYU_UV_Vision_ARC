@@ -2,6 +2,7 @@ import rclpy
 import sys
 import argparse
 from pathlib import Path
+from ament_index_python.packages import get_package_share_directory
 from rclpy.parameter import Parameter
 from rclpy.node import Node
 from std_msgs.msg import Int32, Int32MultiArray, Bool, Float32MultiArray
@@ -46,9 +47,8 @@ class YOLOv8Node(Node):
     def __init__(self, parameter_overrides=None):
         super().__init__("yolov8_modular_node", parameter_overrides=parameter_overrides)
         self.get_logger().info("Initializing Modular YOLOv8 Node...")
-        default_model_path = (
-            Path(__file__).resolve().parents[1] / "models" / "best_new.engine"
-        )
+        package_share_dir = Path(get_package_share_directory("yolov8_ros"))
+        default_model_path = package_share_dir / "models" / "best.engine"
 
         # --- Parameters ---
         self.declare_parameter("camera_type", "basler")
@@ -68,6 +68,11 @@ class YOLOv8Node(Node):
         self.declare_parameter("basler_gain_db", 5.0)
         self.declare_parameter("basler_fps", 0)  # 0 for max
         self.declare_parameter("basler_use_full_sensor", True)
+        self.declare_parameter("basler_centered_roi", True)
+        self.declare_parameter("basler_binning", 1)
+        self.declare_parameter("basler_decimation", 1)
+        self.declare_parameter("basler_auto_exposure", False)
+        self.declare_parameter("basler_auto_gain", False)
 
         # Realsense specific
         self.declare_parameter("realsense_width", 640)
@@ -80,6 +85,7 @@ class YOLOv8Node(Node):
         self.declare_parameter("enable_tracking", True)
         self.declare_parameter("persist_tracking", True)
         self.declare_parameter("use_kalman", False)
+        self.declare_parameter("enable_color_verification", False)
 
         # Angle calc
         self.declare_parameter(
@@ -104,6 +110,11 @@ class YOLOv8Node(Node):
         self.basler_gain = self.get_parameter("basler_gain_db").value
         self.basler_fps = self.get_parameter("basler_fps").value
         self.basler_use_full_sensor = self.get_parameter("basler_use_full_sensor").value
+        self.basler_centered_roi = self.get_parameter("basler_centered_roi").value
+        self.basler_binning = self.get_parameter("basler_binning").value
+        self.basler_decimation = self.get_parameter("basler_decimation").value
+        self.basler_auto_exposure = self.get_parameter("basler_auto_exposure").value
+        self.basler_auto_gain = self.get_parameter("basler_auto_gain").value
 
         self.realsense_width = self.get_parameter("realsense_width").value
         self.realsense_height = self.get_parameter("realsense_height").value
@@ -114,6 +125,9 @@ class YOLOv8Node(Node):
         self.enable_tracking = self.get_parameter("enable_tracking").value
         self.persist_tracking = self.get_parameter("persist_tracking").value
         self.use_kalman = self.get_parameter("use_kalman").value
+        self.enable_color_verification = self.get_parameter(
+            "enable_color_verification"
+        ).value
 
         self.hfov_rad = math.radians(self.get_parameter("hfov_degrees").value)
         self.vfov_rad = math.radians(self.get_parameter("vfov_degrees").value)
@@ -132,9 +146,14 @@ class YOLOv8Node(Node):
                     width=self.imgsz_width,
                     height=self.imgsz_height,
                     fps=self.basler_fps,
-                    use_full_sensor=self.basler_use_full_sensor,
                     exposure_us=self.basler_exposure,
                     gain_db=self.basler_gain,
+                    use_full_sensor=bool(self.basler_use_full_sensor),
+                    centered_roi=bool(self.basler_centered_roi),
+                    binning=max(1, int(self.basler_binning)),
+                    decimation=max(1, int(self.basler_decimation)),
+                    auto_exposure=bool(self.basler_auto_exposure),
+                    auto_gain=bool(self.basler_auto_gain),
                 )
             elif self.camera_type == "realsense":
                 self.camera = RealSenseCamera(
@@ -151,6 +170,11 @@ class YOLOv8Node(Node):
             self.get_logger().info(
                 f"{self.camera_type.capitalize()} Camera Initialized."
             )
+            if self.camera_type == "basler" and hasattr(
+                self.camera, "get_applied_settings"
+            ):
+                applied_settings = self.camera.get_applied_settings()
+                self.get_logger().info(f"Basler settings: {applied_settings}")
         except Exception as e:
             self.get_logger().error(f"Failed to init camera: {e}")
             raise e
@@ -304,7 +328,9 @@ class YOLOv8Node(Node):
                             max(0, y1) : min(y2, self.imgsz_height),
                             max(0, x1) : min(x2, self.imgsz_width),
                         ]
-                        is_enemy, _ = check_enemy(roi, self.target_class)
+                        is_enemy = True
+                        if self.enable_color_verification:
+                            is_enemy, _ = check_enemy(roi, self.target_class)
 
                         if is_enemy:
                             if self.use_kalman:
