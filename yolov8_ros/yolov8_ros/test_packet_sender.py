@@ -169,7 +169,9 @@ def drain_attitude_frames(
         if data_length < SEASKY_MIN_DATA_LENGTH or data_length > SEASKY_MAX_DATA_LENGTH:
             del rx_buffer[0]
             continue
-        full_frame_size: int = SEASKY_HEADER_SIZE_BYTES + data_length + SEASKY_TAIL_SIZE_BYTES
+        full_frame_size: int = (
+            SEASKY_HEADER_SIZE_BYTES + data_length + SEASKY_TAIL_SIZE_BYTES
+        )
         if len(rx_buffer) < full_frame_size:
             break
         frame: bytes = bytes(rx_buffer[:full_frame_size])
