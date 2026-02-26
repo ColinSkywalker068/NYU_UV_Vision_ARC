@@ -51,7 +51,7 @@ except ModuleNotFoundError:
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-DEFAULT_PORT: str = "/dev/ttyUSB0"
+DEFAULT_PORT: str = "/dev/ttyACM0"
 DEFAULT_BAUDRATE: int = 115200
 DEFAULT_RATE_HZ: float = 20.0
 DEFAULT_MESSAGE_COUNT: int = 0
