@@ -74,6 +74,7 @@ def generate_launch_description() -> LaunchDescription:
         executable="yolov8_modular_node",
         name="yolov8_modular_node",
         output="screen",
+        parameters=[{"show": True}],
     )
 
     stm_bridge_node = Node(
