@@ -1,4 +1,3 @@
-
 import rclpy
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -16,16 +15,17 @@ except (ImportError, ValueError):
     from camera import BaslerCamera
     from realsense import RealSenseCamera
 
+
 class CameraNode(Node):
     def __init__(self):
-        super().__init__('camera_node')
+        super().__init__("camera_node")
         self.get_logger().info("Initializing Camera Node...")
 
         # --- Parameters ---
         self.declare_parameter("camera_type", "basler")
         self.declare_parameter("imgsz_width", 640)
         self.declare_parameter("imgsz_height", 640)
-        
+
         # Basler specific
         self.declare_parameter("basler_exposure_us", 5000.0)
         self.declare_parameter("basler_gain_db", 5.0)
@@ -43,7 +43,7 @@ class CameraNode(Node):
         self.declare_parameter("realsense_fps", 60)
         self.declare_parameter("realsense_exposure", 120.0)
         self.declare_parameter("realsense_gain", 64.0)
-        
+
         # Retrieve params
         self.camera_type = self.get_parameter("camera_type").value
         self.imgsz_width = self.get_parameter("imgsz_width").value
@@ -55,11 +55,17 @@ class CameraNode(Node):
                 self.basler_exposure = self.get_parameter("basler_exposure_us").value
                 self.basler_gain = self.get_parameter("basler_gain_db").value
                 self.basler_fps = self.get_parameter("basler_fps").value
-                self.basler_use_full_sensor = self.get_parameter("basler_use_full_sensor").value
-                self.basler_centered_roi = self.get_parameter("basler_centered_roi").value
+                self.basler_use_full_sensor = self.get_parameter(
+                    "basler_use_full_sensor"
+                ).value
+                self.basler_centered_roi = self.get_parameter(
+                    "basler_centered_roi"
+                ).value
                 self.basler_binning = self.get_parameter("basler_binning").value
                 self.basler_decimation = self.get_parameter("basler_decimation").value
-                self.basler_auto_exposure = self.get_parameter("basler_auto_exposure").value
+                self.basler_auto_exposure = self.get_parameter(
+                    "basler_auto_exposure"
+                ).value
                 self.basler_auto_gain = self.get_parameter("basler_auto_gain").value
 
                 self.camera = BaslerCamera(
@@ -82,7 +88,7 @@ class CameraNode(Node):
                 self.realsense_fps = self.get_parameter("realsense_fps").value
                 self.realsense_exposure = self.get_parameter("realsense_exposure").value
                 self.realsense_gain = self.get_parameter("realsense_gain").value
-                
+
                 self.camera = RealSenseCamera(
                     width=self.realsense_width,
                     height=self.realsense_height,
@@ -95,7 +101,9 @@ class CameraNode(Node):
                 raise ValueError(f"Unknown camera type: {self.camera_type}")
 
             self.camera.initialize()
-            self.get_logger().info(f"{self.camera_type.capitalize()} Camera Initialized.")
+            self.get_logger().info(
+                f"{self.camera_type.capitalize()} Camera Initialized."
+            )
 
         except Exception as e:
             self.get_logger().error(f"Failed to init camera: {e}")
@@ -103,7 +111,7 @@ class CameraNode(Node):
             raise e
 
         # --- Publisher ---
-        self.image_publisher = self.create_publisher(Image, 'image_raw', 10)
+        self.image_publisher = self.create_publisher(Image, "image_raw", 10)
         self.bridge = CvBridge()
 
         # --- Timer ---
@@ -126,12 +134,13 @@ class CameraNode(Node):
         except Exception as e:
             self.get_logger().error(f"Error in camera timer callback: {e}")
             self.get_logger().error(traceback.format_exc())
-    
+
     def destroy_node(self):
         self.get_logger().info("Shutting down camera node.")
-        if hasattr(self, 'camera') and self.camera:
+        if hasattr(self, "camera") and self.camera:
             self.camera.release()
         super().destroy_node()
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -145,5 +154,6 @@ def main(args=None):
         if rclpy.ok():
             rclpy.shutdown()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

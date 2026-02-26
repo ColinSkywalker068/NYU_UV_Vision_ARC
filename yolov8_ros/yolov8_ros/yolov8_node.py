@@ -109,7 +109,7 @@ class YOLOv8Node(Node):
 
         # --- Publishers/Subscribers ---
         self.image_subscription = self.create_subscription(
-            Image, 'image_raw', self.image_callback, 10
+            Image, "image_raw", self.image_callback, 10
         )
         self.int_subscription = self.create_subscription(
             Int32, "robot_id", self.id_listener_callback, 10
@@ -122,7 +122,6 @@ class YOLOv8Node(Node):
 
         self.bbox_msg = Int32MultiArray()
         self.override_msg = Bool()
-
 
     def id_listener_callback(self, msg: Int32):
         robot_id = msg.data
@@ -354,7 +353,7 @@ def main(args=None):
     parser.add_argument(
         "--show", type=str, default=None, help="Enable visualization (True/False)"
     )
-    
+
     source_args = args if args is not None else sys.argv[1:]
     parsed_args, remaining_args = parser.parse_known_args(source_args)
 
