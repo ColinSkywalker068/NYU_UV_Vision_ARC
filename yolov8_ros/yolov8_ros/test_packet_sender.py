@@ -1,6 +1,7 @@
 import argparse
 import logging
 import random
+import struct
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -14,6 +15,17 @@ try:
         TARGET_STATE_NO_TARGET,
         build_seasky_frame,
         build_vision_flags,
+        parse_attitude_flags,
+        SEASKY_SOF,
+        SEASKY_HEADER_SIZE_BYTES,
+        SEASKY_TAIL_SIZE_BYTES,
+        SEASKY_MIN_DATA_LENGTH,
+        SEASKY_MAX_DATA_LENGTH,
+        SEASKY_COMMAND_ATTITUDE_SEND,
+        SEASKY_ATTITUDE_FLOAT_COUNT,
+        SEASKY_FLOAT_SIZE_BYTES,
+        compute_crc8,
+        compute_crc16,
     )
 except ModuleNotFoundError:
     from stm32_serial_bridge import (  # type: ignore
@@ -22,6 +34,17 @@ except ModuleNotFoundError:
         TARGET_STATE_NO_TARGET,
         build_seasky_frame,
         build_vision_flags,
+        parse_attitude_flags,
+        SEASKY_SOF,
+        SEASKY_HEADER_SIZE_BYTES,
+        SEASKY_TAIL_SIZE_BYTES,
+        SEASKY_MIN_DATA_LENGTH,
+        SEASKY_MAX_DATA_LENGTH,
+        SEASKY_COMMAND_ATTITUDE_SEND,
+        SEASKY_ATTITUDE_FLOAT_COUNT,
+        SEASKY_FLOAT_SIZE_BYTES,
+        compute_crc8,
+        compute_crc16,
     )
 
 
@@ -126,6 +149,61 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def drain_attitude_frames(
+    rx_buffer: bytearray, verbose: bool, rx_count: list[int]
+) -> None:
+    while True:
+        start_index: int = rx_buffer.find(bytes([SEASKY_SOF]))
+        if start_index < 0:
+            rx_buffer.clear()
+            break
+        if start_index > 0:
+            del rx_buffer[:start_index]
+        if len(rx_buffer) < SEASKY_HEADER_SIZE_BYTES:
+            break
+        header: bytes = bytes(rx_buffer[:SEASKY_HEADER_SIZE_BYTES])
+        if compute_crc8(header[:3]) != header[3]:
+            del rx_buffer[0]
+            continue
+        data_length: int = int(header[1]) | (int(header[2]) << 8)
+        if data_length < SEASKY_MIN_DATA_LENGTH or data_length > SEASKY_MAX_DATA_LENGTH:
+            del rx_buffer[0]
+            continue
+        full_frame_size: int = SEASKY_HEADER_SIZE_BYTES + data_length + SEASKY_TAIL_SIZE_BYTES
+        if len(rx_buffer) < full_frame_size:
+            break
+        frame: bytes = bytes(rx_buffer[:full_frame_size])
+        if compute_crc16(frame[:-2]) != struct.unpack("<H", frame[-2:])[0]:
+            del rx_buffer[0]
+            continue
+        command_id: int = struct.unpack("<H", frame[4:6])[0]
+        flags_register: int = struct.unpack("<H", frame[6:8])[0]
+        payload: bytes = frame[8:-2]
+        del rx_buffer[:full_frame_size]
+        if command_id != SEASKY_COMMAND_ATTITUDE_SEND:
+            continue
+        expected: int = SEASKY_ATTITUDE_FLOAT_COUNT * SEASKY_FLOAT_SIZE_BYTES
+        if len(payload) != expected:
+            continue
+        yaw, pitch, roll = struct.unpack("<fff", payload)
+        enemy_color, work_mode, bullet_speed = parse_attitude_flags(flags_register)
+        rx_count[0] += 1
+        LOGGER.info(
+            "[RX #%d] cmd=0x%04X flags=0x%04X yaw=%.4f pitch=%.4f roll=%.4f "
+            "enemy_color=%d work_mode=%d bullet_speed=%d%s",
+            rx_count[0],
+            command_id,
+            flags_register,
+            yaw,
+            pitch,
+            roll,
+            enemy_color,
+            work_mode,
+            bullet_speed,
+            f" hex={frame.hex(' ')}" if verbose else "",
+        )
+
+
 def execute_sender(
     port: str,
     baudrate: int,
@@ -144,13 +222,15 @@ def execute_sender(
     if seed is not None:
         random.seed(seed)
         LOGGER.info("Using deterministic random seed: %d", seed)
+    rx_buffer: bytearray = bytearray()
+    rx_count: list[int] = [0]
     with serial.Serial(
         port=port,
         baudrate=baudrate,
         parity=serial.PARITY_NONE,
         stopbits=serial.STOPBITS_ONE,
         bytesize=serial.EIGHTBITS,
-        timeout=1.0,
+        timeout=0,
     ) as serial_device:
         LOGGER.info(
             "Connected to serial device %s @ %d baud. rate_hz=%.2f count=%d",
@@ -192,7 +272,18 @@ def execute_sender(
                     sample.target_state,
                     sample.target_type,
                 )
+            available: int = serial_device.in_waiting
+            if available > 0:
+                rx_buffer.extend(serial_device.read(available))
+                drain_attitude_frames(rx_buffer, verbose, rx_count)
             time.sleep(interval_seconds)
+        # drain any remaining bytes after TX is done
+        time.sleep(0.1)
+        available = serial_device.in_waiting
+        if available > 0:
+            rx_buffer.extend(serial_device.read(available))
+            drain_attitude_frames(rx_buffer, verbose, rx_count)
+    LOGGER.info("Done. TX=%d RX=%d attitude frames", message_index, rx_count[0])
 
 
 def main() -> None:
