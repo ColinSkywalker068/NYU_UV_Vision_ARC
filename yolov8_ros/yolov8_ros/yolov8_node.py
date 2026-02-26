@@ -6,6 +6,8 @@ from ament_index_python.packages import get_package_share_directory
 from rclpy.parameter import Parameter
 from rclpy.node import Node
 from std_msgs.msg import Int32, Int32MultiArray, Bool, Float32MultiArray
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
 import cv2
 import numpy as np
 import math
@@ -14,8 +16,6 @@ import time
 
 # Import components
 try:
-    from .camera import BaslerCamera
-    from .realsense import RealSenseCamera
     from .detector import YOLODetector
     from .tracker import ArmorPlateTracker, TrackerWrapper
     from .utils import (
@@ -28,8 +28,6 @@ try:
         check_enemy,
     )
 except (ImportError, ValueError):
-    from camera import BaslerCamera
-    from realsense import RealSenseCamera
     from detector import YOLODetector
     from tracker import ArmorPlateTracker, TrackerWrapper
     from utils import (
@@ -51,7 +49,6 @@ class YOLOv8Node(Node):
         default_model_path = package_share_dir / "models" / "best.engine"
 
         # --- Parameters ---
-        self.declare_parameter("camera_type", "basler")
         self.declare_parameter("model_path", str(default_model_path))
         self.declare_parameter("task", "detect")
         self.declare_parameter("type", "yolo")
@@ -62,24 +59,6 @@ class YOLOv8Node(Node):
         self.declare_parameter("conf", 0.05)
         self.declare_parameter("tracker_timeout", 15)
         self.declare_parameter("prediction_lookahead_steps", 0.5)
-
-        # Basler specific
-        self.declare_parameter("basler_exposure_us", 5000.0)
-        self.declare_parameter("basler_gain_db", 5.0)
-        self.declare_parameter("basler_fps", 0)  # 0 for max
-        self.declare_parameter("basler_use_full_sensor", True)
-        self.declare_parameter("basler_centered_roi", True)
-        self.declare_parameter("basler_binning", 1)
-        self.declare_parameter("basler_decimation", 1)
-        self.declare_parameter("basler_auto_exposure", False)
-        self.declare_parameter("basler_auto_gain", False)
-
-        # Realsense specific
-        self.declare_parameter("realsense_width", 640)
-        self.declare_parameter("realsense_height", 480)
-        self.declare_parameter("realsense_fps", 60)
-        self.declare_parameter("realsense_exposure", 120.0)
-        self.declare_parameter("realsense_gain", 64.0)
 
         # Kalman / Tracking
         self.declare_parameter("enable_tracking", True)
@@ -94,7 +73,6 @@ class YOLOv8Node(Node):
         self.declare_parameter("vfov_degrees", 63.78)
 
         # Retrieve params
-        self.camera_type = self.get_parameter("camera_type").value
         self.model_path = self.get_parameter("model_path").value
         self.task = self.get_parameter("task").value
         self.model_type = self.get_parameter("type").value
@@ -105,22 +83,6 @@ class YOLOv8Node(Node):
         self.conf = self.get_parameter("conf").value
         self.tracker_timeout = self.get_parameter("tracker_timeout").value
         self.lookahead_steps = self.get_parameter("prediction_lookahead_steps").value
-
-        self.basler_exposure = self.get_parameter("basler_exposure_us").value
-        self.basler_gain = self.get_parameter("basler_gain_db").value
-        self.basler_fps = self.get_parameter("basler_fps").value
-        self.basler_use_full_sensor = self.get_parameter("basler_use_full_sensor").value
-        self.basler_centered_roi = self.get_parameter("basler_centered_roi").value
-        self.basler_binning = self.get_parameter("basler_binning").value
-        self.basler_decimation = self.get_parameter("basler_decimation").value
-        self.basler_auto_exposure = self.get_parameter("basler_auto_exposure").value
-        self.basler_auto_gain = self.get_parameter("basler_auto_gain").value
-
-        self.realsense_width = self.get_parameter("realsense_width").value
-        self.realsense_height = self.get_parameter("realsense_height").value
-        self.realsense_fps = self.get_parameter("realsense_fps").value
-        self.realsense_exposure = self.get_parameter("realsense_exposure").value
-        self.realsense_gain = self.get_parameter("realsense_gain").value
 
         self.enable_tracking = self.get_parameter("enable_tracking").value
         self.persist_tracking = self.get_parameter("persist_tracking").value
@@ -138,52 +100,17 @@ class YOLOv8Node(Node):
         self.last_frame_time = None
 
         # --- Components Init ---
-
-        # 1. Camera
-        try:
-            if self.camera_type == "basler":
-                self.camera = BaslerCamera(
-                    width=self.imgsz_width,
-                    height=self.imgsz_height,
-                    fps=self.basler_fps,
-                    exposure_us=self.basler_exposure,
-                    gain_db=self.basler_gain,
-                    use_full_sensor=bool(self.basler_use_full_sensor),
-                    centered_roi=bool(self.basler_centered_roi),
-                    binning=max(1, int(self.basler_binning)),
-                    decimation=max(1, int(self.basler_decimation)),
-                    auto_exposure=bool(self.basler_auto_exposure),
-                    auto_gain=bool(self.basler_auto_gain),
-                )
-            elif self.camera_type == "realsense":
-                self.camera = RealSenseCamera(
-                    width=self.realsense_width,
-                    height=self.realsense_height,
-                    fps=self.realsense_fps,
-                    exposure=self.realsense_exposure,
-                    gain=self.realsense_gain,
-                )
-            else:
-                raise ValueError(f"Unknown camera type: {self.camera_type}")
-
-            self.camera.initialize()
-            self.get_logger().info(
-                f"{self.camera_type.capitalize()} Camera Initialized."
-            )
-            if self.camera_type == "basler" and hasattr(
-                self.camera, "get_applied_settings"
-            ):
-                applied_settings = self.camera.get_applied_settings()
-                self.get_logger().info(f"Basler settings: {applied_settings}")
-        except Exception as e:
-            self.get_logger().error(f"Failed to init camera: {e}")
-            raise e
-
-        # 2. Detector
+        # 1. Detector
         self.detector = YOLODetector(self.model_path, self.task, self.model_type)
         self.get_logger().info("Detector Initialized.")
 
+        # 2. CV Bridge
+        self.bridge = CvBridge()
+
         # --- Publishers/Subscribers ---
+        self.image_subscription = self.create_subscription(
+            Image, 'image_raw', self.image_callback, 10
+        )
         self.int_subscription = self.create_subscription(
             Int32, "robot_id", self.id_listener_callback, 10
         )
@@ -196,13 +123,6 @@ class YOLOv8Node(Node):
         self.bbox_msg = Int32MultiArray()
         self.override_msg = Bool()
 
-        # Timer
-        if self.camera_type == "basler":
-            timer_fps = self.basler_fps if self.basler_fps > 0 else 60
-        else:
-            timer_fps = self.realsense_fps if self.realsense_fps > 0 else 60
-
-        self.timer = self.create_timer(1.0 / timer_fps, self.timer_callback)
 
     def id_listener_callback(self, msg: Int32):
         robot_id = msg.data
@@ -233,11 +153,12 @@ class YOLOv8Node(Node):
         angle_msg.data = [float(yaw), float(pitch)]
         self.angle_publisher.publish(angle_msg)
 
-    def timer_callback(self):
+    def image_callback(self, msg: Image):
         try:
             # 1. Get Frame
-            frame = self.camera.get_frame()
+            frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
             if frame is None:
+                self.get_logger().warn("Failed to convert image")
                 return
 
             # dt calc
@@ -414,16 +335,15 @@ class YOLOv8Node(Node):
                 self.publish_bbox_and_angles(c, c, c, c, False)
 
             if self.show and vis_frame is not None:
-                cv2.imshow(f"YOLOv8 {self.camera_type.capitalize()} Node", vis_frame)
+                # The window name should not depend on camera_type anymore
+                cv2.imshow("YOLOv8 Modular Node", vis_frame)
                 cv2.waitKey(1)
 
         except Exception as e:
-            self.get_logger().error(f"Error in timer callback: {e}")
+            self.get_logger().error(f"Error in image_callback: {e}")
             self.get_logger().error(traceback.format_exc())
 
     def destroy_node(self):
-        if hasattr(self, "camera") and self.camera:
-            self.camera.release()
         cv2.destroyAllWindows()
         super().destroy_node()
 
@@ -434,17 +354,7 @@ def main(args=None):
     parser.add_argument(
         "--show", type=str, default=None, help="Enable visualization (True/False)"
     )
-    parser.add_argument(
-        "--camera_type", type=str, default=None, help="Camera type (basler/realsense)"
-    )
-
-    # We use parse_known_args to separate our args from potential ROS args
-    # When running via ros2 run, args are passed to main. When running python file, they are in sys.argv.
-    # rclpy.init handles sys.argv by default if args=None.
-
-    # To handle both "python node.py --show=True" and "ros2 run ...", we need to be careful.
-    # If args is None, we look at sys.argv.
-
+    
     source_args = args if args is not None else sys.argv[1:]
     parsed_args, remaining_args = parser.parse_known_args(source_args)
 
@@ -454,11 +364,6 @@ def main(args=None):
     if parsed_args.show is not None:
         val = parsed_args.show.lower() in ("true", "1", "yes")
         param_overrides.append(Parameter("show", Parameter.Type.BOOL, val))
-
-    if parsed_args.camera_type is not None:
-        param_overrides.append(
-            Parameter("camera_type", Parameter.Type.STRING, parsed_args.camera_type)
-        )
 
     node = YOLOv8Node(parameter_overrides=param_overrides)
     try:
