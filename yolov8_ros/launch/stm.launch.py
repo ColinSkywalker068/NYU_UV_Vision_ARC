@@ -49,6 +49,13 @@ def generate_launch_description() -> LaunchDescription:
         description="Basler gain in dB",
     )
 
+    # --- Kalman filter args ---
+    use_kalman_arg = DeclareLaunchArgument(
+        "use_kalman",
+        default_value="false",
+        description="Enable Kalman filter for detection smoothing",
+    )
+
     # --- Nodes ---
     camera_node = Node(
         package="yolov8_ros",
@@ -74,7 +81,7 @@ def generate_launch_description() -> LaunchDescription:
         executable="yolov8_modular_node",
         name="yolov8_modular_node",
         output="screen",
-        parameters=[{"show": True}],
+        parameters=[{"show": True, "use_kalman": LaunchConfiguration("use_kalman")}],
     )
 
     stm_bridge_node = Node(
@@ -102,6 +109,7 @@ def generate_launch_description() -> LaunchDescription:
             basler_fps_arg,
             basler_exposure_arg,
             basler_gain_arg,
+            use_kalman_arg,
             camera_node,
             yolov8_node,
             stm_bridge_node,
