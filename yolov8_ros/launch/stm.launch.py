@@ -92,30 +92,6 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     # --- Nodes ---
-    camera_node = Node(
-        package="yolov8_ros",
-        executable="camera_node",
-        name="camera_node",
-        output="screen",
-        parameters=[
-            {
-                "camera_type": LaunchConfiguration("camera_type"),
-                "imgsz_width": LaunchConfiguration("basler_width"),
-                "imgsz_height": LaunchConfiguration("basler_height"),
-                "basler_fps": LaunchConfiguration("basler_fps"),
-                "basler_exposure_us": LaunchConfiguration("basler_exposure_us"),
-                "basler_gain_db": LaunchConfiguration("basler_gain_db"),
-                "basler_use_full_sensor": True,
-                "basler_centered_roi": True,
-                "realsense_width": LaunchConfiguration("realsense_width"),
-                "realsense_height": LaunchConfiguration("realsense_height"),
-                "realsense_fps": LaunchConfiguration("realsense_fps"),
-                "realsense_exposure": LaunchConfiguration("realsense_exposure"),
-                "realsense_gain": LaunchConfiguration("realsense_gain"),
-            }
-        ],
-    )
-
     yolov8_node = Node(
         package="yolov8_ros",
         executable="yolov8_modular_node",
@@ -163,7 +139,6 @@ def generate_launch_description() -> LaunchDescription:
             realsense_exposure_arg,
             realsense_gain_arg,
             use_kalman_arg,
-            camera_node,
             yolov8_node,
             stm_bridge_node,
         ]
