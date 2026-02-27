@@ -52,7 +52,7 @@ def generate_launch_description() -> LaunchDescription:
     # --- Kalman filter args ---
     use_kalman_arg = DeclareLaunchArgument(
         "use_kalman",
-        default_value="false",
+        default_value="True",
         description="Enable Kalman filter for detection smoothing",
     )
 
