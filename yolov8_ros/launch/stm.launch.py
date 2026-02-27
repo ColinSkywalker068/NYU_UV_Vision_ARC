@@ -92,6 +92,48 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     # --- Nodes ---
+    camera_node = Node(
+        package="yolov8_ros",
+        executable="camera_node",
+        name="camera_node",
+        output="screen",
+        parameters=[
+            {
+                "camera_type": LaunchConfiguration("camera_type"),
+                "realsense_width": ParameterValue(
+                    LaunchConfiguration("realsense_width"), value_type=int
+                ),
+                "realsense_height": ParameterValue(
+                    LaunchConfiguration("realsense_height"), value_type=int
+                ),
+                "realsense_fps": ParameterValue(
+                    LaunchConfiguration("realsense_fps"), value_type=int
+                ),
+                "realsense_exposure": ParameterValue(
+                    LaunchConfiguration("realsense_exposure"), value_type=float
+                ),
+                "realsense_gain": ParameterValue(
+                    LaunchConfiguration("realsense_gain"), value_type=float
+                ),
+                "basler_width": ParameterValue(
+                    LaunchConfiguration("basler_width"), value_type=int
+                ),
+                "basler_height": ParameterValue(
+                    LaunchConfiguration("basler_height"), value_type=int
+                ),
+                "basler_fps": ParameterValue(
+                    LaunchConfiguration("basler_fps"), value_type=int
+                ),
+                "basler_exposure_us": ParameterValue(
+                    LaunchConfiguration("basler_exposure_us"), value_type=float
+                ),
+                "basler_gain_db": ParameterValue(
+                    LaunchConfiguration("basler_gain_db"), value_type=float
+                ),
+            }
+        ],
+    )
+
     yolov8_node = Node(
         package="yolov8_ros",
         executable="yolov8_modular_node",
@@ -139,6 +181,7 @@ def generate_launch_description() -> LaunchDescription:
             realsense_exposure_arg,
             realsense_gain_arg,
             use_kalman_arg,
+            camera_node,
             yolov8_node,
             stm_bridge_node,
         ]

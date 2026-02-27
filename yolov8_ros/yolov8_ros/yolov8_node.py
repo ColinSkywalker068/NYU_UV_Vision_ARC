@@ -1,9 +1,6 @@
 import rclpy
-import sys
-import argparse
 from pathlib import Path
 from ament_index_python.packages import get_package_share_directory
-from rclpy.parameter import Parameter
 from rclpy.node import Node
 from std_msgs.msg import Int32, Int32MultiArray, Bool, Float32MultiArray
 from sensor_msgs.msg import Image
@@ -348,23 +345,8 @@ class YOLOv8Node(Node):
 
 
 def main(args=None):
-    # Parse custom arguments if running as script
-    parser = argparse.ArgumentParser(description="YOLOv8 Node")
-    parser.add_argument(
-        "--show", type=str, default=None, help="Enable visualization (True/False)"
-    )
-
-    source_args = args if args is not None else sys.argv[1:]
-    parsed_args, remaining_args = parser.parse_known_args(source_args)
-
-    rclpy.init(args=remaining_args)
-
-    param_overrides = []
-    if parsed_args.show is not None:
-        val = parsed_args.show.lower() in ("true", "1", "yes")
-        param_overrides.append(Parameter("show", Parameter.Type.BOOL, val))
-
-    node = YOLOv8Node(parameter_overrides=param_overrides)
+    rclpy.init(args=args)
+    node = YOLOv8Node()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
