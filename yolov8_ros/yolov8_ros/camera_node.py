@@ -43,6 +43,10 @@ class CameraNode(Node):
         self.declare_parameter("realsense_fps", 60)
         self.declare_parameter("realsense_exposure", 120.0)
         self.declare_parameter("realsense_gain", 64.0)
+        self.declare_parameter("realsense_auto_exposure", False)
+        self.declare_parameter("realsense_auto_white_balance", False)
+        self.declare_parameter("realsense_white_balance", 4600.0)
+        self.declare_parameter("realsense_use_poll", False)
 
         # Retrieve params
         self.camera_type = self.get_parameter("camera_type").value
@@ -88,6 +92,10 @@ class CameraNode(Node):
                 self.realsense_fps = self.get_parameter("realsense_fps").value
                 self.realsense_exposure = self.get_parameter("realsense_exposure").value
                 self.realsense_gain = self.get_parameter("realsense_gain").value
+                self.realsense_auto_exposure = self.get_parameter("realsense_auto_exposure").value
+                self.realsense_auto_white_balance = self.get_parameter("realsense_auto_white_balance").value
+                self.realsense_white_balance = self.get_parameter("realsense_white_balance").value
+                self.realsense_use_poll = self.get_parameter("realsense_use_poll").value
 
                 self.camera = RealSenseCamera(
                     width=self.realsense_width,
@@ -95,6 +103,10 @@ class CameraNode(Node):
                     fps=self.realsense_fps,
                     exposure=self.realsense_exposure,
                     gain=self.realsense_gain,
+                    auto_exposure=bool(self.realsense_auto_exposure),
+                    auto_white_balance=bool(self.realsense_auto_white_balance),
+                    white_balance=float(self.realsense_white_balance),
+                    use_poll=bool(self.realsense_use_poll),
                 )
                 self.fps = self.realsense_fps
             else:

@@ -5,7 +5,22 @@ import logging
 
 
 class RealSenseCamera:
-    def __init__(self, width=640, height=480, fps=60, exposure=120.0, gain=64.0):
+    def __init__(
+        self,
+        width: int = 640,
+        height: int = 480,
+        fps: int = 60,
+        exposure: float = 120.0,
+        gain: float = 64.0,
+        auto_exposure: bool = False,
+        auto_white_balance: bool = False,
+        white_balance: float = 4600.0,
+        use_poll: bool = False,
+        timeout_ms: int = 1000,
+        poll_idle_sleep_ms: int = 2,
+        power_line_frequency: int = 2,
+        frames_queue_size: int = 1,
+    ):
         self.target_width = width
         self.target_height = height
         self.target_fps = fps
@@ -18,17 +33,15 @@ class RealSenseCamera:
         self.profile = None
         self.is_grabbing = False
 
-        # Additional configuration parameters (could be passed in init if needed, setting defaults for now)
-        self.timeout_ms = 1000
-        self.use_poll = False
-        self.poll_idle_sleep_ms = 2
+        self.timeout_ms = timeout_ms
+        self.use_poll = use_poll
+        self.poll_idle_sleep_ms = poll_idle_sleep_ms
 
-        # Color sensor options
-        self.auto_exposure = False
-        self.auto_white_balance = False
-        self.white_balance = 4600.0
-        self.power_line_frequency = 2  # 1=50Hz, 2=60Hz
-        self.frames_queue_size = 1
+        self.auto_exposure = auto_exposure
+        self.auto_white_balance = auto_white_balance
+        self.white_balance = white_balance
+        self.power_line_frequency = power_line_frequency
+        self.frames_queue_size = frames_queue_size
 
         self.logger = logging.getLogger("RealSenseCamera")
 
