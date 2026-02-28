@@ -92,9 +92,15 @@ class CameraNode(Node):
                 self.realsense_fps = self.get_parameter("realsense_fps").value
                 self.realsense_exposure = self.get_parameter("realsense_exposure").value
                 self.realsense_gain = self.get_parameter("realsense_gain").value
-                self.realsense_auto_exposure = self.get_parameter("realsense_auto_exposure").value
-                self.realsense_auto_white_balance = self.get_parameter("realsense_auto_white_balance").value
-                self.realsense_white_balance = self.get_parameter("realsense_white_balance").value
+                self.realsense_auto_exposure = self.get_parameter(
+                    "realsense_auto_exposure"
+                ).value
+                self.realsense_auto_white_balance = self.get_parameter(
+                    "realsense_auto_white_balance"
+                ).value
+                self.realsense_white_balance = self.get_parameter(
+                    "realsense_white_balance"
+                ).value
                 self.realsense_use_poll = self.get_parameter("realsense_use_poll").value
 
                 self.camera = RealSenseCamera(
