@@ -179,7 +179,11 @@ class RealSenseCamera:
             if not color_frame:
                 return None
 
-            frame = np.asanyarray(color_frame.get_data())
+            # IMPORTANT: copy the data — np.asanyarray creates a zero-copy
+            # view into the SDK's internal buffer. If the SDK recycles that
+            # buffer (e.g. next frame arrives) while YOLO inference still
+            # holds the array, the same memory is freed twice → "double free".
+            frame = np.array(color_frame.get_data(), copy=True)
             return frame
 
         except RuntimeError as e:
