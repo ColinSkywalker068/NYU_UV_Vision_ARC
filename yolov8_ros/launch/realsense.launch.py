@@ -21,7 +21,9 @@ def generate_launch_description() -> LaunchDescription:
         "rs_fps", default_value="30", description="RealSense frames per second"
     )
     rs_exposure_arg = DeclareLaunchArgument(
-        "rs_exposure", default_value="120.0", description="RealSense manual exposure value"
+        "rs_exposure",
+        default_value="120.0",
+        description="RealSense manual exposure value",
     )
     rs_gain_arg = DeclareLaunchArgument(
         "rs_gain", default_value="64.0", description="RealSense manual gain value"
@@ -100,7 +102,9 @@ def generate_launch_description() -> LaunchDescription:
                 "realsense_exposure": LaunchConfiguration("rs_exposure"),
                 "realsense_gain": LaunchConfiguration("rs_gain"),
                 "realsense_auto_exposure": LaunchConfiguration("rs_auto_exposure"),
-                "realsense_auto_white_balance": LaunchConfiguration("rs_auto_white_balance"),
+                "realsense_auto_white_balance": LaunchConfiguration(
+                    "rs_auto_white_balance"
+                ),
                 "realsense_white_balance": LaunchConfiguration("rs_white_balance"),
                 "realsense_use_poll": LaunchConfiguration("rs_use_poll"),
             }
@@ -119,7 +123,9 @@ def generate_launch_description() -> LaunchDescription:
                 "conf": LaunchConfiguration("conf"),
                 "show": LaunchConfiguration("show"),
                 "use_kalman": LaunchConfiguration("use_kalman"),
-                "enable_color_verification": LaunchConfiguration("enable_color_verification"),
+                "enable_color_verification": LaunchConfiguration(
+                    "enable_color_verification"
+                ),
                 "hfov_degrees": LaunchConfiguration("hfov_degrees"),
                 "vfov_degrees": LaunchConfiguration("vfov_degrees"),
             }
