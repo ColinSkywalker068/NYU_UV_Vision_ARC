@@ -343,7 +343,13 @@ class YOLOv8Node(Node):
             self.get_logger().error(traceback.format_exc())
 
     def destroy_node(self):
-        cv2.destroyAllWindows()
+        if getattr(self, "_shutting_down", False):
+            return
+        self._shutting_down = True
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
         super().destroy_node()
 
 
@@ -369,6 +375,8 @@ def main(args=None):
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    except Exception as exc:
+        node.get_logger().error(f"Unexpected error: {exc}")
     finally:
         node.destroy_node()
         if rclpy.ok():

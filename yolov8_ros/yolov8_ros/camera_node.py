@@ -148,9 +148,18 @@ class CameraNode(Node):
             self.get_logger().error(traceback.format_exc())
 
     def destroy_node(self):
+        if getattr(self, "_shutting_down", False):
+            return
+        self._shutting_down = True
         self.get_logger().info("Shutting down camera node.")
+        # Cancel the timer first to prevent callbacks during teardown
+        if hasattr(self, "timer") and self.timer is not None:
+            self.timer.cancel()
         if hasattr(self, "camera") and self.camera:
-            self.camera.release()
+            try:
+                self.camera.release()
+            except Exception as exc:
+                self.get_logger().warn(f"Camera release error (non-fatal): {exc}")
         super().destroy_node()
 
 
@@ -161,6 +170,8 @@ def main(args=None):
         rclpy.spin(camera_node)
     except KeyboardInterrupt:
         pass
+    except Exception as exc:
+        camera_node.get_logger().error(f"Unexpected error: {exc}")
     finally:
         camera_node.destroy_node()
         if rclpy.ok():
