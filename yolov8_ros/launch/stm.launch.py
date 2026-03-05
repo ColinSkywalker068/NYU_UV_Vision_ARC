@@ -49,6 +49,14 @@ def generate_launch_description() -> LaunchDescription:
         description="Basler gain in dB",
     )
 
+    # --- YOLO args ---
+    use_kalman_arg = DeclareLaunchArgument(
+        "use_kalman", default_value="true", description="Enable Kalman filter tracking"
+    )
+    show_arg = DeclareLaunchArgument(
+        "show", default_value="true", description="Show OpenCV visualization window"
+    )
+
     # --- Nodes ---
     camera_node = Node(
         package="yolov8_ros",
@@ -74,7 +82,12 @@ def generate_launch_description() -> LaunchDescription:
         executable="yolov8_modular_node",
         name="yolov8_modular_node",
         output="screen",
-        parameters=[{"show": True}],
+        parameters=[
+            {
+                "show": LaunchConfiguration("show"),
+                "use_kalman": LaunchConfiguration("use_kalman"),
+            }
+        ],
     )
 
     stm_bridge_node = Node(
@@ -102,6 +115,8 @@ def generate_launch_description() -> LaunchDescription:
             basler_fps_arg,
             basler_exposure_arg,
             basler_gain_arg,
+            use_kalman_arg,
+            show_arg,
             camera_node,
             yolov8_node,
             stm_bridge_node,
