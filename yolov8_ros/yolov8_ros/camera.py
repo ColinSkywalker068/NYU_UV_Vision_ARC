@@ -281,15 +281,15 @@ class RealSenseCamera:
         self.auto_white_balance = auto_white_balance
         self.white_balance = white_balance
         self.use_poll = use_poll
-        
+
         self.pipeline = None
         self.config = None
         self.profile = None
         self.is_grabbing = False
-        
+
         self.timeout_ms = 1000
         self.poll_idle_sleep_ms = 2
-        self.power_line_frequency = 2 # 1=50Hz, 2=60Hz
+        self.power_line_frequency = 2  # 1=50Hz, 2=60Hz
         self.frames_queue_size = 1
 
         self.logger = logging.getLogger("RealSenseCamera")
@@ -303,7 +303,7 @@ class RealSenseCamera:
         devices = ctx.query_devices()
         if len(devices) == 0:
             raise RuntimeError("No RealSense camera found")
-        
+
         # Disable all streams first to ensure clean state
         try:
             self.config.disable_all_streams()
@@ -324,10 +324,10 @@ class RealSenseCamera:
             self.profile = self.pipeline.start(self.config)
         except Exception as e:
             raise RuntimeError(f"Failed to start RealSense camera: {e}")
-        
+
         self.is_grabbing = True
         self._configure_sensor()
-        
+
         # Verify streams
         self._verify_streams()
 
@@ -343,7 +343,7 @@ class RealSenseCamera:
                 if "RGB" in sname or "Color" in sname:
                     color_sensor = sensor
                     break
-            
+
             if color_sensor is not None:
                 # Frames Queue Size
                 if color_sensor.supports(rs.option.frames_queue_size):
@@ -351,14 +351,14 @@ class RealSenseCamera:
                         rs.option.frames_queue_size,
                         float(max(1, self.frames_queue_size)),
                     )
-                
+
                 # Auto Exposure / Manual Exposure
                 if color_sensor.supports(rs.option.enable_auto_exposure):
                     color_sensor.set_option(
                         rs.option.enable_auto_exposure,
                         1.0 if self.auto_exposure else 0.0,
                     )
-                
+
                 if not self.auto_exposure:
                     if color_sensor.supports(rs.option.exposure):
                         color_sensor.set_option(
@@ -373,8 +373,10 @@ class RealSenseCamera:
                         rs.option.enable_auto_white_balance,
                         1.0 if self.auto_white_balance else 0.0,
                     )
-                
-                if not self.auto_white_balance and color_sensor.supports(rs.option.white_balance):
+
+                if not self.auto_white_balance and color_sensor.supports(
+                    rs.option.white_balance
+                ):
                     color_sensor.set_option(
                         rs.option.white_balance, float(self.white_balance)
                     )
@@ -386,8 +388,10 @@ class RealSenseCamera:
                         float(self.power_line_frequency),
                     )
             else:
-                self.logger.warning("Color sensor not found; skipping option configuration.")
-                
+                self.logger.warning(
+                    "Color sensor not found; skipping option configuration."
+                )
+
         except Exception as e:
             self.logger.warning(f"Failed applying color sensor options: {e}")
 
