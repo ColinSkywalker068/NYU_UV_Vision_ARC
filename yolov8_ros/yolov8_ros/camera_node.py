@@ -7,13 +7,11 @@ import cv2
 import traceback
 from pathlib import Path
 
-# Import camera components from the same directory
+# Import camera components from the same directory (both backends in camera.py)
 try:
-    from .camera import BaslerCamera
-    from .realsense import RealSenseCamera
+    from .camera import BaslerCamera, RealSenseCamera
 except (ImportError, ValueError):
-    from camera import BaslerCamera
-    from realsense import RealSenseCamera
+    from camera import BaslerCamera, RealSenseCamera
 
 
 class CameraNode(Node):
