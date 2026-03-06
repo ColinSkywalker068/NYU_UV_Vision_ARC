@@ -34,6 +34,7 @@ class CameraNode(Node):
         self.declare_parameter("basler_decimation", 1)
         self.declare_parameter("basler_auto_exposure", False)
         self.declare_parameter("basler_auto_gain", False)
+        self.declare_parameter("basler_auto_white_balance", False)
 
         # Realsense specific
         self.declare_parameter("realsense_width", 640)
@@ -69,6 +70,9 @@ class CameraNode(Node):
                     "basler_auto_exposure"
                 ).value
                 self.basler_auto_gain = self.get_parameter("basler_auto_gain").value
+                self.basler_auto_white_balance = self.get_parameter(
+                    "basler_auto_white_balance"
+                ).value
 
                 self.camera = BaslerCamera(
                     width=self.imgsz_width,
@@ -82,6 +86,7 @@ class CameraNode(Node):
                     decimation=max(1, int(self.basler_decimation)),
                     auto_exposure=bool(self.basler_auto_exposure),
                     auto_gain=bool(self.basler_auto_gain),
+                    auto_white_balance=bool(self.basler_auto_white_balance),
                 )
                 self.fps = self.basler_fps
             elif self.camera_type == "realsense":

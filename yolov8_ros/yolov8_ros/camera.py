@@ -114,6 +114,7 @@ class BaslerCamera:
         decimation=1,
         auto_exposure=False,
         auto_gain=False,
+        auto_white_balance=False,
     ):
         self.target_width = width
         self.target_height = height
@@ -127,6 +128,7 @@ class BaslerCamera:
         self.decimation = max(1, int(decimation))
         self.auto_exposure = bool(auto_exposure)
         self.auto_gain = bool(auto_gain)
+        self.auto_white_balance = bool(auto_white_balance)
         self.camera = None
         self.converter = None
         self.is_grabbing = False
@@ -230,6 +232,10 @@ class BaslerCamera:
         else:
             _set_node_value_if_writable(camera.GainAuto, "Off")
             _set_node_value_if_writable(camera.Gain, float(self.gain_db))
+        if self.auto_white_balance:
+            _set_node_value_if_writable(camera.BalanceWhiteAuto, "Continuous")
+        else:
+            _set_node_value_if_writable(camera.BalanceWhiteAuto, "Off")
 
     def get_frame(self):
         if not self.camera or not self.is_grabbing:
