@@ -95,10 +95,28 @@ if [ $? -eq 0 ]; then
 		$V4L2_DEVICES \
 		$HUGGINGFACE \
 		"$@"
+# Generic Linux (KR260, Ubuntu, etc.)
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+	docker run -it --rm --privileged --network host \
+		--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
+		--volume /dev:/dev \
+		--volume /home:/home \
+		"$@"
 # MacOS
-else
-	winpty docker run -it --rm --privileged --network host \
-		--volume $ROOT/..:/home/ultraviolet/CV_Detection \
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+	docker run -it --rm --privileged --network host \
+		--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
 		--env DISPLAY=host.docker.internal:0.0 \
-		nyuultraviolet/cv-dockerfile:nav-arm64
+		"$@"
+# Fallback (Windows)
+else
+	if command -v winpty >/dev/null 2>&1; then
+		winpty docker run -it --rm --privileged --network host \
+			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
+			"$@"
+	else
+		docker run -it --rm --privileged --network host \
+			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
+			"$@"
+	fi
 fi

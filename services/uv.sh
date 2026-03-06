@@ -1,6 +1,5 @@
-#!/bin/bash
-HOME_DIR="/home/ultraviolet"
-SCRIPTS_DIR="$HOME_DIR/CV_Detection/services"
+HOME_DIR=$HOME
+SCRIPTS_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
 # Check if the script is running in the background
 IS_BACKGROUND=false
