@@ -3,9 +3,7 @@ from rclpy.node import Node
 from rclpy.parameter import Parameter
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
-import cv2
 import traceback
-from pathlib import Path
 
 # Import camera components from the same directory (both backends in camera.py)
 try:
@@ -54,65 +52,65 @@ class CameraNode(Node):
         # --- Components Init ---
         try:
             if self.camera_type == "basler":
-                self.basler_exposure = self.get_parameter("basler_exposure_us").value
-                self.basler_gain = self.get_parameter("basler_gain_db").value
-                self.basler_fps = self.get_parameter("basler_fps").value
-                self.basler_use_full_sensor = self.get_parameter(
+                basler_exposure = self.get_parameter("basler_exposure_us").value
+                basler_gain = self.get_parameter("basler_gain_db").value
+                basler_fps = self.get_parameter("basler_fps").value
+                basler_use_full_sensor = self.get_parameter(
                     "basler_use_full_sensor"
                 ).value
-                self.basler_centered_roi = self.get_parameter(
+                basler_centered_roi = self.get_parameter(
                     "basler_centered_roi"
                 ).value
-                self.basler_binning = self.get_parameter("basler_binning").value
-                self.basler_decimation = self.get_parameter("basler_decimation").value
-                self.basler_auto_exposure = self.get_parameter(
+                basler_binning = self.get_parameter("basler_binning").value
+                basler_decimation = self.get_parameter("basler_decimation").value
+                basler_auto_exposure = self.get_parameter(
                     "basler_auto_exposure"
                 ).value
-                self.basler_auto_gain = self.get_parameter("basler_auto_gain").value
+                basler_auto_gain = self.get_parameter("basler_auto_gain").value
 
                 self.camera = BaslerCamera(
                     width=self.imgsz_width,
                     height=self.imgsz_height,
-                    fps=self.basler_fps,
-                    exposure_us=self.basler_exposure,
-                    gain_db=self.basler_gain,
-                    use_full_sensor=bool(self.basler_use_full_sensor),
-                    centered_roi=bool(self.basler_centered_roi),
-                    binning=max(1, int(self.basler_binning)),
-                    decimation=max(1, int(self.basler_decimation)),
-                    auto_exposure=bool(self.basler_auto_exposure),
-                    auto_gain=bool(self.basler_auto_gain),
+                    fps=basler_fps,
+                    exposure_us=basler_exposure,
+                    gain_db=basler_gain,
+                    use_full_sensor=bool(basler_use_full_sensor),
+                    centered_roi=bool(basler_centered_roi),
+                    binning=max(1, int(basler_binning)),
+                    decimation=max(1, int(basler_decimation)),
+                    auto_exposure=bool(basler_auto_exposure),
+                    auto_gain=bool(basler_auto_gain),
                 )
-                self.fps = self.basler_fps
+                self.fps = basler_fps
             elif self.camera_type == "realsense":
-                self.realsense_width = self.get_parameter("realsense_width").value
-                self.realsense_height = self.get_parameter("realsense_height").value
-                self.realsense_fps = self.get_parameter("realsense_fps").value
-                self.realsense_exposure = self.get_parameter("realsense_exposure").value
-                self.realsense_gain = self.get_parameter("realsense_gain").value
-                self.realsense_auto_exposure = self.get_parameter(
+                realsense_width = self.get_parameter("realsense_width").value
+                realsense_height = self.get_parameter("realsense_height").value
+                realsense_fps = self.get_parameter("realsense_fps").value
+                realsense_exposure = self.get_parameter("realsense_exposure").value
+                realsense_gain = self.get_parameter("realsense_gain").value
+                realsense_auto_exposure = self.get_parameter(
                     "realsense_auto_exposure"
                 ).value
-                self.realsense_auto_white_balance = self.get_parameter(
+                realsense_auto_white_balance = self.get_parameter(
                     "realsense_auto_white_balance"
                 ).value
-                self.realsense_white_balance = self.get_parameter(
+                realsense_white_balance = self.get_parameter(
                     "realsense_white_balance"
                 ).value
-                self.realsense_use_poll = self.get_parameter("realsense_use_poll").value
+                realsense_use_poll = self.get_parameter("realsense_use_poll").value
 
                 self.camera = RealSenseCamera(
-                    width=self.realsense_width,
-                    height=self.realsense_height,
-                    fps=self.realsense_fps,
-                    exposure=self.realsense_exposure,
-                    gain=self.realsense_gain,
-                    auto_exposure=bool(self.realsense_auto_exposure),
-                    auto_white_balance=bool(self.realsense_auto_white_balance),
-                    white_balance=float(self.realsense_white_balance),
-                    use_poll=bool(self.realsense_use_poll),
+                    width=realsense_width,
+                    height=realsense_height,
+                    fps=realsense_fps,
+                    exposure=realsense_exposure,
+                    gain=realsense_gain,
+                    auto_exposure=bool(realsense_auto_exposure),
+                    auto_white_balance=bool(realsense_auto_white_balance),
+                    white_balance=float(realsense_white_balance),
+                    use_poll=bool(realsense_use_poll),
                 )
-                self.fps = self.realsense_fps
+                self.fps = realsense_fps
             else:
                 raise ValueError(f"Unknown camera type: {self.camera_type}")
 

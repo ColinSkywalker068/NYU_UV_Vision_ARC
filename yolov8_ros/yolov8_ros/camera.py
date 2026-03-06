@@ -118,7 +118,6 @@ class BaslerCamera:
         self.target_width = width
         self.target_height = height
         self.target_fps = fps
-        self.use_full_sensor = use_full_sensor
         self.exposure_us = exposure_us
         self.gain_db = gain_db
         self.use_full_sensor = bool(use_full_sensor)
@@ -236,15 +235,15 @@ class BaslerCamera:
             return None
 
         grab = self.camera.RetrieveResult(2000, pylon.TimeoutHandling_Return)
-        if grab and grab.GrabSucceeded():
+        if not grab:
+            return None
+        try:
+            if not grab.GrabSucceeded():
+                return None
             image = self.converter.Convert(grab)
-            frame = image.GetArray()
+            return image.GetArray()
+        finally:
             grab.Release()
-            return frame
-
-        if grab:
-            grab.Release()
-        return None
 
     def get_applied_settings(self):
         return dict(self.applied_settings)
@@ -304,11 +303,7 @@ class RealSenseCamera:
         if len(devices) == 0:
             raise RuntimeError("No RealSense camera found")
 
-        # Disable all streams first to ensure clean state
-        try:
-            self.config.disable_all_streams()
-        except Exception:
-            pass
+        self.config.disable_all_streams()
 
         # Enable color stream
         self.config.enable_stream(
@@ -432,10 +427,10 @@ class RealSenseCamera:
             # Handle timeouts or frame drops gracefully
             if "timeout" in str(e).lower() or "Frame didn't arrive" in str(e):
                 return None
-            print(f"Error getting frame: {e}")
+            self.logger.warning("Error getting frame: %s", e)
             return None
         except Exception as e:
-            print(f"Error getting frame: {e}")
+            self.logger.warning("Error getting frame: %s", e)
             return None
 
     def release(self):

@@ -269,15 +269,15 @@ class STM32SerialTransmitter:
                             "command_id": int(command_id),
                         }
                     )
-                    # DEBUG: RX always logged; to gate behind serial_verbose, wrap in: if self.verbose:
-                    LOGGER.info(
-                        "[Seasky RX] cmd=0x%04X flags=0x%04X yaw=%.6f pitch=%.6f roll=%.6f",
-                        command_id,
-                        flags_register,
-                        float(yaw),
-                        float(pitch),
-                        float(roll),
-                    )
+                    if self.verbose:
+                        LOGGER.info(
+                            "[Seasky RX] cmd=0x%04X flags=0x%04X yaw=%.6f pitch=%.6f roll=%.6f",
+                            command_id,
+                            flags_register,
+                            float(yaw),
+                            float(pitch),
+                            float(roll),
+                        )
             del self.rx_buffer[:full_frame_size]
         return parsed_frames
 
