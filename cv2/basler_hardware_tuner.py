@@ -4,6 +4,15 @@ from pypylon import pylon
 from pypylon import genicam
 import time
 import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from cv_trackers import EuclideanTracker, KalmanMultiTracker
+
+# --- CONFIGURATION TOGGLE ---
+# Change to 'kalman' to test Kalman Filter tracking on Orin
+# Change to 'euclidean' for maximum speed
+TRACKER_TYPE = 'euclidean'
 
 class ArmorDetector:
     def __init__(self):
@@ -19,13 +28,12 @@ class ArmorDetector:
             table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
             img = cv2.LUT(img, table)
 
-        b, g, r = cv2.split(img)
-        
         # Core inverse-WB logic: (B-R) for blue, (R-B) for red
+        # Using NumPy slicing for zero-copy memory access
         if enemy_color == 'red':
-            diff = cv2.subtract(r, b)
+            diff = cv2.subtract(img[:, :, 2], img[:, :, 0])
         else:
-            diff = cv2.subtract(b, r)
+            diff = cv2.subtract(img[:, :, 0], img[:, :, 2])
         
         _, binary = cv2.threshold(diff, color_th, 255, cv2.THRESH_BINARY)
 
@@ -103,6 +111,7 @@ class BaslerDriver:
 def main():
     cam = BaslerDriver()
     detector = ArmorDetector()
+    tracker = EuclideanTracker() if TRACKER_TYPE == 'euclidean' else KalmanMultiTracker()
     
     # Target configurations (Golden Params from testing)
     params = {
@@ -141,6 +150,8 @@ def main():
         # CV Pipeline Execution
         binary = detector.preprocess(frame, mode, cth, params[mode]['gamma'])
         lights, armors = detector.find_targets(binary)
+        armor_centers = [a['center'] for a in armors]
+        tracked_targets = tracker.update(armor_centers)
 
         # FPS Calculation
         curr_time = time.time()
@@ -150,7 +161,12 @@ def main():
         # Drawing Results
         vis = frame.copy()
         for l in lights: cv2.drawContours(vis, [l['box']], -1, (0, 255, 0), 2)
-        for a in armors: cv2.circle(vis, a['center'], 8, (0, 0, 255), -1)
+        
+        # Draw tracked targets with IDs
+        for tid, center in tracked_targets.items():
+            cv2.circle(vis, center, 8, (0, 0, 255), -1)
+            cv2.putText(vis, f"ID:{tid}", (center[0] + 10, center[1] - 10), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
 
         # Dashboard Information
         cv2.putText(vis, f"FPS: {int(fps)}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
