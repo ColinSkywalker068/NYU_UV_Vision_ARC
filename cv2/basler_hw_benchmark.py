@@ -11,8 +11,8 @@ from cv_trackers import EuclideanTracker, KalmanMultiTracker
 # --- CONFIGURATION TOGGLE ---
 # Change to 'kalman' to test Kalman Filter tracking on Orin
 # Change to 'euclidean' for maximum speed
+# Change to 'none' to disable tracking and test raw detection FPS
 TRACKER_TYPE = "euclidean"
-
 
 class ArmorDetector:
     def __init__(self):
@@ -108,7 +108,9 @@ def main():
 
     detector = ArmorDetector()
     tracker = (
-        EuclideanTracker() if TRACKER_TYPE == "euclidean" else KalmanMultiTracker()
+        EuclideanTracker()
+        if TRACKER_TYPE == "euclidean"
+        else (KalmanMultiTracker() if TRACKER_TYPE == "kalman" else None)
     )
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
 
@@ -129,7 +131,11 @@ def main():
                 # 3. Algorithm Execution
                 binary = detector.fast_process(img, "blue")
                 armor_coords = detector.get_armor_centers(binary)
-                tracked_targets = tracker.update(armor_coords)
+                
+                if tracker:
+                    tracked_targets = tracker.update(armor_coords)
+                else:
+                    tracked_targets = {f"Raw-{i}": c for i, c in enumerate(armor_coords)}
 
                 # 4. Performance Benchmarking
                 frame_count += 1

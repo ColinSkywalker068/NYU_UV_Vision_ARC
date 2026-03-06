@@ -13,8 +13,8 @@ from cv_trackers import EuclideanTracker, KalmanMultiTracker
 # --- CONFIGURATION TOGGLE ---
 # Change to 'kalman' to test Kalman Filter tracking on Orin
 # Change to 'euclidean' for maximum speed
+# Change to 'none' to disable tracking and test raw detection FPS
 TRACKER_TYPE = "euclidean"
-
 
 class ArmorDetector:
     def __init__(self):
@@ -142,9 +142,10 @@ def main():
     cam = BaslerDriver()
     detector = ArmorDetector()
     tracker = (
-        EuclideanTracker() if TRACKER_TYPE == "euclidean" else KalmanMultiTracker()
+        EuclideanTracker()
+        if TRACKER_TYPE == "euclidean"
+        else (KalmanMultiTracker() if TRACKER_TYPE == "kalman" else None)
     )
-
     # Target configurations (Golden Params from testing)
     params = {
         "blue": {"exp": 723, "color_th": 55, "wb_b": 0.9, "wb_r": 3.5, "gamma": 0.9},
@@ -188,7 +189,11 @@ def main():
         binary = detector.preprocess(frame, mode, cth, params[mode]["gamma"])
         lights, armors = detector.find_targets(binary)
         armor_centers = [a["center"] for a in armors]
-        tracked_targets = tracker.update(armor_centers)
+        
+        if tracker:
+            tracked_targets = tracker.update(armor_centers)
+        else:
+            tracked_targets = {f"Raw-{i}": c for i, c in enumerate(armor_centers)}
 
         # FPS Calculation
         curr_time = time.time()
