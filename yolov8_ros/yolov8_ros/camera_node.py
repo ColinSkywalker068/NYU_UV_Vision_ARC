@@ -58,14 +58,10 @@ class CameraNode(Node):
                 basler_use_full_sensor = self.get_parameter(
                     "basler_use_full_sensor"
                 ).value
-                basler_centered_roi = self.get_parameter(
-                    "basler_centered_roi"
-                ).value
+                basler_centered_roi = self.get_parameter("basler_centered_roi").value
                 basler_binning = self.get_parameter("basler_binning").value
                 basler_decimation = self.get_parameter("basler_decimation").value
-                basler_auto_exposure = self.get_parameter(
-                    "basler_auto_exposure"
-                ).value
+                basler_auto_exposure = self.get_parameter("basler_auto_exposure").value
                 basler_auto_gain = self.get_parameter("basler_auto_gain").value
 
                 self.camera = BaslerCamera(
