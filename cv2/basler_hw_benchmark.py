@@ -4,13 +4,15 @@ from pypylon import pylon
 import time
 import sys
 import os
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from cv_trackers import EuclideanTracker, KalmanMultiTracker
 
 # --- CONFIGURATION TOGGLE ---
 # Change to 'kalman' to test Kalman Filter tracking on Orin
 # Change to 'euclidean' for maximum speed
-TRACKER_TYPE = 'euclidean'
+TRACKER_TYPE = "euclidean"
+
 
 class ArmorDetector:
     def __init__(self):
@@ -23,43 +25,54 @@ class ArmorDetector:
     def fast_process(self, img, enemy_color, color_th=55):
         # Color subtraction based on target
         # Using NumPy slicing for zero-copy memory access
-        if enemy_color == 'red':
+        if enemy_color == "red":
             diff = cv2.subtract(img[:, :, 2], img[:, :, 0])
         else:
             diff = cv2.subtract(img[:, :, 0], img[:, :, 2])
-        
+
         _, binary = cv2.threshold(diff, color_th, 255, cv2.THRESH_BINARY)
-        
+
         # Minimal dilation for performance
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 5))
         return cv2.dilate(binary, kernel, iterations=1)
 
     def get_armor_centers(self, binary):
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(
+            binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
         lights = []
         for cnt in contours:
-            if cv2.contourArea(cnt) < 15: continue
+            if cv2.contourArea(cnt) < 15:
+                continue
             rect = cv2.minAreaRect(cnt)
             (cx, cy), (w, h), angle = rect
             length, width = (w, h) if w > h else (h, w)
             if width > 0 and (length / width) >= self.light_min_ratio:
                 # Normalize angle
                 draw_angle = angle + 90 if w > h else angle
-                if w <= h: draw_angle = angle if angle < -45 else angle + 90
-                lights.append({'center': (cx, cy), 'length': length, 'angle': draw_angle})
-        
+                if w <= h:
+                    draw_angle = angle if angle < -45 else angle + 90
+                lights.append(
+                    {"center": (cx, cy), "length": length, "angle": draw_angle}
+                )
+
         armors = []
         for i in range(len(lights)):
             for j in range(i + 1, len(lights)):
                 l1, l2 = lights[i], lights[j]
-                if abs(l1['angle'] - l2['angle']) <= self.match_max_angle_diff:
-                    dist_x = abs(l1['center'][0] - l2['center'][0])
-                    avg_len = (l1['length'] + l2['length']) / 2.0
+                if abs(l1["angle"] - l2["angle"]) <= self.match_max_angle_diff:
+                    dist_x = abs(l1["center"][0] - l2["center"][0])
+                    avg_len = (l1["length"] + l2["length"]) / 2.0
                     ratio = dist_x / avg_len
                     if self.armor_min_ratio < ratio < self.armor_max_ratio:
-                        armors.append((int((l1['center'][0]+l2['center'][0])/2), 
-                                       int((l1['center'][1]+l2['center'][1])/2)))
+                        armors.append(
+                            (
+                                int((l1["center"][0] + l2["center"][0]) / 2),
+                                int((l1["center"][1] + l2["center"][1]) / 2),
+                            )
+                        )
         return armors
+
 
 def main():
     # 1. Hardware Initialization (One-time cost)
@@ -67,7 +80,7 @@ def main():
         camera = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateFirstDevice())
         camera.Open()
         node = camera.GetNodeMap()
-        
+
         # Apply your tested Golden Parameters
         node.GetNode("ExposureAuto").FromString("Off")
         node.GetNode("GainAuto").FromString("Off")
@@ -75,34 +88,36 @@ def main():
         node.GetNode("ExposureTime").SetValue(723.0)  # Your verified value
         node.GetNode("Gain").SetValue(0.0)
         node.GetNode("Gamma").SetValue(0.9)
-        
+
         # Set Inverse WB: Targeting BLUE as default
         node.GetNode("BalanceRatioSelector").SetValue("Red")
         node.GetNode("BalanceRatio").SetValue(3.5)
         node.GetNode("BalanceRatioSelector").SetValue("Blue")
         node.GetNode("BalanceRatio").SetValue(0.9)
-        
+
         # Optimize Throughput for Orin 2
-        # node.GetNode("DeviceLinkThroughputLimit").SetValue(250000000) 
-        
+        # node.GetNode("DeviceLinkThroughputLimit").SetValue(250000000)
+
         converter = pylon.ImageFormatConverter()
         converter.OutputPixelFormat = pylon.PixelType_BGR8packed
-        
+
         print(f"[INIT] Camera {camera.GetDeviceInfo().GetModelName()} ready.")
     except Exception as e:
         print(f"[FATAL] Camera init error: {e}")
         return
 
     detector = ArmorDetector()
-    tracker = EuclideanTracker() if TRACKER_TYPE == 'euclidean' else KalmanMultiTracker()
+    tracker = (
+        EuclideanTracker() if TRACKER_TYPE == "euclidean" else KalmanMultiTracker()
+    )
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
-    
+
     last_time = time.time()
     frame_count = 0
     fps = 0
 
     print("[RUNNING] Press 'Q' to stop. Output: [X, Y] coordinates")
-    
+
     try:
         while camera.IsGrabbing():
             res = camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
@@ -112,7 +127,7 @@ def main():
                 res.Release()
 
                 # 3. Algorithm Execution
-                binary = detector.fast_process(img, 'blue')
+                binary = detector.fast_process(img, "blue")
                 armor_coords = detector.get_armor_centers(binary)
                 tracked_targets = tracker.update(armor_coords)
 
@@ -122,18 +137,24 @@ def main():
                     now = time.time()
                     fps = 30 / (now - last_time)
                     last_time = now
-                
+
                 # 5. Data Output (Simulating competition data stream)
                 if tracked_targets:
                     # Format as ID-[X,Y]
-                    target_str = ", ".join([f"ID:{tid}-[{c[0]},{c[1]}]" for tid, c in tracked_targets.items()])
+                    target_str = ", ".join(
+                        [
+                            f"ID:{tid}-[{c[0]},{c[1]}]"
+                            for tid, c in tracked_targets.items()
+                        ]
+                    )
                     print(f"FPS: {fps:.1f} | Targets: {target_str}")
                 else:
                     print(f"FPS: {fps:.1f} | Searching...")
 
                 # Optional Visualization (Disable for absolute max performance)
                 cv2.imshow("Bench", img)
-                if cv2.waitKey(1) & 0xFF == ord('q'): break
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
             else:
                 res.Release()
 
@@ -143,6 +164,7 @@ def main():
         camera.StopGrabbing()
         camera.Close()
         cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     main()
