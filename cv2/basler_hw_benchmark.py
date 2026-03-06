@@ -14,6 +14,7 @@ from cv_trackers import EuclideanTracker, KalmanMultiTracker
 # Change to 'none' to disable tracking and test raw detection FPS
 TRACKER_TYPE = "euclidean"
 
+
 class ArmorDetector:
     def __init__(self):
         # Constants from your golden parameters
@@ -131,11 +132,13 @@ def main():
                 # 3. Algorithm Execution
                 binary = detector.fast_process(img, "blue")
                 armor_coords = detector.get_armor_centers(binary)
-                
+
                 if tracker:
                     tracked_targets = tracker.update(armor_coords)
                 else:
-                    tracked_targets = {f"Raw-{i}": c for i, c in enumerate(armor_coords)}
+                    tracked_targets = {
+                        f"Raw-{i}": c for i, c in enumerate(armor_coords)
+                    }
 
                 # 4. Performance Benchmarking
                 frame_count += 1
