@@ -14,7 +14,7 @@ from cv_trackers import EuclideanTracker, KalmanMultiTracker
 # Change to 'kalman' to test Kalman Filter tracking on Orin
 # Change to 'euclidean' for maximum speed
 # Change to 'none' to disable tracking and test raw detection FPS
-TRACKER_TYPE = "euclidean"
+TRACKER_TYPE = "kalman"
 
 
 class ArmorDetector:
