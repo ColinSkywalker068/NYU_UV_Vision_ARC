@@ -3,6 +3,14 @@ import numpy as np
 from pypylon import pylon
 import time
 import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from cv_trackers import EuclideanTracker, KalmanMultiTracker
+
+# --- CONFIGURATION TOGGLE ---
+# Change to 'kalman' to test Kalman Filter tracking on Orin
+# Change to 'euclidean' for maximum speed
+TRACKER_TYPE = 'euclidean'
 
 class ArmorDetector:
     def __init__(self):
@@ -13,14 +21,12 @@ class ArmorDetector:
         self.armor_max_ratio = 5.0
 
     def fast_process(self, img, enemy_color, color_th=55):
-        # Efficient channel splitting
-        b, g, r = cv2.split(img)
-        
         # Color subtraction based on target
+        # Using NumPy slicing for zero-copy memory access
         if enemy_color == 'red':
-            diff = cv2.subtract(r, b)
+            diff = cv2.subtract(img[:, :, 2], img[:, :, 0])
         else:
-            diff = cv2.subtract(b, r)
+            diff = cv2.subtract(img[:, :, 0], img[:, :, 2])
         
         _, binary = cv2.threshold(diff, color_th, 255, cv2.THRESH_BINARY)
         
@@ -88,6 +94,7 @@ def main():
         return
 
     detector = ArmorDetector()
+    tracker = EuclideanTracker() if TRACKER_TYPE == 'euclidean' else KalmanMultiTracker()
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
     
     last_time = time.time()
@@ -107,6 +114,7 @@ def main():
                 # 3. Algorithm Execution
                 binary = detector.fast_process(img, 'blue')
                 armor_coords = detector.get_armor_centers(binary)
+                tracked_targets = tracker.update(armor_coords)
 
                 # 4. Performance Benchmarking
                 frame_count += 1
@@ -116,8 +124,10 @@ def main():
                     last_time = now
                 
                 # 5. Data Output (Simulating competition data stream)
-                if armor_coords:
-                    print(f"FPS: {fps:.1f} | Targets: {armor_coords}")
+                if tracked_targets:
+                    # Format as ID-[X,Y]
+                    target_str = ", ".join([f"ID:{tid}-[{c[0]},{c[1]}]" for tid, c in tracked_targets.items()])
+                    print(f"FPS: {fps:.1f} | Targets: {target_str}")
                 else:
                     print(f"FPS: {fps:.1f} | Searching...")
 
