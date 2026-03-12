@@ -7,9 +7,19 @@ import traceback
 
 # Import camera components from the same directory (both backends in camera.py)
 try:
-    from .camera import BaslerCamera, RealSenseCamera, BASLER_DEFAULTS, REALSENSE_DEFAULTS
+    from .camera import (
+        BaslerCamera,
+        RealSenseCamera,
+        BASLER_DEFAULTS,
+        REALSENSE_DEFAULTS,
+    )
 except (ImportError, ValueError):
-    from camera import BaslerCamera, RealSenseCamera, BASLER_DEFAULTS, REALSENSE_DEFAULTS
+    from camera import (
+        BaslerCamera,
+        RealSenseCamera,
+        BASLER_DEFAULTS,
+        REALSENSE_DEFAULTS,
+    )
 
 
 class CameraNode(Node):
@@ -26,7 +36,9 @@ class CameraNode(Node):
         self.declare_parameter("basler_exposure_us", BASLER_DEFAULTS["exposure_us"])
         self.declare_parameter("basler_gain_db", BASLER_DEFAULTS["gain_db"])
         self.declare_parameter("basler_fps", BASLER_DEFAULTS["fps"])
-        self.declare_parameter("basler_use_full_sensor", BASLER_DEFAULTS["use_full_sensor"])
+        self.declare_parameter(
+            "basler_use_full_sensor", BASLER_DEFAULTS["use_full_sensor"]
+        )
         self.declare_parameter("basler_centered_roi", BASLER_DEFAULTS["centered_roi"])
         self.declare_parameter("basler_binning", BASLER_DEFAULTS["binning"])
         self.declare_parameter("basler_decimation", BASLER_DEFAULTS["decimation"])
@@ -39,9 +51,15 @@ class CameraNode(Node):
         self.declare_parameter("realsense_fps", REALSENSE_DEFAULTS["fps"])
         self.declare_parameter("realsense_exposure", REALSENSE_DEFAULTS["exposure"])
         self.declare_parameter("realsense_gain", REALSENSE_DEFAULTS["gain"])
-        self.declare_parameter("realsense_auto_exposure", REALSENSE_DEFAULTS["auto_exposure"])
-        self.declare_parameter("realsense_auto_white_balance", REALSENSE_DEFAULTS["auto_white_balance"])
-        self.declare_parameter("realsense_white_balance", REALSENSE_DEFAULTS["white_balance"])
+        self.declare_parameter(
+            "realsense_auto_exposure", REALSENSE_DEFAULTS["auto_exposure"]
+        )
+        self.declare_parameter(
+            "realsense_auto_white_balance", REALSENSE_DEFAULTS["auto_white_balance"]
+        )
+        self.declare_parameter(
+            "realsense_white_balance", REALSENSE_DEFAULTS["white_balance"]
+        )
         self.declare_parameter("realsense_use_poll", REALSENSE_DEFAULTS["use_poll"])
 
         # Retrieve params
