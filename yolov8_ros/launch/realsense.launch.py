@@ -5,6 +5,17 @@ from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 from pathlib import Path
 
+try:
+    from yolov8_ros.camera import REALSENSE_DEFAULTS
+except ImportError:
+    # Fallback if package isn't on sys.path yet
+    REALSENSE_DEFAULTS = {
+        "width": 640, "height": 480, "fps": 60,
+        "exposure": 300.0, "gain": 16.0,
+        "auto_exposure": False, "auto_white_balance": False,
+        "white_balance": 5800.0, "use_poll": False,
+    }
+
 
 def generate_launch_description() -> LaunchDescription:
     package_share_dir = Path(get_package_share_directory("yolov8_ros"))
@@ -59,16 +70,16 @@ def generate_launch_description() -> LaunchDescription:
 
     return LaunchDescription(
         [
-            # RealSense camera args
-            DeclareLaunchArgument("rs_width", default_value="640", description="RealSense frame width"),
-            DeclareLaunchArgument("rs_height", default_value="480", description="RealSense frame height"),
-            DeclareLaunchArgument("rs_fps", default_value="60", description="RealSense frames per second"),
-            DeclareLaunchArgument("rs_exposure", default_value="300.0", description="RealSense manual exposure (us)"),
-            DeclareLaunchArgument("rs_gain", default_value="16.0", description="RealSense manual gain value"),
-            DeclareLaunchArgument("rs_auto_exposure", default_value="false", description="Enable RealSense auto exposure"),
-            DeclareLaunchArgument("rs_auto_white_balance", default_value="false", description="Enable RealSense auto white balance"),
-            DeclareLaunchArgument("rs_white_balance", default_value="5800.0", description="RealSense manual white balance (K)"),
-            DeclareLaunchArgument("rs_use_poll", default_value="false", description="Use poll_for_frames instead of wait_for_frames"),
+            # RealSense camera args — defaults from REALSENSE_DEFAULTS (camera.py)
+            DeclareLaunchArgument("rs_width", default_value=str(REALSENSE_DEFAULTS["width"]), description="RealSense frame width"),
+            DeclareLaunchArgument("rs_height", default_value=str(REALSENSE_DEFAULTS["height"]), description="RealSense frame height"),
+            DeclareLaunchArgument("rs_fps", default_value=str(REALSENSE_DEFAULTS["fps"]), description="RealSense frames per second"),
+            DeclareLaunchArgument("rs_exposure", default_value=str(REALSENSE_DEFAULTS["exposure"]), description="RealSense manual exposure (us)"),
+            DeclareLaunchArgument("rs_gain", default_value=str(REALSENSE_DEFAULTS["gain"]), description="RealSense manual gain value"),
+            DeclareLaunchArgument("rs_auto_exposure", default_value=str(REALSENSE_DEFAULTS["auto_exposure"]).lower(), description="Enable RealSense auto exposure"),
+            DeclareLaunchArgument("rs_auto_white_balance", default_value=str(REALSENSE_DEFAULTS["auto_white_balance"]).lower(), description="Enable RealSense auto white balance"),
+            DeclareLaunchArgument("rs_white_balance", default_value=str(REALSENSE_DEFAULTS["white_balance"]), description="RealSense manual white balance (K)"),
+            DeclareLaunchArgument("rs_use_poll", default_value=str(REALSENSE_DEFAULTS["use_poll"]).lower(), description="Use poll_for_frames instead of wait_for_frames"),
             # YOLO args
             DeclareLaunchArgument("model_path", default_value=default_model_path, description="Path to YOLO model (.engine / .pt / .onnx)"),
             DeclareLaunchArgument("task", default_value="detect", description="YOLO task: detect, obb, segment"),

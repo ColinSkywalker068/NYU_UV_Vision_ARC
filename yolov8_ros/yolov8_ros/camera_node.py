@@ -7,9 +7,9 @@ import traceback
 
 # Import camera components from the same directory (both backends in camera.py)
 try:
-    from .camera import BaslerCamera, RealSenseCamera
+    from .camera import BaslerCamera, RealSenseCamera, BASLER_DEFAULTS, REALSENSE_DEFAULTS
 except (ImportError, ValueError):
-    from camera import BaslerCamera, RealSenseCamera
+    from camera import BaslerCamera, RealSenseCamera, BASLER_DEFAULTS, REALSENSE_DEFAULTS
 
 
 class CameraNode(Node):
@@ -23,26 +23,26 @@ class CameraNode(Node):
         self.declare_parameter("imgsz_height", 640)
 
         # Basler specific
-        self.declare_parameter("basler_exposure_us", 5000.0)
-        self.declare_parameter("basler_gain_db", 5.0)
-        self.declare_parameter("basler_fps", 60)
-        self.declare_parameter("basler_use_full_sensor", True)
-        self.declare_parameter("basler_centered_roi", True)
-        self.declare_parameter("basler_binning", 1)
-        self.declare_parameter("basler_decimation", 1)
-        self.declare_parameter("basler_auto_exposure", False)
-        self.declare_parameter("basler_auto_gain", False)
+        self.declare_parameter("basler_exposure_us", BASLER_DEFAULTS["exposure_us"])
+        self.declare_parameter("basler_gain_db", BASLER_DEFAULTS["gain_db"])
+        self.declare_parameter("basler_fps", BASLER_DEFAULTS["fps"])
+        self.declare_parameter("basler_use_full_sensor", BASLER_DEFAULTS["use_full_sensor"])
+        self.declare_parameter("basler_centered_roi", BASLER_DEFAULTS["centered_roi"])
+        self.declare_parameter("basler_binning", BASLER_DEFAULTS["binning"])
+        self.declare_parameter("basler_decimation", BASLER_DEFAULTS["decimation"])
+        self.declare_parameter("basler_auto_exposure", BASLER_DEFAULTS["auto_exposure"])
+        self.declare_parameter("basler_auto_gain", BASLER_DEFAULTS["auto_gain"])
 
         # Realsense specific
-        self.declare_parameter("realsense_width", 640)
-        self.declare_parameter("realsense_height", 480)
-        self.declare_parameter("realsense_fps", 60)
-        self.declare_parameter("realsense_exposure", 120.0)
-        self.declare_parameter("realsense_gain", 64.0)
-        self.declare_parameter("realsense_auto_exposure", False)
-        self.declare_parameter("realsense_auto_white_balance", False)
-        self.declare_parameter("realsense_white_balance", 4600.0)
-        self.declare_parameter("realsense_use_poll", False)
+        self.declare_parameter("realsense_width", REALSENSE_DEFAULTS["width"])
+        self.declare_parameter("realsense_height", REALSENSE_DEFAULTS["height"])
+        self.declare_parameter("realsense_fps", REALSENSE_DEFAULTS["fps"])
+        self.declare_parameter("realsense_exposure", REALSENSE_DEFAULTS["exposure"])
+        self.declare_parameter("realsense_gain", REALSENSE_DEFAULTS["gain"])
+        self.declare_parameter("realsense_auto_exposure", REALSENSE_DEFAULTS["auto_exposure"])
+        self.declare_parameter("realsense_auto_white_balance", REALSENSE_DEFAULTS["auto_white_balance"])
+        self.declare_parameter("realsense_white_balance", REALSENSE_DEFAULTS["white_balance"])
+        self.declare_parameter("realsense_use_poll", REALSENSE_DEFAULTS["use_poll"])
 
         # Retrieve params
         self.camera_type = self.get_parameter("camera_type").value

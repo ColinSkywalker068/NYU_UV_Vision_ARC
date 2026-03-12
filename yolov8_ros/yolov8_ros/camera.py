@@ -100,20 +100,49 @@ def _choose_preferred_pixel_format(symbolics):
     return None
 
 
+# Single source of truth for camera defaults.
+# camera_node.py imports these for ROS parameter declarations.
+BASLER_DEFAULTS = {
+    "width": 640,
+    "height": 480,
+    "fps": 0,
+    "exposure_us": 5000.0,
+    "gain_db": 5.0,
+    "use_full_sensor": True,
+    "centered_roi": True,
+    "binning": 1,
+    "decimation": 1,
+    "auto_exposure": False,
+    "auto_gain": False,
+}
+
+REALSENSE_DEFAULTS = {
+    "width": 640,
+    "height": 480,
+    "fps": 60,
+    "exposure": 300.0,
+    "gain": 16.0,
+    "auto_exposure": False,
+    "auto_white_balance": False,
+    "white_balance": 5800.0,
+    "use_poll": False,
+}
+
+
 class BaslerCamera:
     def __init__(
         self,
-        width=640,
-        height=480,
-        fps=0,
-        exposure_us=5000.0,
-        gain_db=5.0,
-        use_full_sensor=True,
-        centered_roi=True,
-        binning=1,
-        decimation=1,
-        auto_exposure=False,
-        auto_gain=False,
+        width=BASLER_DEFAULTS["width"],
+        height=BASLER_DEFAULTS["height"],
+        fps=BASLER_DEFAULTS["fps"],
+        exposure_us=BASLER_DEFAULTS["exposure_us"],
+        gain_db=BASLER_DEFAULTS["gain_db"],
+        use_full_sensor=BASLER_DEFAULTS["use_full_sensor"],
+        centered_roi=BASLER_DEFAULTS["centered_roi"],
+        binning=BASLER_DEFAULTS["binning"],
+        decimation=BASLER_DEFAULTS["decimation"],
+        auto_exposure=BASLER_DEFAULTS["auto_exposure"],
+        auto_gain=BASLER_DEFAULTS["auto_gain"],
     ):
         self.target_width = width
         self.target_height = height
@@ -261,15 +290,15 @@ class BaslerCamera:
 class RealSenseCamera:
     def __init__(
         self,
-        width=640,
-        height=480,
-        fps=60,
-        exposure=120.0,
-        gain=64.0,
-        auto_exposure=False,
-        auto_white_balance=False,
-        white_balance=4600.0,
-        use_poll=False,
+        width=REALSENSE_DEFAULTS["width"],
+        height=REALSENSE_DEFAULTS["height"],
+        fps=REALSENSE_DEFAULTS["fps"],
+        exposure=REALSENSE_DEFAULTS["exposure"],
+        gain=REALSENSE_DEFAULTS["gain"],
+        auto_exposure=REALSENSE_DEFAULTS["auto_exposure"],
+        auto_white_balance=REALSENSE_DEFAULTS["auto_white_balance"],
+        white_balance=REALSENSE_DEFAULTS["white_balance"],
+        use_poll=REALSENSE_DEFAULTS["use_poll"],
     ):
         self.target_width = width
         self.target_height = height
