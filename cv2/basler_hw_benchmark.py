@@ -8,10 +8,10 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from cv_trackers import EuclideanTracker, KalmanMultiTracker
 
-# --- CONFIGURATION TOGGLE ---
-# Change to 'kalman' to test Kalman Filter tracking on Orin
-# Change to 'euclidean' for maximum speed
-# Change to 'none' to disable tracking and test raw detection FPS
+import argparse
+
+# --- DEFAULT CONFIGURATION FOR FALLBACK ---
+# Default if no arguments are passed
 TRACKER_TYPE = "kalman"
 
 
@@ -82,7 +82,7 @@ class ArmorDetector:
         return armors
 
 
-def main():
+def main(args):
     # 1. Hardware Initialization (One-time cost)
     try:
         camera = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateFirstDevice())
@@ -96,6 +96,7 @@ def main():
         node.GetNode("ExposureTime").SetValue(723.0)  # Your verified value
         node.GetNode("Gain").SetValue(0.0)
         node.GetNode("Gamma").SetValue(0.9)
+<<<<<<< Updated upstream
 
         # Set Inverse WB
         node.GetNode("BalanceRatioSelector").SetValue("Red")
@@ -104,6 +105,25 @@ def main():
         node.GetNode("BalanceRatio").SetValue(1.6)
         node.GetNode("BalanceRatioSelector").SetValue("Blue")
         node.GetNode("BalanceRatio").SetValue(4.7)
+=======
+        
+        # Set Inverse WB based on Target selection
+        if args.target == "blue":
+            node.GetNode("BalanceRatioSelector").SetValue("Red")
+            node.GetNode("BalanceRatio").SetValue(3.5)
+            node.GetNode("BalanceRatioSelector").SetValue("Green")
+            node.GetNode("BalanceRatio").SetValue(1.0)
+            node.GetNode("BalanceRatioSelector").SetValue("Blue")
+            node.GetNode("BalanceRatio").SetValue(0.9)
+        else:
+            # Default to Red target tuned parameters
+            node.GetNode("BalanceRatioSelector").SetValue("Red")
+            node.GetNode("BalanceRatio").SetValue(0.5)
+            node.GetNode("BalanceRatioSelector").SetValue("Green")
+            node.GetNode("BalanceRatio").SetValue(1.6)
+            node.GetNode("BalanceRatioSelector").SetValue("Blue")
+            node.GetNode("BalanceRatio").SetValue(4.7)
+>>>>>>> Stashed changes
 
         # Optimize Throughput for Orin 2
         # node.GetNode("DeviceLinkThroughputLimit").SetValue(250000000)
@@ -119,8 +139,8 @@ def main():
     detector = ArmorDetector()
     tracker = (
         EuclideanTracker()
-        if TRACKER_TYPE == "euclidean"
-        else (KalmanMultiTracker() if TRACKER_TYPE == "kalman" else None)
+        if args.tracker == "euclidean"
+        else (KalmanMultiTracker() if args.tracker == "kalman" else None)
     )
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
 
@@ -139,7 +159,7 @@ def main():
                 res.Release()
 
                 # 3. Algorithm Execution
-                binary = detector.fast_process(img, "blue")
+                binary = detector.fast_process(img, args.target)
                 armor_coords = detector.get_armor_centers(binary)
 
                 if tracker:
@@ -185,4 +205,22 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Basler Headless Hardware Benchmark")
+    parser.add_argument(
+        "-t",
+        "--target",
+        type=str,
+        default="red",
+        choices=["red", "blue"],
+        help="Target enemy color to track ('red' or 'blue')",
+    )
+    parser.add_argument(
+        "--tracker",
+        type=str,
+        default=TRACKER_TYPE,
+        choices=["euclidean", "kalman", "none"],
+        help="Tracker type to benchmark ('euclidean', 'kalman', 'none')",
+    )
+    args = parser.parse_args()
+    
+    main(args)
