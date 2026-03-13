@@ -114,6 +114,73 @@ RUN apt-get update && apt-get install -y \
     ros-humble-irobot-create-nodes \
     && rm -rf /var/lib/apt/lists/*
 
+########################################
+# Install system dependencies
+########################################
+RUN apt-get update && apt-get install -y \
+    git \
+    build-essential \
+    cmake \
+    libpcl-dev \
+    libeigen3-dev \
+    libboost-all-dev \
+    ros-humble-pcl-ros \
+    ros-humble-tf2 \
+    ros-humble-tf2-ros \
+    ros-humble-tf2-eigen \
+    ros-humble-nav-msgs \
+    ros-humble-geometry-msgs \
+    ros-humble-sensor-msgs \
+    ros-humble-rclcpp \
+    ros-humble-std-msgs \
+    ros-humble-ndt-omp \
+    python3-colcon-common-extensions \
+    && rm -rf /var/lib/apt/lists/*
+
+########################################
+# Create ROS workspace
+########################################
+RUN mkdir -p /root/livox_ws/src
+WORKDIR /root/livox_ws/src
+
+########################################
+# Install Livox SDK2
+########################################
+RUN git clone https://github.com/Livox-SDK/Livox-SDK2.git && \
+    cd Livox-SDK2 && \
+    mkdir build && cd build && \
+    cmake .. && \
+    make -j$(nproc) && \
+    make install
+
+########################################
+# Install livox_ros_driver2 (Mid-360)
+########################################
+RUN git clone https://github.com/Livox-SDK/livox_ros_driver2.git
+
+########################################
+# Install FAST_LIO
+########################################
+RUN git clone https://github.com/hku-mars/FAST_LIO.git
+
+########################################
+# Install FAST_LIO localization / mapping packages
+########################################
+RUN git clone https://github.com/koide3/ndt_omp.git
+
+########################################
+# Build workspace
+########################################
+WORKDIR /root/livox_ws
+RUN . /opt/ros/humble/setup.sh && \
+    colcon build --symlink-install
+
+########################################
+# Source workspace automatically
+########################################
+RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc && \
+    echo "source /root/livox_ws/install/setup.bash" >> ~/.bashrc
+
 # Fix numpy2 incompatibility with CV libraries
 RUN pip3 install "numpy<2" --force-reinstall
 
