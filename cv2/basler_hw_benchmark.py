@@ -27,7 +27,7 @@ class ArmorDetector:
         # Extract channels (zero-copy references)
         b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
 
-        if enemy_color == 'red':
+        if enemy_color == "red":
             # Yellow light has high Red + high Green. Red LED has low Green.
             # Subtract Blue entirely, and subtract half of Green to punish yellow.
             penalty = cv2.addWeighted(b, 1.0, g, 0.5, 0)
@@ -96,7 +96,7 @@ def main():
         node.GetNode("ExposureTime").SetValue(723.0)  # Your verified value
         node.GetNode("Gain").SetValue(0.0)
         node.GetNode("Gamma").SetValue(0.9)
-        
+
         # Set Inverse WB
         node.GetNode("BalanceRatioSelector").SetValue("Red")
         node.GetNode("BalanceRatio").SetValue(0.5)

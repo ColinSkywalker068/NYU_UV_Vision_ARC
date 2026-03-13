@@ -114,7 +114,7 @@ class KalmanMultiTracker:
     def __init__(self):
         self.tracks = {}  # tid: ArmorPlateTracker
         self.track_lost = {}  # tid: lost_frames
-        
+
         # Spin Detection History (TODO / Placeholder for later)
         # self.history_len = 30
         # self.x_history = {} # tid: list
@@ -124,7 +124,7 @@ class KalmanMultiTracker:
         # self.is_spinning = {} # tid: bool
         # self.last_face_time = {} # tid: float
         # self.current_time = 0.0
-        
+
         self.next_id = 1
         self.max_lost = 5
         self.max_dist_sq = (
@@ -161,7 +161,7 @@ class KalmanMultiTracker:
                 updated_tracks[tid] = tracker
                 updated_lost[tid] = 0
                 unassigned.remove(best_meas)
-                
+
                 # Update History for Spin Detection (TODO / Placeholder)
                 # if tid not in self.t_history:
                 #     self.t_history[tid] = []
@@ -170,18 +170,18 @@ class KalmanMultiTracker:
                 #     self.spin_period[tid] = 0.0
                 #     self.is_spinning[tid] = False
                 #     self.last_face_time[tid] = 0.0
-                #     
+                #
                 # self.t_history[tid].append(self.current_time)
                 # self.x_history[tid].append(best_meas[0])
                 # self.w_history[tid].append(width)
-                # 
+                #
                 # if len(self.t_history[tid]) > self.history_len:
                 #     self.t_history[tid].pop(0)
                 #     self.x_history[tid].pop(0)
                 #     self.w_history[tid].pop(0)
-                #     
+                #
                 # self._analyze_spin(tid)
-                
+
             else:
                 self.track_lost[tid] += 1
                 if self.track_lost[tid] < self.max_lost:
@@ -207,7 +207,7 @@ class KalmanMultiTracker:
 
         self.tracks = updated_tracks
         self.track_lost = updated_lost
-        
+
         # Return currently visible targets with their LATEST filtered pos
         active_targets = {}
         for tid in self.tracks:
@@ -215,7 +215,7 @@ class KalmanMultiTracker:
                 # Get the corrected state (x, y)
                 state = self.tracks[tid].kf.statePost
                 active_targets[tid] = (int(state[0, 0]), int(state[1, 0]))
-                
+
                 # TODO: Re-enable spin properties later for advanced prediction
                 # current_w = self.w_history[tid][-1] if tid in self.w_history and len(self.w_history[tid]) > 0 else 0
                 # active_targets[tid] = {
@@ -232,26 +232,27 @@ class KalmanMultiTracker:
         if len(self.x_history.get(tid, [])) < 15:
             self.is_spinning[tid] = False
             return
-            
+
         w_array = np.array(self.w_history[tid])
         x_array = np.array(self.x_history[tid])
         t_array = np.array(self.t_history[tid])
-        
+
         width_variation = np.max(w_array) - np.min(w_array)
-        if width_variation > 10: 
+        if width_variation > 10:
             try:
                 from scipy.signal import find_peaks
+
                 peaks, _ = find_peaks(x_array, distance=5)
-                
+
                 if len(peaks) >= 2:
                     periods = np.diff(t_array[peaks])
                     self.spin_period[tid] = np.mean(periods)
                     self.is_spinning[tid] = True
-                    
+
                     w_peaks, _ = find_peaks(w_array, distance=5)
                     if len(w_peaks) > 0:
                         self.last_face_time[tid] = t_array[w_peaks[-1]]
-                        
+
             except ImportError:
                 self.is_spinning[tid] = True
         else:
