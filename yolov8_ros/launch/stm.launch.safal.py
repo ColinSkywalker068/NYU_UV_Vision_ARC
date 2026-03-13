@@ -30,7 +30,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     basler_height_arg = DeclareLaunchArgument(
         "basler_height",
-        default_value="640",
+        default_value="480",
         description="Basler frame height",
     )
     basler_fps_arg = DeclareLaunchArgument(
@@ -66,8 +66,8 @@ def generate_launch_description() -> LaunchDescription:
         parameters=[
             {
                 "camera_type": "basler",
-                "imgsz_width": LaunchConfiguration("basler_width"),
-                "imgsz_height": LaunchConfiguration("basler_height"),
+                "basler_width": LaunchConfiguration("basler_width"),
+                "basler_height": LaunchConfiguration("basler_height"),
                 "basler_fps": LaunchConfiguration("basler_fps"),
                 "basler_exposure_us": LaunchConfiguration("basler_exposure_us"),
                 "basler_gain_db": LaunchConfiguration("basler_gain_db"),

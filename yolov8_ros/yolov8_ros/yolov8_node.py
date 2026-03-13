@@ -152,6 +152,107 @@ class YOLOv8Node(Node):
         angle_msg.data = [float(yaw), float(pitch)]
         self.angle_publisher.publish(angle_msg)
 
+    def _get_inference_size(self):
+        if self.imgsz_width == self.imgsz_height:
+            return self.imgsz_width
+        return (self.imgsz_height, self.imgsz_width)
+
+    def _run_inference(self, image):
+        imgsz_value = self._get_inference_size()
+        if self.use_kalman and self.enable_tracking:
+            return self.detector.track(
+                image,
+                half=self.half,
+                imgsz=imgsz_value,
+                show=False,
+                conf=self.conf,
+                verbose=False,
+                persist=self.persist_tracking,
+                tracker="bytetrack.yaml",
+            )
+        return self.detector.predict(
+            image,
+            half=self.half,
+            imgsz=imgsz_value,
+            show=False,
+            conf=self.conf,
+            verbose=False,
+        )
+
+    def _resolve_class_name(self, result_obj, class_id):
+        if class_id is None:
+            return "target"
+        names = getattr(result_obj, "names", None)
+        if names is None:
+            names = getattr(self.detector.model, "names", {})
+        if isinstance(names, dict):
+            return str(names.get(class_id, class_id))
+        if isinstance(names, (list, tuple)) and 0 <= class_id < len(names):
+            return str(names[class_id])
+        return str(class_id)
+
+    def _extract_detections(self, result_obj):
+        boxes = None
+        if hasattr(result_obj, "boxes") and result_obj.boxes is not None:
+            boxes = result_obj.boxes
+        elif (
+            hasattr(result_obj, "obb")
+            and result_obj.obb is not None
+            and self.task == "obb"
+        ):
+            boxes = result_obj.obb
+        if boxes is None or not hasattr(boxes, "xyxy") or boxes.xyxy is None:
+            return []
+        bbox_list = boxes.xyxy.cpu().int().tolist()
+        detection_count = len(bbox_list)
+        id_list = (
+            boxes.id.cpu().int().tolist()
+            if hasattr(boxes, "id") and boxes.id is not None
+            else [None] * detection_count
+        )
+        class_list = (
+            boxes.cls.cpu().int().tolist()
+            if hasattr(boxes, "cls") and boxes.cls is not None
+            else [None] * detection_count
+        )
+        confidence_list = (
+            boxes.conf.cpu().tolist()
+            if hasattr(boxes, "conf") and boxes.conf is not None
+            else [0.0] * detection_count
+        )
+        detections = []
+        for index, bbox in enumerate(bbox_list):
+            class_id = class_list[index]
+            detections.append(
+                {
+                    "bbox": tuple(bbox),
+                    "track_id": id_list[index],
+                    "class_id": class_id,
+                    "confidence": float(confidence_list[index]),
+                    "class_name": self._resolve_class_name(result_obj, class_id),
+                }
+            )
+        return detections
+
+    def _draw_detection(self, frame, detection, is_target):
+        x1, y1, x2, y2 = detection["bbox"]
+        color = (0, 255, 255) if is_target else (0, 255, 0)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        label_parts = [detection["class_name"], f"{detection['confidence']:.2f}"]
+        if detection["track_id"] is not None:
+            label_parts.append(f"ID:{detection['track_id']}")
+        if is_target:
+            label_parts.append("target")
+        cv2.putText(
+            frame,
+            " ".join(label_parts),
+            (x1, max(20, y1 - 10)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            color,
+            1,
+        )
+
     def image_callback(self, msg: Image):
         try:
             # 1. Get Frame
@@ -173,107 +274,60 @@ class YOLOv8Node(Node):
             padded_image = letterbox_frame(frame, self.imgsz_width, self.imgsz_height)
 
             # 3. Inference
-            if self.imgsz_width == self.imgsz_height:
-                imgsz_val = self.imgsz_width
-            else:
-                imgsz_val = (self.imgsz_height, self.imgsz_width)
-
-            if self.enable_tracking:
-                results = self.detector.track(
-                    padded_image,
-                    half=self.half,
-                    imgsz=imgsz_val,
-                    show=False,
-                    conf=self.conf,
-                    verbose=True,
-                    persist=self.persist_tracking,
-                    tracker="bytetrack.yaml",
-                )
-            else:
-                results = self.detector.predict(
-                    padded_image,
-                    half=self.half,
-                    imgsz=imgsz_val,
-                    show=False,
-                    conf=self.conf,
-                    verbose=True,
-                )
+            results = self._run_inference(padded_image)
 
             # 4. Process Results
             vis_frame = padded_image.copy() if self.show else None
             published_this_frame = False
             current_processed_ids = set()
-            best_direct_bbox = None  # Fallback if Kalman disabled
+            best_direct_detection = None
 
             if results and len(results) > 0:
                 res_obj = results[0]
-                boxes = None
-                if hasattr(res_obj, "boxes") and res_obj.boxes is not None:
-                    boxes = res_obj.boxes
-                elif (
-                    hasattr(res_obj, "obb")
-                    and res_obj.obb is not None
-                    and self.task == "obb"
-                ):
-                    boxes = res_obj.obb
-
-                if boxes is not None and hasattr(boxes, "xyxy"):
-                    bbox_list = boxes.xyxy.cpu().int().tolist()
-                    id_list = (
-                        boxes.id.cpu().int().tolist()
-                        if hasattr(boxes, "id") and boxes.id is not None
-                        else [None] * len(bbox_list)
+                detections = self._extract_detections(res_obj)
+                for detection in detections:
+                    x1, y1, x2, y2 = detection["bbox"]
+                    track_id = detection["track_id"]
+                    class_id = detection["class_id"]
+                    matches_target_class = (
+                        class_id is None or class_id == self.target_class
                     )
-
-                    for i, bbox in enumerate(bbox_list):
-                        x1, y1, x2, y2 = bbox
-                        track_id = id_list[i]
-
-                        # Visualization
-                        if self.show and vis_frame is not None:
-                            cv2.rectangle(vis_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                            if track_id is not None:
-                                cv2.putText(
-                                    vis_frame,
-                                    f"ID:{track_id}",
-                                    (x1, y1 - 10),
-                                    cv2.FONT_HERSHEY_SIMPLEX,
-                                    0.5,
-                                    (0, 255, 0),
-                                    1,
-                                )
-
-                        # Check Enemy
-                        roi = padded_image[
-                            max(0, y1) : min(y2, self.imgsz_height),
-                            max(0, x1) : min(x2, self.imgsz_width),
-                        ]
-                        is_enemy = True
-                        if self.enable_color_verification:
-                            is_enemy, _ = check_enemy(roi, self.target_class)
-
-                        if is_enemy:
-                            if self.use_kalman:
-                                if track_id is not None:
-                                    current_processed_ids.add(track_id)
-                                    cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-                                    w, h = float(abs(x2 - x1)), float(abs(y2 - y1))
-
-                                    if track_id not in self.active_trackers:
-                                        self.active_trackers[track_id] = TrackerWrapper(
-                                            ArmorPlateTracker(cx, cy, w, h)
-                                        )
-                                    else:
-                                        self.active_trackers[track_id].tracker.update(
-                                            cx, cy, w, h
-                                        )
-                                    self.active_trackers[track_id].lost_frames = 0
-                            else:
-                                if best_direct_bbox is None:
-                                    best_direct_bbox = (x1, y1, x2, y2)
+                    matches_target_color = True
+                    roi = padded_image[
+                        max(0, y1) : min(y2, self.imgsz_height),
+                        max(0, x1) : min(x2, self.imgsz_width),
+                    ]
+                    if self.enable_color_verification:
+                        matches_target_color, _ = check_enemy(roi, self.target_class)
+                    is_target_detection = (
+                        matches_target_class and matches_target_color
+                    )
+                    if self.show and vis_frame is not None:
+                        self._draw_detection(
+                            vis_frame, detection, is_target_detection
+                        )
+                    if not is_target_detection:
+                        continue
+                    if (
+                        best_direct_detection is None
+                        or detection["confidence"]
+                        > best_direct_detection["confidence"]
+                    ):
+                        best_direct_detection = detection
+                    if self.use_kalman and self.enable_tracking and track_id is not None:
+                        current_processed_ids.add(track_id)
+                        cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+                        w, h = float(abs(x2 - x1)), float(abs(y2 - y1))
+                        if track_id not in self.active_trackers:
+                            self.active_trackers[track_id] = TrackerWrapper(
+                                ArmorPlateTracker(cx, cy, w, h)
+                            )
+                        else:
+                            self.active_trackers[track_id].tracker.update(cx, cy, w, h)
+                        self.active_trackers[track_id].lost_frames = 0
 
             # 5. Tracking / Publishing Logic
-            if self.use_kalman:
+            if self.use_kalman and self.enable_tracking:
                 ids_to_remove = []
                 for tid, wrapper in self.active_trackers.items():
                     if tid not in current_processed_ids:
@@ -317,21 +371,31 @@ class YOLOv8Node(Node):
                                 cv2.rectangle(
                                     vis_frame, (bx1, by1), (bx2, by2), (255, 0, 0), 2
                                 )
+                                cv2.putText(
+                                    vis_frame,
+                                    f"KF ID:{tid}",
+                                    (bx1, max(20, by1 - 10)),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.5,
+                                    (255, 0, 0),
+                                    1,
+                                )
 
                 for tid in ids_to_remove:
                     del self.active_trackers[tid]
 
-            else:
-                # Direct publish if not using Kalman
-                if best_direct_bbox:
-                    x1, y1, x2, y2 = best_direct_bbox
-                    self.publish_bbox_and_angles(x1, y1, x2, y2, True)
-                    published_this_frame = True
+            if not published_this_frame and best_direct_detection is not None:
+                x1, y1, x2, y2 = best_direct_detection["bbox"]
+                self.publish_bbox_and_angles(x1, y1, x2, y2, True)
+                published_this_frame = True
 
             # Default publish if nothing found
             if not published_this_frame:
-                c = self.imgsz_width // 2
-                self.publish_bbox_and_angles(c, c, c, c, False)
+                center_x = self.imgsz_width // 2
+                center_y = self.imgsz_height // 2
+                self.publish_bbox_and_angles(
+                    center_x, center_y, center_x, center_y, False
+                )
 
             if self.show and vis_frame is not None:
                 # The window name should not depend on camera_type anymore

@@ -33,6 +33,8 @@ class CameraNode(Node):
         self.declare_parameter("imgsz_height", 640)
 
         # Basler specific
+        self.declare_parameter("basler_width", BASLER_DEFAULTS["width"])
+        self.declare_parameter("basler_height", BASLER_DEFAULTS["height"])
         self.declare_parameter("basler_exposure_us", BASLER_DEFAULTS["exposure_us"])
         self.declare_parameter("basler_gain_db", BASLER_DEFAULTS["gain_db"])
         self.declare_parameter("basler_fps", BASLER_DEFAULTS["fps"])
@@ -70,6 +72,8 @@ class CameraNode(Node):
         # --- Components Init ---
         try:
             if self.camera_type == "basler":
+                basler_width = self.get_parameter("basler_width").value
+                basler_height = self.get_parameter("basler_height").value
                 basler_exposure = self.get_parameter("basler_exposure_us").value
                 basler_gain = self.get_parameter("basler_gain_db").value
                 basler_fps = self.get_parameter("basler_fps").value
@@ -81,10 +85,20 @@ class CameraNode(Node):
                 basler_decimation = self.get_parameter("basler_decimation").value
                 basler_auto_exposure = self.get_parameter("basler_auto_exposure").value
                 basler_auto_gain = self.get_parameter("basler_auto_gain").value
+                if (
+                    basler_width == BASLER_DEFAULTS["width"]
+                    and basler_height == BASLER_DEFAULTS["height"]
+                    and (
+                        self.imgsz_width != 640
+                        or self.imgsz_height != 640
+                    )
+                ):
+                    basler_width = self.imgsz_width
+                    basler_height = self.imgsz_height
 
                 self.camera = BaslerCamera(
-                    width=self.imgsz_width,
-                    height=self.imgsz_height,
+                    width=basler_width,
+                    height=basler_height,
                     fps=basler_fps,
                     exposure_us=basler_exposure,
                     gain_db=basler_gain,
@@ -132,6 +146,17 @@ class CameraNode(Node):
             self.get_logger().info(
                 f"{self.camera_type.capitalize()} Camera Initialized."
             )
+            if self.camera_type == "basler":
+                applied_settings = self.camera.get_applied_settings()
+                self.get_logger().info(
+                    f"Basler settings applied: {applied_settings}"
+                )
+                if not basler_use_full_sensor:
+                    self.get_logger().warn(
+                        "Basler width/height uses a sensor ROI crop. "
+                        "Use basler_use_full_sensor=true and let the detector letterbox, "
+                        "or enable binning/decimation for sensor-side downsampling."
+                    )
 
         except Exception as e:
             self.get_logger().error(f"Failed to init camera: {e}")
