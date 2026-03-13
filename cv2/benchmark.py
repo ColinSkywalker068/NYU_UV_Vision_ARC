@@ -210,5 +210,5 @@ if __name__ == "__main__":
         help="Tracker type to benchmark ('euclidean', 'kalman', 'none')",
     )
     args = parser.parse_args()
-    
+
     main(args)
