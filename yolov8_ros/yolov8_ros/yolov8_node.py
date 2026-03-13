@@ -299,22 +299,21 @@ class YOLOv8Node(Node):
                     ]
                     if self.enable_color_verification:
                         matches_target_color, _ = check_enemy(roi, self.target_class)
-                    is_target_detection = (
-                        matches_target_class and matches_target_color
-                    )
+                    is_target_detection = matches_target_class and matches_target_color
                     if self.show and vis_frame is not None:
-                        self._draw_detection(
-                            vis_frame, detection, is_target_detection
-                        )
+                        self._draw_detection(vis_frame, detection, is_target_detection)
                     if not is_target_detection:
                         continue
                     if (
                         best_direct_detection is None
-                        or detection["confidence"]
-                        > best_direct_detection["confidence"]
+                        or detection["confidence"] > best_direct_detection["confidence"]
                     ):
                         best_direct_detection = detection
-                    if self.use_kalman and self.enable_tracking and track_id is not None:
+                    if (
+                        self.use_kalman
+                        and self.enable_tracking
+                        and track_id is not None
+                    ):
                         current_processed_ids.add(track_id)
                         cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
                         w, h = float(abs(x2 - x1)), float(abs(y2 - y1))
