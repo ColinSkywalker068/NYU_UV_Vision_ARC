@@ -88,10 +88,7 @@ class CameraNode(Node):
                 if (
                     basler_width == BASLER_DEFAULTS["width"]
                     and basler_height == BASLER_DEFAULTS["height"]
-                    and (
-                        self.imgsz_width != 640
-                        or self.imgsz_height != 640
-                    )
+                    and (self.imgsz_width != 640 or self.imgsz_height != 640)
                 ):
                     basler_width = self.imgsz_width
                     basler_height = self.imgsz_height
@@ -148,9 +145,7 @@ class CameraNode(Node):
             )
             if self.camera_type == "basler":
                 applied_settings = self.camera.get_applied_settings()
-                self.get_logger().info(
-                    f"Basler settings applied: {applied_settings}"
-                )
+                self.get_logger().info(f"Basler settings applied: {applied_settings}")
                 if not basler_use_full_sensor:
                     self.get_logger().warn(
                         "Basler width/height uses a sensor ROI crop. "
