@@ -33,17 +33,24 @@ class ArmorDetector:
             ).astype("uint8")
             img = cv2.LUT(img, table)
 
-        # Core inverse-WB logic: (B-R) for blue, (R-B) for red
-        # Using NumPy slicing for zero-copy memory access
-        if enemy_color == "red":
-            diff = cv2.subtract(img[:, :, 2], img[:, :, 0])
+        # Extract channels (zero-copy references)
+        b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+
+        if enemy_color == 'red':
+            # Yellow light has high Red + high Green. Red LED has low Green.
+            # Subtract Blue entirely, and subtract half of Green to punish yellow.
+            penalty = cv2.addWeighted(b, 1.0, g, 0.5, 0)
+            diff = cv2.subtract(r, penalty)
         else:
-            diff = cv2.subtract(img[:, :, 0], img[:, :, 2])
+            # Cyan light has high Blue + high Green. Blue LED has low Green.
+            penalty = cv2.addWeighted(r, 1.0, g, 0.5, 0)
+            diff = cv2.subtract(b, penalty)
 
         _, binary = cv2.threshold(diff, color_th, 255, cv2.THRESH_BINARY)
 
-        # Quick dilation to merge fragmented light bars
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 5))
+        # Increased dilation to reconnect fragmented components of the target LED
+        # using a taller rect since armor lights are vertical
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 7))
         binary = cv2.dilate(binary, kernel, iterations=1)
         return binary
 
@@ -53,7 +60,7 @@ class ArmorDetector:
         )
         lights = []
         for cnt in contours:
-            if cv2.contourArea(cnt) < 15:
+            if cv2.contourArea(cnt) < 100:
                 continue
             rect = cv2.minAreaRect(cnt)
             (cx, cy), (w, h), angle = rect
@@ -70,7 +77,7 @@ class ArmorDetector:
                     "center": (cx, cy),
                     "length": length,
                     "angle": draw_angle,
-                    "box": np.int0(cv2.boxPoints(rect)),
+                    "box": np.intp(cv2.boxPoints(rect)),
                 }
             )
 
@@ -110,7 +117,7 @@ class BaslerDriver:
             print(f"[ERR] Camera failed: {e}")
             sys.exit()
 
-    def set_config(self, exp, gain, wb_r, wb_b, gamma):
+    def set_config(self, exp, gain, wb_r, wb_b, wb_g, gamma):
         try:
             self.nodemap.GetNode("ExposureAuto").FromString("Off")
             self.nodemap.GetNode("GainAuto").FromString("Off")
@@ -118,12 +125,14 @@ class BaslerDriver:
             self.nodemap.GetNode("ExposureTime").SetValue(float(exp))
             self.nodemap.GetNode("Gain").SetValue(float(gain))
             self.nodemap.GetNode("Gamma").SetValue(float(gamma))
-
+            
             # Apply your "Inverse WB" strategy
             self.nodemap.GetNode("BalanceRatioSelector").SetValue("Red")
             self.nodemap.GetNode("BalanceRatio").SetValue(float(wb_r))
             self.nodemap.GetNode("BalanceRatioSelector").SetValue("Blue")
             self.nodemap.GetNode("BalanceRatio").SetValue(float(wb_b))
+            self.nodemap.GetNode("BalanceRatioSelector").SetValue("Green")
+            self.nodemap.GetNode("BalanceRatio").SetValue(float(wb_g))
         except:
             pass
 
@@ -139,6 +148,26 @@ class BaslerDriver:
         return None
 
 
+    def get_temperature(self):
+        try:
+            # Depending on Basler model firmware, it's either DeviceTemperature or BslTemperatureMax
+            try:
+                temp = self.nodemap.GetNode("DeviceTemperature").GetValue()
+            except:
+                temp = self.nodemap.GetNode("BslTemperatureMax").GetValue()
+                
+            try:
+                state = self.nodemap.GetNode("TemperatureState").ToString()
+            except:
+                try: 
+                    state = self.nodemap.GetNode("BslTemperatureStatus").ToString()
+                except:
+                    state = "Unknown"
+            
+            return temp, state
+        except:
+            return 0.0, "Unknown"
+
 def main():
     cam = BaslerDriver()
     detector = ArmorDetector()
@@ -147,10 +176,10 @@ def main():
         if TRACKER_TYPE == "euclidean"
         else (KalmanMultiTracker() if TRACKER_TYPE == "kalman" else None)
     )
-    # Target configurations (Golden Params from testing)
+    # Default starting parameters mapped from golden benchmark
     params = {
-        "blue": {"exp": 723, "color_th": 55, "wb_b": 0.9, "wb_r": 3.5, "gamma": 0.9},
-        "red": {"exp": 723, "color_th": 55, "wb_b": 3.5, "wb_r": 0.9, "gamma": 0.9},
+        'blue': {'exp': 723, 'color_th': 55, 'wb_b': 0.9, 'wb_g': 1.0, 'wb_r': 3.5, 'gamma': 0.9},
+        'red':  {'exp': 723, 'color_th': 55, 'wb_b': 4.7, 'wb_g': 1.6, 'wb_r': 0.5, 'gamma': 0.9}
     }
     mode = "blue"
 
@@ -167,19 +196,24 @@ def main():
 
     # Trackbars on main window
     cv2.createTrackbar("Exposure", win_main, params[mode]["exp"], 2000, lambda x: None)
-    cv2.createTrackbar(
-        "ColorThresh", win_main, params[mode]["color_th"], 100, lambda x: None
-    )
+    cv2.createTrackbar("ColorThresh", win_main, params[mode]["color_th"], 100, lambda x: None)
+    cv2.createTrackbar("WB Red", win_main, int(params[mode]["wb_r"] * 10), 100, lambda x: None)
+    cv2.createTrackbar("WB Green", win_main, int(params[mode]["wb_g"] * 10), 100, lambda x: None)
+    cv2.createTrackbar("WB Blue", win_main, int(params[mode]["wb_b"] * 10), 100, lambda x: None)
 
     prev_time = time.time()
     print("\n[INFO] R: RED Mode | B: BLUE Mode | Q: Quit | S: Save Params\n")
 
     while True:
-        # Real-time Hardware Sync
+    # Real-time Hardware Sync
         exp = cv2.getTrackbarPos("Exposure", win_main)
         cth = cv2.getTrackbarPos("ColorThresh", win_main)
+        wb_r = cv2.getTrackbarPos("WB Red", win_main) / 10.0
+        wb_g = cv2.getTrackbarPos("WB Green", win_main) / 10.0
+        wb_b = cv2.getTrackbarPos("WB Blue", win_main) / 10.0
+        
         cam.set_config(
-            exp, 0, params[mode]["wb_r"], params[mode]["wb_b"], params[mode]["gamma"]
+            exp, 0, wb_r, wb_b, wb_g, params[mode]["gamma"]
         )
 
         frame = cam.get_frame()
@@ -220,6 +254,8 @@ def main():
             )
 
         # Dashboard Information
+        temp_val, temp_state = cam.get_temperature()
+        
         cv2.putText(
             vis,
             f"FPS: {int(fps)}",
@@ -229,11 +265,29 @@ def main():
             (0, 255, 255),
             2,
         )
+        
+        # Thermal Warning Colors
+        temp_color = (0, 255, 0) # Green for OK
+        if temp_state == "Critical" or temp_val > 65.0:
+            temp_color = (0, 165, 255) # Orange
+        elif temp_state == "Error" or temp_val > 75.0:
+            temp_color = (0, 0, 255) # Red
+            
+        cv2.putText(
+            vis,
+            f"TEMP: {temp_val:.1f}C ({temp_state})",
+            (10, 80),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            temp_color,
+            2,
+        )
+        
         target_color_display = (255, 0, 0) if mode == "blue" else (0, 0, 255)
         cv2.putText(
             vis,
             f"TARGET: {mode.upper()}",
-            (10, 80),
+            (10, 120),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
             target_color_display,
@@ -248,13 +302,25 @@ def main():
         if key == ord("q"):
             break
         elif key == ord("r"):
-            mode = "red"
+            if mode != "red":
+                mode = "red"
+                cv2.setTrackbarPos("Exposure", win_main, params[mode]["exp"])
+                cv2.setTrackbarPos("ColorThresh", win_main, params[mode]["color_th"])
+                cv2.setTrackbarPos("WB Red", win_main, int(params[mode]["wb_r"] * 10))
+                cv2.setTrackbarPos("WB Green", win_main, int(params[mode]["wb_g"] * 10))
+                cv2.setTrackbarPos("WB Blue", win_main, int(params[mode]["wb_b"] * 10))
         elif key == ord("b"):
-            mode = "blue"
+            if mode != "blue":
+                mode = "blue"
+                cv2.setTrackbarPos("Exposure", win_main, params[mode]["exp"])
+                cv2.setTrackbarPos("ColorThresh", win_main, params[mode]["color_th"])
+                cv2.setTrackbarPos("WB Red", win_main, int(params[mode]["wb_r"] * 10))
+                cv2.setTrackbarPos("WB Green", win_main, int(params[mode]["wb_g"] * 10))
+                cv2.setTrackbarPos("WB Blue", win_main, int(params[mode]["wb_b"] * 10))
         elif key == ord("s"):
             print(f"\n--- Current Configuration [{mode.upper()}] ---")
             print(f"Exposure: {exp}, Threshold: {cth}")
-            print(f"WB Red: {params[mode]['wb_r']}, WB Blue: {params[mode]['wb_b']}")
+            print(f"WB Red: {wb_r}, WB Green: {wb_g}, WB Blue: {wb_b}")
             print("------------------------------------------\n")
 
     cam.camera.Close()

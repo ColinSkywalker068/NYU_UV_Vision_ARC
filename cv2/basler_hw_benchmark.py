@@ -24,17 +24,24 @@ class ArmorDetector:
         self.armor_max_ratio = 5.0
 
     def fast_process(self, img, enemy_color, color_th=55):
-        # Color subtraction based on target
-        # Using NumPy slicing for zero-copy memory access
-        if enemy_color == "red":
-            diff = cv2.subtract(img[:, :, 2], img[:, :, 0])
+        # Extract channels (zero-copy references)
+        b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+
+        if enemy_color == 'red':
+            # Yellow light has high Red + high Green. Red LED has low Green.
+            # Subtract Blue entirely, and subtract half of Green to punish yellow.
+            penalty = cv2.addWeighted(b, 1.0, g, 0.5, 0)
+            diff = cv2.subtract(r, penalty)
         else:
-            diff = cv2.subtract(img[:, :, 0], img[:, :, 2])
+            # Cyan light has high Blue + high Green. Blue LED has low Green.
+            penalty = cv2.addWeighted(r, 1.0, g, 0.5, 0)
+            diff = cv2.subtract(b, penalty)
 
         _, binary = cv2.threshold(diff, color_th, 255, cv2.THRESH_BINARY)
 
-        # Minimal dilation for performance
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 5))
+        # Increased dilation to reconnect fragmented components of the target LED
+        # using a taller rect since armor lights are vertical
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 7))
         return cv2.dilate(binary, kernel, iterations=1)
 
     def get_armor_centers(self, binary):
@@ -43,7 +50,7 @@ class ArmorDetector:
         )
         lights = []
         for cnt in contours:
-            if cv2.contourArea(cnt) < 15:
+            if cv2.contourArea(cnt) < 100:
                 continue
             rect = cv2.minAreaRect(cnt)
             (cx, cy), (w, h), angle = rect
@@ -89,12 +96,14 @@ def main():
         node.GetNode("ExposureTime").SetValue(723.0)  # Your verified value
         node.GetNode("Gain").SetValue(0.0)
         node.GetNode("Gamma").SetValue(0.9)
-
-        # Set Inverse WB: Targeting BLUE as default
+        
+        # Set Inverse WB
         node.GetNode("BalanceRatioSelector").SetValue("Red")
-        node.GetNode("BalanceRatio").SetValue(3.5)
+        node.GetNode("BalanceRatio").SetValue(0.5)
+        node.GetNode("BalanceRatioSelector").SetValue("Green")
+        node.GetNode("BalanceRatio").SetValue(1.6)
         node.GetNode("BalanceRatioSelector").SetValue("Blue")
-        node.GetNode("BalanceRatio").SetValue(0.9)
+        node.GetNode("BalanceRatio").SetValue(4.7)
 
         # Optimize Throughput for Orin 2
         # node.GetNode("DeviceLinkThroughputLimit").SetValue(250000000)
