@@ -96,17 +96,6 @@ def main(args):
         node.GetNode("ExposureTime").SetValue(723.0)  # Your verified value
         node.GetNode("Gain").SetValue(0.0)
         node.GetNode("Gamma").SetValue(0.9)
-<<<<<<< Updated upstream
-
-        # Set Inverse WB
-        node.GetNode("BalanceRatioSelector").SetValue("Red")
-        node.GetNode("BalanceRatio").SetValue(0.5)
-        node.GetNode("BalanceRatioSelector").SetValue("Green")
-        node.GetNode("BalanceRatio").SetValue(1.6)
-        node.GetNode("BalanceRatioSelector").SetValue("Blue")
-        node.GetNode("BalanceRatio").SetValue(4.7)
-=======
-        
         # Set Inverse WB based on Target selection
         if args.target == "blue":
             node.GetNode("BalanceRatioSelector").SetValue("Red")
@@ -123,7 +112,6 @@ def main(args):
             node.GetNode("BalanceRatio").SetValue(1.6)
             node.GetNode("BalanceRatioSelector").SetValue("Blue")
             node.GetNode("BalanceRatio").SetValue(4.7)
->>>>>>> Stashed changes
 
         # Optimize Throughput for Orin 2
         # node.GetNode("DeviceLinkThroughputLimit").SetValue(250000000)
