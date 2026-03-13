@@ -46,7 +46,7 @@ class YOLOv8Node(Node):
         super().__init__("yolov8_modular_node", parameter_overrides=parameter_overrides)
         self.get_logger().info("Initializing Modular YOLOv8 Node...")
         package_share_dir = Path(get_package_share_directory("yolov8_ros"))
-        default_model_path = package_share_dir / "models" / "best.engine"
+        default_model_path = package_share_dir / "models" / "best_jithendra.pt"
 
         # --- Parameters ---
         self.declare_parameter("model_path", str(default_model_path))
