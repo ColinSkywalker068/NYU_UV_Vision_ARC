@@ -129,7 +129,7 @@ def generate_launch_description() -> LaunchDescription:
             ),
             DeclareLaunchArgument(
                 "task",
-                default_value="detect",
+                default_value="obb",
                 description="YOLO task: detect, obb, segment",
             ),
             DeclareLaunchArgument(

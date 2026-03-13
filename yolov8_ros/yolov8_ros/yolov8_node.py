@@ -50,7 +50,7 @@ class YOLOv8Node(Node):
 
         # --- Parameters ---
         self.declare_parameter("model_path", str(default_model_path))
-        self.declare_parameter("task", "detect")
+        self.declare_parameter("task", "obb")
         self.declare_parameter("type", "yolo")
         self.declare_parameter("half", True)
         self.declare_parameter("imgsz_width", 640)
