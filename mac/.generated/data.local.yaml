@@ -1,0 +1,8 @@
+path: /Users/Kushal/NYU/CV_Detection/mac/mergeRM
+train: images/train
+val: images/val
+test: images/test
+nc: 1
+names:
+- plate
+task: obb
