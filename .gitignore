@@ -143,3 +143,9 @@ dmypy.json
 *.pyo
 .vscode/launch.json
 .vscode/settings.json
+
+
+# Mac stuff
+mac/mergeRM/
+mac/.generated/
+mac/mergeRM/** 
