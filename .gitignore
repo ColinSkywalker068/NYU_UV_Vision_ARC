@@ -143,3 +143,5 @@ dmypy.json
 *.pyo
 .vscode/launch.json
 .vscode/settings.json
+
+mac/
