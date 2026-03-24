@@ -22,6 +22,40 @@ COREML_MODEL_PATH: Path = (
 PT_MODEL_PATH: Path = Path(__file__).resolve().parent.parent / "model_test" / "best.pt"
 PROBE_TIMEOUT_SECONDS: int = int(os.environ.get("COREML_PROBE_TIMEOUT_SECONDS", "2"))
 
+# Cheap color bias for plate experiments (BGR, in-place). No HSV / blur.
+# PLATE_TARGET=blue  -> slight warm/red cast (often helps blue plates pop).
+# PLATE_TARGET=red   -> slight cool/blue cast (often helps red plates pop).
+# PLATE_TARGET unset/none/off -> disabled.
+PLATE_BIAS_ADD: int = int(os.environ.get("PLATE_BIAS_ADD", "8"))
+PLATE_BIAS_SUB: int = int(os.environ.get("PLATE_BIAS_SUB", "6"))
+
+
+def parse_plate_target() -> str:
+    raw: str = os.environ.get("PLATE_TARGET", "").strip().lower()
+    if raw in ("", "none", "off", "0"):
+        return ""
+    if raw in ("red", "blue"):
+        return raw
+    return ""
+
+
+def apply_plate_hue_bias_bgr(frame: np.ndarray, target: str) -> None:
+    """In-place BGR channel nudge — minimal cost vs full color space conversion."""
+    if target == "blue":
+        frame[:, :, 2] = np.clip(
+            frame[:, :, 2].astype(np.int16) + PLATE_BIAS_ADD, 0, 255
+        ).astype(np.uint8)
+        frame[:, :, 0] = np.clip(
+            frame[:, :, 0].astype(np.int16) - PLATE_BIAS_SUB, 0, 255
+        ).astype(np.uint8)
+    elif target == "red":
+        frame[:, :, 0] = np.clip(
+            frame[:, :, 0].astype(np.int16) + PLATE_BIAS_ADD, 0, 255
+        ).astype(np.uint8)
+        frame[:, :, 2] = np.clip(
+            frame[:, :, 2].astype(np.int16) - PLATE_BIAS_SUB, 0, 255
+        ).astype(np.uint8)
+
 
 def load_model(model_path: Path) -> YOLO:
     if not model_path.exists():
@@ -104,7 +138,9 @@ def create_frame_converter() -> pylon.ImageFormatConverter:
     return converter
 
 
-def run_inference_loop(model: YOLO, camera: pylon.InstantCamera) -> None:
+def run_inference_loop(
+    model: YOLO, camera: pylon.InstantCamera, plate_target: str
+) -> None:
     frame_converter: pylon.ImageFormatConverter = create_frame_converter()
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
     try:
@@ -118,6 +154,8 @@ def run_inference_loop(model: YOLO, camera: pylon.InstantCamera) -> None:
             converted_image = frame_converter.Convert(grab_result)
             frame = converted_image.GetArray()
             grab_result.Release()
+            if plate_target:
+                apply_plate_hue_bias_bgr(frame, plate_target)
             results = model.predict(frame, verbose=False)
             if not results:
                 continue
@@ -135,18 +173,23 @@ def run_inference_loop(model: YOLO, camera: pylon.InstantCamera) -> None:
 
 
 def main() -> int:
+    plate_target: str = parse_plate_target()
     try:
         model: YOLO = load_runtime_model()
     except Exception as err:
         print(f"Failed to load model: {err}")
         return 1
+    if plate_target:
+        print(
+            f"Plate hue bias: target={plate_target} (+{PLATE_BIAS_ADD}/-{PLATE_BIAS_SUB} BGR)"
+        )
     try:
         camera: pylon.InstantCamera = open_default_camera()
     except Exception as err:
         print(f"Failed to open Basler camera: {err}")
         return 1
     try:
-        run_inference_loop(model=model, camera=camera)
+        run_inference_loop(model=model, camera=camera, plate_target=plate_target)
     except KeyboardInterrupt:
         pass
     except Exception as err:
