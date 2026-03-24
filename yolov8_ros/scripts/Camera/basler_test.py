@@ -167,6 +167,7 @@ def configure_camera(
     binning: int = 1,
     decimation: int = 1,
     applied_settings: dict[str, str | float] | None = None,
+    start_grabbing: bool = True,
 ) -> dict[str, float]:
     _set_downsample_factor(camera, "BinningHorizontal", binning, applied_settings)
     _set_downsample_factor(camera, "BinningVertical", binning, applied_settings)
@@ -235,7 +236,8 @@ def configure_camera(
     else:
         _set_node_value_if_writable(camera.GainAuto, "Off")
         _set_node_value_if_writable(camera.Gain, float(gain_db))
-    camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+    if start_grabbing:
+        camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
     actual_width = camera.Width.GetValue()
     actual_height = camera.Height.GetValue()
     actual_fps = get_actual_fps(camera)
