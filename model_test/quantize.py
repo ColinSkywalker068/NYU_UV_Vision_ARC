@@ -137,7 +137,6 @@ def export_model(args: argparse.Namespace) -> None:
             workspace=args.workspace,
             simplify=True,
             device=args.device,
-            nms=True,
         )
         print(f"exported TensorRT INT8 engine next to {model_path.name}")
         return
