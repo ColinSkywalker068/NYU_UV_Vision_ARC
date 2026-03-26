@@ -253,6 +253,7 @@ def run_inference_on_bgr_frames(
     fps_ema = 0.0
     t_prev = time.monotonic()
     try:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         while True:
             t_now = time.monotonic()
             fps_ema = tick_fps_ema(fps_ema, t_now - t_prev)
