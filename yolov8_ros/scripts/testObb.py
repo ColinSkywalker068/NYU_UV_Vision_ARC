@@ -223,9 +223,7 @@ def draw_obb_on_bgr(frame_bgr: np.ndarray, result: Any) -> None:
         pts = poly.reshape(-1, 1, 2)
         cid = int(clss[i])
         hue = (40 * cid) % 180
-        bgr = cv2.cvtColor(
-            np.uint8([[[hue, 220, 255]]]), cv2.COLOR_HSV2BGR
-        )[0, 0]
+        bgr = cv2.cvtColor(np.uint8([[[hue, 220, 255]]]), cv2.COLOR_HSV2BGR)[0, 0]
         color = (int(bgr[0]), int(bgr[1]), int(bgr[2]))
         cv2.polylines(frame_bgr, [pts], isClosed=True, color=color, thickness=2)
         xi = int(poly[:, 0].min())
