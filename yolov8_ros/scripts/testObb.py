@@ -180,10 +180,9 @@ def bgr_frame_to_model_input(
     imgsz: int,
 ) -> torch.Tensor:
     dtype = torch.float16 if use_half else torch.float32
-    t = torch.from_numpy(frame).to(device, dtype=dtype)
+    t = torch.as_tensor(frame, dtype=dtype, device=device)
     t = t / 255.0
     t = t.permute(2, 0, 1).unsqueeze(0)
-    t = t[:, [2, 1, 0], :, :]
     if t.shape[2] != imgsz or t.shape[3] != imgsz:
         t = torch.nn.functional.interpolate(
             t,
@@ -191,6 +190,7 @@ def bgr_frame_to_model_input(
             mode="bilinear",
             align_corners=False,
         )
+    t = t[:, [2, 1, 0], :, :]
     return t
 
 
@@ -256,6 +256,9 @@ def run_inference_on_bgr_frames(
     t_prev = time.monotonic()
     try:
         while True:
+            t_now = time.monotonic()
+            fps_ema = tick_fps_ema(fps_ema, t_now - t_prev)
+            t_prev = t_now
             frame = frame_source()
             if frame is None:
                 continue
@@ -265,14 +268,11 @@ def run_inference_on_bgr_frames(
                 bgr_frame_to_model_input(frame, device, use_half, imgsz),
                 device=device,
                 half=use_half,
-                imgsz=imgsz,
                 verbose=False,
             )
             if not results:
                 continue
             draw_obb_on_bgr(frame, results[0])
-            fps_ema = tick_fps_ema(fps_ema, time.monotonic() - t_prev)
-            t_prev = time.monotonic()
             cv2.putText(
                 frame,
                 f"FPS: {fps_ema:.1f}",
@@ -305,10 +305,11 @@ def run_basler_loop(
 
         def grab_bgr() -> Optional[np.ndarray]:
             grab = camera.RetrieveResult(
-                1000, pylon.TimeoutHandling_ThrowException
+                200, pylon.TimeoutHandling_Return
             )
-            if not grab.GrabSucceeded():
-                grab.Release()
+            if grab is None or not grab.GrabSucceeded():
+                if grab is not None:
+                    grab.Release()
                 return None
             if uses_native_bgr8:
                 out = grab.GetArray()
