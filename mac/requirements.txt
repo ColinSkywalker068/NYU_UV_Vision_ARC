@@ -1,0 +1,5 @@
+coremltools
+numpy<=2.3.5
+opencv-python
+pypylon
+ultralytics
