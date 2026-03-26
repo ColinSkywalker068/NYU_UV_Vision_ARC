@@ -2,6 +2,8 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+
 def generate_launch_description() -> LaunchDescription:
     default_model_path = "/home/ultraviolet/CV_Detection/model_test/best.pt"
 
