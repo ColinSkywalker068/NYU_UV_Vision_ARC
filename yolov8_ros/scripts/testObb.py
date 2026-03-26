@@ -113,7 +113,9 @@ def _realsense_best_bgr8_stream(
     return best
 
 
-def realsense_color_frames(cap_fps: Optional[float]) -> Generator[np.ndarray, None, None]:
+def realsense_color_frames(
+    cap_fps: Optional[float],
+) -> Generator[np.ndarray, None, None]:
     import pyrealsense2 as rs  # type: ignore[import-untyped]
 
     pipeline: rs.pipeline = rs.pipeline()
