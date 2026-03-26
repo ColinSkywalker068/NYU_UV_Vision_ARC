@@ -72,8 +72,9 @@ def basler_grab_thread_fn(
         else:
             assert converter is not None
             raw = converter.Convert(grab).GetArray()
+        payload = raw.copy()
         grab.Release()
-        fq.put(np.ascontiguousarray(raw).copy())
+        fq.put(payload)
 
 
 def diag_timing_enabled() -> bool:
@@ -249,27 +250,54 @@ def resolve_inference_imgsz(model: YOLO) -> int:
     return 640
 
 
-def bgr_frame_to_model_input(
-    frame: np.ndarray,
-    device: str,
-    use_half: bool,
-    imgsz: int,
-) -> torch.Tensor:
-    """HWC BGR uint8 → NCHW RGB float on device. No pinned host buffers (best on Jetson UMA)."""
-    dtype = torch.float16 if use_half else torch.float32
-    frame_c = frame if frame.flags.c_contiguous else np.ascontiguousarray(frame)
-    t = torch.from_numpy(frame_c).to(device, dtype=dtype)
-    t = t / 255.0
-    t = t.permute(2, 0, 1).unsqueeze(0)
-    if t.shape[2] != imgsz or t.shape[3] != imgsz:
-        t = torch.nn.functional.interpolate(
-            t,
-            size=(imgsz, imgsz),
-            mode="bilinear",
-            align_corners=False,
-        )
-    t = t[:, [2, 1, 0], :, :]
-    return t
+class ModelInputBuffer:
+    """Reusable GPU tensors for BGR uint8 → NCHW RGB model input (reduces Jetson UMA alloc churn)."""
+
+    def __init__(self, device: str, use_half: bool, imgsz: int) -> None:
+        self.device = device
+        self.imgsz = imgsz
+        self.dtype = torch.float16 if use_half else torch.float32
+        self._use_half = use_half
+        self._stage: Optional[torch.Tensor] = None
+        self._float_hwc: Optional[torch.Tensor] = None
+        self._out: Optional[torch.Tensor] = None
+
+    def __call__(self, frame: np.ndarray) -> torch.Tensor:
+        h, w, c = frame.shape
+        if c != 3:
+            raise ValueError(f"Expected 3-channel BGR, got shape {frame.shape}")
+        if (
+            self._stage is None
+            or int(self._stage.shape[0]) != h
+            or int(self._stage.shape[1]) != w
+        ):
+            self._stage = torch.empty((h, w, c), dtype=torch.uint8, device=self.device)
+            self._float_hwc = torch.empty(
+                (h, w, c), dtype=torch.float32, device=self.device
+            )
+            self._out = torch.empty(
+                (1, 3, self.imgsz, self.imgsz),
+                dtype=self.dtype,
+                device=self.device,
+            )
+        frame_c = frame if frame.flags.c_contiguous else np.ascontiguousarray(frame)
+        self._stage.copy_(torch.from_numpy(frame_c))
+        self._float_hwc.copy_(self._stage)
+        self._float_hwc.mul_(1.0 / 255.0)
+        t = self._float_hwc.permute(2, 0, 1).unsqueeze(0)
+        t = t[:, [2, 1, 0], :, :]
+        if t.shape[2] != self.imgsz or t.shape[3] != self.imgsz:
+            t = torch.nn.functional.interpolate(
+                t,
+                size=(self.imgsz, self.imgsz),
+                mode="bilinear",
+                align_corners=False,
+            )
+        if self._use_half:
+            self._out.copy_(t.to(dtype=torch.float16))
+        else:
+            self._out.copy_(t)
+        return self._out
 
 
 def _to_numpy(x: Any) -> np.ndarray:
@@ -329,6 +357,7 @@ def run_inference_on_bgr_frames(
     headless: bool,
 ) -> None:
     imgsz = resolve_inference_imgsz(model)
+    model_input = ModelInputBuffer(device, use_half, imgsz)
     fps_ema = 0.0
     fps_log_prev = time.monotonic()
     t_start = fps_log_prev
@@ -346,7 +375,7 @@ def run_inference_on_bgr_frames(
             t0 = time.monotonic()
             if plate_target:
                 apply_plate_hue_bias_bgr(frame, plate_target)
-            inp = bgr_frame_to_model_input(frame, device, use_half, imgsz)
+            inp = model_input(frame)
             t_pre_predict = time.monotonic()
             results = model.predict(
                 inp,
