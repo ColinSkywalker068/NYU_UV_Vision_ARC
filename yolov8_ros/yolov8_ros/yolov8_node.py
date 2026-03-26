@@ -12,7 +12,6 @@ import math
 import traceback
 import time
 
-# Import components
 try:
     from .detector import YOLODetector
     from .tracker import ArmorPlateTracker, TrackerWrapper
@@ -38,6 +37,83 @@ except (ImportError, ValueError):
         check_enemy,
     )
 
+PREVIEW_MAX_W = 960
+PREVIEW_MAX_H = 540
+
+
+def _to_numpy(x) -> np.ndarray:
+    if hasattr(x, "cpu"):
+        return x.detach().cpu().numpy()
+    return np.asarray(x)
+
+
+def _class_color(cid: int) -> tuple:
+    hue = (40 * cid) % 180
+    bgr = cv2.cvtColor(np.uint8([[[hue, 220, 255]]]), cv2.COLOR_HSV2BGR)[0, 0]
+    return tuple(bgr.tolist())
+
+
+def _class_name(names, cid: int) -> str:
+    if isinstance(names, dict):
+        return str(names.get(cid, cid))
+    if isinstance(names, (list, tuple)) and 0 <= cid < len(names):
+        return str(names[cid])
+    return str(cid)
+
+
+def tick_fps_ema(prev: float, dt: float) -> float:
+    inst = 1.0 / max(dt, 1e-9)
+    if prev <= 0.0:
+        return inst
+    return 0.9 * prev + 0.1 * inst
+
+
+def preview_scale(frame: np.ndarray, max_w: int, max_h: int) -> np.ndarray:
+    h, w = frame.shape[:2]
+    scale = min(max_w / w, max_h / h, 1.0)
+    if scale >= 1.0:
+        return frame
+    return cv2.resize(frame, (max(1, int(w * scale)), max(1, int(h * scale))),
+                      interpolation=cv2.INTER_AREA)
+
+
+def draw_detections(frame: np.ndarray, result, task: str) -> None:
+    """Lightweight replacement for result.plot() — avoids full annotator overhead."""
+    names = getattr(result, "names", None)
+    if task == "obb":
+        obb = getattr(result, "obb", None)
+        if obb is None:
+            return
+        xyxyxyxy = getattr(obb, "xyxyxyxy", None)
+        if xyxyxyxy is None or len(xyxyxyxy) == 0:
+            return
+        polys = _to_numpy(xyxyxyxy).astype(np.int32)
+        confs = _to_numpy(obb.conf)
+        clss = _to_numpy(obb.cls).astype(int)
+        for i, poly in enumerate(polys):
+            cid = int(clss[i])
+            color = _class_color(cid)
+            cv2.polylines(frame, [poly.reshape(-1, 1, 2)], True, color, 2)
+            xi = int(poly[:, 0].min())
+            yi = max(16, int(poly[:, 1].min()) - 4)
+            label = f"{_class_name(names, cid)} {float(confs[i]):.2f}"
+            cv2.putText(frame, label, (xi, yi),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+    else:
+        boxes = getattr(result, "boxes", None)
+        if boxes is None or boxes.xyxy is None:
+            return
+        bboxes = _to_numpy(boxes.xyxy).astype(int)
+        confs = _to_numpy(boxes.conf)
+        clss = _to_numpy(boxes.cls).astype(int)
+        for i, box in enumerate(bboxes):
+            cid = int(clss[i])
+            color = _class_color(cid)
+            cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), color, 2)
+            label = f"{_class_name(names, cid)} {float(confs[i]):.2f}"
+            cv2.putText(frame, label, (box[0], max(16, box[1] - 4)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+
 
 class YOLOv8Node(Node):
     def __init__(self, parameter_overrides=None):
@@ -45,7 +121,6 @@ class YOLOv8Node(Node):
         self.get_logger().info("Initializing Modular YOLOv8 Node...")
         default_model_path = "/home/ultraviolet/CV_Detection/model_test/best.pt"
 
-        # --- Parameters ---
         self.declare_parameter("model_path", str(default_model_path))
         self.declare_parameter("task", "obb")
         self.declare_parameter("type", "yolo")
@@ -57,20 +132,15 @@ class YOLOv8Node(Node):
         self.declare_parameter("tracker_timeout", 15)
         self.declare_parameter("prediction_lookahead_steps", 0.5)
 
-        # Kalman / Tracking
         self.declare_parameter("enable_tracking", True)
         self.declare_parameter("persist_tracking", True)
         self.declare_parameter("use_kalman", False)
         self.declare_parameter("enable_color_verification", False)
 
-        # Angle calc
-        self.declare_parameter(
-            "hfov_degrees", 79.2
-        )  # Keeping D455 defaults or adjust for Basler
+        self.declare_parameter("hfov_degrees", 79.2)
         self.declare_parameter("vfov_degrees", 63.78)
         self.declare_parameter("vis_window_name", "YOLOv8 Modular Node")
 
-        # Retrieve params
         self.model_path = self.get_parameter("model_path").value
         self.task = self.get_parameter("task").value
         self.model_type = self.get_parameter("type").value
@@ -93,22 +163,18 @@ class YOLOv8Node(Node):
         self.vfov_rad = math.radians(self.get_parameter("vfov_degrees").value)
         self.vis_window_name = self.get_parameter("vis_window_name").value
 
-        # State
         self.target_class = BLUE_CLASS
         self.active_trackers = {}
         self.last_frame_time = None
-        self._show_fps_ema = 0.0
-        self._show_fps_t_prev = None
+        self._fps_ema = 0.0
+        self._fps_t_prev = None
+        self._window_created = False
 
-        # --- Components Init ---
-        # 1. Detector
         self.detector = YOLODetector(self.model_path, self.task, self.model_type)
         self.get_logger().info("Detector Initialized.")
 
-        # 2. CV Bridge
         self.bridge = CvBridge()
 
-        # --- Publishers/Subscribers ---
         self.image_subscription = self.create_subscription(
             Image, "image_raw", self.image_callback, 10
         )
@@ -140,14 +206,9 @@ class YOLOv8Node(Node):
         self.override_publisher.publish(self.override_msg)
 
         yaw, pitch = calculate_angles(
-            x1,
-            y1,
-            x2,
-            y2,
-            self.imgsz_width,
-            self.imgsz_height,
-            self.hfov_rad,
-            self.vfov_rad,
+            x1, y1, x2, y2,
+            self.imgsz_width, self.imgsz_height,
+            self.hfov_rad, self.vfov_rad,
         )
         angle_msg = Float32MultiArray()
         angle_msg.data = [float(yaw), float(pitch)]
@@ -155,33 +216,30 @@ class YOLOv8Node(Node):
 
     def image_callback(self, msg: Image):
         try:
-            # 1. Get Frame
             frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
             if frame is None:
                 self.get_logger().warn("Failed to convert image")
                 return
 
-            # dt calc
             current_time = self.get_clock().now()
-            dt = 1.0 / 60.0  # Default
+            dt = 1.0 / 60.0
             if self.last_frame_time is not None:
                 dt = (current_time - self.last_frame_time).nanoseconds / 1e9
                 if dt <= 0:
                     dt = 0.001
             self.last_frame_time = current_time
 
-            # 2. Preprocess
-            padded_image = letterbox_frame(frame, self.imgsz_width, self.imgsz_height)
+            padded = letterbox_frame(frame, self.imgsz_width, self.imgsz_height)
 
-            # 3. Inference
-            if self.imgsz_width == self.imgsz_height:
-                imgsz_val = self.imgsz_width
-            else:
-                imgsz_val = (self.imgsz_height, self.imgsz_width)
+            imgsz_val = (
+                self.imgsz_width
+                if self.imgsz_width == self.imgsz_height
+                else (self.imgsz_height, self.imgsz_width)
+            )
 
             if self.enable_tracking:
                 results = self.detector.track(
-                    padded_image,
+                    padded,
                     half=self.half,
                     imgsz=imgsz_val,
                     show=False,
@@ -192,7 +250,7 @@ class YOLOv8Node(Node):
                 )
             else:
                 results = self.detector.predict(
-                    padded_image,
+                    padded,
                     half=self.half,
                     imgsz=imgsz_val,
                     show=False,
@@ -200,23 +258,20 @@ class YOLOv8Node(Node):
                     verbose=False,
                 )
 
-            # 4. Process Results — match testObb: Ultralytics plot + native aspect when not Kalman
-            used_ultralytics_plot = False
             vis_frame = None
             if self.show:
-                if self.use_kalman:
-                    vis_frame = padded_image.copy()
-                elif results and len(results) > 0:
-                    vis_frame = results[0].plot()
-                    used_ultralytics_plot = True
-                else:
-                    vis_frame = padded_image.copy()
+                vis_frame = padded.copy()
+
             published_this_frame = False
             current_processed_ids = set()
-            best_direct_bbox = None  # Fallback if Kalman disabled
+            best_direct_bbox = None
 
             if results and len(results) > 0:
                 res_obj = results[0]
+
+                if self.show and vis_frame is not None:
+                    draw_detections(vis_frame, res_obj, self.task)
+
                 boxes = None
                 if hasattr(res_obj, "boxes") and res_obj.boxes is not None:
                     boxes = res_obj.boxes
@@ -239,26 +294,23 @@ class YOLOv8Node(Node):
                         x1, y1, x2, y2 = bbox
                         track_id = id_list[i]
 
-                        # Visualization (manual overlays when Kalman/legacy draw path)
                         if (
                             self.show
                             and vis_frame is not None
-                            and not used_ultralytics_plot
+                            and self.use_kalman
+                            and track_id is not None
                         ):
-                            cv2.rectangle(vis_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                            if track_id is not None:
-                                cv2.putText(
-                                    vis_frame,
-                                    f"ID:{track_id}",
-                                    (x1, y1 - 10),
-                                    cv2.FONT_HERSHEY_SIMPLEX,
-                                    0.5,
-                                    (0, 255, 0),
-                                    1,
-                                )
+                            cv2.putText(
+                                vis_frame,
+                                f"ID:{track_id}",
+                                (x1, y1 - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5,
+                                (0, 255, 0),
+                                1,
+                            )
 
-                        # Check Enemy
-                        roi = padded_image[
+                        roi = padded[
                             max(0, y1) : min(y2, self.imgsz_height),
                             max(0, x1) : min(x2, self.imgsz_width),
                         ]
@@ -272,7 +324,6 @@ class YOLOv8Node(Node):
                                     current_processed_ids.add(track_id)
                                     cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
                                     w, h = float(abs(x2 - x1)), float(abs(y2 - y1))
-
                                     if track_id not in self.active_trackers:
                                         self.active_trackers[track_id] = TrackerWrapper(
                                             ArmorPlateTracker(cx, cy, w, h)
@@ -286,80 +337,56 @@ class YOLOv8Node(Node):
                                 if best_direct_bbox is None:
                                     best_direct_bbox = (x1, y1, x2, y2)
 
-            # 5. Tracking / Publishing Logic
             if self.use_kalman:
                 ids_to_remove = []
                 for tid, wrapper in self.active_trackers.items():
                     if tid not in current_processed_ids:
                         wrapper.lost_frames += 1
-
                     if wrapper.lost_frames >= self.tracker_timeout:
                         ids_to_remove.append(tid)
                         continue
-
                     if not published_this_frame and wrapper.lost_frames == 0:
-                        # Predict
                         px, py = wrapper.tracker.predict(dt)
-
-                        # Lookahead
                         state = wrapper.tracker.kf.statePost.flatten()
                         vx, vy = state[2], state[3]
                         ax, ay = state[4], state[5]
                         t_look = self.lookahead_steps * dt
-
-                        xf = px + vx * t_look + 0.5 * ax * t_look**2
-                        yf = py + vy * t_look + 0.5 * ay * t_look**2
-
+                        xf = px + vx * t_look + 0.5 * ax * t_look ** 2
+                        yf = py + vy * t_look + 0.5 * ay * t_look ** 2
                         w, h = wrapper.tracker.width, wrapper.tracker.height
-
-                        bx1 = int(xf - w / 2)
-                        by1 = int(yf - h / 2)
-                        bx2 = int(xf + w / 2)
-                        by2 = int(yf + h / 2)
-
-                        # Clamp
-                        bx1 = max(0, min(bx1, self.imgsz_width - 1))
-                        by1 = max(0, min(by1, self.imgsz_height - 1))
-                        bx2 = max(0, min(bx2, self.imgsz_width - 1))
-                        by2 = max(0, min(by2, self.imgsz_height - 1))
-
+                        bx1 = max(0, min(int(xf - w / 2), self.imgsz_width - 1))
+                        by1 = max(0, min(int(yf - h / 2), self.imgsz_height - 1))
+                        bx2 = max(0, min(int(xf + w / 2), self.imgsz_width - 1))
+                        by2 = max(0, min(int(yf + h / 2), self.imgsz_height - 1))
                         if bx1 < bx2 and by1 < by2:
                             self.publish_bbox_and_angles(bx1, by1, bx2, by2, True)
                             published_this_frame = True
-
                             if self.show and vis_frame is not None:
                                 cv2.rectangle(
                                     vis_frame, (bx1, by1), (bx2, by2), (255, 0, 0), 2
                                 )
-
                 for tid in ids_to_remove:
                     del self.active_trackers[tid]
-
             else:
-                # Direct publish if not using Kalman
                 if best_direct_bbox:
                     x1, y1, x2, y2 = best_direct_bbox
                     self.publish_bbox_and_angles(x1, y1, x2, y2, True)
                     published_this_frame = True
 
-            # Default publish if nothing found
             if not published_this_frame:
                 c = self.imgsz_width // 2
                 self.publish_bbox_and_angles(c, c, c, c, False)
 
             if self.show and vis_frame is not None:
                 t_now = time.monotonic()
-                if self._show_fps_t_prev is not None:
-                    dt_vis = t_now - self._show_fps_t_prev
-                    inst = 1.0 / max(dt_vis, 1e-9)
-                    if self._show_fps_ema <= 0.0:
-                        self._show_fps_ema = inst
-                    else:
-                        self._show_fps_ema = 0.9 * self._show_fps_ema + 0.1 * inst
-                self._show_fps_t_prev = t_now
+                if self._fps_t_prev is not None:
+                    self._fps_ema = tick_fps_ema(
+                        self._fps_ema, t_now - self._fps_t_prev
+                    )
+                self._fps_t_prev = t_now
                 cv2.putText(
                     vis_frame,
-                    f"FPS: {self._show_fps_ema:.1f}",
+                    f"FPS: {self._fps_ema:.1f}",
                     (8, 28),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.85,
@@ -367,7 +394,11 @@ class YOLOv8Node(Node):
                     2,
                     cv2.LINE_AA,
                 )
-                cv2.imshow(self.vis_window_name, vis_frame)
+                if not self._window_created:
+                    cv2.namedWindow(self.vis_window_name, cv2.WINDOW_NORMAL)
+                    self._window_created = True
+                view = preview_scale(vis_frame, PREVIEW_MAX_W, PREVIEW_MAX_H)
+                cv2.imshow(self.vis_window_name, view)
                 cv2.waitKey(1)
 
         except Exception as e:
@@ -386,7 +417,6 @@ class YOLOv8Node(Node):
 
 
 def main(args=None):
-    # Parse custom arguments if running as script
     parser = argparse.ArgumentParser(description="YOLOv8 Node")
     parser.add_argument(
         "--show", type=str, default=None, help="Enable visualization (True/False)"
