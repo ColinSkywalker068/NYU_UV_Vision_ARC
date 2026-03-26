@@ -304,9 +304,7 @@ def run_inference_on_bgr_frames(
                     print(f"FPS: {fps_ema:.1f}", flush=True)
                     fps_log_prev = t_now
             else:
-                view = frame_for_preview(
-                    frame, PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT
-                )
+                view = frame_for_preview(frame, PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT)
                 cv2.imshow(window_name, view)
                 if (cv2.waitKey(1) & 0xFF) == ord("q"):
                     break
