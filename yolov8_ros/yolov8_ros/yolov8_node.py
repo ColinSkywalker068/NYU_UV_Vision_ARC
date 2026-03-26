@@ -78,8 +78,11 @@ def preview_scale(frame: np.ndarray, max_w: int, max_h: int) -> np.ndarray:
     scale = min(max_w / w, max_h / h, 1.0)
     if scale >= 1.0:
         return frame
-    return cv2.resize(frame, (max(1, int(w * scale)), max(1, int(h * scale))),
-                      interpolation=cv2.INTER_AREA)
+    return cv2.resize(
+        frame,
+        (max(1, int(w * scale)), max(1, int(h * scale))),
+        interpolation=cv2.INTER_AREA,
+    )
 
 
 def draw_detections(frame: np.ndarray, result, task: str) -> None:
@@ -102,8 +105,16 @@ def draw_detections(frame: np.ndarray, result, task: str) -> None:
             xi = int(poly[:, 0].min())
             yi = max(16, int(poly[:, 1].min()) - 4)
             label = f"{_class_name(names, cid)} {float(confs[i]):.2f}"
-            cv2.putText(frame, label, (xi, yi),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+            cv2.putText(
+                frame,
+                label,
+                (xi, yi),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                color,
+                1,
+                cv2.LINE_AA,
+            )
     else:
         boxes = getattr(result, "boxes", None)
         if boxes is None or boxes.xyxy is None:
@@ -116,8 +127,16 @@ def draw_detections(frame: np.ndarray, result, task: str) -> None:
             color = _class_color(cid)
             cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), color, 2)
             label = f"{_class_name(names, cid)} {float(confs[i]):.2f}"
-            cv2.putText(frame, label, (box[0], max(16, box[1] - 4)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+            cv2.putText(
+                frame,
+                label,
+                (box[0], max(16, box[1] - 4)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                color,
+                1,
+                cv2.LINE_AA,
+            )
 
 
 class YOLOv8Node(Node):
@@ -212,9 +231,14 @@ class YOLOv8Node(Node):
         self.override_publisher.publish(self.override_msg)
 
         yaw, pitch = calculate_angles(
-            x1, y1, x2, y2,
-            self.imgsz_width, self.imgsz_height,
-            self.hfov_rad, self.vfov_rad,
+            x1,
+            y1,
+            x2,
+            y2,
+            self.imgsz_width,
+            self.imgsz_height,
+            self.hfov_rad,
+            self.vfov_rad,
         )
         self._angle_msg.data = [float(yaw), float(pitch)]
         self.angle_publisher.publish(self._angle_msg)
@@ -354,8 +378,8 @@ class YOLOv8Node(Node):
                         vx, vy = state[2], state[3]
                         ax, ay = state[4], state[5]
                         t_look = self.lookahead_steps * dt
-                        xf = px + vx * t_look + 0.5 * ax * t_look ** 2
-                        yf = py + vy * t_look + 0.5 * ay * t_look ** 2
+                        xf = px + vx * t_look + 0.5 * ax * t_look**2
+                        yf = py + vy * t_look + 0.5 * ay * t_look**2
                         w, h = wrapper.tracker.width, wrapper.tracker.height
                         bx1 = max(0, min(int(xf - w / 2), self.imgsz_width - 1))
                         by1 = max(0, min(int(yf - h / 2), self.imgsz_height - 1))
