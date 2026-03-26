@@ -350,9 +350,7 @@ def run_inference_on_bgr_frames(
                     2,
                     cv2.LINE_AA,
                 )
-                view = frame_for_preview(
-                    frame, PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT
-                )
+                view = frame_for_preview(frame, PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT)
                 cv2.imshow(window_name, view)
                 if (cv2.waitKey(1) & 0xFF) == ord("q"):
                     break
@@ -377,9 +375,7 @@ def run_basler_loop(
 
         def grab_bgr() -> Optional[np.ndarray]:
             try:
-                grab = camera.RetrieveResult(
-                    1000, pylon.TimeoutHandling_ThrowException
-                )
+                grab = camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
             except pylon.TimeoutException:
                 return None
             if not grab.GrabSucceeded():
