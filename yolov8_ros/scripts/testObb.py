@@ -87,14 +87,15 @@ def open_default_camera(cap_fps: Optional[float]) -> pylon.InstantCamera:
     return camera
 
 
-def _realsense_best_bgr8_profile(
+def _realsense_best_bgr8_stream(
     rs: Any, width: int, height: int
-) -> Optional[Any]:
+) -> Optional[tuple[int, int, int]]:
+    """Return (width, height, fps) for highest-FPS BGR8 profile at given resolution."""
     ctx = rs.context()
     devs = list(ctx.query_devices())
     if not devs:
         return None
-    best_prof: Optional[Any] = None
+    best: Optional[tuple[int, int, int]] = None
     best_fps: int = -1
     for sensor in devs[0].query_sensors():
         if not sensor.is_color_sensor():
@@ -108,8 +109,8 @@ def _realsense_best_bgr8_profile(
             f: int = int(vp.fps())
             if f > best_fps:
                 best_fps = f
-                best_prof = p
-    return best_prof
+                best = (vp.width(), vp.height(), f)
+    return best
 
 
 def realsense_color_frames(cap_fps: Optional[float]) -> Generator[np.ndarray, None, None]:
@@ -121,9 +122,10 @@ def realsense_color_frames(cap_fps: Optional[float]) -> Generator[np.ndarray, No
         fps_i: int = max(1, int(round(cap_fps)))
         config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, fps_i)
     else:
-        prof = _realsense_best_bgr8_profile(rs, 640, 480)
-        if prof is not None:
-            config.enable_stream(prof)
+        triplet = _realsense_best_bgr8_stream(rs, 640, 480)
+        if triplet is not None:
+            w_i, h_i, fps_i = triplet
+            config.enable_stream(rs.stream.color, w_i, h_i, rs.format.bgr8, fps_i)
         else:
             config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 60)
     pipeline.start(config)
