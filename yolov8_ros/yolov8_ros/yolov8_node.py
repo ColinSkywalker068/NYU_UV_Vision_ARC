@@ -2,7 +2,6 @@ import rclpy
 import sys
 import argparse
 from pathlib import Path
-from ament_index_python.packages import get_package_share_directory
 from rclpy.parameter import Parameter
 from rclpy.node import Node
 from std_msgs.msg import Int32, Int32MultiArray, Bool, Float32MultiArray
@@ -45,12 +44,13 @@ class YOLOv8Node(Node):
     def __init__(self, parameter_overrides=None):
         super().__init__("yolov8_modular_node", parameter_overrides=parameter_overrides)
         self.get_logger().info("Initializing Modular YOLOv8 Node...")
-        package_share_dir = Path(get_package_share_directory("yolov8_ros"))
-        default_model_path = package_share_dir / "models" / "best.engine"
+        default_model_path = (
+            Path(__file__).resolve().parent.parent.parent / "model_test" / "best.pt"
+        )
 
         # --- Parameters ---
         self.declare_parameter("model_path", str(default_model_path))
-        self.declare_parameter("task", "detect")
+        self.declare_parameter("task", "obb")
         self.declare_parameter("type", "yolo")
         self.declare_parameter("half", True)
         self.declare_parameter("imgsz_width", 640)

@@ -2,13 +2,13 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from ament_index_python.packages import get_package_share_directory
 from pathlib import Path
 
 
 def generate_launch_description() -> LaunchDescription:
-    package_share_dir = Path(get_package_share_directory("yolov8_ros"))
-    default_model_path = str(package_share_dir / "models" / "best.engine")
+    default_model_path = str(
+        Path(__file__).resolve().parent.parent.parent / "model_test" / "best.pt"
+    )
 
     # --- RealSense camera args ---
     rs_width_arg = DeclareLaunchArgument(
@@ -56,7 +56,7 @@ def generate_launch_description() -> LaunchDescription:
         description="Path to YOLO model (.engine / .pt / .onnx)",
     )
     task_arg = DeclareLaunchArgument(
-        "task", default_value="detect", description="YOLO task: detect, obb, segment"
+        "task", default_value="obb", description="YOLO task: detect, obb, segment"
     )
     conf_arg = DeclareLaunchArgument(
         "conf", default_value="0.25", description="YOLO confidence threshold"
