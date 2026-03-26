@@ -17,6 +17,10 @@ from ultralytics import YOLO
 WINDOW_BASLER = "YOLO OBB — Basler"
 WINDOW_REALSENSE = "YOLO OBB — RealSense"
 MODEL_PATH = Path("/home/ultraviolet/CV_Detection/model_test/best.pt")
+# Preview window never exceeds this (full-res frame is still used for inference + overlays).
+PREVIEW_MAX_WIDTH = 960
+PREVIEW_MAX_HEIGHT = 540
+HEADLESS_FPS_LOG_SEC = 1.0
 
 PLATE_BIAS_ADD = int(os.environ.get("PLATE_BIAS_ADD", "8"))
 PLATE_BIAS_SUB = int(os.environ.get("PLATE_BIAS_SUB", "6"))
@@ -156,6 +160,16 @@ def create_frame_converter() -> pylon.ImageFormatConverter:
     return conv
 
 
+def frame_for_preview(frame: np.ndarray, max_w: int, max_h: int) -> np.ndarray:
+    h, w = frame.shape[:2]
+    scale = min(max_w / w, max_h / h, 1.0)
+    if scale >= 1.0:
+        return frame
+    nw = max(1, int(round(w * scale)))
+    nh = max(1, int(round(h * scale)))
+    return cv2.resize(frame, (nw, nh), interpolation=cv2.INTER_AREA)
+
+
 def tick_fps_ema(prev_ema: float, dt: float) -> float:
     inst = 1.0 / max(dt, 1e-9)
     if prev_ema <= 0.0:
@@ -248,12 +262,15 @@ def run_inference_on_bgr_frames(
     device: str,
     use_half: bool,
     plate_target: str,
+    headless: bool,
 ) -> None:
     imgsz = resolve_inference_imgsz(model)
     fps_ema = 0.0
     t_prev = time.monotonic()
+    fps_log_prev = t_prev
     try:
-        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        if not headless:
+            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         while True:
             t_now = time.monotonic()
             fps_ema = tick_fps_ema(fps_ema, t_now - t_prev)
@@ -282,11 +299,20 @@ def run_inference_on_bgr_frames(
                 2,
                 cv2.LINE_AA,
             )
-            cv2.imshow(window_name, frame)
-            if (cv2.waitKey(1) & 0xFF) == ord("q"):
-                break
+            if headless:
+                if t_now - fps_log_prev >= HEADLESS_FPS_LOG_SEC:
+                    print(f"FPS: {fps_ema:.1f}", flush=True)
+                    fps_log_prev = t_now
+            else:
+                view = frame_for_preview(
+                    frame, PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT
+                )
+                cv2.imshow(window_name, view)
+                if (cv2.waitKey(1) & 0xFF) == ord("q"):
+                    break
     finally:
-        cv2.destroyAllWindows()
+        if not headless:
+            cv2.destroyAllWindows()
 
 
 def run_basler_loop(
@@ -297,6 +323,7 @@ def run_basler_loop(
     plate_target: str,
     window_name: str,
     uses_native_bgr8: bool,
+    headless: bool,
 ) -> None:
     converter = None if uses_native_bgr8 else create_frame_converter()
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
@@ -317,7 +344,13 @@ def run_basler_loop(
             return out
 
         run_inference_on_bgr_frames(
-            model, window_name, grab_bgr, device, use_half, plate_target
+            model,
+            window_name,
+            grab_bgr,
+            device,
+            use_half,
+            plate_target,
+            headless,
         )
     finally:
         if camera.IsGrabbing():
@@ -333,6 +366,7 @@ def run_realsense_loop(
     use_half: bool,
     plate_target: str,
     window_name: str,
+    headless: bool,
 ) -> None:
     frames = realsense_color_frames(cap_fps)
     try:
@@ -341,7 +375,13 @@ def run_realsense_loop(
             return next(frames)
 
         run_inference_on_bgr_frames(
-            model, window_name, next_bgr, device, use_half, plate_target
+            model,
+            window_name,
+            next_bgr,
+            device,
+            use_half,
+            plate_target,
+            headless,
         )
     finally:
         frames.close()
@@ -361,6 +401,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         metavar="N",
         help="Cap capture at N FPS (Basler + RealSense). Default: uncapped / sensor max.",
+    )
+    p.add_argument(
+        "--headless",
+        action="store_true",
+        help="No GUI; log FPS to stdout (~1 Hz). Use for throughput without imshow.",
     )
     return p.parse_args()
 
@@ -384,8 +429,15 @@ def main() -> int:
         )
     cap_fps = args.fps if args.fps is not None and args.fps > 0 else None
     print(
-        f"Source={args.source}, capture_fps_cap={'uncapped' if cap_fps is None else cap_fps}"
+        f"Source={args.source}, capture_fps_cap={'uncapped' if cap_fps is None else cap_fps}, "
+        f"headless={args.headless}"
     )
+    if args.headless:
+        print("Headless: FPS lines printed to stdout (Ctrl+C to stop).")
+    else:
+        print(
+            f"Preview capped to max {PREVIEW_MAX_WIDTH}x{PREVIEW_MAX_HEIGHT} (inference uses full frame)."
+        )
     try:
         if args.source == "basler":
             cam, native = open_default_camera(cap_fps)
@@ -395,11 +447,24 @@ def main() -> int:
                 else "Basler: ImageFormatConverter (LSB BGR8packed)."
             )
             run_basler_loop(
-                model, cam, device, use_half, plate_target, WINDOW_BASLER, native
+                model,
+                cam,
+                device,
+                use_half,
+                plate_target,
+                WINDOW_BASLER,
+                native,
+                args.headless,
             )
         else:
             run_realsense_loop(
-                model, cap_fps, device, use_half, plate_target, WINDOW_REALSENSE
+                model,
+                cap_fps,
+                device,
+                use_half,
+                plate_target,
+                WINDOW_REALSENSE,
+                args.headless,
             )
     except KeyboardInterrupt:
         pass
