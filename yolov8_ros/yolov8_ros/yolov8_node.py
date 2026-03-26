@@ -358,9 +358,7 @@ class YOLOv8Node(Node):
                     if self._show_fps_ema <= 0.0:
                         self._show_fps_ema = inst
                     else:
-                        self._show_fps_ema = (
-                            0.9 * self._show_fps_ema + 0.1 * inst
-                        )
+                        self._show_fps_ema = 0.9 * self._show_fps_ema + 0.1 * inst
                 self._show_fps_t_prev = t_now
                 cv2.putText(
                     vis_frame,
