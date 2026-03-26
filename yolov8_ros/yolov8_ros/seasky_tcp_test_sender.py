@@ -30,7 +30,7 @@ LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 DEFAULT_HOST: str = "127.0.0.1"
-DEFAULT_PORT: int = 80 # default Mongoose port, can be altered
+DEFAULT_PORT: int = 80  # default Mongoose port, can be altered
 DEFAULT_PITCH: float = 0.0
 DEFAULT_YAW: float = 0.0
 DEFAULT_FIRE_MODE: int = 2
