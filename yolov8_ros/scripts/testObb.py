@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Basler + YOLO OBB on Jetson / NVIDIA GPU using PyTorch weights only (no CoreML)."""
+"""Basler or RealSense + YOLO OBB on Jetson / NVIDIA GPU using PyTorch weights only (no CoreML)."""
 
+import argparse
 import os
+import time
 from pathlib import Path
+from typing import Callable, Generator, Optional
 
 import cv2
 import numpy as np
@@ -11,7 +14,8 @@ from pypylon import pylon
 from ultralytics import YOLO
 
 
-WINDOW_NAME: str = "Basler YOLO OBB (Jetson)"
+WINDOW_BASLER: str = "YOLO OBB — Basler"
+WINDOW_REALSENSE: str = "YOLO OBB — RealSense"
 MODEL_PATH: Path = Path(__file__).resolve().parent.parent / "model_test" / "best.pt"
 
 PLATE_BIAS_ADD: int = int(os.environ.get("PLATE_BIAS_ADD", "8"))
@@ -60,7 +64,7 @@ def load_model(model_path: Path) -> YOLO:
     return YOLO(str(model_path), task="obb")
 
 
-def open_default_camera() -> pylon.InstantCamera:
+def open_default_camera(fps: float) -> pylon.InstantCamera:
     transport_layer_factory: pylon.TlFactory = pylon.TlFactory.GetInstance()
     devices = transport_layer_factory.EnumerateDevices()
     if not devices:
@@ -71,10 +75,28 @@ def open_default_camera() -> pylon.InstantCamera:
     camera.Open()
     try:
         camera.AcquisitionFrameRateEnable.SetValue(True)
-        camera.AcquisitionFrameRate.SetValue(30.0)
+        camera.AcquisitionFrameRate.SetValue(float(fps))
     except Exception:
         pass
     return camera
+
+
+def realsense_color_frames(fps: float) -> Generator[np.ndarray, None, None]:
+    import pyrealsense2 as rs  # type: ignore[import-untyped]
+    pipeline: rs.pipeline = rs.pipeline()
+    config: rs.config = rs.config()
+    fps_i: int = max(1, int(round(fps)))
+    config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, fps_i)
+    pipeline.start(config)
+    try:
+        while True:
+            frames = pipeline.wait_for_frames()
+            color = frames.get_color_frame()
+            if not color:
+                continue
+            yield np.asanyarray(color.get_data())
+    finally:
+        pipeline.stop()
 
 
 def create_frame_converter() -> pylon.ImageFormatConverter:
@@ -84,26 +106,28 @@ def create_frame_converter() -> pylon.ImageFormatConverter:
     return converter
 
 
-def run_inference_loop(
+def tick_fps_ema(prev_ema: float, dt: float) -> float:
+    inst: float = 1.0 / max(dt, 1e-9)
+    if prev_ema <= 0.0:
+        return inst
+    return 0.9 * prev_ema + 0.1 * inst
+
+
+def run_inference_on_bgr_frames(
     model: YOLO,
-    camera: pylon.InstantCamera,
+    window_name: str,
+    frame_source: Callable[[], Optional[np.ndarray]],
     device: str,
     use_half: bool,
     plate_target: str,
 ) -> None:
-    frame_converter: pylon.ImageFormatConverter = create_frame_converter()
-    camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+    fps_ema: float = 0.0
+    t_prev: float = time.monotonic()
     try:
-        while camera.IsGrabbing():
-            grab_result: pylon.GrabResult = camera.RetrieveResult(
-                1000, pylon.TimeoutHandling_ThrowException
-            )
-            if not grab_result.GrabSucceeded():
-                grab_result.Release()
+        while True:
+            frame = frame_source()
+            if frame is None:
                 continue
-            converted_image = frame_converter.Convert(grab_result)
-            frame = converted_image.GetArray()
-            grab_result.Release()
             if plate_target:
                 apply_plate_hue_bias_bgr(frame, plate_target)
             results = model.predict(
@@ -115,19 +139,99 @@ def run_inference_loop(
             if not results:
                 continue
             annotated_frame = results[0].plot()
-            cv2.imshow(WINDOW_NAME, annotated_frame)
+            dt_loop: float = time.monotonic() - t_prev
+            t_prev = time.monotonic()
+            fps_ema = tick_fps_ema(fps_ema, dt_loop)
+            cv2.putText(
+                annotated_frame,
+                f"FPS: {fps_ema:.1f}",
+                (8, 28),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.85,
+                (0, 255, 0),
+                2,
+                cv2.LINE_AA,
+            )
+            cv2.imshow(window_name, annotated_frame)
             pressed_key: int = cv2.waitKey(1) & 0xFF
             if pressed_key == ord("q"):
                 break
+    finally:
+        cv2.destroyAllWindows()
+
+
+def run_basler_loop(
+    model: YOLO,
+    camera: pylon.InstantCamera,
+    device: str,
+    use_half: bool,
+    plate_target: str,
+    window_name: str,
+) -> None:
+    frame_converter: pylon.ImageFormatConverter = create_frame_converter()
+    camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+    try:
+        def grab_bgr() -> Optional[np.ndarray]:
+            grab_result: pylon.GrabResult = camera.RetrieveResult(
+                1000, pylon.TimeoutHandling_ThrowException
+            )
+            if not grab_result.GrabSucceeded():
+                grab_result.Release()
+                return None
+            converted_image = frame_converter.Convert(grab_result)
+            frame = converted_image.GetArray()
+            grab_result.Release()
+            return frame
+        run_inference_on_bgr_frames(
+            model, window_name, grab_bgr, device, use_half, plate_target
+        )
     finally:
         if camera.IsGrabbing():
             camera.StopGrabbing()
         if camera.IsOpen():
             camera.Close()
-        cv2.destroyAllWindows()
+
+
+def run_realsense_loop(
+    model: YOLO,
+    fps: float,
+    device: str,
+    use_half: bool,
+    plate_target: str,
+    window_name: str,
+) -> None:
+    frame_iter: Generator[np.ndarray, None, None] = realsense_color_frames(fps)
+    try:
+        def next_bgr() -> Optional[np.ndarray]:
+            return next(frame_iter)
+        run_inference_on_bgr_frames(
+            model, window_name, next_bgr, device, use_half, plate_target
+        )
+    finally:
+        frame_iter.close()
+
+
+def parse_args() -> argparse.Namespace:
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(
+        description="YOLO OBB from Basler or RealSense."
+    )
+    parser.add_argument(
+        "--source",
+        choices=("basler", "realsense"),
+        default="basler",
+        help="Camera backend (default: basler).",
+    )
+    parser.add_argument(
+        "--fps",
+        type=float,
+        default=30.0,
+        help="Target capture FPS (Basler rate / RealSense color stream; default: 30).",
+    )
+    return parser.parse_args()
 
 
 def main() -> int:
+    args: argparse.Namespace = parse_args()
     plate_target: str = parse_plate_target()
     device: str = resolve_device()
     use_half: bool = os.environ.get("YOLO_HALF", "1") != "0" and device != "cpu"
@@ -141,21 +245,33 @@ def main() -> int:
         print(
             f"Plate hue bias: target={plate_target} (+{PLATE_BIAS_ADD}/-{PLATE_BIAS_SUB} BGR)"
         )
+    print(f"Source={args.source}, target_fps={args.fps}")
     try:
-        camera: pylon.InstantCamera = open_default_camera()
-    except Exception as err:
-        print(f"Failed to open Basler camera: {err}")
-        return 1
-    try:
-        run_inference_loop(
-            model=model,
-            camera=camera,
-            device=device,
-            use_half=use_half,
-            plate_target=plate_target,
-        )
-    except KeyboardInterrupt:
-        pass
+        if args.source == "basler":
+            camera: pylon.InstantCamera = open_default_camera(args.fps)
+            try:
+                run_basler_loop(
+                    model=model,
+                    camera=camera,
+                    device=device,
+                    use_half=use_half,
+                    plate_target=plate_target,
+                    window_name=WINDOW_BASLER,
+                )
+            except KeyboardInterrupt:
+                pass
+        else:
+            try:
+                run_realsense_loop(
+                    model=model,
+                    fps=args.fps,
+                    device=device,
+                    use_half=use_half,
+                    plate_target=plate_target,
+                    window_name=WINDOW_REALSENSE,
+                )
+            except KeyboardInterrupt:
+                pass
     except Exception as err:
         print(f"Runtime error: {err}")
         return 1
