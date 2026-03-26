@@ -303,9 +303,7 @@ def run_basler_loop(
     try:
 
         def grab_bgr() -> Optional[np.ndarray]:
-            grab = camera.RetrieveResult(
-                200, pylon.TimeoutHandling_Return
-            )
+            grab = camera.RetrieveResult(200, pylon.TimeoutHandling_Return)
             if grab is None or not grab.GrabSucceeded():
                 if grab is not None:
                     grab.Release()
