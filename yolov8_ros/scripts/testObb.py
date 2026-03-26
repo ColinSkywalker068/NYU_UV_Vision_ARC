@@ -55,9 +55,7 @@ def basler_grab_thread_fn(
 ) -> None:
     while not stop.is_set():
         try:
-            grab = camera.RetrieveResult(
-                1000, pylon.TimeoutHandling_ThrowException
-            )
+            grab = camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
         except pylon.TimeoutException:
             continue
         except Exception:
