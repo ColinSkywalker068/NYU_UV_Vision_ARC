@@ -40,7 +40,7 @@ def letterbox_frame(frame: cv2.Mat, target_w: int, target_h: int) -> cv2.Mat:
     left = pad_w // 2
     right = pad_w - left
 
-    return cv2.copyMakeBorder(
+    padded = cv2.copyMakeBorder(
         resized,
         top,
         bottom,
@@ -49,6 +49,7 @@ def letterbox_frame(frame: cv2.Mat, target_w: int, target_h: int) -> cv2.Mat:
         cv2.BORDER_CONSTANT,
         value=(114, 114, 114),
     )
+    return np.ascontiguousarray(padded)
 
 
 def calculate_angles(x1, y1, x2, y2, imgsz_width, imgsz_height, hfov_rad, vfov_rad):

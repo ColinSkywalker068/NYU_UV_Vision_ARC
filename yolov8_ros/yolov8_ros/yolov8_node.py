@@ -47,10 +47,15 @@ def _to_numpy(x) -> np.ndarray:
     return np.asarray(x)
 
 
+_COLOR_TABLE = [
+    tuple(cv2.cvtColor(np.uint8([[[(c * 40) % 180, 220, 255]]]),
+          cv2.COLOR_HSV2BGR)[0, 0].tolist())
+    for c in range(80)
+]
+
+
 def _class_color(cid: int) -> tuple:
-    hue = (40 * cid) % 180
-    bgr = cv2.cvtColor(np.uint8([[[hue, 220, 255]]]), cv2.COLOR_HSV2BGR)[0, 0]
-    return tuple(bgr.tolist())
+    return _COLOR_TABLE[cid % len(_COLOR_TABLE)]
 
 
 def _class_name(names, cid: int) -> str:
@@ -189,6 +194,7 @@ class YOLOv8Node(Node):
 
         self.bbox_msg = Int32MultiArray()
         self.override_msg = Bool()
+        self._angle_msg = Float32MultiArray()
 
     def id_listener_callback(self, msg: Int32):
         robot_id = msg.data
@@ -210,9 +216,8 @@ class YOLOv8Node(Node):
             self.imgsz_width, self.imgsz_height,
             self.hfov_rad, self.vfov_rad,
         )
-        angle_msg = Float32MultiArray()
-        angle_msg.data = [float(yaw), float(pitch)]
-        self.angle_publisher.publish(angle_msg)
+        self._angle_msg.data = [float(yaw), float(pitch)]
+        self.angle_publisher.publish(self._angle_msg)
 
     def image_callback(self, msg: Image):
         try:
@@ -258,9 +263,7 @@ class YOLOv8Node(Node):
                     verbose=False,
                 )
 
-            vis_frame = None
-            if self.show:
-                vis_frame = padded.copy()
+            vis_frame = padded.copy() if self.show else None
 
             published_this_frame = False
             current_processed_ids = set()
@@ -283,16 +286,16 @@ class YOLOv8Node(Node):
                     boxes = res_obj.obb
 
                 if boxes is not None and hasattr(boxes, "xyxy"):
-                    bbox_list = boxes.xyxy.cpu().int().tolist()
-                    id_list = (
-                        boxes.id.cpu().int().tolist()
+                    bbox_arr = boxes.xyxy.cpu().numpy().astype(np.int32)
+                    id_arr = (
+                        boxes.id.cpu().numpy().astype(np.int32)
                         if hasattr(boxes, "id") and boxes.id is not None
-                        else [None] * len(bbox_list)
+                        else None
                     )
 
-                    for i, bbox in enumerate(bbox_list):
-                        x1, y1, x2, y2 = bbox
-                        track_id = id_list[i]
+                    for i in range(len(bbox_arr)):
+                        x1, y1, x2, y2 = bbox_arr[i]
+                        track_id = int(id_arr[i]) if id_arr is not None else None
 
                         if (
                             self.show
