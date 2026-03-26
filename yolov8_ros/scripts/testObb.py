@@ -5,7 +5,8 @@ import argparse
 import os
 import time
 from pathlib import Path
-from typing import Callable, Generator, Optional
+from typing import Callable, Optional
+from collections.abc import Generator
 
 import cv2
 import numpy as np
@@ -83,6 +84,7 @@ def open_default_camera(fps: float) -> pylon.InstantCamera:
 
 def realsense_color_frames(fps: float) -> Generator[np.ndarray, None, None]:
     import pyrealsense2 as rs  # type: ignore[import-untyped]
+
     pipeline: rs.pipeline = rs.pipeline()
     config: rs.config = rs.config()
     fps_i: int = max(1, int(round(fps)))
@@ -171,6 +173,7 @@ def run_basler_loop(
     frame_converter: pylon.ImageFormatConverter = create_frame_converter()
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
     try:
+
         def grab_bgr() -> Optional[np.ndarray]:
             grab_result: pylon.GrabResult = camera.RetrieveResult(
                 1000, pylon.TimeoutHandling_ThrowException
@@ -182,6 +185,7 @@ def run_basler_loop(
             frame = converted_image.GetArray()
             grab_result.Release()
             return frame
+
         run_inference_on_bgr_frames(
             model, window_name, grab_bgr, device, use_half, plate_target
         )
@@ -202,8 +206,10 @@ def run_realsense_loop(
 ) -> None:
     frame_iter: Generator[np.ndarray, None, None] = realsense_color_frames(fps)
     try:
+
         def next_bgr() -> Optional[np.ndarray]:
             return next(frame_iter)
+
         run_inference_on_bgr_frames(
             model, window_name, next_bgr, device, use_half, plate_target
         )
@@ -240,7 +246,9 @@ def main() -> int:
     except Exception as err:
         print(f"Failed to load model: {err}")
         return 1
-    print(f"Using device={device}, half={use_half} (set YOLO_DEVICE / YOLO_HALF=0 to override)")
+    print(
+        f"Using device={device}, half={use_half} (set YOLO_DEVICE / YOLO_HALF=0 to override)"
+    )
     if plate_target:
         print(
             f"Plate hue bias: target={plate_target} (+{PLATE_BIAS_ADD}/-{PLATE_BIAS_SUB} BGR)"
