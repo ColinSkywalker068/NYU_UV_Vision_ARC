@@ -17,9 +17,7 @@ from ultralytics import YOLO
 
 WINDOW_BASLER: str = "YOLO OBB — Basler"
 WINDOW_REALSENSE: str = "YOLO OBB — RealSense"
-MODEL_PATH: Path = (
-    Path(__file__).resolve().parent.parent.parent / "model_test" / "best.pt"
-)
+MODEL_PATH: Path = Path("/home/ultraviolet/CV_Detection/model_test/best.pt")
 
 PLATE_BIAS_ADD: int = int(os.environ.get("PLATE_BIAS_ADD", "8"))
 PLATE_BIAS_SUB: int = int(os.environ.get("PLATE_BIAS_SUB", "6"))

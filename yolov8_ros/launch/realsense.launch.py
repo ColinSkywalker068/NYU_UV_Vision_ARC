@@ -2,13 +2,8 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from pathlib import Path
-
-
 def generate_launch_description() -> LaunchDescription:
-    default_model_path = str(
-        Path(__file__).resolve().parent.parent.parent / "model_test" / "best.pt"
-    )
+    default_model_path = "/home/ultraviolet/CV_Detection/model_test/best.pt"
 
     # RealSense stream — aligned with testObb.py realsense_color_frames defaults (640x480 BGR8)
     rs_width_arg = DeclareLaunchArgument(

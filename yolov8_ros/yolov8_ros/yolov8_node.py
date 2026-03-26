@@ -1,7 +1,6 @@
 import rclpy
 import sys
 import argparse
-from pathlib import Path
 from rclpy.parameter import Parameter
 from rclpy.node import Node
 from std_msgs.msg import Int32, Int32MultiArray, Bool, Float32MultiArray
@@ -44,9 +43,7 @@ class YOLOv8Node(Node):
     def __init__(self, parameter_overrides=None):
         super().__init__("yolov8_modular_node", parameter_overrides=parameter_overrides)
         self.get_logger().info("Initializing Modular YOLOv8 Node...")
-        default_model_path = (
-            Path(__file__).resolve().parent.parent.parent / "model_test" / "best.pt"
-        )
+        default_model_path = "/home/ultraviolet/CV_Detection/model_test/best.pt"
 
         # --- Parameters ---
         self.declare_parameter("model_path", str(default_model_path))
