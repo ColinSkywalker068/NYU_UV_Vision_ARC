@@ -3,6 +3,7 @@
 
 import argparse
 import os
+import threading
 import time
 from collections.abc import Callable, Generator
 from pathlib import Path
@@ -21,6 +22,58 @@ MODEL_PATH = Path("/home/ultraviolet/CV_Detection/model_test/best.pt")
 PREVIEW_MAX_WIDTH = 960
 PREVIEW_MAX_HEIGHT = 540
 HEADLESS_FPS_LOG_SEC = 1.0
+BASELER_QUEUE_GET_TIMEOUT_SEC = 1.0
+
+
+class LatestFrameQueue:
+    """Single-slot buffer: consumer always sees the most recent frame."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._frame: Optional[np.ndarray] = None
+        self._event = threading.Event()
+
+    def put(self, frame: np.ndarray) -> None:
+        with self._lock:
+            self._frame = frame
+        self._event.set()
+
+    def get(self, timeout: float) -> Optional[np.ndarray]:
+        if not self._event.wait(timeout):
+            return None
+        self._event.clear()
+        with self._lock:
+            return self._frame
+
+
+def basler_grab_thread_fn(
+    camera: pylon.InstantCamera,
+    converter: Optional[pylon.ImageFormatConverter],
+    uses_native_bgr8: bool,
+    fq: LatestFrameQueue,
+    stop: threading.Event,
+) -> None:
+    while not stop.is_set():
+        try:
+            grab = camera.RetrieveResult(
+                1000, pylon.TimeoutHandling_ThrowException
+            )
+        except pylon.TimeoutException:
+            continue
+        except Exception:
+            if stop.is_set():
+                break
+            raise
+        if not grab.GrabSucceeded():
+            grab.Release()
+            continue
+        if uses_native_bgr8:
+            raw = grab.GetArray()
+        else:
+            assert converter is not None
+            raw = converter.Convert(grab).GetArray()
+        grab.Release()
+        fq.put(np.ascontiguousarray(raw).copy())
 
 
 def diag_timing_enabled() -> bool:
@@ -201,20 +254,11 @@ def bgr_frame_to_model_input(
     device: str,
     use_half: bool,
     imgsz: int,
-    pin_buf: Optional[torch.Tensor],
-) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+) -> torch.Tensor:
+    """HWC BGR uint8 → NCHW RGB float on device. No pinned host buffers (best on Jetson UMA)."""
     dtype = torch.float16 if use_half else torch.float32
-    frame_c = np.ascontiguousarray(frame)
-    if device.startswith("cuda"):
-        if pin_buf is None or tuple(pin_buf.shape) != tuple(frame_c.shape):
-            pin_buf = torch.empty(
-                tuple(frame_c.shape), dtype=torch.uint8, pin_memory=True
-            )
-        pin_buf.copy_(torch.from_numpy(frame_c))
-        t = pin_buf.to(device, dtype=dtype, non_blocking=True)
-    else:
-        pin_buf = None
-        t = torch.from_numpy(frame_c).to(device, dtype=dtype)
+    frame_c = frame if frame.flags.c_contiguous else np.ascontiguousarray(frame)
+    t = torch.from_numpy(frame_c).to(device, dtype=dtype)
     t = t / 255.0
     t = t.permute(2, 0, 1).unsqueeze(0)
     if t.shape[2] != imgsz or t.shape[3] != imgsz:
@@ -225,7 +269,7 @@ def bgr_frame_to_model_input(
             align_corners=False,
         )
     t = t[:, [2, 1, 0], :, :]
-    return t, pin_buf
+    return t
 
 
 def _to_numpy(x: Any) -> np.ndarray:
@@ -289,7 +333,6 @@ def run_inference_on_bgr_frames(
     fps_log_prev = time.monotonic()
     t_start = fps_log_prev
     frame_count = 0
-    pin_buf: Optional[torch.Tensor] = None
     diag = diag_timing_enabled()
     try:
         if not headless:
@@ -303,9 +346,7 @@ def run_inference_on_bgr_frames(
             t0 = time.monotonic()
             if plate_target:
                 apply_plate_hue_bias_bgr(frame, plate_target)
-            inp, pin_buf = bgr_frame_to_model_input(
-                frame, device, use_half, imgsz, pin_buf
-            )
+            inp = bgr_frame_to_model_input(frame, device, use_half, imgsz)
             t_pre_predict = time.monotonic()
             results = model.predict(
                 inp,
@@ -373,25 +414,19 @@ def run_basler_loop(
 ) -> None:
     converter = None if uses_native_bgr8 else create_frame_converter()
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+    fq = LatestFrameQueue()
+    stop = threading.Event()
+    grab_thread = threading.Thread(
+        target=basler_grab_thread_fn,
+        args=(camera, converter, uses_native_bgr8, fq, stop),
+        name="basler-grab",
+        daemon=True,
+    )
+    grab_thread.start()
     try:
 
         def grab_bgr() -> Optional[np.ndarray]:
-            try:
-                grab = camera.RetrieveResult(
-                    1000, pylon.TimeoutHandling_ThrowException
-                )
-            except pylon.TimeoutException:
-                return None
-            if not grab.GrabSucceeded():
-                grab.Release()
-                return None
-            if uses_native_bgr8:
-                out = grab.GetArray()
-            else:
-                assert converter is not None
-                out = converter.Convert(grab).GetArray()
-            grab.Release()
-            return out
+            return fq.get(BASELER_QUEUE_GET_TIMEOUT_SEC)
 
         run_inference_on_bgr_frames(
             model,
@@ -403,8 +438,10 @@ def run_basler_loop(
             headless,
         )
     finally:
+        stop.set()
         if camera.IsGrabbing():
             camera.StopGrabbing()
+        grab_thread.join(timeout=3.0)
         if camera.IsOpen():
             camera.Close()
 
