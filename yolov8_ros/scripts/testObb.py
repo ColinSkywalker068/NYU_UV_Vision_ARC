@@ -22,6 +22,15 @@ PREVIEW_MAX_WIDTH = 960
 PREVIEW_MAX_HEIGHT = 540
 HEADLESS_FPS_LOG_SEC = 1.0
 
+
+def diag_timing_enabled() -> bool:
+    return os.environ.get("OBB_DIAG_TIMING", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 PLATE_BIAS_ADD = int(os.environ.get("PLATE_BIAS_ADD", "8"))
 PLATE_BIAS_SUB = int(os.environ.get("PLATE_BIAS_SUB", "6"))
 
@@ -192,9 +201,20 @@ def bgr_frame_to_model_input(
     device: str,
     use_half: bool,
     imgsz: int,
-) -> torch.Tensor:
+    pin_buf: Optional[torch.Tensor],
+) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
     dtype = torch.float16 if use_half else torch.float32
-    t = torch.as_tensor(frame, dtype=dtype, device=device)
+    frame_c = np.ascontiguousarray(frame)
+    if device.startswith("cuda"):
+        if pin_buf is None or tuple(pin_buf.shape) != tuple(frame_c.shape):
+            pin_buf = torch.empty(
+                tuple(frame_c.shape), dtype=torch.uint8, pin_memory=True
+            )
+        pin_buf.copy_(torch.from_numpy(frame_c))
+        t = pin_buf.to(device, dtype=dtype, non_blocking=True)
+    else:
+        pin_buf = None
+        t = torch.from_numpy(frame_c).to(device, dtype=dtype)
     t = t / 255.0
     t = t.permute(2, 0, 1).unsqueeze(0)
     if t.shape[2] != imgsz or t.shape[3] != imgsz:
@@ -205,7 +225,7 @@ def bgr_frame_to_model_input(
             align_corners=False,
         )
     t = t[:, [2, 1, 0], :, :]
-    return t
+    return t, pin_buf
 
 
 def _to_numpy(x: Any) -> np.ndarray:
@@ -266,44 +286,70 @@ def run_inference_on_bgr_frames(
 ) -> None:
     imgsz = resolve_inference_imgsz(model)
     fps_ema = 0.0
-    t_prev = time.monotonic()
-    fps_log_prev = t_prev
+    fps_log_prev = time.monotonic()
+    t_start = fps_log_prev
+    frame_count = 0
+    pin_buf: Optional[torch.Tensor] = None
+    diag = diag_timing_enabled()
     try:
         if not headless:
             cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         while True:
-            t_now = time.monotonic()
-            fps_ema = tick_fps_ema(fps_ema, t_now - t_prev)
-            t_prev = t_now
+            t_grab0 = time.monotonic()
             frame = frame_source()
+            t_grab1 = time.monotonic()
             if frame is None:
                 continue
+            t0 = time.monotonic()
             if plate_target:
                 apply_plate_hue_bias_bgr(frame, plate_target)
+            inp, pin_buf = bgr_frame_to_model_input(
+                frame, device, use_half, imgsz, pin_buf
+            )
+            t_pre_predict = time.monotonic()
             results = model.predict(
-                bgr_frame_to_model_input(frame, device, use_half, imgsz),
+                inp,
                 device=device,
                 half=use_half,
                 verbose=False,
             )
+            t_post_predict = time.monotonic()
             if not results:
                 continue
             draw_obb_on_bgr(frame, results[0])
-            cv2.putText(
-                frame,
-                f"FPS: {fps_ema:.1f}",
-                (8, 28),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.85,
-                (0, 255, 0),
-                2,
-                cv2.LINE_AA,
-            )
+            t1 = time.monotonic()
+            fps_ema = tick_fps_ema(fps_ema, t1 - t0)
+            if diag:
+                prep_ms = 1000.0 * (t_pre_predict - t0)
+                draw_ms = 1000.0 * (t1 - t_post_predict)
+                print(
+                    f"grab={1000.0 * (t_grab1 - t_grab0):.1f}ms  "
+                    f"predict={1000.0 * (t_post_predict - t_pre_predict):.1f}ms  "
+                    f"prep={prep_ms:.1f}ms  draw={draw_ms:.1f}ms",
+                    flush=True,
+                )
             if headless:
-                if t_now - fps_log_prev >= HEADLESS_FPS_LOG_SEC:
-                    print(f"FPS: {fps_ema:.1f}", flush=True)
-                    fps_log_prev = t_now
+                frame_count += 1
+                if t1 - fps_log_prev >= HEADLESS_FPS_LOG_SEC:
+                    elapsed = t1 - t_start
+                    actual = frame_count / elapsed if elapsed > 0 else 0.0
+                    print(
+                        f"FPS ema={fps_ema:.1f}  actual={actual:.1f}  "
+                        f"frames={frame_count}",
+                        flush=True,
+                    )
+                    fps_log_prev = t1
             else:
+                cv2.putText(
+                    frame,
+                    f"FPS: {fps_ema:.1f}",
+                    (8, 28),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.85,
+                    (0, 255, 0),
+                    2,
+                    cv2.LINE_AA,
+                )
                 view = frame_for_preview(
                     frame, PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT
                 )
@@ -330,10 +376,14 @@ def run_basler_loop(
     try:
 
         def grab_bgr() -> Optional[np.ndarray]:
-            grab = camera.RetrieveResult(200, pylon.TimeoutHandling_Return)
-            if grab is None or not grab.GrabSucceeded():
-                if grab is not None:
-                    grab.Release()
+            try:
+                grab = camera.RetrieveResult(
+                    1000, pylon.TimeoutHandling_ThrowException
+                )
+            except pylon.TimeoutException:
+                return None
+            if not grab.GrabSucceeded():
+                grab.Release()
                 return None
             if uses_native_bgr8:
                 out = grab.GetArray()
@@ -432,8 +482,17 @@ def main() -> int:
         f"Source={args.source}, capture_fps_cap={'uncapped' if cap_fps is None else cap_fps}, "
         f"headless={args.headless}"
     )
+    if diag_timing_enabled():
+        print(
+            "OBB_DIAG_TIMING: per frame — grab, predict (YOLO), prep (tensor/plate), draw.",
+            flush=True,
+        )
     if args.headless:
-        print("Headless: FPS lines printed to stdout (Ctrl+C to stop).")
+        print(
+            "Headless: EMA + actual FPS ~1 Hz (Ctrl+C to stop). "
+            "Set OBB_DIAG_TIMING=1 for timing lines.",
+            flush=True,
+        )
     else:
         print(
             f"Preview capped to max {PREVIEW_MAX_WIDTH}x{PREVIEW_MAX_HEIGHT} (inference uses full frame)."
