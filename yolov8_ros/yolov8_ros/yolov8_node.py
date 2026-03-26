@@ -48,8 +48,11 @@ def _to_numpy(x) -> np.ndarray:
 
 
 _COLOR_TABLE = [
-    tuple(cv2.cvtColor(np.uint8([[[(c * 40) % 180, 220, 255]]]),
-          cv2.COLOR_HSV2BGR)[0, 0].tolist())
+    tuple(
+        cv2.cvtColor(np.uint8([[[(c * 40) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR)[
+            0, 0
+        ].tolist()
+    )
     for c in range(80)
 ]
 
