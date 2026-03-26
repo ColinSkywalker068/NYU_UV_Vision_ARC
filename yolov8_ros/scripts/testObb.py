@@ -87,9 +87,7 @@ def open_default_camera(cap_fps: Optional[float]) -> pylon.InstantCamera:
     return camera
 
 
-def _realsense_best_bgr8_profile(
-    rs: Any, width: int, height: int
-) -> Optional[Any]:
+def _realsense_best_bgr8_profile(rs: Any, width: int, height: int) -> Optional[Any]:
     ctx = rs.context()
     devs = list(ctx.query_devices())
     if not devs:
@@ -112,7 +110,9 @@ def _realsense_best_bgr8_profile(
     return best_prof
 
 
-def realsense_color_frames(cap_fps: Optional[float]) -> Generator[np.ndarray, None, None]:
+def realsense_color_frames(
+    cap_fps: Optional[float],
+) -> Generator[np.ndarray, None, None]:
     import pyrealsense2 as rs  # type: ignore[import-untyped]
 
     pipeline: rs.pipeline = rs.pipeline()
