@@ -5,7 +5,7 @@ import argparse
 import os
 import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 from collections.abc import Generator
 
 import cv2
@@ -18,7 +18,7 @@ from ultralytics import YOLO
 WINDOW_BASLER: str = "YOLO OBB — Basler"
 WINDOW_REALSENSE: str = "YOLO OBB — RealSense"
 MODEL_PATH: Path = (
-    Path(__file__).resolve().parent.parent.parent / "model_test" / "best.engine"
+    Path(__file__).resolve().parent.parent.parent / "model_test" / "best.pt"
 )
 
 PLATE_BIAS_ADD: int = int(os.environ.get("PLATE_BIAS_ADD", "8"))
@@ -67,7 +67,7 @@ def load_model(model_path: Path) -> YOLO:
     return YOLO(str(model_path), task="obb")
 
 
-def open_default_camera(fps: float) -> pylon.InstantCamera:
+def open_default_camera(cap_fps: Optional[float]) -> pylon.InstantCamera:
     transport_layer_factory: pylon.TlFactory = pylon.TlFactory.GetInstance()
     devices = transport_layer_factory.EnumerateDevices()
     if not devices:
@@ -77,20 +77,55 @@ def open_default_camera(fps: float) -> pylon.InstantCamera:
     )
     camera.Open()
     try:
-        camera.AcquisitionFrameRateEnable.SetValue(True)
-        camera.AcquisitionFrameRate.SetValue(float(fps))
+        if cap_fps is not None and cap_fps > 0:
+            camera.AcquisitionFrameRateEnable.SetValue(True)
+            camera.AcquisitionFrameRate.SetValue(float(cap_fps))
+        else:
+            camera.AcquisitionFrameRateEnable.SetValue(False)
     except Exception:
         pass
     return camera
 
 
-def realsense_color_frames(fps: float) -> Generator[np.ndarray, None, None]:
+def _realsense_best_bgr8_profile(
+    rs: Any, width: int, height: int
+) -> Optional[Any]:
+    ctx = rs.context()
+    devs = list(ctx.query_devices())
+    if not devs:
+        return None
+    best_prof: Optional[Any] = None
+    best_fps: int = -1
+    for sensor in devs[0].query_sensors():
+        if not sensor.is_color_sensor():
+            continue
+        for p in sensor.get_stream_profiles():
+            vp = p.as_video_stream_profile()
+            if vp.format() != rs.format.bgr8:
+                continue
+            if vp.width() != width or vp.height() != height:
+                continue
+            f: int = int(vp.fps())
+            if f > best_fps:
+                best_fps = f
+                best_prof = p
+    return best_prof
+
+
+def realsense_color_frames(cap_fps: Optional[float]) -> Generator[np.ndarray, None, None]:
     import pyrealsense2 as rs  # type: ignore[import-untyped]
 
     pipeline: rs.pipeline = rs.pipeline()
     config: rs.config = rs.config()
-    fps_i: int = max(1, int(round(fps)))
-    config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, fps_i)
+    if cap_fps is not None and cap_fps > 0:
+        fps_i: int = max(1, int(round(cap_fps)))
+        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, fps_i)
+    else:
+        prof = _realsense_best_bgr8_profile(rs, 640, 480)
+        if prof is not None:
+            config.enable_stream(prof)
+        else:
+            config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 60)
     pipeline.start(config)
     try:
         while True:
@@ -200,13 +235,13 @@ def run_basler_loop(
 
 def run_realsense_loop(
     model: YOLO,
-    fps: float,
+    cap_fps: Optional[float],
     device: str,
     use_half: bool,
     plate_target: str,
     window_name: str,
 ) -> None:
-    frame_iter: Generator[np.ndarray, None, None] = realsense_color_frames(fps)
+    frame_iter: Generator[np.ndarray, None, None] = realsense_color_frames(cap_fps)
     try:
 
         def next_bgr() -> Optional[np.ndarray]:
@@ -232,8 +267,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--fps",
         type=float,
-        default=30.0,
-        help="Target capture FPS (Basler rate / RealSense color stream; default: 30).",
+        default=None,
+        metavar="N",
+        help="Cap capture at N FPS (Basler + RealSense). Default: uncapped / sensor max.",
     )
     return parser.parse_args()
 
@@ -255,10 +291,15 @@ def main() -> int:
         print(
             f"Plate hue bias: target={plate_target} (+{PLATE_BIAS_ADD}/-{PLATE_BIAS_SUB} BGR)"
         )
-    print(f"Source={args.source}, target_fps={args.fps}")
+    cap_fps: Optional[float] = (
+        args.fps if args.fps is not None and args.fps > 0 else None
+    )
+    print(
+        f"Source={args.source}, capture_fps_cap={'uncapped' if cap_fps is None else cap_fps}"
+    )
     try:
         if args.source == "basler":
-            camera: pylon.InstantCamera = open_default_camera(args.fps)
+            camera: pylon.InstantCamera = open_default_camera(cap_fps)
             try:
                 run_basler_loop(
                     model=model,
@@ -274,7 +315,7 @@ def main() -> int:
             try:
                 run_realsense_loop(
                     model=model,
-                    fps=args.fps,
+                    cap_fps=cap_fps,
                     device=device,
                     use_half=use_half,
                     plate_target=plate_target,
