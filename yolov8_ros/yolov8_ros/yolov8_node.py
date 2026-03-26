@@ -71,6 +71,7 @@ class YOLOv8Node(Node):
             "hfov_degrees", 79.2
         )  # Keeping D455 defaults or adjust for Basler
         self.declare_parameter("vfov_degrees", 63.78)
+        self.declare_parameter("vis_window_name", "YOLOv8 Modular Node")
 
         # Retrieve params
         self.model_path = self.get_parameter("model_path").value
@@ -93,11 +94,14 @@ class YOLOv8Node(Node):
 
         self.hfov_rad = math.radians(self.get_parameter("hfov_degrees").value)
         self.vfov_rad = math.radians(self.get_parameter("vfov_degrees").value)
+        self.vis_window_name = self.get_parameter("vis_window_name").value
 
         # State
         self.target_class = BLUE_CLASS
         self.active_trackers = {}
         self.last_frame_time = None
+        self._show_fps_ema = 0.0
+        self._show_fps_t_prev = None
 
         # --- Components Init ---
         # 1. Detector
@@ -185,7 +189,7 @@ class YOLOv8Node(Node):
                     imgsz=imgsz_val,
                     show=False,
                     conf=self.conf,
-                    verbose=True,
+                    verbose=False,
                     persist=self.persist_tracking,
                     tracker="bytetrack.yaml",
                 )
@@ -196,11 +200,20 @@ class YOLOv8Node(Node):
                     imgsz=imgsz_val,
                     show=False,
                     conf=self.conf,
-                    verbose=True,
+                    verbose=False,
                 )
 
-            # 4. Process Results
-            vis_frame = padded_image.copy() if self.show else None
+            # 4. Process Results — match testObb: Ultralytics plot + native aspect when not Kalman
+            used_ultralytics_plot = False
+            vis_frame = None
+            if self.show:
+                if self.use_kalman:
+                    vis_frame = padded_image.copy()
+                elif results and len(results) > 0:
+                    vis_frame = results[0].plot()
+                    used_ultralytics_plot = True
+                else:
+                    vis_frame = padded_image.copy()
             published_this_frame = False
             current_processed_ids = set()
             best_direct_bbox = None  # Fallback if Kalman disabled
@@ -229,8 +242,12 @@ class YOLOv8Node(Node):
                         x1, y1, x2, y2 = bbox
                         track_id = id_list[i]
 
-                        # Visualization
-                        if self.show and vis_frame is not None:
+                        # Visualization (manual overlays when Kalman/legacy draw path)
+                        if (
+                            self.show
+                            and vis_frame is not None
+                            and not used_ultralytics_plot
+                        ):
                             cv2.rectangle(vis_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                             if track_id is not None:
                                 cv2.putText(
@@ -334,8 +351,28 @@ class YOLOv8Node(Node):
                 self.publish_bbox_and_angles(c, c, c, c, False)
 
             if self.show and vis_frame is not None:
-                # The window name should not depend on camera_type anymore
-                cv2.imshow("YOLOv8 Modular Node", vis_frame)
+                t_now = time.monotonic()
+                if self._show_fps_t_prev is not None:
+                    dt_vis = t_now - self._show_fps_t_prev
+                    inst = 1.0 / max(dt_vis, 1e-9)
+                    if self._show_fps_ema <= 0.0:
+                        self._show_fps_ema = inst
+                    else:
+                        self._show_fps_ema = (
+                            0.9 * self._show_fps_ema + 0.1 * inst
+                        )
+                self._show_fps_t_prev = t_now
+                cv2.putText(
+                    vis_frame,
+                    f"FPS: {self._show_fps_ema:.1f}",
+                    (8, 28),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.85,
+                    (0, 255, 0),
+                    2,
+                    cv2.LINE_AA,
+                )
+                cv2.imshow(self.vis_window_name, vis_frame)
                 cv2.waitKey(1)
 
         except Exception as e:
