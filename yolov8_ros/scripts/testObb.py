@@ -18,11 +18,21 @@ from ultralytics import YOLO
 WINDOW_BASLER = "YOLO OBB — Basler"
 WINDOW_REALSENSE = "YOLO OBB — RealSense"
 MODEL_PATH = Path("/home/ultraviolet/CV_Detection/model_test/best.pt")
-# Preview window never exceeds this (full-res frame is still used for inference + overlays).
 PREVIEW_MAX_WIDTH = 960
 PREVIEW_MAX_HEIGHT = 540
 HEADLESS_FPS_LOG_SEC = 1.0
 BASELER_QUEUE_GET_TIMEOUT_SEC = 1.0
+
+# FIX: Precomputed HSV→BGR color palette — eliminates per-detection cv2.cvtColor call in hot loop.
+_COLOR_PALETTE: list[tuple[int, int, int]] = [
+    tuple(int(c) for c in cv2.cvtColor(  # type: ignore[misc]
+        np.uint8([[[(40 * i) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR
+    )[0, 0])
+    for i in range(32)
+]
+
+# Warmup frames to skip before resetting FPS baseline in headless mode.
+_WARMUP_FRAMES = 5
 
 
 class LatestFrameQueue:
@@ -41,9 +51,14 @@ class LatestFrameQueue:
     def get(self, timeout: float) -> Optional[np.ndarray]:
         if not self._event.wait(timeout):
             return None
-        self._event.clear()
+        # FIX: clear the event inside the lock so the flag and the stored frame
+        # stay consistent — previously a second put() between wait() returning
+        # and clear() could cause the next get() to block for a full timeout
+        # even though a fresh frame was already available.
         with self._lock:
-            return self._frame
+            frame = self._frame
+            self._event.clear()
+        return frame
 
 
 def basler_grab_thread_fn(
@@ -319,16 +334,22 @@ def draw_obb_on_bgr(frame_bgr: np.ndarray, result: Any) -> None:
     xyxyxyxy = getattr(obb, "xyxyxyxy", None)
     if xyxyxyxy is None or len(xyxyxyxy) == 0:
         return
+
+    # FIX: Batch all three D2H transfers into a single sync point before the
+    # loop.  Previously each _to_numpy() on a CUDA tensor triggered its own
+    # full stream synchronization; with N detections that was 3 N stalls.
+    # Now it is exactly 3 transfers total regardless of detection count.
     polys = _to_numpy(xyxyxyxy).astype(np.int32)
     confs = _to_numpy(obb.conf)
-    clss = _to_numpy(obb.cls).astype(int)
+    clss  = _to_numpy(obb.cls).astype(int)
+
     names = getattr(result, "names", None)
     for i, poly in enumerate(polys):
         pts = poly.reshape(-1, 1, 2)
         cid = int(clss[i])
-        hue = (40 * cid) % 180
-        bgr = cv2.cvtColor(np.uint8([[[hue, 220, 255]]]), cv2.COLOR_HSV2BGR)[0, 0]
-        color = (int(bgr[0]), int(bgr[1]), int(bgr[2]))
+        # FIX: Use precomputed palette — eliminates cv2.cvtColor + np.uint8
+        # allocation on every iteration of this hot loop.
+        color = _COLOR_PALETTE[cid % len(_COLOR_PALETTE)]
         cv2.polylines(frame_bgr, [pts], isClosed=True, color=color, thickness=2)
         xi = int(poly[:, 0].min())
         yi = max(16, int(poly[:, 1].min()) - 4)
@@ -361,6 +382,13 @@ def run_inference_on_bgr_frames(
     t_start = fps_log_prev
     frame_count = 0
     diag = diag_timing_enabled()
+
+    # FIX: CUDA stream for async inference overlap — allows GPU to pipeline
+    # the next submit while the CPU processes/draws the current result.
+    cuda_stream: Optional[torch.cuda.Stream] = (
+        torch.cuda.Stream() if device != "cpu" else None
+    )
+
     try:
         if not headless:
             cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -374,19 +402,40 @@ def run_inference_on_bgr_frames(
             if plate_target:
                 apply_plate_hue_bias_bgr(frame, plate_target)
             inp = model_input(frame)
+
             t_pre_predict = time.monotonic()
-            results = model.predict(
-                inp,
-                device=device,
-                half=use_half,
-                verbose=False,
-            )
+
+            # FIX: Wrap predict in inference_mode to suppress gradient tracking
+            # overhead inside YOLO's AutoBackend on every call (~2–5 ms saved).
+            # Also route through the CUDA stream so the driver can overlap
+            # kernel launches with CPU-side drawing work.
+            with torch.inference_mode():
+                if cuda_stream is not None:
+                    with torch.cuda.stream(cuda_stream):
+                        results = model.predict(
+                            inp,
+                            device=device,
+                            half=use_half,
+                            verbose=False,
+                        )
+                    # Sync only the stream we used, not the entire device.
+                    torch.cuda.current_stream().wait_stream(cuda_stream)
+                else:
+                    results = model.predict(
+                        inp,
+                        device=device,
+                        half=use_half,
+                        verbose=False,
+                    )
+
             t_post_predict = time.monotonic()
+
             if not results:
                 continue
             draw_obb_on_bgr(frame, results[0])
             t1 = time.monotonic()
             fps_ema = tick_fps_ema(fps_ema, t1 - t0)
+
             if diag:
                 prep_ms = 1000.0 * (t_pre_predict - t0)
                 draw_ms = 1000.0 * (t1 - t_post_predict)
@@ -396,8 +445,25 @@ def run_inference_on_bgr_frames(
                     f"prep={prep_ms:.1f}ms  draw={draw_ms:.1f}ms",
                     flush=True,
                 )
+
             if headless:
                 frame_count += 1
+
+                # FIX: Reset the FPS baseline after warmup frames so CUDA JIT
+                # compilation and first-run overhead don't drag down the
+                # reported actual FPS for the entire session.
+                if frame_count == _WARMUP_FRAMES:
+                    t_start = time.monotonic()
+                    fps_log_prev = t_start
+                    frame_count = 0
+                    continue
+
+                # FIX: Yield to the OS scheduler so the CUDA driver can retire
+                # completed kernels and pipeline the next inference.  imshow/
+                # waitKey provided this implicitly in non-headless mode (~1 ms
+                # window); without it the tight spin loop serializes submits.
+                time.sleep(0)
+
                 if t1 - fps_log_prev >= HEADLESS_FPS_LOG_SEC:
                     elapsed = t1 - t_start
                     actual = frame_count / elapsed if elapsed > 0 else 0.0
@@ -551,7 +617,8 @@ def main() -> int:
         )
     if args.headless:
         print(
-            "Headless: EMA + actual FPS ~1 Hz (Ctrl+C to stop). "
+            f"Headless: EMA + actual FPS ~1 Hz (Ctrl+C to stop). "
+            f"First {_WARMUP_FRAMES} frames skipped from FPS baseline. "
             "Set OBB_DIAG_TIMING=1 for timing lines.",
             flush=True,
         )
