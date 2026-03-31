@@ -17,7 +17,7 @@ from ultralytics import YOLO
 
 WINDOW_BASLER = "YOLO OBB — Basler"
 WINDOW_REALSENSE = "YOLO OBB — RealSense"
-MODEL_PATH = Path("/home/ultraviolet/CV_Detection/model_test/best.pt")
+MODEL_PATH = Path("/home/ultraviolet/CV_Detection/model_test/best.engine")
 PREVIEW_MAX_WIDTH = 960
 PREVIEW_MAX_HEIGHT = 540
 HEADLESS_FPS_LOG_SEC = 1.0
@@ -25,12 +25,9 @@ BASELER_QUEUE_GET_TIMEOUT_SEC = 1.0
 
 # FIX: Precomputed HSV→BGR color palette — eliminates per-detection cv2.cvtColor call in hot loop.
 _COLOR_PALETTE: list[tuple[int, int, int]] = [
-    tuple(
-        int(c)
-        for c in cv2.cvtColor(  # type: ignore[misc]
-            np.uint8([[[(40 * i) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR
-        )[0, 0]
-    )
+    tuple(int(c) for c in cv2.cvtColor(  # type: ignore[misc]
+        np.uint8([[[(40 * i) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR
+    )[0, 0])
     for i in range(32)
 ]
 
@@ -344,7 +341,7 @@ def draw_obb_on_bgr(frame_bgr: np.ndarray, result: Any) -> None:
     # Now it is exactly 3 transfers total regardless of detection count.
     polys = _to_numpy(xyxyxyxy).astype(np.int32)
     confs = _to_numpy(obb.conf)
-    clss = _to_numpy(obb.cls).astype(int)
+    clss  = _to_numpy(obb.cls).astype(int)
 
     names = getattr(result, "names", None)
     for i, poly in enumerate(polys):
@@ -379,7 +376,6 @@ def run_inference_on_bgr_frames(
     headless: bool,
 ) -> None:
     imgsz = resolve_inference_imgsz(model)
-    model_input = ModelInputBuffer(device, use_half, imgsz)
     fps_ema = 0.0
     fps_log_prev = time.monotonic()
     t_start = fps_log_prev
@@ -404,19 +400,21 @@ def run_inference_on_bgr_frames(
             t0 = time.monotonic()
             if plate_target:
                 apply_plate_hue_bias_bgr(frame, plate_target)
-            inp = model_input(frame)
 
             t_pre_predict = time.monotonic()
 
-            # FIX: Wrap predict in inference_mode to suppress gradient tracking
-            # overhead inside YOLO's AutoBackend on every call (~2–5 ms saved).
-            # Also route through the CUDA stream so the driver can overlap
-            # kernel launches with CPU-side drawing work.
+            # FIX (bbox shift): Pass the raw BGR frame directly so YOLO handles
+            # its own letterbox + resize internally and auto-inverts the
+            # transform before returning coordinates — results come back in
+            # original frame space, no manual inverse needed.
+            # ModelInputBuffer is no longer used on the hot path; YOLO's
+            # internal CUDA preprocessing replaces it at equivalent cost.
             with torch.inference_mode():
                 if cuda_stream is not None:
                     with torch.cuda.stream(cuda_stream):
                         results = model.predict(
-                            inp,
+                            frame,
+                            imgsz=imgsz,
                             device=device,
                             half=use_half,
                             verbose=False,
@@ -425,7 +423,8 @@ def run_inference_on_bgr_frames(
                     torch.cuda.current_stream().wait_stream(cuda_stream)
                 else:
                     results = model.predict(
-                        inp,
+                        frame,
+                        imgsz=imgsz,
                         device=device,
                         half=use_half,
                         verbose=False,
