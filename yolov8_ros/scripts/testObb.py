@@ -25,12 +25,9 @@ BASELER_QUEUE_GET_TIMEOUT_SEC = 1.0
 
 # FIX: Precomputed HSV→BGR color palette — eliminates per-detection cv2.cvtColor call in hot loop.
 _COLOR_PALETTE: list[tuple[int, int, int]] = [
-    tuple(
-        int(c)
-        for c in cv2.cvtColor(  # type: ignore[misc]
-            np.uint8([[[(40 * i) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR
-        )[0, 0]
-    )
+    tuple(int(c) for c in cv2.cvtColor(  # type: ignore[misc]
+        np.uint8([[[(40 * i) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR
+    )[0, 0])
     for i in range(32)
 ]
 
@@ -344,7 +341,7 @@ def draw_obb_on_bgr(frame_bgr: np.ndarray, result: Any) -> None:
     # Now it is exactly 3 transfers total regardless of detection count.
     polys = _to_numpy(xyxyxyxy).astype(np.int32)
     confs = _to_numpy(obb.conf)
-    clss = _to_numpy(obb.cls).astype(int)
+    clss  = _to_numpy(obb.cls).astype(int)
 
     names = getattr(result, "names", None)
     for i, poly in enumerate(polys):
@@ -453,30 +450,9 @@ def run_inference_on_bgr_frames(
 
             if headless:
                 frame_count += 1
-
-                # FIX: Reset the FPS baseline after warmup frames so CUDA JIT
-                # compilation and first-run overhead don't drag down the
-                # reported actual FPS for the entire session.
-                if frame_count == _WARMUP_FRAMES:
-                    t_start = time.monotonic()
-                    fps_log_prev = t_start
-                    frame_count = 0
-                    continue
-
-                # FIX: Yield to the OS scheduler so the CUDA driver can retire
-                # completed kernels and pipeline the next inference.  imshow/
-                # waitKey provided this implicitly in non-headless mode (~1 ms
-                # window); without it the tight spin loop serializes submits.
                 time.sleep(0)
-
                 if t1 - fps_log_prev >= HEADLESS_FPS_LOG_SEC:
-                    elapsed = t1 - t_start
-                    actual = frame_count / elapsed if elapsed > 0 else 0.0
-                    print(
-                        f"FPS ema={fps_ema:.1f}  actual={actual:.1f}  "
-                        f"frames={frame_count}",
-                        flush=True,
-                    )
+                    print(f"FPS {fps_ema:.1f}", flush=True)
                     fps_log_prev = t1
             else:
                 cv2.putText(
