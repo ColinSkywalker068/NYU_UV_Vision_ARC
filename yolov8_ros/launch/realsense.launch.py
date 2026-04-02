@@ -84,7 +84,7 @@ def generate_launch_description() -> LaunchDescription:
                 "show": LaunchConfiguration("show"),
                 "use_kalman": LaunchConfiguration("use_kalman"),
                 "tracker_type": LaunchConfiguration("tracker_type"),
-                "enable_tracking": False,
+                "enable_tracking": True,
                 "hfov_degrees": LaunchConfiguration("hfov_degrees"),
                 "vfov_degrees": LaunchConfiguration("vfov_degrees"),
                 "imgsz_width": LaunchConfiguration("rs_width"),
