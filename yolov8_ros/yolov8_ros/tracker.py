@@ -98,9 +98,7 @@ class UKFArmorPlateTracker:
         self.state = np.array([x, y, 0.0, 0.0, 0.0], dtype=np.float64)
 
         pn_pos, pn_vel, pn_yaw = proc_noise
-        self.Q = np.diag(
-            [pn_pos, pn_pos, pn_vel, pn_yaw, pn_yaw]
-        )
+        self.Q = np.diag([pn_pos, pn_pos, pn_vel, pn_yaw, pn_yaw])
         self.R = np.eye(2) * meas_noise
         self.P = np.eye(self.n) * init_cov
 
@@ -116,14 +114,14 @@ class UKFArmorPlateTracker:
 
     def _compute_weights(self):
         n = self.n
-        lam = self.alpha ** 2 * (n + self.kappa) - n
+        lam = self.alpha**2 * (n + self.kappa) - n
         self._lam = lam
         c = n + lam
 
         self.Wm = np.full(2 * n + 1, 0.5 / c)
         self.Wc = np.full(2 * n + 1, 0.5 / c)
         self.Wm[0] = lam / c
-        self.Wc[0] = lam / c + (1.0 - self.alpha ** 2 + self.beta)
+        self.Wc[0] = lam / c + (1.0 - self.alpha**2 + self.beta)
 
     def _sigma_points(self):
         n = self.n
