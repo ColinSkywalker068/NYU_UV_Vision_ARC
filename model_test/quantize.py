@@ -99,13 +99,13 @@ def remove_calibration_cache(model_path: Path) -> None:
         print(f"removed calibration cache: {cache_path}")
 
 
-def resolve_data_path(args: argparse.Namespace) -> Optional[Path]:
+def resolve_data_path(args: argparse.Namespace) -> Path | None:
     if args.data is not None:
         return args.data.expanduser().resolve()
     return default_data_yaml()
 
 
-def validate_data_path(data_path: Optional[Path], export_target: str) -> None:
+def validate_data_path(data_path: Path | None, export_target: str) -> None:
     if export_target != "engine":
         return
     if data_path is None or not data_path.is_file():
@@ -121,7 +121,7 @@ def export_model(args: argparse.Namespace) -> None:
     if not model_path.is_file():
         raise FileNotFoundError(f"missing model: {model_path}")
     export_target: str = resolve_export_target(args.target)
-    data_path: Optional[Path] = resolve_data_path(args)
+    data_path: Path | None = resolve_data_path(args)
     validate_data_path(data_path, export_target)
     model = YOLO(str(model_path), task=args.task)
     if export_target == "engine":

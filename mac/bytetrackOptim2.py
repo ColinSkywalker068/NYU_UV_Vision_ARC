@@ -35,31 +35,53 @@ COREML_IMGSZ = 640
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="YOLO detect + custom Kalman tracker")
     parser.add_argument("--source", type=str, default="0")
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH)
     parser.add_argument("--task", type=str, default="obb")
     parser.add_argument("--conf", type=float, default=0.25)
-    parser.add_argument("--imgsz", type=int, default=COREML_IMGSZ,
-                        help=f"must match export imgsz (default: {COREML_IMGSZ})")
+    parser.add_argument(
+        "--imgsz",
+        type=int,
+        default=COREML_IMGSZ,
+        help=f"must match export imgsz (default: {COREML_IMGSZ})",
+    )
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--save", action="store_true")
     parser.add_argument("--fps-window", type=int, default=30)
-    parser.add_argument("--mps-memory", type=float, default=0.0,
-                        help="MPS per-process memory fraction (0.0 = unlimited)")
-    parser.add_argument("--tracker-timeout", type=int, default=15,
-                        help="frames before a lost track is deleted")
-    parser.add_argument("--prediction-lookahead", type=float, default=0.5,
-                        help="lookahead multiplier on dt for future position")
-    parser.add_argument("--iou-threshold", type=float, default=0.3,
-                        help="min IoU to match a detection to an existing track")
+    parser.add_argument(
+        "--mps-memory",
+        type=float,
+        default=0.0,
+        help="MPS per-process memory fraction (0.0 = unlimited)",
+    )
+    parser.add_argument(
+        "--tracker-timeout",
+        type=int,
+        default=15,
+        help="frames before a lost track is deleted",
+    )
+    parser.add_argument(
+        "--prediction-lookahead",
+        type=float,
+        default=0.5,
+        help="lookahead multiplier on dt for future position",
+    )
+    parser.add_argument(
+        "--iou-threshold",
+        type=float,
+        default=0.3,
+        help="min IoU to match a detection to an existing track",
+    )
     return parser.parse_args()
 
 
 # ---------------------------------------------------------------------------
 # Setup helpers
 # ---------------------------------------------------------------------------
+
 
 def configure_mps(memory_fraction: float) -> None:
     """Must be called before the model is loaded."""
@@ -68,6 +90,7 @@ def configure_mps(memory_fraction: float) -> None:
     if memory_fraction > 0.0:
         try:
             import torch
+
             torch.mps.set_per_process_memory_fraction(memory_fraction)
         except (ImportError, AttributeError):
             pass
@@ -120,6 +143,7 @@ def warmup(model: YOLO, device: str, imgsz: int) -> None:
 # IoU + Hungarian matching
 # ---------------------------------------------------------------------------
 
+
 def _iou(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> float:
     ax1, ay1, ax2, ay2 = a
     bx1, by1, bx2, by2 = b
@@ -169,6 +193,7 @@ def match_detections(
 # Bounding box helpers
 # ---------------------------------------------------------------------------
 
+
 def clamp_bbox(
     bbox: tuple[int, int, int, int], w: int, h: int
 ) -> tuple[int, int, int, int]:
@@ -195,6 +220,7 @@ def extract_detections(result: Results, task: str) -> list[tuple[int, int, int, 
 # ---------------------------------------------------------------------------
 # Kalman tracker manager
 # ---------------------------------------------------------------------------
+
 
 class KalmanTracker:
     """
@@ -231,12 +257,13 @@ class KalmanTracker:
         s = wrapper.tracker.state
         vx, vy, ax, ay = s[2], s[3], s[4], s[5]
         la = self._lookahead * dt
-        fx = px + vx * la + 0.5 * ax * la ** 2
-        fy = py + vy * la + 0.5 * ay * la ** 2
+        fx = px + vx * la + 0.5 * ax * la**2
+        fy = py + vy * la + 0.5 * ay * la**2
         w, h = wrapper.tracker.width, wrapper.tracker.height
         return clamp_bbox(
             (int(fx - w / 2), int(fy - h / 2), int(fx + w / 2), int(fy + h / 2)),
-            fw, fh,
+            fw,
+            fh,
         )
 
     def update(
@@ -264,8 +291,10 @@ class KalmanTracker:
             tid = track_ids[ti]
             x1, y1, x2, y2 = detections[di]
             self._tracks[tid].tracker.update(
-                (x1 + x2) / 2.0, (y1 + y2) / 2.0,
-                float(abs(x2 - x1)), float(abs(y2 - y1)),
+                (x1 + x2) / 2.0,
+                (y1 + y2) / 2.0,
+                float(abs(x2 - x1)),
+                float(abs(y2 - y1)),
             )
             self._tracks[tid].lost_frames = 0
 
@@ -278,14 +307,18 @@ class KalmanTracker:
             x1, y1, x2, y2 = detections[di]
             self._tracks[self._next_id] = TrackerWrapper(
                 ArmorPlateTracker(
-                    (x1 + x2) / 2.0, (y1 + y2) / 2.0,
-                    float(abs(x2 - x1)), float(abs(y2 - y1)),
+                    (x1 + x2) / 2.0,
+                    (y1 + y2) / 2.0,
+                    float(abs(x2 - x1)),
+                    float(abs(y2 - y1)),
                 )
             )
             self._next_id += 1
 
         # 6. reap stale tracks
-        for tid in [t for t, w in self._tracks.items() if w.lost_frames >= self._tracker_timeout]:
+        for tid in [
+            t for t, w in self._tracks.items() if w.lost_frames >= self._tracker_timeout
+        ]:
             del self._tracks[tid]
 
         # 7. output: predicted bbox per surviving track
@@ -293,13 +326,16 @@ class KalmanTracker:
         return [
             (tid, pred_map[tid], w.lost_frames == 0)
             for tid, w in self._tracks.items()
-            if tid in pred_map and pred_map[tid][0] < pred_map[tid][2] and pred_map[tid][1] < pred_map[tid][3]
+            if tid in pred_map
+            and pred_map[tid][0] < pred_map[tid][2]
+            and pred_map[tid][1] < pred_map[tid][3]
         ]
 
 
 # ---------------------------------------------------------------------------
 # Drawing
 # ---------------------------------------------------------------------------
+
 
 def draw_tracks(
     frame: np.ndarray,
@@ -309,8 +345,16 @@ def draw_tracks(
         color = (255, 80, 80) if is_live else (0, 165, 255)
         label = f"KF {tid}" if is_live else f"LOST {tid}"
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-        cv2.putText(frame, label, (x1, max(20, y1 - 8)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+        cv2.putText(
+            frame,
+            label,
+            (x1, max(20, y1 - 8)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            color,
+            1,
+            cv2.LINE_AA,
+        )
     return frame
 
 
@@ -326,6 +370,7 @@ def display_frame(frame: np.ndarray) -> np.ndarray:
 # FPS counter
 # ---------------------------------------------------------------------------
 
+
 class FPSCounter:
     def __init__(self, window: int = 30) -> None:
         self._timestamps: deque[float] = deque(maxlen=window)
@@ -334,18 +379,39 @@ class FPSCounter:
         self._timestamps.append(time.perf_counter())
         if len(self._timestamps) < 2:
             return 0.0
-        return (len(self._timestamps) - 1) / (self._timestamps[-1] - self._timestamps[0])
+        return (len(self._timestamps) - 1) / (
+            self._timestamps[-1] - self._timestamps[0]
+        )
 
     def draw(self, frame: np.ndarray) -> np.ndarray:
         label = f"FPS: {self.tick():.1f}"
-        cv2.putText(frame, label, (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 0), 3, cv2.LINE_AA)
-        cv2.putText(frame, label, (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 220, 80), 2, cv2.LINE_AA)
+        cv2.putText(
+            frame,
+            label,
+            (10, 28),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.75,
+            (0, 0, 0),
+            3,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            frame,
+            label,
+            (10, 28),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.75,
+            (50, 220, 80),
+            2,
+            cv2.LINE_AA,
+        )
         return frame
 
 
 # ---------------------------------------------------------------------------
 # Inference thread — predict only, no built-in tracker
 # ---------------------------------------------------------------------------
+
 
 class InferenceThread(threading.Thread):
     def __init__(self, model: YOLO, predict_args: dict) -> None:
@@ -372,6 +438,7 @@ class InferenceThread(threading.Thread):
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def run_tracking(args: argparse.Namespace) -> None:
     configure_mps(args.mps_memory)
@@ -419,14 +486,14 @@ def run_tracking(args: argparse.Namespace) -> None:
         if result is None:
             break
         if result is ...:
-            cv2.waitKey(1)   # yield to Cocoa event loop
+            cv2.waitKey(1)  # yield to Cocoa event loop
             continue
 
         frame_h, frame_w = result.orig_shape
         detections = extract_detections(result, args.task)
         tracks = kf_tracker.update(detections, frame_w, frame_h)
 
-        frame = result.orig_img.copy()   # raw frame, no YOLO overlays
+        frame = result.orig_img.copy()  # raw frame, no YOLO overlays
         frame = draw_tracks(frame, tracks)
         frame = display_frame(frame)
         frame = fps_counter.draw(frame)

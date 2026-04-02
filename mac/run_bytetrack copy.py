@@ -1,7 +1,8 @@
 import argparse
 import platform
 from pathlib import Path
-from typing import Iterator, Union
+from typing import Union
+from collections.abc import Iterator
 
 import cv2
 from ultralytics import YOLO
