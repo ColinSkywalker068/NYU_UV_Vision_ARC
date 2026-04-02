@@ -21,13 +21,18 @@ MODEL_PATH = Path("/home/ultraviolet/CV_Detection/model_test/best.pt")
 PREVIEW_MAX_WIDTH = 960
 PREVIEW_MAX_HEIGHT = 540
 HEADLESS_FPS_LOG_SEC = 1.0
-BASLER_QUEUE_GET_TIMEOUT_SEC = 0.05  # 5 missed frames at 100 fps — was 1.0 (catastrophic stall)
+BASLER_QUEUE_GET_TIMEOUT_SEC = (
+    0.05  # 5 missed frames at 100 fps — was 1.0 (catastrophic stall)
+)
 
 # FIX: Precomputed HSV→BGR color palette — eliminates per-detection cv2.cvtColor call in hot loop.
 _COLOR_PALETTE: list[tuple[int, int, int]] = [
-    tuple(int(c) for c in cv2.cvtColor(  # type: ignore[misc]
-        np.uint8([[[(40 * i) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR
-    )[0, 0])
+    tuple(
+        int(c)
+        for c in cv2.cvtColor(  # type: ignore[misc]
+            np.uint8([[[(40 * i) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR
+        )[0, 0]
+    )
     for i in range(32)
 ]
 
@@ -360,7 +365,7 @@ def draw_obb_on_bgr(frame_bgr: np.ndarray, result: Any) -> None:
     # Now it is exactly 3 transfers total regardless of detection count.
     polys = _to_numpy(xyxyxyxy).astype(np.int32)
     confs = _to_numpy(obb.conf)
-    clss  = _to_numpy(obb.cls).astype(int)
+    clss = _to_numpy(obb.cls).astype(int)
 
     names = getattr(result, "names", None)
     for i, poly in enumerate(polys):
@@ -411,7 +416,9 @@ def run_inference_on_bgr_frames(
     if warmup_frame is None:
         warmup_frame = np.zeros((480, 640, 3), dtype=np.uint8)
     with torch.inference_mode():
-        model.predict(warmup_frame, imgsz=imgsz, device=device, half=use_half, verbose=False)
+        model.predict(
+            warmup_frame, imgsz=imgsz, device=device, half=use_half, verbose=False
+        )
     predictor = model.predictor
     print("Predictor warmed up.", flush=True)
 
