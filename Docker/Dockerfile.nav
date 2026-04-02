@@ -124,6 +124,14 @@ RUN echo 'git config --global --add safe.directory "*"' >> ~/.bashrc \
     && echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> ~/.bashrc \
     && echo 'source "${WS_DIR_REALSENSE}/install/local_setup.sh"' >> ~/.bashrc
 
+FROM kenny0407/marslab_fastlio2:latest
+
+# Add your own stuff on top
+WORKDIR /home/mars_ugv/docker_ws
+
+# Example: copy your existing workspace
+COPY . /home/mars_ugv/docker_ws
+
 RUN cd /librealsense/build && make install
 
 ENV DEBIAN_FRONTEND=dialog
