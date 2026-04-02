@@ -14,7 +14,7 @@ import time
 
 try:
     from .detector import YOLODetector
-    from .tracker import ArmorPlateTracker, TrackerWrapper
+    from .tracker import ArmorPlateTracker, UKFArmorPlateTracker, TrackerWrapper
     from .utils import (
         RED_TEAM,
         BLUE_TEAM,
@@ -26,7 +26,7 @@ try:
     )
 except (ImportError, ValueError):
     from detector import YOLODetector
-    from tracker import ArmorPlateTracker, TrackerWrapper
+    from tracker import ArmorPlateTracker, UKFArmorPlateTracker, TrackerWrapper
     from utils import (
         RED_TEAM,
         BLUE_TEAM,
@@ -162,6 +162,7 @@ class YOLOv8Node(Node):
         self.declare_parameter("enable_tracking", True)
         self.declare_parameter("persist_tracking", True)
         self.declare_parameter("use_kalman", False)
+        self.declare_parameter("tracker_type", "lkf")
         self.declare_parameter("enable_color_verification", False)
 
         self.declare_parameter("hfov_degrees", 79.2)
@@ -182,6 +183,7 @@ class YOLOv8Node(Node):
         self.enable_tracking = self.get_parameter("enable_tracking").value
         self.persist_tracking = self.get_parameter("persist_tracking").value
         self.use_kalman = self.get_parameter("use_kalman").value
+        self.tracker_type = self.get_parameter("tracker_type").value.lower()
         self.enable_color_verification = self.get_parameter(
             "enable_color_verification"
         ).value
@@ -355,8 +357,12 @@ class YOLOv8Node(Node):
                                     cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
                                     w, h = float(abs(x2 - x1)), float(abs(y2 - y1))
                                     if track_id not in self.active_trackers:
+                                        if self.tracker_type == "ukf":
+                                            trk = UKFArmorPlateTracker(cx, cy, w, h)
+                                        else:
+                                            trk = ArmorPlateTracker(cx, cy, w, h)
                                         self.active_trackers[track_id] = TrackerWrapper(
-                                            ArmorPlateTracker(cx, cy, w, h)
+                                            trk
                                         )
                                     else:
                                         self.active_trackers[track_id].tracker.update(

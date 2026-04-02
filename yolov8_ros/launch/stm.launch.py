@@ -53,6 +53,9 @@ def generate_launch_description() -> LaunchDescription:
     use_kalman_arg = DeclareLaunchArgument(
         "use_kalman", default_value="true", description="Enable Kalman filter tracking"
     )
+    tracker_type_arg = DeclareLaunchArgument(
+        "tracker_type", default_value="lkf", description="Tracker type: lkf or ukf"
+    )
     show_arg = DeclareLaunchArgument(
         "show", default_value="true", description="Show OpenCV visualization window"
     )
@@ -86,6 +89,7 @@ def generate_launch_description() -> LaunchDescription:
             {
                 "show": LaunchConfiguration("show"),
                 "use_kalman": LaunchConfiguration("use_kalman"),
+                "tracker_type": LaunchConfiguration("tracker_type"),
             }
         ],
     )
@@ -116,6 +120,7 @@ def generate_launch_description() -> LaunchDescription:
             basler_exposure_arg,
             basler_gain_arg,
             use_kalman_arg,
+            tracker_type_arg,
             show_arg,
             camera_node,
             yolov8_node,

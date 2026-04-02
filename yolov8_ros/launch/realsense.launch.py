@@ -39,6 +39,9 @@ def generate_launch_description() -> LaunchDescription:
     use_kalman_arg = DeclareLaunchArgument(
         "use_kalman", default_value="false", description="Kalman-smoothed publishing"
     )
+    tracker_type_arg = DeclareLaunchArgument(
+        "tracker_type", default_value="lkf", description="Tracker type: lkf or ukf"
+    )
 
     hfov_arg = DeclareLaunchArgument(
         "hfov_degrees",
@@ -80,6 +83,7 @@ def generate_launch_description() -> LaunchDescription:
                 "conf": LaunchConfiguration("conf"),
                 "show": LaunchConfiguration("show"),
                 "use_kalman": LaunchConfiguration("use_kalman"),
+                "tracker_type": LaunchConfiguration("tracker_type"),
                 "enable_tracking": False,
                 "hfov_degrees": LaunchConfiguration("hfov_degrees"),
                 "vfov_degrees": LaunchConfiguration("vfov_degrees"),
@@ -100,6 +104,7 @@ def generate_launch_description() -> LaunchDescription:
             conf_arg,
             show_arg,
             use_kalman_arg,
+            tracker_type_arg,
             hfov_arg,
             vfov_arg,
             camera_node,
