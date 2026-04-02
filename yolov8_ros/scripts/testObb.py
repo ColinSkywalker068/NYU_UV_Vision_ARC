@@ -17,20 +17,17 @@ from ultralytics import YOLO
 
 WINDOW_BASLER = "YOLO OBB — Basler"
 WINDOW_REALSENSE = "YOLO OBB — RealSense"
-MODEL_PATH = Path("/home/ultraviolet/CV_Detection/model_test/best.engine")
+MODEL_PATH = Path("/home/ultraviolet/CV_Detection/model_test/best.pt")
 PREVIEW_MAX_WIDTH = 960
 PREVIEW_MAX_HEIGHT = 540
 HEADLESS_FPS_LOG_SEC = 1.0
-BASELER_QUEUE_GET_TIMEOUT_SEC = 1.0
+BASLER_QUEUE_GET_TIMEOUT_SEC = 0.05  # 5 missed frames at 100 fps — was 1.0 (catastrophic stall)
 
 # FIX: Precomputed HSV→BGR color palette — eliminates per-detection cv2.cvtColor call in hot loop.
 _COLOR_PALETTE: list[tuple[int, int, int]] = [
-    tuple(
-        int(c)
-        for c in cv2.cvtColor(  # type: ignore[misc]
-            np.uint8([[[(40 * i) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR
-        )[0, 0]
-    )
+    tuple(int(c) for c in cv2.cvtColor(  # type: ignore[misc]
+        np.uint8([[[(40 * i) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR
+    )[0, 0])
     for i in range(32)
 ]
 
@@ -54,12 +51,11 @@ class LatestFrameQueue:
     def get(self, timeout: float) -> Optional[np.ndarray]:
         if not self._event.wait(timeout):
             return None
-        # FIX: clear the event inside the lock so the flag and the stored frame
-        # stay consistent — previously a second put() between wait() returning
-        # and clear() could cause the next get() to block for a full timeout
-        # even though a fresh frame was already available.
+        # Swap frame reference and clear flag in one lock window so put()
+        # is never blocked by a lingering reference held by the consumer.
         with self._lock:
             frame = self._frame
+            self._frame = None
             self._event.clear()
         return frame
 
@@ -71,6 +67,10 @@ def basler_grab_thread_fn(
     fq: LatestFrameQueue,
     stop: threading.Event,
 ) -> None:
+    # Pre-allocated destination buffer — reused every frame so the OS never
+    # needs to page in new memory during the copy while the grab is held.
+    buf: Optional[np.ndarray] = None
+
     while not stop.is_set():
         try:
             grab = camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
@@ -83,14 +83,28 @@ def basler_grab_thread_fn(
         if not grab.GrabSucceeded():
             grab.Release()
             continue
+
         if uses_native_bgr8:
+            # GetArray() is a zero-copy view into Basler's DMA buffer.
+            # We must copy before Release(), but copying into a pre-allocated
+            # buffer avoids repeated OS allocation and minimises the window
+            # the DMA buffer is held locked.
             raw = grab.GetArray()
+            if buf is None or buf.shape != raw.shape or buf.dtype != raw.dtype:
+                buf = np.empty(raw.shape, dtype=raw.dtype)
+            np.copyto(buf, raw)
+            grab.Release()
+            fq.put(buf.copy())  # hand off an independent copy; buf is reused next frame
         else:
             assert converter is not None
-            raw = converter.Convert(grab).GetArray()
-        payload = raw.copy()
-        grab.Release()
-        fq.put(payload)
+            # Convert() internally allocates its own buffer — it does not hold
+            # the DMA memory — so we can release the grab immediately after
+            # conversion and before the array copy, freeing the camera buffer
+            # slot as early as possible.
+            converted = converter.Convert(grab)
+            grab.Release()
+            payload = converted.GetArray().copy()
+            fq.put(payload)
 
 
 def diag_timing_enabled() -> bool:
@@ -174,8 +188,10 @@ def open_default_camera(
             camera.AcquisitionFrameRate.SetValue(float(cap_fps))
         else:
             camera.AcquisitionFrameRateEnable.SetValue(False)
-    except Exception:
-        pass
+    except Exception as e:
+        # Most common cause: exposure time is longer than the requested frame
+        # period. The camera will run at its own rate — log so it is visible.
+        print(f"Warning: could not set Basler FPS cap ({e}). Camera runs uncapped.")
     return camera, native_bgr8
 
 
@@ -344,7 +360,7 @@ def draw_obb_on_bgr(frame_bgr: np.ndarray, result: Any) -> None:
     # Now it is exactly 3 transfers total regardless of detection count.
     polys = _to_numpy(xyxyxyxy).astype(np.int32)
     confs = _to_numpy(obb.conf)
-    clss = _to_numpy(obb.cls).astype(int)
+    clss  = _to_numpy(obb.cls).astype(int)
 
     names = getattr(result, "names", None)
     for i, poly in enumerate(polys):
@@ -381,15 +397,23 @@ def run_inference_on_bgr_frames(
     imgsz = resolve_inference_imgsz(model)
     fps_ema = 0.0
     fps_log_prev = time.monotonic()
-    t_start = fps_log_prev
     frame_count = 0
     diag = diag_timing_enabled()
 
-    # FIX: CUDA stream for async inference overlap — allows GPU to pipeline
-    # the next submit while the CPU processes/draws the current result.
     cuda_stream: Optional[torch.cuda.Stream] = (
         torch.cuda.Stream() if device != "cpu" else None
     )
+
+    # Warm up: runs one full predict to initialise the YOLO predictor, CUDA
+    # JIT kernels, and letterbox state before the main loop starts.
+    # This also sets model.predictor which the headless path uses directly.
+    warmup_frame = frame_source()
+    if warmup_frame is None:
+        warmup_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    with torch.inference_mode():
+        model.predict(warmup_frame, imgsz=imgsz, device=device, half=use_half, verbose=False)
+    predictor = model.predictor
+    print("Predictor warmed up.", flush=True)
 
     try:
         if not headless:
@@ -406,15 +430,34 @@ def run_inference_on_bgr_frames(
 
             t_pre_predict = time.monotonic()
 
-            # FIX (bbox shift): Pass the raw BGR frame directly so YOLO handles
-            # its own letterbox + resize internally and auto-inverts the
-            # transform before returning coordinates — results come back in
-            # original frame space, no manual inverse needed.
-            # ModelInputBuffer is no longer used on the hot path; YOLO's
-            # internal CUDA preprocessing replaces it at equivalent cost.
-            with torch.inference_mode():
-                if cuda_stream is not None:
-                    with torch.cuda.stream(cuda_stream):
+            if headless:
+                # Headless: run preprocess + forward pass only.
+                # Skips YOLO's postprocess entirely (NMS, D2H transfer of the
+                # raw prediction tensor, coordinate remapping) — all of which
+                # are the source of the FPS drop when objects are on screen.
+                # Results are unused in headless so this is safe.
+                with torch.inference_mode():
+                    imgs = predictor.preprocess([frame])
+                    if cuda_stream is not None:
+                        with torch.cuda.stream(cuda_stream):
+                            predictor.model(imgs)
+                        torch.cuda.current_stream().wait_stream(cuda_stream)
+                    else:
+                        predictor.model(imgs)
+            else:
+                # Non-headless: full predict so we get results for drawing.
+                with torch.inference_mode():
+                    if cuda_stream is not None:
+                        with torch.cuda.stream(cuda_stream):
+                            results = model.predict(
+                                frame,
+                                imgsz=imgsz,
+                                device=device,
+                                half=use_half,
+                                verbose=False,
+                            )
+                        torch.cuda.current_stream().wait_stream(cuda_stream)
+                    else:
                         results = model.predict(
                             frame,
                             imgsz=imgsz,
@@ -422,26 +465,13 @@ def run_inference_on_bgr_frames(
                             half=use_half,
                             verbose=False,
                         )
-                    # Sync only the stream we used, not the entire device.
-                    torch.cuda.current_stream().wait_stream(cuda_stream)
-                else:
-                    results = model.predict(
-                        frame,
-                        imgsz=imgsz,
-                        device=device,
-                        half=use_half,
-                        verbose=False,
-                    )
 
             t_post_predict = time.monotonic()
 
-            if not results:
-                continue
-            # Skip drawing entirely in headless — no window to show it,
-            # and cv2.polylines/putText on a full-res frame costs 3–6 ms
-            # on Jetson which halves throughput at 100 fps.
             if not headless:
-                draw_obb_on_bgr(frame, results[0])
+                if results:
+                    draw_obb_on_bgr(frame, results[0])
+
             t1 = time.monotonic()
             fps_ema = tick_fps_ema(fps_ema, t1 - t0)
 
@@ -505,7 +535,7 @@ def run_basler_loop(
     try:
 
         def grab_bgr() -> Optional[np.ndarray]:
-            return fq.get(BASELER_QUEUE_GET_TIMEOUT_SEC)
+            return fq.get(BASLER_QUEUE_GET_TIMEOUT_SEC)
 
         run_inference_on_bgr_frames(
             model,
