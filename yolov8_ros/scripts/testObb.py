@@ -17,7 +17,9 @@ from ultralytics import YOLO
 
 WINDOW_BASLER = "YOLO OBB — Basler"
 WINDOW_REALSENSE = "YOLO OBB — RealSense"
-MODEL_PATH = Path("/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.pt")
+MODEL_PATH = Path(
+    "/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.pt"
+)
 # Preview window never exceeds this (full-res frame is still used for inference + overlays).
 PREVIEW_MAX_WIDTH = 960
 PREVIEW_MAX_HEIGHT = 540
