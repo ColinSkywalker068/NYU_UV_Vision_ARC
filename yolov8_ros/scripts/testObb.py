@@ -21,13 +21,18 @@ MODEL_PATH = Path("/home/ultraviolet/CV_Detection/model_test/best.pt")
 PREVIEW_MAX_WIDTH = 960
 PREVIEW_MAX_HEIGHT = 540
 HEADLESS_FPS_LOG_SEC = 1.0
-BASLER_QUEUE_GET_TIMEOUT_SEC = 0.05  # 5 missed frames at 100 fps — was 1.0 (catastrophic stall)
+BASLER_QUEUE_GET_TIMEOUT_SEC = (
+    0.05  # 5 missed frames at 100 fps — was 1.0 (catastrophic stall)
+)
 
 # FIX: Precomputed HSV→BGR color palette — eliminates per-detection cv2.cvtColor call in hot loop.
 _COLOR_PALETTE: list[tuple[int, int, int]] = [
-    tuple(int(c) for c in cv2.cvtColor(  # type: ignore[misc]
-        np.uint8([[[(40 * i) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR
-    )[0, 0])
+    tuple(
+        int(c)
+        for c in cv2.cvtColor(  # type: ignore[misc]
+            np.uint8([[[(40 * i) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR
+        )[0, 0]
+    )
     for i in range(32)
 ]
 
@@ -200,17 +205,19 @@ def open_default_camera(
     # the camera increases exposure to compensate for reduced average brightness
     # directly cutting achievable FPS. Must be Off for predictable throughput.
     _try_set("ExposureAuto=Off", lambda: camera.ExposureAuto.SetValue("Off"))
-    _try_set("GainAuto=Off",     lambda: camera.GainAuto.SetValue("Off"))
+    _try_set("GainAuto=Off", lambda: camera.GainAuto.SetValue("Off"))
 
     # ── Exposure time ────────────────────────────────────────────────────────
     # FPS hard ceiling = 1 / ExposureTime. At 33ms you cannot exceed 30 fps.
     # Read from env so the user can tune without touching code.
     # Default 4000 us -> ~250 fps ceiling, well above any YOLO bottleneck.
     exposure_us = float(os.environ.get("BASLER_EXPOSURE_US", "4000"))
+
     def _set_exposure() -> None:
         lo = camera.ExposureTime.GetMin()
         hi = camera.ExposureTime.GetMax()
         camera.ExposureTime.SetValue(max(lo, min(hi, exposure_us)))
+
     _try_set(f"ExposureTime={exposure_us}us", _set_exposure)
 
     # ── AOI (Area of Interest) ───────────────────────────────────────────────
@@ -239,8 +246,10 @@ def open_default_camera(
         camera.Height.SetValue(target_h)
         camera.OffsetX.SetValue(off_x)
         camera.OffsetY.SetValue(off_y)
-        print(f"[basler] AOI: {target_w}x{target_h} @ offset ({off_x},{off_y}) "
-              f"[sensor max {max_w}x{max_h}]")
+        print(
+            f"[basler] AOI: {target_w}x{target_h} @ offset ({off_x},{off_y}) "
+            f"[sensor max {max_w}x{max_h}]"
+        )
     except Exception as e:
         print(f"  [basler] AOI: could not set ({e}), using full sensor.")
 
@@ -262,7 +271,7 @@ def open_default_camera(
     try:
         sg = camera.GetStreamGrabberParams()
         _try_set("MaxTransferSize=65536", lambda: sg.MaxTransferSize.SetValue(65536))
-        _try_set("NumMaxQueuedUrbs=32",   lambda: sg.NumMaxQueuedUrbs.SetValue(32))
+        _try_set("NumMaxQueuedUrbs=32", lambda: sg.NumMaxQueuedUrbs.SetValue(32))
     except Exception as e:
         print(f"  [basler] StreamGrabberParams unavailable before grab start: {e}")
     _try_set("MaxNumBuffer=32", lambda: camera.MaxNumBuffer.SetValue(32))
@@ -270,7 +279,9 @@ def open_default_camera(
     # ── Report camera-side ceiling ───────────────────────────────────────────
     try:
         resulting = camera.ResultingFrameRate.GetValue()
-        print(f"[basler] ResultingFrameRate (camera-reported ceiling): {resulting:.1f} fps")
+        print(
+            f"[basler] ResultingFrameRate (camera-reported ceiling): {resulting:.1f} fps"
+        )
     except Exception:
         pass
 
@@ -442,7 +453,7 @@ def draw_obb_on_bgr(frame_bgr: np.ndarray, result: Any) -> None:
     # Now it is exactly 3 transfers total regardless of detection count.
     polys = _to_numpy(xyxyxyxy).astype(np.int32)
     confs = _to_numpy(obb.conf)
-    clss  = _to_numpy(obb.cls).astype(int)
+    clss = _to_numpy(obb.cls).astype(int)
 
     names = getattr(result, "names", None)
     for i, poly in enumerate(polys):
@@ -493,7 +504,9 @@ def run_inference_on_bgr_frames(
     if warmup_frame is None:
         warmup_frame = np.zeros((480, 640, 3), dtype=np.uint8)
     with torch.inference_mode():
-        model.predict(warmup_frame, imgsz=imgsz, device=device, half=use_half, verbose=False)
+        model.predict(
+            warmup_frame, imgsz=imgsz, device=device, half=use_half, verbose=False
+        )
     predictor = model.predictor
     print("Predictor warmed up.", flush=True)
 
