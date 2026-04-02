@@ -6,7 +6,8 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Optional
+from collections.abc import Iterator
 
 import cv2
 import numpy as np
@@ -27,15 +28,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH)
     parser.add_argument("--task", type=str, default="obb")
     parser.add_argument("--conf", type=float, default=0.25)
-    parser.add_argument("--imgsz", type=int, default=COREML_IMGSZ,
-                        help=f"must match export imgsz (default: {COREML_IMGSZ})")
+    parser.add_argument(
+        "--imgsz",
+        type=int,
+        default=COREML_IMGSZ,
+        help=f"must match export imgsz (default: {COREML_IMGSZ})",
+    )
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--save", action="store_true")
     parser.add_argument("--fps-window", type=int, default=30)
-    parser.add_argument("--mps-memory", type=float, default=0.0,
-                        help="MPS per-process memory fraction (0.0 = unlimited)")
-    parser.add_argument("--exposure", type=float, default=None,
-                        help="Webcam exposure value. Lower is usually darker if the camera supports it.")
+    parser.add_argument(
+        "--mps-memory",
+        type=float,
+        default=0.0,
+        help="MPS per-process memory fraction (0.0 = unlimited)",
+    )
+    parser.add_argument(
+        "--exposure",
+        type=float,
+        default=None,
+        help="Webcam exposure value. Lower is usually darker if the camera supports it.",
+    )
     return parser.parse_args()
 
 
@@ -46,6 +59,7 @@ def configure_mps(memory_fraction: float) -> None:
     if memory_fraction > 0.0:
         try:
             import torch
+
             torch.mps.set_per_process_memory_fraction(memory_fraction)
         except (ImportError, AttributeError):
             pass
@@ -134,12 +148,32 @@ class FPSCounter:
         self._timestamps.append(time.perf_counter())
         if len(self._timestamps) < 2:
             return 0.0
-        return (len(self._timestamps) - 1) / (self._timestamps[-1] - self._timestamps[0])
+        return (len(self._timestamps) - 1) / (
+            self._timestamps[-1] - self._timestamps[0]
+        )
 
     def draw(self, frame: np.ndarray) -> np.ndarray:
         label = f"FPS: {self.tick():.1f}"
-        cv2.putText(frame, label, (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 0), 3, cv2.LINE_AA)
-        cv2.putText(frame, label, (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 220, 80), 2, cv2.LINE_AA)
+        cv2.putText(
+            frame,
+            label,
+            (10, 28),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.75,
+            (0, 0, 0),
+            3,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            frame,
+            label,
+            (10, 28),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.75,
+            (50, 220, 80),
+            2,
+            cv2.LINE_AA,
+        )
         return frame
 
 
@@ -213,9 +247,9 @@ def run_tracking(args: argparse.Namespace) -> None:
         frame = inference.next_frame()
 
         if frame is None:
-            break          # inference finished
+            break  # inference finished
         if frame is ...:
-            cv2.waitKey(1) # nothing ready — yield to Cocoa event loop
+            cv2.waitKey(1)  # nothing ready — yield to Cocoa event loop
             continue
 
         frame = display_frame(frame)
