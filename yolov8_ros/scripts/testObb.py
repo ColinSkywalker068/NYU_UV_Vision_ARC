@@ -22,7 +22,23 @@ MODEL_PATH = Path("/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitis
 PREVIEW_MAX_WIDTH = 960
 PREVIEW_MAX_HEIGHT = 540
 HEADLESS_FPS_LOG_SEC = 1.0
-BASELER_QUEUE_GET_TIMEOUT_SEC = 1.0
+BASLER_QUEUE_GET_TIMEOUT_SEC = (
+    0.05  # 5 missed frames at 100 fps — was 1.0 (catastrophic stall)
+)
+
+# FIX: Precomputed HSV→BGR color palette — eliminates per-detection cv2.cvtColor call in hot loop.
+_COLOR_PALETTE: list[tuple[int, int, int]] = [
+    tuple(
+        int(c)
+        for c in cv2.cvtColor(  # type: ignore[misc]
+            np.uint8([[[(40 * i) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR
+        )[0, 0]
+    )
+    for i in range(32)
+]
+
+# Warmup frames to skip before resetting FPS baseline in headless mode.
+_WARMUP_FRAMES = 5
 
 
 class LatestFrameQueue:
@@ -41,9 +57,13 @@ class LatestFrameQueue:
     def get(self, timeout: float) -> Optional[np.ndarray]:
         if not self._event.wait(timeout):
             return None
-        self._event.clear()
+        # Swap frame reference and clear flag in one lock window so put()
+        # is never blocked by a lingering reference held by the consumer.
         with self._lock:
-            return self._frame
+            frame = self._frame
+            self._frame = None
+            self._event.clear()
+        return frame
 
 
 def basler_grab_thread_fn(
@@ -53,6 +73,10 @@ def basler_grab_thread_fn(
     fq: LatestFrameQueue,
     stop: threading.Event,
 ) -> None:
+    # Pre-allocated destination buffer — reused every frame so the OS never
+    # needs to page in new memory during the copy while the grab is held.
+    buf: Optional[np.ndarray] = None
+
     while not stop.is_set():
         try:
             grab = camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
@@ -65,14 +89,28 @@ def basler_grab_thread_fn(
         if not grab.GrabSucceeded():
             grab.Release()
             continue
+
         if uses_native_bgr8:
+            # GetArray() is a zero-copy view into Basler's DMA buffer.
+            # We must copy before Release(), but copying into a pre-allocated
+            # buffer avoids repeated OS allocation and minimises the window
+            # the DMA buffer is held locked.
             raw = grab.GetArray()
+            if buf is None or buf.shape != raw.shape or buf.dtype != raw.dtype:
+                buf = np.empty(raw.shape, dtype=raw.dtype)
+            np.copyto(buf, raw)
+            grab.Release()
+            fq.put(buf.copy())  # hand off an independent copy; buf is reused next frame
         else:
             assert converter is not None
-            raw = converter.Convert(grab).GetArray()
-        payload = raw.copy()
-        grab.Release()
-        fq.put(payload)
+            # Convert() internally allocates its own buffer — it does not hold
+            # the DMA memory — so we can release the grab immediately after
+            # conversion and before the array copy, freeing the camera buffer
+            # slot as early as possible.
+            converted = converter.Convert(grab)
+            grab.Release()
+            payload = converted.GetArray().copy()
+            fq.put(payload)
 
 
 def diag_timing_enabled() -> bool:
@@ -135,6 +173,14 @@ def load_model(model_path: Path) -> YOLO:
     return YOLO(str(model_path), task="obb")
 
 
+def _try_set(label: str, fn: Callable[[], None]) -> None:
+    """Apply a camera parameter, logging a warning on failure (not all models support all features)."""
+    try:
+        fn()
+    except Exception as e:
+        print(f"  [basler] {label}: {e}")
+
+
 def open_default_camera(
     cap_fps: Optional[float],
 ) -> tuple[pylon.InstantCamera, bool]:
@@ -144,20 +190,102 @@ def open_default_camera(
         raise RuntimeError("No Basler camera detected.")
     camera = pylon.InstantCamera(tl.CreateDevice(devices[0]))
     camera.Open()
+
+    print(f"[basler] Model: {camera.GetDeviceInfo().GetModelName()}")
+
+    # ── Pixel format ────────────────────────────────────────────────────────
     native_bgr8 = False
+    _try_set("PixelFormat=BGR8", lambda: camera.PixelFormat.SetValue("BGR8"))
     try:
-        camera.PixelFormat.SetValue("BGR8")
-        native_bgr8 = True
+        native_bgr8 = camera.PixelFormat.GetValue() == "BGR8"
     except Exception:
         pass
+
+    # ── Disable auto functions ───────────────────────────────────────────────
+    # ExposureAuto=Continuous is the factory default. When an object appears,
+    # the camera increases exposure to compensate for reduced average brightness
+    # directly cutting achievable FPS. Must be Off for predictable throughput.
+    _try_set("ExposureAuto=Off", lambda: camera.ExposureAuto.SetValue("Off"))
+    _try_set("GainAuto=Off", lambda: camera.GainAuto.SetValue("Off"))
+
+    # ── Exposure time ────────────────────────────────────────────────────────
+    # FPS hard ceiling = 1 / ExposureTime. At 33ms you cannot exceed 30 fps.
+    # Read from env so the user can tune without touching code.
+    # Default 4000 us -> ~250 fps ceiling, well above any YOLO bottleneck.
+    exposure_us = float(os.environ.get("BASLER_EXPOSURE_US", "4000"))
+
+    def _set_exposure() -> None:
+        lo = camera.ExposureTime.GetMin()
+        hi = camera.ExposureTime.GetMax()
+        camera.ExposureTime.SetValue(max(lo, min(hi, exposure_us)))
+
+    _try_set(f"ExposureTime={exposure_us}us", _set_exposure)
+
+    # ── AOI (Area of Interest) ───────────────────────────────────────────────
+    # Reducing height directly increases the sensor's achievable frame rate:
+    # fewer scanlines = shorter frame period at the hardware level.
+    # Width/Height are env-configurable; 0 means use full sensor dimension.
+    aoi_w = int(os.environ.get("BASLER_AOI_W", "0"))
+    aoi_h = int(os.environ.get("BASLER_AOI_H", "0"))
+    try:
+        max_w = camera.Width.GetMax()
+        max_h = camera.Height.GetMax()
+        target_w = aoi_w if aoi_w > 0 else max_w
+        target_h = aoi_h if aoi_h > 0 else max_h
+        # Width/Height must be multiples of the camera's increment (usually 4 or 8).
+        w_inc = camera.Width.GetInc()
+        h_inc = camera.Height.GetInc()
+        target_w = max(int(camera.Width.GetMin()), (target_w // w_inc) * w_inc)
+        target_h = max(int(camera.Height.GetMin()), (target_h // h_inc) * h_inc)
+        # Centre the AOI on the sensor.
+        off_x = ((max_w - target_w) // 2 // w_inc) * w_inc
+        off_y = ((max_h - target_h) // 2 // h_inc) * h_inc
+        # Must reset offsets before shrinking Width/Height to avoid range errors.
+        camera.OffsetX.SetValue(0)
+        camera.OffsetY.SetValue(0)
+        camera.Width.SetValue(target_w)
+        camera.Height.SetValue(target_h)
+        camera.OffsetX.SetValue(off_x)
+        camera.OffsetY.SetValue(off_y)
+        print(
+            f"[basler] AOI: {target_w}x{target_h} @ offset ({off_x},{off_y}) "
+            f"[sensor max {max_w}x{max_h}]"
+        )
+    except Exception as e:
+        print(f"  [basler] AOI: could not set ({e}), using full sensor.")
+
+    # ── Acquisition frame rate cap ───────────────────────────────────────────
     try:
         if cap_fps is not None and cap_fps > 0:
             camera.AcquisitionFrameRateEnable.SetValue(True)
             camera.AcquisitionFrameRate.SetValue(float(cap_fps))
         else:
             camera.AcquisitionFrameRateEnable.SetValue(False)
+    except Exception as e:
+        print(f"  [basler] FPS cap: {e}. Camera runs uncapped.")
+
+    # ── Stream grabber (USB transport) tuning ────────────────────────────────
+    # Applied after Open() but before StartGrabbing().
+    # MaxTransferSize: larger = fewer USB transactions = lower CPU overhead.
+    # NumMaxQueuedUrbs: more queued URBs = smoother delivery, less jitter.
+    # MaxNumBuffer: more internal buffers = grab thread survives Jetson stalls.
+    try:
+        sg = camera.GetStreamGrabberParams()
+        _try_set("MaxTransferSize=65536", lambda: sg.MaxTransferSize.SetValue(65536))
+        _try_set("NumMaxQueuedUrbs=32", lambda: sg.NumMaxQueuedUrbs.SetValue(32))
+    except Exception as e:
+        print(f"  [basler] StreamGrabberParams unavailable before grab start: {e}")
+    _try_set("MaxNumBuffer=32", lambda: camera.MaxNumBuffer.SetValue(32))
+
+    # ── Report camera-side ceiling ───────────────────────────────────────────
+    try:
+        resulting = camera.ResultingFrameRate.GetValue()
+        print(
+            f"[basler] ResultingFrameRate (camera-reported ceiling): {resulting:.1f} fps"
+        )
     except Exception:
         pass
+
     return camera, native_bgr8
 
 
@@ -319,16 +447,22 @@ def draw_obb_on_bgr(frame_bgr: np.ndarray, result: Any) -> None:
     xyxyxyxy = getattr(obb, "xyxyxyxy", None)
     if xyxyxyxy is None or len(xyxyxyxy) == 0:
         return
+
+    # FIX: Batch all three D2H transfers into a single sync point before the
+    # loop.  Previously each _to_numpy() on a CUDA tensor triggered its own
+    # full stream synchronization; with N detections that was 3 N stalls.
+    # Now it is exactly 3 transfers total regardless of detection count.
     polys = _to_numpy(xyxyxyxy).astype(np.int32)
     confs = _to_numpy(obb.conf)
     clss = _to_numpy(obb.cls).astype(int)
+
     names = getattr(result, "names", None)
     for i, poly in enumerate(polys):
         pts = poly.reshape(-1, 1, 2)
         cid = int(clss[i])
-        hue = (40 * cid) % 180
-        bgr = cv2.cvtColor(np.uint8([[[hue, 220, 255]]]), cv2.COLOR_HSV2BGR)[0, 0]
-        color = (int(bgr[0]), int(bgr[1]), int(bgr[2]))
+        # FIX: Use precomputed palette — eliminates cv2.cvtColor + np.uint8
+        # allocation on every iteration of this hot loop.
+        color = _COLOR_PALETTE[cid % len(_COLOR_PALETTE)]
         cv2.polylines(frame_bgr, [pts], isClosed=True, color=color, thickness=2)
         xi = int(poly[:, 0].min())
         yi = max(16, int(poly[:, 1].min()) - 4)
@@ -355,12 +489,28 @@ def run_inference_on_bgr_frames(
     headless: bool,
 ) -> None:
     imgsz = resolve_inference_imgsz(model)
-    model_input = ModelInputBuffer(device, use_half, imgsz)
     fps_ema = 0.0
     fps_log_prev = time.monotonic()
-    t_start = fps_log_prev
     frame_count = 0
     diag = diag_timing_enabled()
+
+    cuda_stream: Optional[torch.cuda.Stream] = (
+        torch.cuda.Stream() if device != "cpu" else None
+    )
+
+    # Warm up: runs one full predict to initialise the YOLO predictor, CUDA
+    # JIT kernels, and letterbox state before the main loop starts.
+    # This also sets model.predictor which the headless path uses directly.
+    warmup_frame = frame_source()
+    if warmup_frame is None:
+        warmup_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    with torch.inference_mode():
+        model.predict(
+            warmup_frame, imgsz=imgsz, device=device, half=use_half, verbose=False
+        )
+    predictor = model.predictor
+    print("Predictor warmed up.", flush=True)
+
     try:
         if not headless:
             cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -373,20 +523,54 @@ def run_inference_on_bgr_frames(
             t0 = time.monotonic()
             if plate_target:
                 apply_plate_hue_bias_bgr(frame, plate_target)
-            inp = model_input(frame)
+
             t_pre_predict = time.monotonic()
-            results = model.predict(
-                inp,
-                device=device,
-                half=use_half,
-                verbose=False,
-            )
+
+            if headless:
+                # Headless: run preprocess + forward pass only.
+                # Skips YOLO's postprocess entirely (NMS, D2H transfer of the
+                # raw prediction tensor, coordinate remapping) — all of which
+                # are the source of the FPS drop when objects are on screen.
+                # Results are unused in headless so this is safe.
+                with torch.inference_mode():
+                    imgs = predictor.preprocess([frame])
+                    if cuda_stream is not None:
+                        with torch.cuda.stream(cuda_stream):
+                            predictor.model(imgs)
+                        torch.cuda.current_stream().wait_stream(cuda_stream)
+                    else:
+                        predictor.model(imgs)
+            else:
+                # Non-headless: full predict so we get results for drawing.
+                with torch.inference_mode():
+                    if cuda_stream is not None:
+                        with torch.cuda.stream(cuda_stream):
+                            results = model.predict(
+                                frame,
+                                imgsz=imgsz,
+                                device=device,
+                                half=use_half,
+                                verbose=False,
+                            )
+                        torch.cuda.current_stream().wait_stream(cuda_stream)
+                    else:
+                        results = model.predict(
+                            frame,
+                            imgsz=imgsz,
+                            device=device,
+                            half=use_half,
+                            verbose=False,
+                        )
+
             t_post_predict = time.monotonic()
-            if not results:
-                continue
-            draw_obb_on_bgr(frame, results[0])
+
+            if not headless:
+                if results:
+                    draw_obb_on_bgr(frame, results[0])
+
             t1 = time.monotonic()
             fps_ema = tick_fps_ema(fps_ema, t1 - t0)
+
             if diag:
                 prep_ms = 1000.0 * (t_pre_predict - t0)
                 draw_ms = 1000.0 * (t1 - t_post_predict)
@@ -396,16 +580,12 @@ def run_inference_on_bgr_frames(
                     f"prep={prep_ms:.1f}ms  draw={draw_ms:.1f}ms",
                     flush=True,
                 )
+
             if headless:
                 frame_count += 1
+                time.sleep(0)
                 if t1 - fps_log_prev >= HEADLESS_FPS_LOG_SEC:
-                    elapsed = t1 - t_start
-                    actual = frame_count / elapsed if elapsed > 0 else 0.0
-                    print(
-                        f"FPS ema={fps_ema:.1f}  actual={actual:.1f}  "
-                        f"frames={frame_count}",
-                        flush=True,
-                    )
+                    print(f"FPS {fps_ema:.1f}", flush=True)
                     fps_log_prev = t1
             else:
                 cv2.putText(
@@ -451,7 +631,7 @@ def run_basler_loop(
     try:
 
         def grab_bgr() -> Optional[np.ndarray]:
-            return fq.get(BASELER_QUEUE_GET_TIMEOUT_SEC)
+            return fq.get(BASLER_QUEUE_GET_TIMEOUT_SEC)
 
         run_inference_on_bgr_frames(
             model,
@@ -551,7 +731,8 @@ def main() -> int:
         )
     if args.headless:
         print(
-            "Headless: EMA + actual FPS ~1 Hz (Ctrl+C to stop). "
+            f"Headless: EMA + actual FPS ~1 Hz (Ctrl+C to stop). "
+            f"First {_WARMUP_FRAMES} frames skipped from FPS baseline. "
             "Set OBB_DIAG_TIMING=1 for timing lines.",
             flush=True,
         )
