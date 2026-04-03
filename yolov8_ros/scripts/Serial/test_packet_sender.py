@@ -1,6 +1,6 @@
-#fixed angles
-#calculate change in yaw change in pitch move from pixels to agnles. 
-#RX chooses the color
+# fixed angles
+# calculate change in yaw change in pitch move from pixels to agnles.
+# RX chooses the color
 import argparse
 import logging
 import random
