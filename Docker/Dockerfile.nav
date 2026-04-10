@@ -130,9 +130,110 @@ RUN echo 'git config --global --add safe.directory "*"' >> ~/.bashrc \
 # WORKDIR /home/mars_ugv/docker_ws
 
 # Example: copy your existing workspace
-# COPY . /home/mars_ugv/docker_ws
+# COPY . /homie/mars_ugv/docker_ws
 
 # RUN cd /librealsense/build && make install
+
+# FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    cmake \
+    git \
+    build-essential \
+    vim \
+    && rm -rf /var/lib/apt/lists/*
+
+# -------------------------
+# Install Livox SDK2
+# -------------------------
+
+# Clone SDK
+WORKDIR /root
+RUN git clone https://github.com/Livox-SDK/Livox-SDK2.git
+
+# Build SDK
+WORKDIR /root/Livox-SDK2
+RUN mkdir build && cd build && \
+    cmake .. && make -j$(nproc) && make install
+
+# Patch config files (replace IP automatically)
+RUN sed -i 's/192.168.1.5/0.0.0.0/g' \
+    /root/Livox-SDK2/samples/livox_lidar_quick_start/config.json && \
+    sed -i 's/192.168.1.5/0.0.0.0/g' \
+    /root/Livox-SDK2/samples/logger/config.json
+
+# Default working directory
+WORKDIR /root/Livox-SDK2/build/samples/livox_lidar_quick_start
+
+# Default command (can override at runtime)
+# CMD ["./livox_lidar_quick_start", "../../../samples/livox_lidar_quick_start/config.json"]
+
+# -------------------------
+# Setup ROS2 workspace + Livox driver
+# -------------------------
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install required tools
+RUN apt-get update && apt-get install -y \
+    git \
+    python3-colcon-common-extensions \
+    build-essential \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create workspace
+WORKDIR /root/ws_livox/src
+
+# Clone Livox ROS driver
+RUN git clone https://github.com/Livox-SDK/livox_ros_driver2.git
+
+# Make build script executable
+WORKDIR /root/ws_livox/src/livox_ros_driver2
+RUN chmod +x build.sh
+
+# Build using Livox official build script ONLY (no colcon overlay)
+RUN bash -c "source /opt/ros/humble/setup.bash && ./build.sh humble"
+
+# Source ROS + workspace (only safe assumption)
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
+
+# -------------------------
+# Environment setup
+# -------------------------
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc && \
+    echo "source /root/ws_livox/install/setup.bash" >> /root/.bashrc && \
+    echo 'git config --global --add safe.directory "*"' >> /root/.bashrc
+
+# ---------------------------
+# FAST_LIO2 (ROS2)
+# ---------------------------
+ENV WS_FAST=/root/ros2_ws
+ENV LD_LIBRARY_PATH=/usr/local/lib
+
+RUN mkdir -p $WS_FAST/src
+WORKDIR $WS_FAST/src
+
+RUN git clone --recursive https://github.com/Ericsii/FAST_LIO_ROS2.git
+
+# Install dependencies (Livox is already sourced here)
+WORKDIR $WS_FAST
+RUN bash -c "source /opt/ros/humble/setup.bash && \
+    source /root/ws_livox/install/setup.bash && \
+    rosdep install --from-paths src --ignore-src -y || true"
+
+# Build FAST_LIO2 WITH Livox sourced
+RUN bash -c "source /opt/ros/humble/setup.bash && \
+    source /root/ws_livox/install/setup.bash && \
+    colcon build --symlink-install"
+
+# -------------------------
+# Default working directory
+# -------------------------
+WORKDIR /root
 
 ENV DEBIAN_FRONTEND=dialog
 
