@@ -5,7 +5,9 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description() -> LaunchDescription:
-    default_model_path = "/home/ultraviolet/CV_Detection/model_test/best.pt"
+    # Model path: empty string means the node uses its package-relative default
+    # (yolov8_ros/models/best.engine).  Override via launch arg to use a custom path.
+    default_model_path = ""
 
     # RealSense stream — aligned with testObb.py realsense_color_frames defaults (640x480 BGR8)
     rs_width_arg = DeclareLaunchArgument(
@@ -34,7 +36,9 @@ def generate_launch_description() -> LaunchDescription:
         description="Confidence threshold (Ultralytics predict default, matches testObb)",
     )
     show_arg = DeclareLaunchArgument(
-        "show", default_value="true", description="OpenCV debug window"
+        "show",
+        default_value="false",
+        description="OpenCV debug window (off by default for production)",
     )
     use_kalman_arg = DeclareLaunchArgument(
         "use_kalman", default_value="false", description="Kalman-smoothed publishing"
@@ -80,7 +84,6 @@ def generate_launch_description() -> LaunchDescription:
                 "conf": LaunchConfiguration("conf"),
                 "show": LaunchConfiguration("show"),
                 "use_kalman": LaunchConfiguration("use_kalman"),
-                "enable_tracking": False,
                 "hfov_degrees": LaunchConfiguration("hfov_degrees"),
                 "vfov_degrees": LaunchConfiguration("vfov_degrees"),
                 "imgsz_width": LaunchConfiguration("rs_width"),
