@@ -488,10 +488,12 @@ def run_inference_on_bgr_frames(
     headless: bool,
 ) -> None:
     imgsz = resolve_inference_imgsz(model)
-    fps_ema = 0.0
+    proc_fps_ema = 0.0
+    stream_fps_ema = 0.0
     fps_log_prev = time.monotonic()
     frame_count = 0
     diag = diag_timing_enabled()
+    prev_grab_end = None
 
     cuda_stream: Optional[torch.cuda.Stream] = (
         torch.cuda.Stream() if device != "cpu" else None
@@ -519,6 +521,11 @@ def run_inference_on_bgr_frames(
             t_grab1 = time.monotonic()
             if frame is None:
                 continue
+            if prev_grab_end is not None:
+                stream_fps_ema = tick_fps_ema(
+                    stream_fps_ema, max(t_grab1 - prev_grab_end, 1e-9)
+                )
+            prev_grab_end = t_grab1
             t0 = time.monotonic()
             if plate_target:
                 apply_plate_hue_bias_bgr(frame, plate_target)
@@ -568,7 +575,7 @@ def run_inference_on_bgr_frames(
                     draw_obb_on_bgr(frame, results[0])
 
             t1 = time.monotonic()
-            fps_ema = tick_fps_ema(fps_ema, t1 - t0)
+            proc_fps_ema = tick_fps_ema(proc_fps_ema, t1 - t0)
 
             if diag:
                 prep_ms = 1000.0 * (t_pre_predict - t0)
@@ -584,16 +591,29 @@ def run_inference_on_bgr_frames(
                 frame_count += 1
                 time.sleep(0)
                 if t1 - fps_log_prev >= HEADLESS_FPS_LOG_SEC:
-                    print(f"FPS {fps_ema:.1f}", flush=True)
+                    print(
+                        f"Proc FPS {proc_fps_ema:.1f}  Stream FPS {stream_fps_ema:.1f}",
+                        flush=True,
+                    )
                     fps_log_prev = t1
             else:
                 cv2.putText(
                     frame,
-                    f"FPS: {fps_ema:.1f}",
+                    f"Proc FPS: {proc_fps_ema:.1f}",
                     (8, 28),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.85,
                     (0, 255, 0),
+                    2,
+                    cv2.LINE_AA,
+                )
+                cv2.putText(
+                    frame,
+                    f"Stream FPS: {stream_fps_ema:.1f}",
+                    (8, 58),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.75,
+                    (0, 200, 255),
                     2,
                     cv2.LINE_AA,
                 )

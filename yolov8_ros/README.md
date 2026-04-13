@@ -86,6 +86,8 @@ Standalone scripts in `scripts/Camera/` (no ROS required):
 ```bash
 python3 scripts/Camera/basler_test.py --show          # Basler + YOLO inference test
 python3 scripts/Camera/realsense_test.py --show        # RealSense connectivity test
+python3 scripts/Camera/realsense_max_fps_test.py       # RealSense max-native FPS preview
+python3 scripts/Camera/realsense_max_fps_test.py --format yuyv --width 640 --height 360 --fps 90
 python3 scripts/Camera/camera_zoom_test.py             # Basler sensor diagnostics
 ```
 

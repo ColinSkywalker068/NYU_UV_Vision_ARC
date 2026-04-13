@@ -5,10 +5,17 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description() -> LaunchDescription:
+    # --- Camera backend arg ---
+    camera_type_arg = DeclareLaunchArgument(
+        "camera_type",
+        default_value="basler",
+        description="Camera backend: realsense or basler",
+    )
+
     # --- Serial args ---
     serial_port_arg = DeclareLaunchArgument(
         "serial_port",
-        default_value="/dev/ttyACM0",
+        default_value="/dev/ttyUSB0",
         description="Serial port for STM32 connection",
     )
     serial_baudrate_arg = DeclareLaunchArgument(
@@ -49,12 +56,41 @@ def generate_launch_description() -> LaunchDescription:
         description="Basler gain in dB",
     )
 
+    # --- RealSense camera args ---
+    realsense_width_arg = DeclareLaunchArgument(
+        "realsense_width",
+        default_value="640",
+        description="RealSense frame width",
+    )
+    realsense_height_arg = DeclareLaunchArgument(
+        "realsense_height",
+        default_value="480",
+        description="RealSense frame height",
+    )
+    realsense_fps_arg = DeclareLaunchArgument(
+        "realsense_fps",
+        default_value="60",
+        description="RealSense frames per second",
+    )
+    realsense_use_max_native_fps_arg = DeclareLaunchArgument(
+        "realsense_use_max_native_fps",
+        default_value="true",
+        description="Use the best native RealSense BGR8 FPS for the requested resolution",
+    )
+
     # --- YOLO args ---
     use_kalman_arg = DeclareLaunchArgument(
         "use_kalman", default_value="true", description="Enable Kalman filter tracking"
     )
+    inference_mode_arg = DeclareLaunchArgument(
+        "inference_mode",
+        default_value="predict",
+        description="YOLO modular inference mode: predict or track",
+    )
     show_arg = DeclareLaunchArgument(
-        "show", default_value="true", description="Show OpenCV visualization window"
+        "show",
+        default_value="false",
+        description="Show OpenCV visualization window (off by default for production)",
     )
 
     # --- Nodes ---
@@ -65,7 +101,7 @@ def generate_launch_description() -> LaunchDescription:
         output="screen",
         parameters=[
             {
-                "camera_type": "basler",
+                "camera_type": LaunchConfiguration("camera_type"),
                 "imgsz_width": LaunchConfiguration("basler_width"),
                 "imgsz_height": LaunchConfiguration("basler_height"),
                 "basler_fps": LaunchConfiguration("basler_fps"),
@@ -73,6 +109,12 @@ def generate_launch_description() -> LaunchDescription:
                 "basler_gain_db": LaunchConfiguration("basler_gain_db"),
                 "basler_use_full_sensor": True,
                 "basler_centered_roi": True,
+                "realsense_width": LaunchConfiguration("realsense_width"),
+                "realsense_height": LaunchConfiguration("realsense_height"),
+                "realsense_fps": LaunchConfiguration("realsense_fps"),
+                "realsense_use_max_native_fps": LaunchConfiguration(
+                    "realsense_use_max_native_fps"
+                ),
             }
         ],
     )
@@ -86,6 +128,7 @@ def generate_launch_description() -> LaunchDescription:
             {
                 "show": LaunchConfiguration("show"),
                 "use_kalman": LaunchConfiguration("use_kalman"),
+                "inference_mode": LaunchConfiguration("inference_mode"),
             }
         ],
     )
@@ -107,6 +150,7 @@ def generate_launch_description() -> LaunchDescription:
 
     return LaunchDescription(
         [
+            camera_type_arg,
             serial_port_arg,
             serial_baudrate_arg,
             serial_verbose_arg,
@@ -115,7 +159,12 @@ def generate_launch_description() -> LaunchDescription:
             basler_fps_arg,
             basler_exposure_arg,
             basler_gain_arg,
+            realsense_width_arg,
+            realsense_height_arg,
+            realsense_fps_arg,
+            realsense_use_max_native_fps_arg,
             use_kalman_arg,
+            inference_mode_arg,
             show_arg,
             camera_node,
             yolov8_node,

@@ -8,7 +8,7 @@ def generate_launch_description() -> LaunchDescription:
     # --- Serial args ---
     serial_port_arg = DeclareLaunchArgument(
         "serial_port",
-        default_value="/dev/ttyACM0",
+        default_value="/dev/ttyUSB0",
         description="Serial port for STM32 connection",
     )
     serial_baudrate_arg = DeclareLaunchArgument(
