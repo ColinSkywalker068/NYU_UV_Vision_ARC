@@ -13,11 +13,19 @@ BASE_IMAGE="${IMAGE_REPO}:${BASE_TAG}"
 TARGET_IMAGE="${IMAGE_REPO}:${TARGET_TAG}"
 
 echo "Building ${TARGET_IMAGE} from ${BASE_IMAGE}..."
-docker build \
+if ! docker build \
   --build-arg BASE_IMAGE="${BASE_IMAGE}" \
   -f "${DOCKERFILE}" \
   -t "${TARGET_IMAGE}" \
-  .
+  .; then
+  echo "Primary build failed. Retrying with host networking and BuildKit disabled..."
+  DOCKER_BUILDKIT=0 docker build \
+    --network=host \
+    --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+    -f "${DOCKERFILE}" \
+    -t "${TARGET_IMAGE}" \
+    .
+fi
 
 echo "Logging into Docker registry..."
 docker login
