@@ -57,8 +57,8 @@ class CameraNode(Node):
         self.declare_parameter("realsense_height", 480)
         self.declare_parameter("realsense_fps", 60)
         self.declare_parameter(
-            "realsense_exposure", 80.0
-        )  # 80 = 8ms, good for fast motion
+            "realsense_exposure", 40.0
+        )  # 40 = 4ms, shorter exposure for less motion blur
         self.declare_parameter("realsense_gain", 64.0)
         self.declare_parameter("realsense_auto_exposure", False)
         self.declare_parameter("realsense_auto_white_balance", True)
