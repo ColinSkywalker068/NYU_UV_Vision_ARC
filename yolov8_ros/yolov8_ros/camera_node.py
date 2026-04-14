@@ -62,7 +62,7 @@ class CameraNode(Node):
         self.declare_parameter("realsense_gain", 64.0)
         self.declare_parameter("realsense_auto_exposure", False)
         self.declare_parameter("realsense_auto_white_balance", False)
-        self.declare_parameter("realsense_white_balance", 4600.0)
+        self.declare_parameter("realsense_white_balance", 5500.0)
         self.declare_parameter("realsense_use_poll", False)
         self.declare_parameter("realsense_use_max_native_fps", False)
 
