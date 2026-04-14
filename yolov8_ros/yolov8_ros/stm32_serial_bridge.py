@@ -187,16 +187,6 @@ class STM32SerialTransmitter:
                     bytes_written,
                     packet.hex(" "),
                 )
-            elif self.verbose:
-                LOGGER.info(
-                    "[Seasky TX #%d] cmd=0x%04X flags=0x%04X pitch=%.6f yaw=%.6f bytes=%d",
-                    self.message_count,
-                    SEASKY_COMMAND_VISION_RECV,
-                    flags_register,
-                    float(pitch),
-                    float(yaw),
-                    bytes_written,
-                )
             return True
         except serial.SerialException as serial_error:
             self.is_connected = False
@@ -269,15 +259,6 @@ class STM32SerialTransmitter:
                             "command_id": int(command_id),
                         }
                     )
-                    # DEBUG: RX always logged; to gate behind serial_verbose, wrap in: if self.verbose:
-                    LOGGER.info(
-                        "[Seasky RX] cmd=0x%04X flags=0x%04X yaw=%.6f pitch=%.6f roll=%.6f",
-                        command_id,
-                        flags_register,
-                        float(yaw),
-                        float(pitch),
-                        float(roll),
-                    )
             del self.rx_buffer[:full_frame_size]
         return parsed_frames
 
@@ -312,6 +293,8 @@ class STM32SerialBridgeNode(Node):
         self.target_type: int = int(self.get_parameter("target_type").value)
         self.target_state: int = TARGET_STATE_NO_TARGET
         self.has_target: bool = False
+        self.latest_yaw: float = 0.0
+        self.latest_pitch: float = 0.0
         self.transmitter: Optional[STM32SerialTransmitter] = None
         if self.transmit_enable:
             self.transmitter = STM32SerialTransmitter(
@@ -346,10 +329,24 @@ class STM32SerialBridgeNode(Node):
         )
 
     def handle_override(self, msg: Bool) -> None:
+        prev_has_target = self.has_target
         self.has_target = bool(msg.data)
         self.target_state = (
             TARGET_STATE_CONVERGING if self.has_target else TARGET_STATE_NO_TARGET
         )
+        if (
+            self.has_target
+            and not prev_has_target
+            and self.transmit_enable
+            and self.transmitter is not None
+        ):
+            self.transmitter.send_vision_data(
+                pitch=self.latest_pitch,
+                yaw=self.latest_yaw,
+                fire_mode=self.fire_mode,
+                target_state=self.target_state,
+                target_type=self.target_type,
+            )
 
     def handle_angles(self, msg: Float32MultiArray) -> None:
         if len(msg.data) < 2:
@@ -363,6 +360,8 @@ class STM32SerialBridgeNode(Node):
             return
         yaw: float = float(msg.data[0])
         pitch: float = float(msg.data[1])
+        self.latest_yaw = yaw
+        self.latest_pitch = pitch
         self.transmitter.send_vision_data(
             pitch=pitch,
             yaw=yaw,

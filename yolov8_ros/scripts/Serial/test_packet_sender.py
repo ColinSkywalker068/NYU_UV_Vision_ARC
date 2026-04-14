@@ -1,3 +1,6 @@
+# fixed angles
+# calculate change in yaw change in pitch move from pixels to agnles.
+# RX chooses the color
 import argparse
 import logging
 import random
@@ -51,7 +54,7 @@ except ModuleNotFoundError:
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-DEFAULT_PORT: str = "/dev/ttyACM0"
+DEFAULT_PORT: str = "/dev/ttyUSB0"
 DEFAULT_BAUDRATE: int = 115200
 DEFAULT_RATE_HZ: float = 20.0
 DEFAULT_MESSAGE_COUNT: int = 0
@@ -232,7 +235,7 @@ def execute_sender(
         parity=serial.PARITY_NONE,
         stopbits=serial.STOPBITS_ONE,
         bytesize=serial.EIGHTBITS,
-        timeout=0,
+        timeout=1.0,
     ) as serial_device:
         LOGGER.info(
             "Connected to serial device %s @ %d baud. rate_hz=%.2f count=%d",
@@ -279,7 +282,6 @@ def execute_sender(
                 rx_buffer.extend(serial_device.read(available))
                 drain_attitude_frames(rx_buffer, verbose, rx_count)
             time.sleep(interval_seconds)
-        # drain any remaining bytes after TX is done
         time.sleep(0.1)
         available = serial_device.in_waiting
         if available > 0:

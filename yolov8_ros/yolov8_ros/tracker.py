@@ -72,3 +72,4 @@ class TrackerWrapper:
     def __init__(self, tracker: ArmorPlateTracker):
         self.tracker = tracker
         self.lost_frames = 0
+        self.obb_angle: float | None = None

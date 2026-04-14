@@ -5,6 +5,52 @@
 ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 REPO_ROOT="$(cd "$ROOT/.." >/dev/null 2>&1 && pwd)"
 IMAGE_NAME="$1"
+CMD_ARGS=("${@:2}")
+
+sanitize_name() {
+	echo "$1" | tr '/:@' '-' | tr -cd '[:alnum:]_.-'
+}
+
+get_container_name() {
+	local image_name="$1"
+	if [ -n "$UV_CONTAINER_NAME" ]; then
+		echo "$UV_CONTAINER_NAME"
+	else
+		echo "uv-$(sanitize_name "$image_name")"
+	fi
+}
+
+container_exists() {
+	local docker_cmd="$1"
+	local container_name="$2"
+	$docker_cmd container inspect "$container_name" >/dev/null 2>&1
+}
+
+container_running() {
+	local docker_cmd="$1"
+	local container_name="$2"
+	[ "$($docker_cmd inspect -f '{{.State.Running}}' "$container_name" 2>/dev/null)" = "true" ]
+}
+
+reuse_container() {
+	local docker_cmd="$1"
+	local container_name="$2"
+	shift 2
+	local exec_cmd=("$@")
+
+	if [ ${#exec_cmd[@]} -eq 0 ]; then
+		if container_running "$docker_cmd" "$container_name"; then
+			$docker_cmd exec -it "$container_name" bash
+		else
+			$docker_cmd start -ai "$container_name"
+		fi
+	else
+		if ! container_running "$docker_cmd" "$container_name"; then
+			$docker_cmd start "$container_name" >/dev/null
+		fi
+		$docker_cmd exec -it "$container_name" "${exec_cmd[@]}"
+	fi
+}
 
 should_run_power_script() {
 	local image_name="$1"
@@ -29,6 +75,7 @@ run_power_script_if_needed() {
 grep -aq "NVIDIA" /proc/device-tree/model 2>/dev/null
 if [ $? -eq 0 ]; then
 	run_power_script_if_needed "$IMAGE_NAME"
+	CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
 	# Check for V4L2 camera devices
 	V4L2_DEVICES=""
 	for i in {0..9}
@@ -68,55 +115,70 @@ if [ $? -eq 0 ]; then
 	else
 		SUDO="sudo"
 	fi
+	DOCKER_CMD="${SUDO:+$SUDO }docker"
 
 	# This file shows what Jetson board is running
 	# /proc or /sys files aren't mountable into docker
 	cat /proc/device-tree/model > /tmp/nv_jetson_model
 
-	$SUDO docker run --runtime nvidia --rm --privileged --network host \
-		--volume /tmp/argus_socket:/tmp/argus_socket \
-		--volume /etc/enctune.conf:/etc/enctune.conf \
-		--volume /etc/nv_tegra_release:/etc/nv_tegra_release \
-		--volume /tmp/nv_jetson_model:/tmp/nv_jetson_model \
-		--volume /var/run/dbus:/var/run/dbus \
-		--volume /var/run/avahi-daemon/socket:/var/run/avahi-daemon/socket \
-		--volume /var/run/docker.sock:/var/run/docker.sock \
-		--volume $ROOT/data:/data \
-		--volume $ROOT/../../.ssh:/root/.ssh \
-		--volume /home:/home \
-		--volume /usr/local/bin:/usr/local/bin \
-		--volume /dev:/dev \
-		--device /dev/snd \
-		--device /dev/bus/usb \
-		--env RMW_IMPLEMENTATION=rmw_fastrtps_cpp \
-		$INTERACTIVE \
-		$DATA_VOLUME \
-		$DISPLAY_DEVICE \
-		$V4L2_DEVICES \
-		$HUGGINGFACE \
-		"$@"
+	if container_exists "$DOCKER_CMD" "$CONTAINER_NAME"; then
+		reuse_container "$DOCKER_CMD" "$CONTAINER_NAME" "${CMD_ARGS[@]}"
+	else
+		$DOCKER_CMD run --name "$CONTAINER_NAME" --runtime nvidia --privileged --network host \
+			--volume /tmp/argus_socket:/tmp/argus_socket \
+			--volume /etc/enctune.conf:/etc/enctune.conf \
+			--volume /etc/nv_tegra_release:/etc/nv_tegra_release \
+			--volume /tmp/nv_jetson_model:/tmp/nv_jetson_model \
+			--volume /var/run/dbus:/var/run/dbus \
+			--volume /var/run/avahi-daemon/socket:/var/run/avahi-daemon/socket \
+			--volume /var/run/docker.sock:/var/run/docker.sock \
+			--volume $ROOT/data:/data \
+			--volume $ROOT/../../.ssh:/root/.ssh \
+			--volume /home:/home \
+			--volume /usr/local/bin:/usr/local/bin \
+			--volume /dev:/dev \
+			--device /dev/snd \
+			--device /dev/bus/usb \
+			--env RMW_IMPLEMENTATION=rmw_fastrtps_cpp \
+			$INTERACTIVE \
+			$DATA_VOLUME \
+			$DISPLAY_DEVICE \
+			$V4L2_DEVICES \
+			$HUGGINGFACE \
+			"$IMAGE_NAME" "${CMD_ARGS[@]}"
+	fi
 # Generic Linux (KR260, Ubuntu, etc.)
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-	docker run -it --rm --privileged --network host \
-		--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
-		--volume /dev:/dev \
-		--volume /home:/home \
-		"$@"
+	CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
+	if container_exists "docker" "$CONTAINER_NAME"; then
+		reuse_container "docker" "$CONTAINER_NAME" "${CMD_ARGS[@]}"
+	else
+		docker run -it --name "$CONTAINER_NAME" --privileged --network host \
+			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
+			--volume /dev:/dev \
+			--volume /home:/home \
+			"$IMAGE_NAME" "${CMD_ARGS[@]}"
+	fi
 # MacOS
 elif [[ "$OSTYPE" == "darwin"* ]]; then
-	docker run -it --rm --privileged --network host \
-		--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
-		--env DISPLAY=host.docker.internal:0.0 \
-		"$@"
+	CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
+	if container_exists "docker" "$CONTAINER_NAME"; then
+		reuse_container "docker" "$CONTAINER_NAME" "${CMD_ARGS[@]}"
+	else
+		docker run -it --name "$CONTAINER_NAME" --privileged --network host \
+			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
+			--env DISPLAY=host.docker.internal:0.0 \
+			"$IMAGE_NAME" "${CMD_ARGS[@]}"
+	fi
 # Fallback (Windows)
 else
 	if command -v winpty >/dev/null 2>&1; then
-		winpty docker run -it --rm --privileged --network host \
+		winpty docker run -it --name "$(get_container_name "$IMAGE_NAME")" --privileged --network host \
 			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
-			"$@"
+			"$IMAGE_NAME" "${CMD_ARGS[@]}"
 	else
-		docker run -it --rm --privileged --network host \
+		docker run -it --name "$(get_container_name "$IMAGE_NAME")" --privileged --network host \
 			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
-			"$@"
+			"$IMAGE_NAME" "${CMD_ARGS[@]}"
 	fi
 fi
