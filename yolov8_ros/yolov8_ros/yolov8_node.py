@@ -10,8 +10,10 @@ Refactored following docs/yolov8_node/NEXT_STEPS.md items 1–16.
 from __future__ import annotations
 
 import argparse
+import atexit
 import math
 import os
+import signal
 import sys
 import time
 import traceback
@@ -876,16 +878,62 @@ class YOLOv8Node(Node):
         if getattr(self, "_shutting_down", False):
             return
         self._shutting_down = True
+        self.get_logger().info("Shutting down YOLOv8 node...")
+
+        # 1. Destroy OpenCV windows
         try:
             cv2.destroyAllWindows()
         except Exception:
             pass
+
+        # 2. Release TensorRT engine / YOLO model to free GPU memory.
+        #    Without this, repeated Ctrl+C restarts leak CUDA contexts and
+        #    pinned GPU memory, eventually freezing the Jetson.
+        if hasattr(self, "detector") and self.detector is not None:
+            try:
+                # Drop the Ultralytics model — triggers C++ TensorRT destructor
+                if hasattr(self.detector, "model"):
+                    del self.detector.model
+                self.detector = None
+            except Exception as exc:
+                self.get_logger().warning(f"Detector cleanup error: {exc}")
+
+        # 3. Flush CUDA cache so pinned/cached GPU memory is truly returned
+        #    to the OS before the next process tries to allocate.
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+        except Exception:
+            pass
+
         super().destroy_node()
 
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
+
+def _shutdown(node, executor=None):
+    """Shared shutdown sequence — called from signals, atexit, and finally."""
+    if node is None:
+        return
+    try:
+        node.destroy_node()
+    except Exception:
+        pass
+    try:
+        if executor is not None:
+            executor.shutdown()
+    except Exception:
+        pass
+    try:
+        if rclpy.ok():
+            rclpy.shutdown()
+    except Exception:
+        pass
 
 
 def main(args=None):
@@ -905,16 +953,31 @@ def main(args=None):
         param_overrides.append(Parameter("show", Parameter.Type.BOOL, val))
 
     node = YOLOv8Node(parameter_overrides=param_overrides)
+
+    # Register atexit so the GPU is released even if Python exits
+    # without hitting our finally block (e.g. os._exit, fatal signal).
+    atexit.register(lambda: _shutdown(node))
+
+    # Install signal handlers so Ctrl+C / kill always triggers a clean
+    # shutdown — releases TensorRT engine and CUDA memory instead of
+    # relying on rclpy's internal signal handling.
+    def _signal_handler(signum, _frame):
+        sig_name = signal.Signals(signum).name
+        print(f"\n[yolov8_node] Received {sig_name}, shutting down cleanly...")
+        _shutdown(node)
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGINT, _signal_handler)
+    signal.signal(signal.SIGTERM, _signal_handler)
+
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         pass
     except Exception as exc:
         node.get_logger().error(f"Unexpected error: {exc}")
     finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+        _shutdown(node)
 
 
 if __name__ == "__main__":
