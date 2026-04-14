@@ -80,6 +80,8 @@ cd Docker
 ./build_realsense_wrapper_ultra.sh
 ```
 
+Note: the wrapper pins `numpy<2` to avoid ABI breakage with wheels compiled against NumPy 1.x.
+
 Optional arguments:
 
 ```bash
