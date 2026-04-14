@@ -54,8 +54,8 @@ class CameraNode(Node):
 
         # Realsense specific
         self.declare_parameter("realsense_width", 640)
-        self.declare_parameter("realsense_height", 480)
-        self.declare_parameter("realsense_fps", 60)
+        self.declare_parameter("realsense_height", 360)
+        self.declare_parameter("realsense_fps", 90)
         self.declare_parameter(
             "realsense_exposure", 80.0
         )  # 80 = 8ms, good for fast motion

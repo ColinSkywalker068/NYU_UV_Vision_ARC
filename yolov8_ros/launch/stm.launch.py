@@ -64,12 +64,12 @@ def generate_launch_description() -> LaunchDescription:
     )
     realsense_height_arg = DeclareLaunchArgument(
         "realsense_height",
-        default_value="480",
+        default_value="360",
         description="RealSense frame height",
     )
     realsense_fps_arg = DeclareLaunchArgument(
         "realsense_fps",
-        default_value="60",
+        default_value="90",
         description="RealSense frames per second",
     )
     realsense_use_max_native_fps_arg = DeclareLaunchArgument(
