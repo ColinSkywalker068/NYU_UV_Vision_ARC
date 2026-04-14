@@ -137,6 +137,7 @@ class CameraNode(Node):
                 if fmt is not None:
                     try:
                         import pyrealsense2 as rs
+
                         if fmt == rs.format.bgr8:
                             fmt_name = "BGR8 (native, no conversion)"
                         elif fmt == rs.format.rgb8:
