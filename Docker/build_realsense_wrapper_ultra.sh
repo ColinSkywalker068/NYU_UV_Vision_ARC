@@ -13,14 +13,18 @@ BASE_IMAGE="${IMAGE_REPO}:${BASE_TAG}"
 TARGET_IMAGE="${IMAGE_REPO}:${TARGET_TAG}"
 
 echo "Building ${TARGET_IMAGE} from ${BASE_IMAGE}..."
-if ! docker build \
+if ! DOCKER_BUILDKIT=1 docker build \
+  --progress=plain \
+  --network=host \
   --build-arg BASE_IMAGE="${BASE_IMAGE}" \
   -f "${DOCKERFILE}" \
   -t "${TARGET_IMAGE}" \
   .; then
-  echo "Primary build failed. Retrying with host networking and BuildKit disabled..."
-  DOCKER_BUILDKIT=0 docker build \
+  echo "Primary build failed. Retrying once with --no-cache..."
+  DOCKER_BUILDKIT=1 docker build \
+    --progress=plain \
     --network=host \
+    --no-cache \
     --build-arg BASE_IMAGE="${BASE_IMAGE}" \
     -f "${DOCKERFILE}" \
     -t "${TARGET_IMAGE}" \
