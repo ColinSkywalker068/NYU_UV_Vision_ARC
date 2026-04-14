@@ -770,9 +770,7 @@ class RealSenseCamera:
             fmt_name = "YUYV (software YUV->BGR conversion via OpenCV)"
         else:
             fmt_name = str(fmt)
-        self.logger.info(
-            "========== RealSense PIXEL FORMAT: %s ==========", fmt_name
-        )
+        self.logger.info("========== RealSense PIXEL FORMAT: %s ==========", fmt_name)
 
         # Verify streams
         self._verify_streams()
