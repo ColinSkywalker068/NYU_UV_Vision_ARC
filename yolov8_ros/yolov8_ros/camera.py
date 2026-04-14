@@ -759,6 +759,21 @@ class RealSenseCamera:
                 self.actual_fps,
             )
 
+        # Log the pixel format prominently so we can debug colour issues
+        fmt = self._stream_format
+        fmt_name = "UNKNOWN"
+        if fmt == rs.format.bgr8:
+            fmt_name = "BGR8 (native, no conversion needed)"
+        elif fmt == rs.format.rgb8:
+            fmt_name = "RGB8 (channel swap only)"
+        elif fmt == rs.format.yuyv:
+            fmt_name = "YUYV (software YUV->BGR conversion via OpenCV)"
+        else:
+            fmt_name = str(fmt)
+        self.logger.info(
+            "========== RealSense PIXEL FORMAT: %s ==========", fmt_name
+        )
+
         # Verify streams
         self._verify_streams()
 
