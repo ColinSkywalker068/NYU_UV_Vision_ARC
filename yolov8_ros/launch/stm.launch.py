@@ -8,7 +8,7 @@ def generate_launch_description() -> LaunchDescription:
     # --- Camera backend arg ---
     camera_type_arg = DeclareLaunchArgument(
         "camera_type",
-        default_value="basler",
+        default_value="realsense",
         description="Camera backend: realsense or basler",
     )
 

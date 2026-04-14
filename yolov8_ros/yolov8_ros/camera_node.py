@@ -132,6 +132,24 @@ class CameraNode(Node):
             # Negotiate actual FPS after initialization
             if self.camera_type == "realsense":
                 self._log_realsense_streams()
+                # Log the pixel format prominently via ROS logger
+                fmt = getattr(self.camera, "_stream_format", None)
+                if fmt is not None:
+                    try:
+                        import pyrealsense2 as rs
+                        if fmt == rs.format.bgr8:
+                            fmt_name = "BGR8 (native, no conversion)"
+                        elif fmt == rs.format.rgb8:
+                            fmt_name = "RGB8 (channel swap only)"
+                        elif fmt == rs.format.yuyv:
+                            fmt_name = "YUYV (OpenCV YUV->BGR conversion)"
+                        else:
+                            fmt_name = str(fmt)
+                    except Exception:
+                        fmt_name = str(fmt)
+                    self.get_logger().info(
+                        f"========== PIXEL FORMAT: {fmt_name} =========="
+                    )
                 negotiated_fps = float(getattr(self.camera, "actual_fps", 0.0))
                 if negotiated_fps > 0.0:
                     self.fps = negotiated_fps
