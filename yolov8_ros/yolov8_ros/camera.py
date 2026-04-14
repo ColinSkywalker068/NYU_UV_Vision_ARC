@@ -129,9 +129,9 @@ def _choose_preferred_pixel_format(symbolics):
 # color sensors, BGR8/RGB8 avoid conversion but cap at ~30fps.
 # NOTE: Y8 (infrared) is excluded — YOLO needs colour channels.
 _RS_COLOR_FORMAT_PREFERENCE = [
-    "yuyv",  # 640x480 @ 60fps on D435
-    "bgr8",  # native BGR, no conversion needed
+    "bgr8",  # native BGR, no conversion needed (if USB 3.0 supports 60fps)
     "rgb8",  # trivial channel swap
+    "yuyv",  # fallback for USB 2.0 or older firmware
 ]
 
 
