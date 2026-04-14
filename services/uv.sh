@@ -1,4 +1,5 @@
 HOME_DIR=$HOME
+CV_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra"
 
 # Resolve symlink to find the actual scripts directory
 SOURCE="${BASH_SOURCE[0]}"
@@ -26,7 +27,7 @@ if [[ ($1 == "run" && $# -ge 3) || $1 == "build" || $1 == "topic" || $1 == "exec
   # Start Docker container if the host does not have ROS2 installed
   source /opt/ros/humble/setup.bash 2> /dev/null || source /opt/ros/humble/install/setup.bash 2> /dev/null
   if [[ $? != 0 ]]; then
-    source $SCRIPTS_DIR/start-container.sh "nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper" bash -c "cd $(pwd); uv $*; exec bash"
+    source $SCRIPTS_DIR/start-container.sh "$CV_IMAGE" bash -c "cd $(pwd); uv $*; exec bash"
     exit 0
   fi
 fi
@@ -48,7 +49,7 @@ case $1 in
       do
         case $type in
           "Computer Vision")
-            image="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper"
+            image="$CV_IMAGE"
             break
             ;;
           "Navigation (ARM64)")
@@ -154,7 +155,7 @@ case $1 in
   "update"):
     cd $HOME_DIR/CV_Detection
     git pull
-    sudo docker pull nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper
+    sudo docker pull "$CV_IMAGE"
     sudo docker pull nyuultraviolet/cv-dockerfile:nav-arm64
     ;;
   # Enable a systemd service

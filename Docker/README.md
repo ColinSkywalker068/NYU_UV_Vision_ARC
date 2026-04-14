@@ -92,7 +92,7 @@ Example:
 ./build_realsense_wrapper_ultra.sh nyuultraviolet/cv-dockerfile jp60-pytorch21-humble-tensorrt-realsense-wrapper jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra
 ```
 
-To run compose with the ultra image:
+Compose now defaults to the ultra image. To override manually:
 
 ```bash
 CV_BASE_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra docker compose up --build
