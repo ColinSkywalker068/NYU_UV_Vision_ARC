@@ -1,4 +1,5 @@
-FROM nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper
+ARG BASE_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper
+FROM ${BASE_IMAGE}
 
 # Set the working directory to simplify the commands in the ENTRYPOINT
 WORKDIR /home/ultraviolet/CV_Detection
