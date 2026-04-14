@@ -161,7 +161,7 @@ def _realsense_best_color_stream(ctx, width, height, min_fps=0):
     # Build a set of acceptable formats
     fmt_map = {}  # rs_format_enum -> preference_rank
     for rank, name in enumerate(_RS_COLOR_FORMAT_PREFERENCE):
-        fmt_enum = _rs_format_by_name(rs_module, name)
+        fmt_enum = _rs_format_by_name(rs, name)
         if fmt_enum is not None:
             fmt_map[fmt_enum] = rank
 
