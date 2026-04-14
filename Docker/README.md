@@ -70,3 +70,30 @@ Camera Options for RealSense (Check online for up to date):
   ...
 
 ```
+
+## Build and Push RealSense Wrapper + Ultralytics
+
+Use the helper script to build a thin wrapper image (adds `vim` and updates `ultralytics`) and push it:
+
+```bash
+cd Docker
+./build_realsense_wrapper_ultra.sh
+```
+
+Optional arguments:
+
+```bash
+./build_realsense_wrapper_ultra.sh <repo> <base-tag> <target-tag>
+```
+
+Example:
+
+```bash
+./build_realsense_wrapper_ultra.sh nyuultraviolet/cv-dockerfile jp60-pytorch21-humble-tensorrt-realsense-wrapper jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra
+```
+
+To run compose with the ultra image:
+
+```bash
+CV_BASE_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra docker compose up --build
+```
