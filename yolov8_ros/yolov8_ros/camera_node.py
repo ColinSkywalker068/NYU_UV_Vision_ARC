@@ -61,7 +61,7 @@ class CameraNode(Node):
         )  # 80 = 8ms, good for fast motion
         self.declare_parameter("realsense_gain", 64.0)
         self.declare_parameter("realsense_auto_exposure", False)
-        self.declare_parameter("realsense_auto_white_balance", False)
+        self.declare_parameter("realsense_auto_white_balance", True)
         self.declare_parameter("realsense_white_balance", 6500.0)
         self.declare_parameter("realsense_use_poll", False)
         self.declare_parameter("realsense_use_max_native_fps", False)
