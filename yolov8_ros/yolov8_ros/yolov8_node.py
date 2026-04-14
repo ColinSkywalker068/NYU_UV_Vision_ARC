@@ -902,6 +902,7 @@ class YOLOv8Node(Node):
         #    to the OS before the next process tries to allocate.
         try:
             import torch
+
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.ipc_collect()
