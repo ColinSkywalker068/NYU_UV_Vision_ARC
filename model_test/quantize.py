@@ -2,7 +2,7 @@ from pathlib import Path
 
 from ultralytics import YOLO
 
-MODEL_PATH = Path("/home/ultraviolet/CV_Detection/yolov8_ros/models/best_new.pt")
+MODEL_PATH = Path("/home/ultraviolet/CV_Detection/model_test/bestmerge.pt")
 DATA_YAML_PATH = Path("/home/ultraviolet/Datasets/mergeRM/data.yaml")
 IMAGE_SIZE = 640
 WORKSPACE_GB = 4
