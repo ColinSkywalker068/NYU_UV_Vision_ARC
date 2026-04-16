@@ -229,7 +229,7 @@ class YOLOv8Node(Node):
         self.declare_parameter("imgsz_width", 640)
         self.declare_parameter("imgsz_height", 640)
         self.declare_parameter("show", False)
-        self.declare_parameter("conf", 0.05)
+        self.declare_parameter("conf", 0.45)
         self.declare_parameter("tracker_timeout", 15)
         self.declare_parameter("prediction_lookahead_steps", 0.5)
         self.declare_parameter("inference_mode", "predict")
