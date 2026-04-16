@@ -79,7 +79,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     realsense_auto_exposure_arg = DeclareLaunchArgument(
         "realsense_auto_exposure",
-        default_value="false",
+        default_value="true",
         description="Enable RealSense auto exposure",
     )
     realsense_use_max_native_fps_arg = DeclareLaunchArgument(

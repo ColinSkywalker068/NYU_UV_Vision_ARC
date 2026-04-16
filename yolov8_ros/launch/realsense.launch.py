@@ -28,7 +28,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     rs_auto_exposure_arg = DeclareLaunchArgument(
         "rs_auto_exposure",
-        default_value="false",
+        default_value="true",
         description="Enable RealSense auto exposure",
     )
 
