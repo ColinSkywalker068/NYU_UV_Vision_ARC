@@ -37,7 +37,9 @@ from bytetrackOptim2 import (
     warmup,
 )
 
-_CAMERA_SCRIPTS = Path(__file__).resolve().parents[1] / "yolov8_ros" / "scripts" / "Camera"
+_CAMERA_SCRIPTS = (
+    Path(__file__).resolve().parents[1] / "yolov8_ros" / "scripts" / "Camera"
+)
 sys.path.insert(0, str(_CAMERA_SCRIPTS))
 from basler_test import (  # noqa: E402
     DEFAULT_EXPOSURE_US,
@@ -214,7 +216,9 @@ def _load_model_threaded(model_path: Path, task: str) -> YOLO:
 
     t = threading.Thread(target=_load, daemon=True)
     t.start()
-    print("[info] Loading model (main thread pumps GUI for macOS watchdog)...", flush=True)
+    print(
+        "[info] Loading model (main thread pumps GUI for macOS watchdog)...", flush=True
+    )
     while t.is_alive():
         cv2.waitKey(_MAC_GUI_PUMP_MS)
     t.join()
@@ -335,9 +339,7 @@ def run_tracking(args: argparse.Namespace) -> None:
             f"@ {fps_now:.2f} FPS (resulting)"
         )
 
-        inference = BaslerInferenceThread(
-            model, camera, device, args.conf, args.imgsz
-        )
+        inference = BaslerInferenceThread(model, camera, device, args.conf, args.imgsz)
         inference.start()
 
         win = "YOLO + KF (Basler)"

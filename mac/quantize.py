@@ -65,7 +65,9 @@ def count_images(directory_path: Path) -> int:
     if not directory_path.is_dir():
         return 0
     return sum(
-        1 for file_path in directory_path.iterdir() if file_path.suffix.lower() in IMAGE_SUFFIXES
+        1
+        for file_path in directory_path.iterdir()
+        if file_path.suffix.lower() in IMAGE_SUFFIXES
     )
 
 

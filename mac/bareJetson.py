@@ -136,7 +136,9 @@ def main() -> int:
     except Exception as err:
         print(f"Failed to load model: {err}")
         return 1
-    print(f"Using device={device}, half={use_half} (set YOLO_DEVICE / YOLO_HALF=0 to override)")
+    print(
+        f"Using device={device}, half={use_half} (set YOLO_DEVICE / YOLO_HALF=0 to override)"
+    )
     if plate_target:
         print(
             f"Plate hue bias: target={plate_target} (+{PLATE_BIAS_ADD}/-{PLATE_BIAS_SUB} BGR)"
