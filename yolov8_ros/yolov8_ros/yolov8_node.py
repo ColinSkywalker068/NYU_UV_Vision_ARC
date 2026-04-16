@@ -195,18 +195,18 @@ def draw_detections(frame: np.ndarray, result, task: str) -> None:
 
 
 def _resolve_default_model_path() -> str:
-    """Return the package-relative default model path (models/best.engine).
+    """Return the package-relative default model path (models/bestmerge.engine).
 
     Walks up from this file to find the ``yolov8_ros`` package root, then
     appends ``models/best.engine``.  Falls back to the legacy absolute
     path if the package-relative file does not exist.
     """
     pkg_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    candidate = os.path.join(pkg_dir, "models", "best.engine")
+    candidate = os.path.join(pkg_dir, "model_test", "bestmerge.engine")
     if os.path.isfile(candidate):
         return candidate
     # Legacy fallback — kept for backward compat, emits a warning at startup
-    return "/home/ultraviolet/CV_Detection/model_test/best.engine"
+    return "/home/ultraviolet/CV_Detection/model_test/bestmerge.engine"
 
 
 # ---------------------------------------------------------------------------

@@ -21,6 +21,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="60",
         description="RealSense color FPS (matches testObb.py fallback when no --fps)",
     )
+    rs_auto_exposure_arg = DeclareLaunchArgument(
+        "rs_auto_exposure",
+        default_value="true",
+        description="Enable RealSense auto exposure",
+    )
 
     model_path_arg = DeclareLaunchArgument(
         "model_path",
@@ -68,6 +73,7 @@ def generate_launch_description() -> LaunchDescription:
                 "realsense_width": LaunchConfiguration("rs_width"),
                 "realsense_height": LaunchConfiguration("rs_height"),
                 "realsense_fps": LaunchConfiguration("rs_fps"),
+                "realsense_auto_exposure": LaunchConfiguration("rs_auto_exposure"),
             }
         ],
     )
@@ -98,6 +104,7 @@ def generate_launch_description() -> LaunchDescription:
             rs_width_arg,
             rs_height_arg,
             rs_fps_arg,
+            rs_auto_exposure_arg,
             model_path_arg,
             task_arg,
             conf_arg,

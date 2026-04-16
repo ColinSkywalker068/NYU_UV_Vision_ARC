@@ -72,6 +72,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="60",
         description="RealSense frames per second",
     )
+    realsense_auto_exposure_arg = DeclareLaunchArgument(
+        "realsense_auto_exposure",
+        default_value="true",
+        description="Enable RealSense auto exposure",
+    )
     realsense_use_max_native_fps_arg = DeclareLaunchArgument(
         "realsense_use_max_native_fps",
         default_value="true",
@@ -112,6 +117,9 @@ def generate_launch_description() -> LaunchDescription:
                 "realsense_width": LaunchConfiguration("realsense_width"),
                 "realsense_height": LaunchConfiguration("realsense_height"),
                 "realsense_fps": LaunchConfiguration("realsense_fps"),
+                "realsense_auto_exposure": LaunchConfiguration(
+                    "realsense_auto_exposure"
+                ),
                 "realsense_use_max_native_fps": LaunchConfiguration(
                     "realsense_use_max_native_fps"
                 ),
@@ -162,6 +170,7 @@ def generate_launch_description() -> LaunchDescription:
             realsense_width_arg,
             realsense_height_arg,
             realsense_fps_arg,
+            realsense_auto_exposure_arg,
             realsense_use_max_native_fps_arg,
             use_kalman_arg,
             inference_mode_arg,
