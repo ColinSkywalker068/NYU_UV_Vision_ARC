@@ -8,7 +8,7 @@ def generate_launch_description() -> LaunchDescription:
     # --- Camera backend arg ---
     camera_type_arg = DeclareLaunchArgument(
         "camera_type",
-        default_value="basler",
+        default_value="realsense",
         description="Camera backend: realsense or basler",
     )
 
@@ -72,9 +72,14 @@ def generate_launch_description() -> LaunchDescription:
         default_value="60",
         description="RealSense frames per second",
     )
+    realsense_exposure_arg = DeclareLaunchArgument(
+        "realsense_exposure",
+        default_value="120.0",
+        description="RealSense manual exposure (higher than previous default)",
+    )
     realsense_auto_exposure_arg = DeclareLaunchArgument(
         "realsense_auto_exposure",
-        default_value="true",
+        default_value="false",
         description="Enable RealSense auto exposure",
     )
     realsense_use_max_native_fps_arg = DeclareLaunchArgument(
@@ -117,6 +122,7 @@ def generate_launch_description() -> LaunchDescription:
                 "realsense_width": LaunchConfiguration("realsense_width"),
                 "realsense_height": LaunchConfiguration("realsense_height"),
                 "realsense_fps": LaunchConfiguration("realsense_fps"),
+                "realsense_exposure": LaunchConfiguration("realsense_exposure"),
                 "realsense_auto_exposure": LaunchConfiguration(
                     "realsense_auto_exposure"
                 ),
@@ -170,6 +176,7 @@ def generate_launch_description() -> LaunchDescription:
             realsense_width_arg,
             realsense_height_arg,
             realsense_fps_arg,
+            realsense_exposure_arg,
             realsense_auto_exposure_arg,
             realsense_use_max_native_fps_arg,
             use_kalman_arg,
