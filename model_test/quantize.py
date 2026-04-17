@@ -11,7 +11,7 @@ WORKSPACE_GB = 4
 def clean_export_artifacts(model_path: Path) -> None:
     for ext in [".engine", ".onnx"]:
         model_path.with_suffix(ext).unlink(missing_ok=True)
-    
+
     for search_dir in [Path.cwd(), model_path.parent]:
         for cache_path in search_dir.rglob("*calib*.cache"):
             cache_path.unlink(missing_ok=True)
@@ -20,9 +20,9 @@ def clean_export_artifacts(model_path: Path) -> None:
 def export_int8_engine() -> None:
     if not MODEL_PATH.is_file() or not DATA_YAML_PATH.is_file():
         raise FileNotFoundError("Missing model or data yaml")
-    
+
     clean_export_artifacts(MODEL_PATH)
-    
+
     model = YOLO(str(MODEL_PATH), task="obb")
     model.export(
         format="engine",
