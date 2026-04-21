@@ -113,7 +113,9 @@ def generate_launch_description() -> LaunchDescription:
                 "realsense_height": LaunchConfiguration("realsense_height"),
                 "realsense_fps": LaunchConfiguration("realsense_fps"),
                 "realsense_exposure": LaunchConfiguration("realsense_exposure"),
-                "realsense_auto_exposure": LaunchConfiguration("realsense_auto_exposure"),
+                "realsense_auto_exposure": LaunchConfiguration(
+                    "realsense_auto_exposure"
+                ),
                 "realsense_use_max_native_fps": LaunchConfiguration(
                     "realsense_use_max_native_fps"
                 ),
