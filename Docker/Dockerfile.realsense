@@ -2,9 +2,9 @@ ARG BASE_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt
 FROM ${BASE_IMAGE}
 
 # Update ROS2 GPG key
-RUN apt-get install curl \
+RUN apt-get update && apt-get install -y curl \
     && curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" > /etc/apt/sources.list.d/ros2.list
 
 # Install Python
 RUN apt-get install -y --no-install-recommends \
@@ -47,8 +47,7 @@ RUN git clone --branch ${LIBREALSENSE_VERSION} --depth=1 https://github.com/Inte
     -DFORCE_RSUSB_BACKEND=true \
     -DBUILD_WITH_CUDA=true \
     -DCMAKE_BUILD_TYPE=release \
-    -DBUILD_PYTHON_BINDINGS=bool:true \
-    -DPYTHON_EXECUTABLE=/usr/bin/python3 \
+    -DBUILD_PYTHON_BINDINGS=bool:false \
     ../ \
     && make -j$(($(nproc)-1)) \
     && make install \
@@ -63,22 +62,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN mv /opt/ros/humble/install/* /opt/ros/humble/ \
     && rm -r /opt/ros/humble/install
 
-# Realsense ROS
-ENV WS_DIR_REALSENSE="/ros2_realsense_ws"
-WORKDIR ${WS_DIR_REALSENSE}
-RUN bash -c "apt-get update -y \
-    && mkdir src && cd src \
-    && git clone https://github.com/IntelRealSense/realsense-ros.git -b ros2-development \
-    && cd .. \
-    && apt-get install -y python3-rosdep \
-    && source /opt/ros/${ROS_DISTRO}/setup.bash \
-    && rm /etc/ros/rosdep/sources.list.d/20-default.list \
-    && rosdep init && rosdep update \
-    && rosdep install -i --from-path src --rosdistro ${ROS_DISTRO} --skip-keys=librealsense2 -y \
-    && source /opt/ros/${ROS_DISTRO}/setup.bash \
-    && colcon build"
-RUN bash -c "source ./install/local_setup.sh"
-
 # Install application dependencies
 RUN pip3 install ultralytics --no-cache-dir --no-deps \
     && pip3 install --no-cache-dir py-cpuinfo psutil scipy seaborn thop tqdm pandas onnxsim lapx \
@@ -91,8 +74,7 @@ RUN apt-get update && apt-get install -y \
 # Run commands when shell starts
 RUN echo 'git config --global --add safe.directory "*"' >> ~/.bashrc \
     && echo 'git config --global user.email "jetson.service@gmail.com"' >> ~/.bashrc \
-    && echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> ~/.bashrc \
-    && echo 'source "${WS_DIR_REALSENSE}/install/local_setup.sh"' >> ~/.bashrc
+    && echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> ~/.bashrc
 
 # Fix realsense error (Now this works because we didn't delete the folder earlier)
 RUN cd /librealsense/build && make install && cd / && rm -rf /librealsense
@@ -136,12 +118,9 @@ ENV GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream/lib/gst-plugins \
 
 
 # --- BASLER PYLON SETUP START ---
-# --- BASLER SETUP (PYTHON ONLY) ---
-# 1. Install pypylon (includes runtime binaries now)
-RUN pip3 install --no-cache-dir pypylon
-# 2. Add library paths so other apps (like OpenCV/GStreamer) can find the libs if needed
-ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/lib/python3.10/dist-packages/pypylon/lib"
-# 3. Add Pylon environment variables
+# Native C++ builds expect the Basler Pylon SDK to be present at /opt/pylon.
+# The vendor installer is not redistributed here, so provide it in the base image
+# or mount/install it separately before building yolov8_ros_cpp with Basler enabled.
 ENV PYLON_ROOT=/opt/pylon
 ENV PATH=$PATH:$PYLON_ROOT/bin
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PYLON_ROOT/lib
