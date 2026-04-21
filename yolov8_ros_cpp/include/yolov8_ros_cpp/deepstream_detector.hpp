@@ -3,8 +3,10 @@
 
 #include <opencv2/core.hpp>
 
+#include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace rclcpp
@@ -35,13 +37,19 @@ public:
   const std::string & backend_name() const;
 
 private:
+  struct Impl;
+  void ensure_initialized(const rclcpp::Logger & logger);
+
   std::string model_path_;
   std::string task_;
   std::string model_type_;
   bool half_{true};
   float conf_threshold_{0.25F};
   bool warned_unavailable_{false};
-  std::string backend_name_{"deepstream_stub"};
+  bool initialized_{false};
+  std::string backend_name_{"tensorrt_stub"};
+  std::unordered_map<int, std::string> class_names_;
+  std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace yolov8_ros_cpp

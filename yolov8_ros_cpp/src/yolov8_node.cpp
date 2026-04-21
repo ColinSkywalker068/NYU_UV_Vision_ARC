@@ -75,6 +75,7 @@ YOLOv8Node::YOLOv8Node(const rclcpp::NodeOptions & options)
     this->get_parameter("hfov_degrees").as_double() * kPi / 180.0);
   vfov_rad_ = static_cast<float>(
     this->get_parameter("vfov_degrees").as_double() * kPi / 180.0);
+  vis_window_name_ = this->get_parameter("vis_window_name").as_string();
 
   target_class_ = (target_color_ == "red") ? RED_CLASS : BLUE_CLASS;
   detector_ = DeepStreamDetector(model_path_, task_, model_type_, half_, conf_);

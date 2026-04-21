@@ -24,6 +24,14 @@ if(LIBREALSENSE2_INCLUDE_DIR AND LIBREALSENSE2_LIBRARY)
   set(HAVE_LIBREALSENSE2 TRUE)
 endif()
 
+find_path(TENSORRT_INCLUDE_DIR NvInfer.h
+  PATHS /usr/include /usr/include/x86_64-linux-gnu /usr/include/aarch64-linux-gnu /usr/local/include)
+find_library(TENSORRT_LIBRARY NAMES nvinfer PATHS /usr/lib /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/local/lib)
+find_library(CUDART_LIBRARY NAMES cudart PATHS /usr/local/cuda/lib64 /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu)
+if(TENSORRT_INCLUDE_DIR AND TENSORRT_LIBRARY AND CUDART_LIBRARY)
+  set(HAVE_TENSORRT TRUE)
+endif()
+
 find_path(PYLON_INCLUDE_DIR pylon/PylonIncludes.h PATHS /opt/pylon/include)
 find_library(PYLON_BASE_LIBRARY NAMES pylonbase PATHS /opt/pylon/lib /opt/pylon/lib64)
 find_library(PYLON_UTILITY_LIBRARY NAMES pylonutility PATHS /opt/pylon/lib /opt/pylon/lib64)
@@ -63,6 +71,12 @@ if(HAVE_LIBREALSENSE2)
   target_compile_definitions(yolov8_ros_cpp_components PRIVATE HAVE_LIBREALSENSE2=1)
   target_include_directories(yolov8_ros_cpp_components PRIVATE ${LIBREALSENSE2_INCLUDE_DIR})
   target_link_libraries(yolov8_ros_cpp_components ${LIBREALSENSE2_LIBRARY})
+endif()
+
+if(HAVE_TENSORRT)
+  target_compile_definitions(yolov8_ros_cpp_components PRIVATE HAVE_TENSORRT=1)
+  target_include_directories(yolov8_ros_cpp_components PRIVATE ${TENSORRT_INCLUDE_DIR})
+  target_link_libraries(yolov8_ros_cpp_components ${TENSORRT_LIBRARY} ${CUDART_LIBRARY})
 endif()
 
 if(HAVE_PYLON)

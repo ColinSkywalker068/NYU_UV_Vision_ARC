@@ -66,6 +66,7 @@ private:
   std::string model_type_;
   std::string inference_mode_;
   std::string target_color_;
+  std::string vis_window_name_;
   bool half_{true};
   bool show_{false};
   bool persist_tracking_{true};
