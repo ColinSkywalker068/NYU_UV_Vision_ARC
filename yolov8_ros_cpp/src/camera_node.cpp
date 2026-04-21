@@ -422,8 +422,8 @@ CameraNode::CameraNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<bool>("realsense_use_max_native_fps", false);
 
   camera_type_ = this->get_parameter("camera_type").as_string();
-  const int imgsz_width = this->get_parameter("imgsz_width").as_int();
-  const int imgsz_height = this->get_parameter("imgsz_height").as_int();
+  [[maybe_unused]] const int imgsz_width = this->get_parameter("imgsz_width").as_int();
+  [[maybe_unused]] const int imgsz_height = this->get_parameter("imgsz_height").as_int();
 
   if (camera_type_ == "basler") {
 #ifdef HAVE_PYLON
@@ -504,14 +504,14 @@ void CameraNode::publish_no_frame_warning()
   }
 }
 
-sensor_msgs::msg::Image::UniquePtr CameraNode::to_image_message(const cv::Mat & frame) const
+sensor_msgs::msg::Image::UniquePtr CameraNode::to_image_message(const cv::Mat & frame)
 {
   if (frame.empty()) {
     return nullptr;
   }
 
   auto msg = std::make_unique<sensor_msgs::msg::Image>();
-  msg->header.stamp = this->get_clock()->now();
+  msg->header.stamp = this->now();
   msg->header.frame_id = camera_type_;
   msg->height = static_cast<uint32_t>(frame.rows);
   msg->width = static_cast<uint32_t>(frame.cols);

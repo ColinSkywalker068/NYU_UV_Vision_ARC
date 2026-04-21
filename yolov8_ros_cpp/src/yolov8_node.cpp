@@ -155,12 +155,12 @@ void YOLOv8Node::image_callback(sensor_msgs::msg::Image::ConstSharedPtr msg)
   }
 }
 
-cv::Mat YOLOv8Node::decode_frame(const sensor_msgs::msg::Image & msg) const
+cv::Mat YOLOv8Node::decode_frame(const sensor_msgs::msg::Image & msg)
 {
   if (msg.encoding != sensor_msgs::image_encodings::BGR8) {
-    RCLCPP_WARN_THROTTLE(
-      this->get_logger(), *this->get_clock(), 2000,
-      "Unsupported image encoding '%s'; expected bgr8", msg.encoding.c_str());
+    RCLCPP_WARN(
+      this->get_logger(), "Unsupported image encoding '%s'; expected bgr8",
+      msg.encoding.c_str());
     return {};
   }
   if (msg.data.empty()) {

@@ -23,7 +23,7 @@ public:
 private:
   void timer_callback();
   void publish_no_frame_warning();
-  sensor_msgs::msg::Image::UniquePtr to_image_message(const cv::Mat & frame) const;
+  sensor_msgs::msg::Image::UniquePtr to_image_message(const cv::Mat & frame);
 
   std::shared_ptr<CameraBackend> backend_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_publisher_;

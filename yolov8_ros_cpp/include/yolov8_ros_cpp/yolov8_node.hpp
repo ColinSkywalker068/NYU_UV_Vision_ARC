@@ -30,7 +30,7 @@ private:
   void id_listener_callback(const std_msgs::msg::Int32::SharedPtr msg);
   void image_callback(sensor_msgs::msg::Image::ConstSharedPtr msg);
 
-  cv::Mat decode_frame(const sensor_msgs::msg::Image & msg) const;
+  cv::Mat decode_frame(const sensor_msgs::msg::Image & msg);
   std::vector<Candidate> extract_candidates(
     const std::vector<Detection> & detections, const LetterboxResult & lb) const;
   std::vector<Candidate> rank_candidates(std::vector<Candidate> candidates) const;
