@@ -94,10 +94,10 @@ def generate_launch_description() -> LaunchDescription:
         description="Show OpenCV visualization window",
     )
 
-    camera_node = Node(
+    perception_node = Node(
         package="yolov8_ros_cpp",
-        executable="camera_node",
-        name="camera_node",
+        executable="perception_node",
+        name="perception_node",
         output="screen",
         parameters=[
             {
@@ -119,17 +119,6 @@ def generate_launch_description() -> LaunchDescription:
                 "realsense_use_max_native_fps": LaunchConfiguration(
                     "realsense_use_max_native_fps"
                 ),
-            }
-        ],
-    )
-
-    yolov8_node = Node(
-        package="yolov8_ros_cpp",
-        executable="yolov8_modular_node",
-        name="yolov8_modular_node",
-        output="screen",
-        parameters=[
-            {
                 "show": LaunchConfiguration("show"),
                 "use_kalman": LaunchConfiguration("use_kalman"),
                 "inference_mode": LaunchConfiguration("inference_mode"),
@@ -172,8 +161,7 @@ def generate_launch_description() -> LaunchDescription:
             use_kalman_arg,
             inference_mode_arg,
             show_arg,
-            camera_node,
-            yolov8_node,
+            perception_node,
             stm_bridge_node,
         ]
     )

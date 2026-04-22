@@ -12,14 +12,8 @@ def generate_launch_description():
         composable_node_descriptions=[
             ComposableNode(
                 package="yolov8_ros_cpp",
-                plugin="yolov8_ros_cpp::CameraNode",
-                name="camera_node",
-                extra_arguments=[{"use_intra_process_comms": True}],
-            ),
-            ComposableNode(
-                package="yolov8_ros_cpp",
-                plugin="yolov8_ros_cpp::YOLOv8Node",
-                name="yolov8_modular_node",
+                plugin="yolov8_ros_cpp::PerceptionNode",
+                name="perception_node",
                 extra_arguments=[{"use_intra_process_comms": True}],
             ),
         ],

@@ -43,22 +43,37 @@ bool is_blue_team(int robot_id)
   return contains_id(kBlueTeam, robot_id);
 }
 
-LetterboxResult letterbox_frame(const cv::Mat & frame, int target_w, int target_h)
+LetterboxMetadata make_letterbox_metadata(int src_w, int src_h, int target_w, int target_h)
 {
-  const int src_h = frame.rows;
-  const int src_w = frame.cols;
-
   if (src_h == target_h && src_w == target_w) {
-    return LetterboxResult{frame, 1.0, 0, 0, src_w, src_h};
+    return LetterboxMetadata{cv::Mat(), 1.0, 0, 0, src_w, src_h, target_w, target_h};
   }
 
   const double scale = std::min(
     static_cast<double>(target_w) / static_cast<double>(src_w),
     static_cast<double>(target_h) / static_cast<double>(src_h));
-
   const int new_w = static_cast<int>(src_w * scale);
   const int new_h = static_cast<int>(src_h * scale);
+  const int pad_w = target_w - new_w;
+  const int pad_h = target_h - new_h;
+  const int top = pad_h / 2;
+  const int left = pad_w / 2;
 
+  return LetterboxMetadata{cv::Mat(), scale, left, top, src_w, src_h, target_w, target_h};
+}
+
+LetterboxFrameResult letterbox_frame(const cv::Mat & frame, int target_w, int target_h)
+{
+  const auto metadata = make_letterbox_metadata(frame.cols, frame.rows, target_w, target_h);
+
+  if (metadata.src_h == target_h && metadata.src_w == target_w) {
+    LetterboxFrameResult result = metadata;
+    result.frame = frame;
+    return result;
+  }
+
+  const int new_w = static_cast<int>(frame.cols * metadata.scale);
+  const int new_h = static_cast<int>(frame.rows * metadata.scale);
   cv::Mat resized;
   cv::resize(frame, resized, cv::Size(new_w, new_h), 0.0, 0.0, cv::INTER_LINEAR);
 
@@ -73,7 +88,9 @@ LetterboxResult letterbox_frame(const cv::Mat & frame, int target_w, int target_
   cv::copyMakeBorder(
     resized, padded, top, bottom, left, right, cv::BORDER_CONSTANT, cv::Scalar(114, 114, 114));
 
-  return LetterboxResult{padded, scale, left, top, src_w, src_h};
+  LetterboxFrameResult result = metadata;
+  result.frame = padded;
+  return result;
 }
 
 cv::Rect unletterbox_rect(const cv::Rect & rect, const LetterboxResult & lb)

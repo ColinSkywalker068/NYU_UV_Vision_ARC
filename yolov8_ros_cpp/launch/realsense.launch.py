@@ -48,32 +48,19 @@ def generate_launch_description() -> LaunchDescription:
         "vfov_degrees", default_value="42.5", description="Vertical FOV deg"
     )
 
-    camera_node = Node(
+    perception_node = Node(
         package="yolov8_ros_cpp",
-        executable="camera_node",
-        name="camera_node",
+        executable="perception_node",
+        name="perception_node",
         output="screen",
         parameters=[
             {
                 "camera_type": "realsense",
-                "imgsz_width": LaunchConfiguration("rs_width"),
-                "imgsz_height": LaunchConfiguration("rs_height"),
                 "realsense_width": LaunchConfiguration("rs_width"),
                 "realsense_height": LaunchConfiguration("rs_height"),
                 "realsense_fps": LaunchConfiguration("rs_fps"),
                 "realsense_exposure": LaunchConfiguration("rs_exposure"),
                 "realsense_auto_exposure": LaunchConfiguration("rs_auto_exposure"),
-            }
-        ],
-    )
-
-    yolov8_node = Node(
-        package="yolov8_ros_cpp",
-        executable="yolov8_modular_node",
-        name="yolov8_modular_node",
-        output="screen",
-        parameters=[
-            {
                 "model_path": LaunchConfiguration("model_path"),
                 "task": LaunchConfiguration("task"),
                 "conf": LaunchConfiguration("conf"),
@@ -101,7 +88,6 @@ def generate_launch_description() -> LaunchDescription:
             use_kalman_arg,
             hfov_arg,
             vfov_arg,
-            camera_node,
-            yolov8_node,
+            perception_node,
         ]
     )

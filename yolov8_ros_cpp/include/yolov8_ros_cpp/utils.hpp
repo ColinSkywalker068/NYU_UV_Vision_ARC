@@ -25,7 +25,12 @@ struct LetterboxResult
   int pad_y{0};
   int src_w{0};
   int src_h{0};
+  int dst_w{0};
+  int dst_h{0};
 };
+
+using LetterboxMetadata = LetterboxResult;
+using LetterboxFrameResult = LetterboxResult;
 
 struct Candidate
 {
@@ -39,8 +44,9 @@ struct Candidate
   std::optional<float> obb_angle;
 };
 
-LetterboxResult letterbox_frame(const cv::Mat & frame, int target_w, int target_h);
-cv::Rect unletterbox_rect(const cv::Rect & rect, const LetterboxResult & lb);
+LetterboxFrameResult letterbox_frame(const cv::Mat & frame, int target_w, int target_h);
+LetterboxMetadata make_letterbox_metadata(int src_w, int src_h, int target_w, int target_h);
+cv::Rect unletterbox_rect(const cv::Rect & rect, const LetterboxMetadata & lb);
 std::pair<float, float> calculate_angles(
   const cv::Rect & bbox, int img_w, int img_h, float hfov_rad, float vfov_rad);
 std::pair<bool, int> check_enemy(const cv::Mat & roi_image, int target_class);

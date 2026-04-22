@@ -48,9 +48,12 @@ endif()
 add_library(yolov8_ros_cpp_components SHARED
   src/utils.cpp
   src/tracker.cpp
+  src/camera_backend.cpp
+  src/detector_backend.cpp
   src/deepstream_detector.cpp
   src/camera_node.cpp
   src/yolov8_node.cpp
+  src/perception_node.cpp
 )
 
 target_include_directories(yolov8_ros_cpp_components PUBLIC
@@ -97,6 +100,7 @@ endif()
 rclcpp_components_register_nodes(yolov8_ros_cpp_components
   "yolov8_ros_cpp::CameraNode"
   "yolov8_ros_cpp::YOLOv8Node"
+  "yolov8_ros_cpp::PerceptionNode"
 )
 
 add_executable(camera_node src/camera_node_main.cpp)
@@ -106,6 +110,10 @@ ament_target_dependencies(camera_node rclcpp)
 add_executable(yolov8_modular_node src/yolov8_node_main.cpp)
 target_link_libraries(yolov8_modular_node yolov8_ros_cpp_components)
 ament_target_dependencies(yolov8_modular_node rclcpp)
+
+add_executable(perception_node src/perception_node_main.cpp)
+target_link_libraries(perception_node yolov8_ros_cpp_components)
+ament_target_dependencies(perception_node rclcpp)
 
 add_executable(stm32_serial_bridge
   src/seasky_protocol.cpp
@@ -124,7 +132,7 @@ install(
 )
 
 install(
-  TARGETS yolov8_ros_cpp_components camera_node yolov8_modular_node stm32_serial_bridge
+  TARGETS yolov8_ros_cpp_components camera_node yolov8_modular_node perception_node stm32_serial_bridge
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
