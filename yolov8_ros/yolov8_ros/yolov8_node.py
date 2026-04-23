@@ -126,9 +126,11 @@ class VisionLogRecord:
 
 
 class VisionLogSink(Protocol):
-    def write_line(self, line: str) -> None: ...
+    def write_line(self, line: str) -> None:
+        ...
 
-    def close(self) -> None: ...
+    def close(self) -> None:
+        ...
 
 
 class ConsoleVisionLogSink:
