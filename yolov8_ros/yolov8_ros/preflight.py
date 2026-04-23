@@ -134,7 +134,7 @@ def _readGpuMemoryUsedMb() -> float:
         idx = line.find(marker)
         if idx < 0:
             return 0.0
-        tail = line[idx + len(marker):].split("/")[0].strip()
+        tail = line[idx + len(marker) :].split("/")[0].strip()
         try:
             return float(tail)
         except ValueError:
@@ -213,9 +213,7 @@ def executePreflight(options: PreflightOptions) -> PreflightReport:
         )
     killed, survivors = _terminatePids(pids, force=(mode == "force"))
     if survivors:
-        LOGGER.warning(
-            "preflight could not reclaim pids=%s (mode=%s)", survivors, mode
-        )
+        LOGGER.warning("preflight could not reclaim pids=%s (mode=%s)", survivors, mode)
     cuda_cleared = _clearCudaCache() if mode == "force" else False
     return PreflightReport(
         killed_pids=tuple(killed),
