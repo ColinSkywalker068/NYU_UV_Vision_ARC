@@ -13,6 +13,11 @@ from rclpy.node import Node
 from rclpy.parameter import Parameter
 from std_msgs.msg import Bool, Float32MultiArray, Int32MultiArray
 
+try:
+    from .shutdown_utils import installShutdownHandlers, shutdownRcl
+except (ImportError, ValueError):
+    from shutdown_utils import installShutdownHandlers, shutdownRcl
+
 
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -554,8 +559,15 @@ class STM32SerialBridgeNode(Node):
             self.attitude_flags_publisher.publish(flags_msg)
 
     def destroy_node(self) -> bool:
+        if getattr(self, "_shutting_down", False):
+            return super().destroy_node()
+        self._shutting_down = True
+        self.get_logger().info("Shutting down STM32 serial bridge...")
         if self.transmitter is not None:
-            self.transmitter.close()
+            try:
+                self.transmitter.close()
+            except Exception as err:
+                self.get_logger().warning(f"Serial close error (non-fatal): {err}")
         return super().destroy_node()
 
 
@@ -646,14 +658,18 @@ def main(args: Optional[list[str]] = None) -> None:
         )
 
     node = STM32SerialBridgeNode(parameter_overrides=parameter_overrides)
+    installShutdownHandlers(
+        on_shutdown=lambda: shutdownRcl(node=node),
+        logger_name="stm32_serial_bridge",
+    )
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         pass
+    except Exception as exc:
+        node.get_logger().error(f"Unexpected error: {exc}")
     finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+        shutdownRcl(node=node)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,3 @@
-import atexit
-import signal
 import traceback
 from dataclasses import dataclass
 
@@ -12,9 +10,11 @@ from sensor_msgs.msg import Image
 # Import camera components from the same directory (both backends in camera.py)
 try:
     from .camera import BaslerCamera, RealSenseCamera
+    from .shutdown_utils import installShutdownHandlers, shutdownRcl
 except (ImportError, ValueError) as package_import_error:
     try:
         from camera import BaslerCamera, RealSenseCamera
+        from shutdown_utils import installShutdownHandlers, shutdownRcl
     except Exception as fallback_error:
         raise ImportError(
             "Failed to import camera backends. "
@@ -304,46 +304,13 @@ class CameraNode(Node):
         super().destroy_node()
 
 
-def _shutdown(camera_node, executor=None):
-    """Shared shutdown sequence — called from signals, atexit, and finally."""
-    if camera_node is None:
-        return
-    try:
-        camera_node.destroy_node()
-    except Exception:
-        pass
-    try:
-        if executor is not None:
-            executor.shutdown()
-    except Exception:
-        pass
-    try:
-        if rclpy.ok():
-            rclpy.shutdown()
-    except Exception:
-        pass
-
-
 def main(args=None):
     rclpy.init(args=args)
     camera_node = CameraNode()
-
-    # Register atexit so the camera is released even if Python exits
-    # without hitting our finally block (e.g. os._exit, fatal signal).
-    atexit.register(lambda: _shutdown(camera_node))
-
-    # Install signal handlers so Ctrl+C / kill always triggers a clean
-    # shutdown instead of relying on rclpy's internal signal handling
-    # (which can be unreliable inside containers or with busy executors).
-    def _signal_handler(signum, _frame):
-        sig_name = signal.Signals(signum).name
-        print(f"\n[camera_node] Received {sig_name}, shutting down cleanly...")
-        _shutdown(camera_node)
-        raise SystemExit(0)
-
-    signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
-
+    installShutdownHandlers(
+        on_shutdown=lambda: shutdownRcl(node=camera_node),
+        logger_name="camera_node",
+    )
     try:
         rclpy.spin(camera_node)
     except (KeyboardInterrupt, SystemExit):
@@ -351,7 +318,7 @@ def main(args=None):
     except Exception as exc:
         camera_node.get_logger().error(f"Unexpected error: {exc}")
     finally:
-        _shutdown(camera_node)
+        shutdownRcl(node=camera_node)
 
 
 if __name__ == "__main__":
