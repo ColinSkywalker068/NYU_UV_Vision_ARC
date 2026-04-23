@@ -557,7 +557,9 @@ class YOLOv8Node(Node):
                 return c
         return None
 
-    def _calculate_angles_for_request(self, request: AngleRequest) -> tuple[float, float]:
+    def _calculate_angles_for_request(
+        self, request: AngleRequest
+    ) -> tuple[float, float]:
         sx1, sy1, sx2, sy2 = request.bbox
         src_w, src_h = request.src_size
         return calculate_angles(

@@ -121,7 +121,9 @@ class CameraNode(Node):
                     use_full_sensor=self.get_parameter("basler_use_full_sensor").value,
                     centered_roi=self.get_parameter("basler_centered_roi").value,
                     binning=max(1, int(self.get_parameter("basler_binning").value)),
-                    decimation=max(1, int(self.get_parameter("basler_decimation").value)),
+                    decimation=max(
+                        1, int(self.get_parameter("basler_decimation").value)
+                    ),
                     auto_exposure=self.get_parameter("basler_auto_exposure").value,
                     auto_gain=self.get_parameter("basler_auto_gain").value,
                     auto_white_balance=self.get_parameter(
