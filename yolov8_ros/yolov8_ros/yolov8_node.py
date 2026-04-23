@@ -71,6 +71,17 @@ _DEFAULT_MAX_COAST_FRAMES = 3
 _STAGE_LOG_INTERVAL = 500  # frames between timing summaries
 _VISION_LOG_DIRNAME = "vision_logs"
 
+
+def _resolve_runtime_log_dir(explicit_dir: str) -> str:
+    """Resolve runtime log directory for headless mode."""
+    if explicit_dir:
+        return explicit_dir
+    env_dir = os.getenv("VISION_LOG_DIR", "").strip()
+    if env_dir:
+        return env_dir
+    # Keep logs with the process working directory (deployment/runtime root).
+    return os.path.join(os.getcwd(), _VISION_LOG_DIRNAME)
+
 # ---------------------------------------------------------------------------
 # Candidate dataclass  (Item 15)
 # ---------------------------------------------------------------------------
@@ -337,6 +348,7 @@ class YOLOv8Node(Node):
         self.declare_parameter("use_robot_id_targeting", False)
         self.declare_parameter("max_hsv_candidates", _DEFAULT_MAX_HSV_CANDIDATES)
         self.declare_parameter("max_coast_frames", _DEFAULT_MAX_COAST_FRAMES)
+        self.declare_parameter("runtime_log_dir", "")
 
         self.declare_parameter("hfov_degrees", 79.2)
         self.declare_parameter("vfov_degrees", 63.78)
@@ -370,6 +382,7 @@ class YOLOv8Node(Node):
         )
         self.max_hsv_candidates: int = self.get_parameter("max_hsv_candidates").value
         self.max_coast_frames: int = self.get_parameter("max_coast_frames").value
+        self.runtime_log_dir: str = str(self.get_parameter("runtime_log_dir").value)
 
         # --- Validate inference_mode ------------------------------------
         if self.inference_mode not in ("predict", "track"):
@@ -463,8 +476,7 @@ class YOLOv8Node(Node):
     def _create_runtime_logger(self) -> VisionRuntimeLogger:
         if self.show:
             return VisionRuntimeLogger(ConsoleVisionLogSink(self.get_logger()))
-        pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        log_dir = os.path.join(pkg_root, _VISION_LOG_DIRNAME)
+        log_dir = _resolve_runtime_log_dir(self.runtime_log_dir)
         sink = FileVisionLogSink(log_dir)
         self.get_logger().info(f"Headless runtime logs: {sink.path}")
         return VisionRuntimeLogger(sink)
