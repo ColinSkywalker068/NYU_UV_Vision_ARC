@@ -192,6 +192,10 @@ class VisionRuntimeLogger:
             )
         )
 
+    def log_note(self, level: str, message: str) -> None:
+        timestamp = datetime.now().isoformat(timespec="milliseconds")
+        self._sink.write_line(f"ts={timestamp} level={level} msg={message}")
+
     def close(self) -> None:
         self._sink.close()
 
@@ -326,7 +330,6 @@ def _resolve_default_model_path() -> str:
 class YOLOv8Node(Node):
     def __init__(self, parameter_overrides=None):
         super().__init__("yolov8_modular_node", parameter_overrides=parameter_overrides)
-        self.get_logger().info("Initializing Modular YOLOv8 Node...")
 
         # --- Parameters -------------------------------------------------
         default_model = _resolve_default_model_path()
@@ -434,17 +437,20 @@ class YOLOv8Node(Node):
             "render": 0.0,
         }
 
+        # Build runtime logger before heavy initialization so headless logs include startup.
+        self._runtime_logger = self._create_runtime_logger()
+        self._log_info("Initializing Modular YOLOv8 Node...")
+
         # --- Detector ----------------------------------------------------
         self.detector = YOLODetector(self.model_path, self.task, self.model_type)
-        self.get_logger().info("Detector Initialized.")
-        self.get_logger().info(
+        self._log_info("Detector Initialized.")
+        self._log_info(
             f"inference_mode={self.inference_mode}, use_kalman={self.use_kalman}, "
             f"persist_tracking={self.persist_tracking}, target_color={self.target_color}, "
             f"use_robot_id_targeting={self.use_robot_id_targeting}, "
             f"max_hsv_candidates={self.max_hsv_candidates}, "
             f"max_coast_frames={self.max_coast_frames}"
         )
-        self._runtime_logger = self._create_runtime_logger()
 
         # --- ROS transport -----------------------------------------------
         self.bridge = CvBridge()
@@ -483,6 +489,18 @@ class YOLOv8Node(Node):
         self.get_logger().info(f"Headless runtime logs: {sink.path}")
         return VisionRuntimeLogger(sink)
 
+    def _log_info(self, message: str) -> None:
+        self.get_logger().info(message)
+        if self.show:
+            return
+        self._runtime_logger.log_note("INFO", message)
+
+    def _log_error(self, message: str) -> None:
+        self.get_logger().error(message)
+        if self.show:
+            return
+        self._runtime_logger.log_note("ERROR", message)
+
     # ------------------------------------------------------------------
     # Callbacks
     # ------------------------------------------------------------------
@@ -493,10 +511,10 @@ class YOLOv8Node(Node):
         robot_id = msg.data
         if robot_id in RED_TEAM:
             self.target_class = BLUE_CLASS
-            self.get_logger().info(f"ID {robot_id} is RED. Targeting BLUE.")
+            self._log_info(f"ID {robot_id} is RED. Targeting BLUE.")
         elif robot_id in BLUE_TEAM:
             self.target_class = RED_CLASS
-            self.get_logger().info(f"ID {robot_id} is BLUE. Targeting RED.")
+            self._log_info(f"ID {robot_id} is BLUE. Targeting RED.")
 
     # ------------------------------------------------------------------
     # Pipeline stages  (Items 14, 16)
@@ -863,8 +881,8 @@ class YOLOv8Node(Node):
                 self._log_stage_timing()
 
         except Exception as e:
-            self.get_logger().error(f"Error in image_callback: {e}")
-            self.get_logger().error(traceback.format_exc())
+            self._log_error(f"Error in image_callback: {e}")
+            self._log_error(traceback.format_exc())
 
     # ------------------------------------------------------------------
     # Kalman tracking pipeline  (Items 3, 11)
