@@ -463,7 +463,9 @@ class STM32SerialBridgeNode(Node):
         self._prev_att_pitch = pitch
         self._prev_att_time = now
 
-    def _compensate_outgoing_angles(self, yaw: float, pitch: float) -> tuple[float, float]:
+    def _compensate_outgoing_angles(
+        self, yaw: float, pitch: float
+    ) -> tuple[float, float]:
         """Apply gimbal-rate damping and latency feedforward to vision yaw/pitch."""
         if not self.attitude_rate_compensation_enabled:
             return yaw, pitch
@@ -609,7 +611,9 @@ def main(args: Optional[list[str]] = None) -> None:
 
     if cli_overrides.enable_transmit is not None:
         parameter_overrides.append(
-            Parameter("transmit_enable", Parameter.Type.BOOL, cli_overrides.enable_transmit)
+            Parameter(
+                "transmit_enable", Parameter.Type.BOOL, cli_overrides.enable_transmit
+            )
         )
 
     if cli_overrides.serial_port is not None:
@@ -626,7 +630,9 @@ def main(args: Optional[list[str]] = None) -> None:
 
     if cli_overrides.serial_verbose is not None:
         parameter_overrides.append(
-            Parameter("serial_verbose", Parameter.Type.BOOL, cli_overrides.serial_verbose)
+            Parameter(
+                "serial_verbose", Parameter.Type.BOOL, cli_overrides.serial_verbose
+            )
         )
 
     if cli_overrides.fire_mode is not None:
