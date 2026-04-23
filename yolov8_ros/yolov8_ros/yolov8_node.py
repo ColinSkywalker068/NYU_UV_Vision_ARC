@@ -29,16 +29,14 @@ from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
-from std_msgs.msg import Bool, Float32, Float32MultiArray, Int32, Int32MultiArray
+from std_msgs.msg import Bool, Float32, Float32MultiArray, Int32MultiArray
 
 try:
     from .detector import YOLODetector
     from .tracker import ArmorPlateTracker, TrackerWrapper
     from .utils import (
         BLUE_CLASS,
-        BLUE_TEAM,
         RED_CLASS,
-        RED_TEAM,
         LetterboxResult,
         calculate_angles,
         check_enemy,
@@ -50,9 +48,7 @@ except (ImportError, ValueError):
     from tracker import ArmorPlateTracker, TrackerWrapper
     from utils import (
         BLUE_CLASS,
-        BLUE_TEAM,
         RED_CLASS,
-        RED_TEAM,
         LetterboxResult,
         calculate_angles,
         check_enemy,
@@ -81,6 +77,11 @@ def _resolve_runtime_log_dir(explicit_dir: str) -> str:
         return env_dir
     # Keep logs with the process working directory (deployment/runtime root).
     return os.path.join(os.getcwd(), _VISION_LOG_DIRNAME)
+
+
+def _resolve_target_class_from_color(target_color: str) -> int:
+    """Map startup target_color parameter to detector class."""
+    return RED_CLASS if target_color == "red" else BLUE_CLASS
 
 
 # ---------------------------------------------------------------------------
@@ -351,10 +352,11 @@ class YOLOv8Node(Node):
         self.declare_parameter("use_kalman", False)
         self.declare_parameter("enable_color_verification", True)
         self.declare_parameter("target_color", "blue")
-        self.declare_parameter("use_robot_id_targeting", False)
         self.declare_parameter("max_hsv_candidates", _DEFAULT_MAX_HSV_CANDIDATES)
         self.declare_parameter("max_coast_frames", _DEFAULT_MAX_COAST_FRAMES)
         self.declare_parameter("runtime_log_dir", "")
+        self.declare_parameter("enemy_color_red_value", 0)
+        self.declare_parameter("enemy_color_blue_value", 1)
 
         self.declare_parameter("hfov_degrees", 79.2)
         self.declare_parameter("vfov_degrees", 63.78)
@@ -383,12 +385,15 @@ class YOLOv8Node(Node):
             "enable_color_verification"
         ).value
         self.target_color: str = str(self.get_parameter("target_color").value).lower()
-        self.use_robot_id_targeting: bool = bool(
-            self.get_parameter("use_robot_id_targeting").value
-        )
         self.max_hsv_candidates: int = self.get_parameter("max_hsv_candidates").value
         self.max_coast_frames: int = self.get_parameter("max_coast_frames").value
         self.runtime_log_dir: str = str(self.get_parameter("runtime_log_dir").value)
+        self.enemy_color_red_value: int = int(
+            self.get_parameter("enemy_color_red_value").value
+        )
+        self.enemy_color_blue_value: int = int(
+            self.get_parameter("enemy_color_blue_value").value
+        )
 
         # --- Validate inference_mode ------------------------------------
         if self.inference_mode not in ("predict", "track"):
@@ -417,7 +422,8 @@ class YOLOv8Node(Node):
         self.vfov_rad: float = math.radians(self.get_parameter("vfov_degrees").value)
         self.vis_window_name: str = self.get_parameter("vis_window_name").value
 
-        self.target_class: int = BLUE_CLASS if self.target_color != "red" else RED_CLASS
+        # Startup fallback remains stable until attitude_flags updates target color.
+        self.target_class: int = _resolve_target_class_from_color(self.target_color)
         self.active_trackers: dict[int, TrackerWrapper] = {}
         self.last_frame_time = None
         self._fps_ema = 0.0
@@ -448,9 +454,10 @@ class YOLOv8Node(Node):
         self._log_info(
             f"inference_mode={self.inference_mode}, use_kalman={self.use_kalman}, "
             f"persist_tracking={self.persist_tracking}, target_color={self.target_color}, "
-            f"use_robot_id_targeting={self.use_robot_id_targeting}, "
             f"max_hsv_candidates={self.max_hsv_candidates}, "
-            f"max_coast_frames={self.max_coast_frames}"
+            f"max_coast_frames={self.max_coast_frames}, "
+            f"enemy_color_red_value={self.enemy_color_red_value}, "
+            f"enemy_color_blue_value={self.enemy_color_blue_value}"
         )
 
         # --- ROS transport -----------------------------------------------
@@ -465,8 +472,8 @@ class YOLOv8Node(Node):
         self.image_subscription = self.create_subscription(
             Image, "image_raw", self.image_callback, image_qos
         )
-        self.int_subscription = self.create_subscription(
-            Int32, "robot_id", self.id_listener_callback, 10
+        self.attitude_flags_subscription = self.create_subscription(
+            Int32MultiArray, "attitude_flags", self.handle_attitude_flags, 10
         )
         self.bbox_publisher = self.create_publisher(Int32MultiArray, "bounding_box", 10)
         self.override_publisher = self.create_publisher(Bool, "override", 10)
@@ -506,16 +513,27 @@ class YOLOv8Node(Node):
     # Callbacks
     # ------------------------------------------------------------------
 
-    def id_listener_callback(self, msg: Int32):
-        if not self.use_robot_id_targeting:
+    def _resolve_target_class_from_enemy_color(self, enemy_color: int) -> int | None:
+        if enemy_color == self.enemy_color_red_value:
+            return RED_CLASS
+        if enemy_color == self.enemy_color_blue_value:
+            return BLUE_CLASS
+        return None
+
+    def handle_attitude_flags(self, msg: Int32MultiArray):
+        if not msg.data:
             return
-        robot_id = msg.data
-        if robot_id in RED_TEAM:
-            self.target_class = BLUE_CLASS
-            self._log_info(f"ID {robot_id} is RED. Targeting BLUE.")
-        elif robot_id in BLUE_TEAM:
-            self.target_class = RED_CLASS
-            self._log_info(f"ID {robot_id} is BLUE. Targeting RED.")
+        enemy_color = int(msg.data[0])
+        next_target_class = self._resolve_target_class_from_enemy_color(enemy_color)
+        if next_target_class is None:
+            return
+        if self.target_class != next_target_class:
+            self.target_class = next_target_class
+            color_name = "RED" if next_target_class == RED_CLASS else "BLUE"
+            self._log_info(
+                f"attitude_flags enemy_color={enemy_color} -> Targeting {color_name}."
+            )
+            return
 
     # ------------------------------------------------------------------
     # Pipeline stages  (Items 14, 16)
