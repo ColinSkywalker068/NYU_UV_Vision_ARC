@@ -82,6 +82,7 @@ def _resolve_runtime_log_dir(explicit_dir: str) -> str:
     # Keep logs with the process working directory (deployment/runtime root).
     return os.path.join(os.getcwd(), _VISION_LOG_DIRNAME)
 
+
 # ---------------------------------------------------------------------------
 # Candidate dataclass  (Item 15)
 # ---------------------------------------------------------------------------
