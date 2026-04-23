@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+from datetime import datetime
 import math
 import os
 import signal
@@ -18,6 +19,7 @@ import sys
 import time
 import traceback
 from dataclasses import dataclass, field
+from typing import Protocol
 
 import cv2
 import numpy as np
@@ -67,6 +69,7 @@ PREVIEW_MAX_H = 540
 _DEFAULT_MAX_HSV_CANDIDATES = 3
 _DEFAULT_MAX_COAST_FRAMES = 3
 _STAGE_LOG_INTERVAL = 500  # frames between timing summaries
+_VISION_LOG_DIRNAME = "vision_logs"
 
 # ---------------------------------------------------------------------------
 # Candidate dataclass  (Item 15)
@@ -99,6 +102,85 @@ class KalmanPublishRequest:
     size_model: tuple[float, float]
     letterbox: LetterboxResult
     obb_angle: float | None
+
+
+@dataclass(slots=True)
+class VisionLogRecord:
+    timestamp: str
+    fps: float
+    opponent_bbox: tuple[int, int, int, int]
+    confidence: float
+    color_pass: bool
+    latency_ms: float
+
+
+class VisionLogSink(Protocol):
+    def write_line(self, line: str) -> None: ...
+
+    def close(self) -> None: ...
+
+
+class ConsoleVisionLogSink:
+    def __init__(self, node_logger) -> None:
+        self._node_logger = node_logger
+
+    def write_line(self, line: str) -> None:
+        self._node_logger.info(line)
+
+    def close(self) -> None:
+        return
+
+
+class FileVisionLogSink:
+    def __init__(self, log_dir: str) -> None:
+        os.makedirs(log_dir, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._path = os.path.join(log_dir, f"vision_runtime_{stamp}.log")
+        self._handle = open(self._path, "a", encoding="utf-8")
+
+    def write_line(self, line: str) -> None:
+        self._handle.write(f"{line}\n")
+        self._handle.flush()
+
+    def close(self) -> None:
+        if self._handle.closed:
+            return
+        self._handle.close()
+
+    @property
+    def path(self) -> str:
+        return self._path
+
+
+class VisionRuntimeLogger:
+    def __init__(self, sink: VisionLogSink) -> None:
+        self._sink = sink
+        self._last_fps_log_at: float = 0.0
+
+    def log_fps_once_per_second(self, now_monotonic: float, fps: float) -> None:
+        if now_monotonic - self._last_fps_log_at < 1.0:
+            return
+        self._last_fps_log_at = now_monotonic
+        timestamp = datetime.now().isoformat(timespec="milliseconds")
+        self._sink.write_line(f"ts={timestamp} fps={fps:.2f}")
+
+    def log_opponent_event(self, record: VisionLogRecord) -> None:
+        x1, y1, x2, y2 = record.opponent_bbox
+        self._sink.write_line(
+            " ".join(
+                (
+                    f"ts={record.timestamp}",
+                    f"fps={record.fps:.2f}",
+                    f"bbox={x1},{y1},{x2},{y2}",
+                    f"conf={record.confidence:.3f}",
+                    f"color_pass={int(record.color_pass)}",
+                    f"latency_ms={record.latency_ms:.2f}",
+                )
+            )
+        )
+
+    def close(self) -> None:
+        self._sink.close()
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +429,7 @@ class YOLOv8Node(Node):
             f"max_hsv_candidates={self.max_hsv_candidates}, "
             f"max_coast_frames={self.max_coast_frames}"
         )
+        self._runtime_logger = self._create_runtime_logger()
 
         # --- ROS transport -----------------------------------------------
         self.bridge = CvBridge()
@@ -376,6 +459,15 @@ class YOLOv8Node(Node):
         self.override_msg = Bool()
         self._angle_msg = Float32MultiArray()
         self._obb_angle_msg = Float32()
+
+    def _create_runtime_logger(self) -> VisionRuntimeLogger:
+        if self.show:
+            return VisionRuntimeLogger(ConsoleVisionLogSink(self.get_logger()))
+        pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        log_dir = os.path.join(pkg_root, _VISION_LOG_DIRNAME)
+        sink = FileVisionLogSink(log_dir)
+        self.get_logger().info(f"Headless runtime logs: {sink.path}")
+        return VisionRuntimeLogger(sink)
 
     # ------------------------------------------------------------------
     # Callbacks
@@ -697,9 +789,9 @@ class YOLOv8Node(Node):
 
             candidates = self.extract_candidates(res_obj, lb) if res_obj else []
             t4 = time.monotonic()
-
             # 6. Rank and publish target.
             candidates = self.rank_candidates(candidates)
+            detected_opponent = self.select_target(candidates)
 
             if self.use_kalman:
                 published_this_frame = self._kalman_pipeline(
@@ -723,6 +815,23 @@ class YOLOv8Node(Node):
                     vis_frame = lb.frame.copy()
                 self._render_debug(vis_frame, t0)
             t7 = time.monotonic()
+            self._proc_fps_ema = tick_fps_ema(self._proc_fps_ema, max(t7 - t0, 1e-9))
+
+            self._runtime_logger.log_fps_once_per_second(t7, self._proc_fps_ema)
+            if (
+                self.enable_color_verification
+                and detected_opponent is not None
+                and detected_opponent.is_enemy
+            ):
+                event = VisionLogRecord(
+                    timestamp=datetime.now().isoformat(timespec="milliseconds"),
+                    fps=self._proc_fps_ema,
+                    opponent_bbox=detected_opponent.bbox_source,
+                    confidence=detected_opponent.confidence,
+                    color_pass=True,
+                    latency_ms=(t6 - t0) * 1000.0,
+                )
+                self._runtime_logger.log_opponent_event(event)
 
             # 9. Update stage timings.
             self._frame_count += 1
@@ -840,12 +949,8 @@ class YOLOv8Node(Node):
     # Debug visualization
     # ------------------------------------------------------------------
 
-    def _render_debug(self, vis_frame: np.ndarray, t_cb_start: float):
+    def _render_debug(self, vis_frame: np.ndarray, _t_cb_start: float):
         """Render FPS overlay and display the debug window."""
-        t_now = time.monotonic()
-        self._proc_fps_ema = tick_fps_ema(
-            self._proc_fps_ema, max(t_now - t_cb_start, 1e-9)
-        )
         cv2.putText(
             vis_frame,
             f"Proc FPS: {self._proc_fps_ema:.1f}",
@@ -900,6 +1005,8 @@ class YOLOv8Node(Node):
             return
         self._shutting_down = True
         self.get_logger().info("Shutting down YOLOv8 node...")
+        if hasattr(self, "_runtime_logger"):
+            self._runtime_logger.close()
 
         # 1. Destroy OpenCV windows
         try:
