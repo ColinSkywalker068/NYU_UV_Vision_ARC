@@ -19,12 +19,12 @@ import torch
 from ultralytics import YOLO
 from ultralytics.utils import ASSETS
 
-MODEL  = "/home/ultraviolet/CV_Detection/model_test/bestmerge.engine"
-IMGSZ  = 640
-CONF   = 0.5
+MODEL = "/home/ultraviolet/CV_Detection/model_test/bestmerge.engine"
+IMGSZ = 640
+CONF = 0.5
 DEVICE = "0"
 WARMUP = 30
-RUNS   = 300
+RUNS = 300
 
 
 def sync() -> None:
@@ -42,8 +42,11 @@ def main() -> None:
     # -- Load and pre-resize frame once (avoid resize overhead in hot loop) --
     asset_dir = Path(ASSETS)
     img_path = next(
-        (p for p in sorted(asset_dir.glob("*"))
-         if p.suffix.lower() in {".jpg", ".jpeg", ".png"}),
+        (
+            p
+            for p in sorted(asset_dir.glob("*"))
+            if p.suffix.lower() in {".jpg", ".jpeg", ".png"}
+        ),
         None,
     )
     if img_path is None:
@@ -55,7 +58,7 @@ def main() -> None:
 
     # Pre-resize to exact input size so Ultralytics does zero work on it
     frame = cv2.resize(raw, (IMGSZ, IMGSZ), interpolation=cv2.INTER_LINEAR)
-    frame = np.ascontiguousarray(frame)   # ensure contiguous memory layout
+    frame = np.ascontiguousarray(frame)  # ensure contiguous memory layout
 
     print(f"Model : {MODEL}")
     print(f"Task  : obb")
