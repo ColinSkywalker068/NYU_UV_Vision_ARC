@@ -12,9 +12,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
+# ─── constants ───
 RED_TEAM = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
 BLUE_TEAM = (101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111)
 
@@ -31,9 +29,7 @@ RED_RANGES = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Letterbox preprocessing
-# ---------------------------------------------------------------------------
+# ─── letterbox preprocessing ───
 @dataclass(frozen=True, slots=True)
 class LetterboxResult:
     """Metadata produced by :func:`letterbox_frame`.
@@ -59,15 +55,23 @@ def letterbox_frame(frame: np.ndarray, target_w: int, target_h: int) -> Letterbo
     src_h, src_w = frame.shape[:2]
 
     if src_h == target_h and src_w == target_w:
+        # Fast path avoids an unnecessary resize/pad round trip and preserves exact pixels.
         return LetterboxResult(
-            frame=frame, scale=1.0, pad_x=0, pad_y=0, src_w=src_w, src_h=src_h
+            frame=frame,
+            scale=1.0,
+            pad_x=0,
+            pad_y=0,
+            src_w=src_w,
+            src_h=src_h,
         )
 
+    # 1) Resize with preserved aspect ratio.
     scale = min(target_w / src_w, target_h / src_h)
     new_w = int(src_w * scale)
     new_h = int(src_h * scale)
     resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
 
+    # 2) Compute symmetric padding.
     pad_w = target_w - new_w
     pad_h = target_h - new_h
     top = pad_h // 2
@@ -75,6 +79,7 @@ def letterbox_frame(frame: np.ndarray, target_w: int, target_h: int) -> Letterbo
     left = pad_w // 2
     right = pad_w - left
 
+    # 3) Build final padded frame.
     padded = cv2.copyMakeBorder(
         resized,
         top,
@@ -108,9 +113,7 @@ def unletterbox_coords(
     return x1_src, y1_src, x2_src, y2_src
 
 
-# ---------------------------------------------------------------------------
-# Angle calculation
-# ---------------------------------------------------------------------------
+# ─── angle calculation ───
 def calculate_angles(
     x1: int,
     y1: int,
@@ -137,9 +140,7 @@ def calculate_angles(
     return yaw, pitch
 
 
-# ---------------------------------------------------------------------------
-# HSV colour verification
-# ---------------------------------------------------------------------------
+# ─── hsv colour verification ───
 def check_enemy(roi_image: np.ndarray, target_class: int) -> tuple[bool, int]:
     """Check whether *roi_image* contains the target enemy colour.
 
@@ -152,10 +153,11 @@ def check_enemy(roi_image: np.ndarray, target_class: int) -> tuple[bool, int]:
     target_ranges = BLUE_RANGES if target_class == BLUE_CLASS else RED_RANGES
 
     final_mask = np.zeros_like(hsv_roi[:, :, 0])
-    for hsv_range in target_ranges:
-        current_mask = cv2.inRange(hsv_roi, hsv_range[0], hsv_range[1])
+    for lower_bound, upper_bound in target_ranges:
+        current_mask = cv2.inRange(hsv_roi, lower_bound, upper_bound)
         final_mask = cv2.bitwise_or(final_mask, current_mask)
 
     color_area = np.count_nonzero(final_mask)
     min_threshold = roi_image.shape[0] * roi_image.shape[1] * 0.01
+
     return color_area > min_threshold, color_area

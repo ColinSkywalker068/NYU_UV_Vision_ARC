@@ -1,6 +1,7 @@
 import atexit
 import signal
 import traceback
+from dataclasses import dataclass
 
 import rclpy
 from cv_bridge import CvBridge
@@ -22,13 +23,48 @@ except (ImportError, ValueError) as package_import_error:
         ) from package_import_error
 
 
+@dataclass(frozen=True)
+class BaslerInitOptions:
+    width: int
+    height: int
+    fps: int
+    exposure_us: float
+    gain_db: float
+    use_full_sensor: bool
+    centered_roi: bool
+    binning: int
+    decimation: int
+    auto_exposure: bool
+    auto_gain: bool
+    auto_white_balance: bool
+    balance_red: float
+    balance_green: float
+    balance_blue: float
+    enable_grab_thread: bool
+    queue_timeout_sec: float
+
+
+@dataclass(frozen=True)
+class RealSenseInitOptions:
+    width: int
+    height: int
+    fps: int
+    exposure: float
+    gain: float
+    auto_exposure: bool
+    auto_white_balance: bool
+    white_balance: float
+    use_poll: bool
+    use_max_native_fps: bool
+
+
 class CameraNode(Node):
     def __init__(self):
         super().__init__("camera_node")
         self.get_logger().info("Initializing Camera Node...")
         self._shutting_down = False
 
-        # --- Parameters ---
+        # ─── parameters ───
         self.declare_parameter("camera_type", "basler")
         self.declare_parameter("imgsz_width", 640)
         self.declare_parameter("imgsz_height", 640)
@@ -71,12 +107,12 @@ class CameraNode(Node):
         imgsz_width = self.get_parameter("imgsz_width").value
         imgsz_height = self.get_parameter("imgsz_height").value
 
-        # --- Camera Init ---
+        # ─── camera init ───
         try:
             if self.camera_type == "basler":
                 fps = self.get_parameter("basler_fps").value
                 queue_timeout_ms = self.get_parameter("basler_queue_timeout_ms").value
-                self.camera = BaslerCamera(
+                basler_options = BaslerInitOptions(
                     width=imgsz_width,
                     height=imgsz_height,
                     fps=fps,
@@ -85,9 +121,7 @@ class CameraNode(Node):
                     use_full_sensor=self.get_parameter("basler_use_full_sensor").value,
                     centered_roi=self.get_parameter("basler_centered_roi").value,
                     binning=max(1, int(self.get_parameter("basler_binning").value)),
-                    decimation=max(
-                        1, int(self.get_parameter("basler_decimation").value)
-                    ),
+                    decimation=max(1, int(self.get_parameter("basler_decimation").value)),
                     auto_exposure=self.get_parameter("basler_auto_exposure").value,
                     auto_gain=self.get_parameter("basler_auto_gain").value,
                     auto_white_balance=self.get_parameter(
@@ -99,13 +133,33 @@ class CameraNode(Node):
                     enable_grab_thread=self.get_parameter(
                         "basler_enable_grab_thread"
                     ).value,
+                    # Guard against very small timeouts that cause frame starvation under load.
                     queue_timeout_sec=max(1.0, float(queue_timeout_ms)) / 1000.0,
+                )
+                self.camera = BaslerCamera(
+                    width=basler_options.width,
+                    height=basler_options.height,
+                    fps=basler_options.fps,
+                    exposure_us=basler_options.exposure_us,
+                    gain_db=basler_options.gain_db,
+                    use_full_sensor=basler_options.use_full_sensor,
+                    centered_roi=basler_options.centered_roi,
+                    binning=basler_options.binning,
+                    decimation=basler_options.decimation,
+                    auto_exposure=basler_options.auto_exposure,
+                    auto_gain=basler_options.auto_gain,
+                    auto_white_balance=basler_options.auto_white_balance,
+                    balance_red=basler_options.balance_red,
+                    balance_green=basler_options.balance_green,
+                    balance_blue=basler_options.balance_blue,
+                    enable_grab_thread=basler_options.enable_grab_thread,
+                    queue_timeout_sec=basler_options.queue_timeout_sec,
                 )
                 self.fps = float(fps)
 
             elif self.camera_type == "realsense":
                 rs_fps = self.get_parameter("realsense_fps").value
-                self.camera = RealSenseCamera(
+                realsense_options = RealSenseInitOptions(
                     width=self.get_parameter("realsense_width").value,
                     height=self.get_parameter("realsense_height").value,
                     fps=rs_fps,
@@ -122,6 +176,18 @@ class CameraNode(Node):
                     use_max_native_fps=self.get_parameter(
                         "realsense_use_max_native_fps"
                     ).value,
+                )
+                self.camera = RealSenseCamera(
+                    width=realsense_options.width,
+                    height=realsense_options.height,
+                    fps=realsense_options.fps,
+                    exposure=realsense_options.exposure,
+                    gain=realsense_options.gain,
+                    auto_exposure=realsense_options.auto_exposure,
+                    auto_white_balance=realsense_options.auto_white_balance,
+                    white_balance=realsense_options.white_balance,
+                    use_poll=realsense_options.use_poll,
+                    use_max_native_fps=realsense_options.use_max_native_fps,
                 )
                 self.fps = float(rs_fps)
             else:
@@ -155,6 +221,7 @@ class CameraNode(Node):
                 if negotiated_fps > 0.0:
                     self.fps = negotiated_fps
                 else:
+                    # Keep timer sane even when the backend cannot report negotiated FPS.
                     self.fps = float(max(1, int(self.fps)))
             elif self.camera_type == "basler":
                 if self.fps <= 0.0:
@@ -170,7 +237,7 @@ class CameraNode(Node):
             self.get_logger().error(traceback.format_exc())
             raise
 
-        # --- Publisher ---
+        # ─── publisher ───
         image_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
@@ -180,7 +247,7 @@ class CameraNode(Node):
         self.image_publisher = self.create_publisher(Image, "image_raw", image_qos)
         self.bridge = CvBridge()
 
-        # --- Timer ---
+        # ─── timer ───
         timer_period = 1.0 / self.fps if self.fps > 0 else 1.0 / 60.0
         self.timer = self.create_timer(timer_period, self.timer_callback)
         self.get_logger().info(f"Camera node publishing at {1 / timer_period:.2f} Hz.")

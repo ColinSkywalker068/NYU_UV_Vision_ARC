@@ -87,6 +87,20 @@ class Candidate:
     obb_angle: float | None = None  # radians, from OBB xywhr
 
 
+@dataclass(slots=True)
+class AngleRequest:
+    bbox: tuple[int, int, int, int]
+    src_size: tuple[int, int]
+
+
+@dataclass(slots=True)
+class KalmanPublishRequest:
+    center_model: tuple[float, float]
+    size_model: tuple[float, float]
+    letterbox: LetterboxResult
+    obb_angle: float | None
+
+
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
@@ -469,6 +483,7 @@ class YOLOv8Node(Node):
 
             # Item 12: Kalman without track IDs → single-target mode
             if self.use_kalman and track_id is None:
+                # Limit no-ID mode to one candidate so trackers do not alias across detections.
                 if candidates:
                     continue
                 track_id = 0
@@ -542,6 +557,20 @@ class YOLOv8Node(Node):
                 return c
         return None
 
+    def _calculate_angles_for_request(self, request: AngleRequest) -> tuple[float, float]:
+        sx1, sy1, sx2, sy2 = request.bbox
+        src_w, src_h = request.src_size
+        return calculate_angles(
+            sx1,
+            sy1,
+            sx2,
+            sy2,
+            src_w,
+            src_h,
+            self.hfov_rad,
+            self.vfov_rad,
+        )
+
     # ------------------------------------------------------------------
     # Publishing helpers  (Items 1, 16)
     # ------------------------------------------------------------------
@@ -554,21 +583,14 @@ class YOLOv8Node(Node):
         self.bbox_publisher.publish(self.bbox_msg)
         self.override_publisher.publish(self.override_msg)
 
-        # Angles computed in source-image space (Item 2)
-        yaw, pitch = calculate_angles(
-            sx1,
-            sy1,
-            sx2,
-            sy2,
-            lb.src_w,
-            lb.src_h,
-            self.hfov_rad,
-            self.vfov_rad,
+        angle_request = AngleRequest(
+            bbox=(sx1, sy1, sx2, sy2),
+            src_size=(lb.src_w, lb.src_h),
         )
+        yaw, pitch = self._calculate_angles_for_request(angle_request)
         self._angle_msg.data = [float(yaw), float(pitch)]
         self.angle_publisher.publish(self._angle_msg)
 
-        # Item 9: publish OBB angle
         if target.obb_angle is not None:
             self._obb_angle_msg.data = float(target.obb_angle)
         else:
@@ -595,17 +617,13 @@ class YOLOv8Node(Node):
         self._obb_angle_msg.data = 0.0
         self.obb_angle_publisher.publish(self._obb_angle_msg)
 
-    def publish_kalman_target(
-        self,
-        xf: float,
-        yf: float,
-        w: float,
-        h: float,
-        lb: LetterboxResult,
-        obb_angle: float | None,
-    ):
+    def publish_kalman_target(self, request: KalmanPublishRequest):
         """Publish a Kalman-predicted target position."""
-        # Clamp to model space, then convert to source space
+        xf, yf = request.center_model
+        w, h = request.size_model
+        lb = request.letterbox
+
+        # 1. Clamp to model space.
         bx1 = max(0, min(int(xf - w / 2), self.imgsz_width - 1))
         by1 = max(0, min(int(yf - h / 2), self.imgsz_height - 1))
         bx2 = max(0, min(int(xf + w / 2), self.imgsz_width - 1))
@@ -614,26 +632,24 @@ class YOLOv8Node(Node):
         if bx1 >= bx2 or by1 >= by2:
             return False
 
+        # 2. Convert to source-image space and publish.
         sx1, sy1, sx2, sy2 = unletterbox_coords(bx1, by1, bx2, by2, lb)
         self.bbox_msg.data = [sx1, sy1, sx2, sy2]
         self.override_msg.data = True
         self.bbox_publisher.publish(self.bbox_msg)
         self.override_publisher.publish(self.override_msg)
 
-        yaw, pitch = calculate_angles(
-            sx1,
-            sy1,
-            sx2,
-            sy2,
-            lb.src_w,
-            lb.src_h,
-            self.hfov_rad,
-            self.vfov_rad,
+        angle_request = AngleRequest(
+            bbox=(sx1, sy1, sx2, sy2),
+            src_size=(lb.src_w, lb.src_h),
         )
+        yaw, pitch = self._calculate_angles_for_request(angle_request)
         self._angle_msg.data = [float(yaw), float(pitch)]
         self.angle_publisher.publish(self._angle_msg)
 
-        self._obb_angle_msg.data = float(obb_angle) if obb_angle is not None else 0.0
+        self._obb_angle_msg.data = (
+            float(request.obb_angle) if request.obb_angle is not None else 0.0
+        )
         self.obb_angle_publisher.publish(self._obb_angle_msg)
         return True
 
@@ -645,35 +661,35 @@ class YOLOv8Node(Node):
         try:
             t0 = time.monotonic()
 
-            # Stage: decode
+            # 1. Decode image.
             frame = self.decode_frame(msg)
             if frame is None:
                 return
             t1 = time.monotonic()
 
-            # Compute dt
+            # 2. Compute frame delta.
             current_time = self.get_clock().now()
             dt = 1.0 / 60.0
             if self.last_frame_time is not None:
                 dt = (current_time - self.last_frame_time).nanoseconds / 1e9
                 if dt <= 0:
+                    # Guard against clock glitches; zero dt breaks velocity/acceleration math.
                     dt = 0.001
             self._stream_fps_ema = tick_fps_ema(self._stream_fps_ema, dt)
             self.last_frame_time = current_time
 
-            # Stage: letterbox
+            # 3. Prepare model input.
             lb = self.prepare_inference_frame(frame)
             t2 = time.monotonic()
 
-            # Stage: inference
+            # 4. Run inference.
             results = self.run_inference(lb.frame)
             t3 = time.monotonic()
 
-            # Stage: extract candidates
+            # 5. Extract candidates.
             published_this_frame = False
             res_obj = results[0] if results and len(results) > 0 else None
 
-            # Draw detections on vis frame (model space) only if showing
             vis_frame = None
             if self.show and res_obj is not None:
                 vis_frame = lb.frame.copy()
@@ -682,7 +698,7 @@ class YOLOv8Node(Node):
             candidates = self.extract_candidates(res_obj, lb) if res_obj else []
             t4 = time.monotonic()
 
-            # Stage: rank + select
+            # 6. Rank and publish target.
             candidates = self.rank_candidates(candidates)
 
             if self.use_kalman:
@@ -696,19 +712,19 @@ class YOLOv8Node(Node):
                     published_this_frame = True
             t5 = time.monotonic()
 
-            # Stage: publish no-target fallback
+            # 7. Publish no-target fallback.
             if not published_this_frame:
                 self.publish_no_target()
             t6 = time.monotonic()
 
-            # Stage: render
+            # 8. Render debug view.
             if self.show:
                 if vis_frame is None:
                     vis_frame = lb.frame.copy()
                 self._render_debug(vis_frame, t0)
             t7 = time.monotonic()
 
-            # Item 4: accumulate stage timings
+            # 9. Update stage timings.
             self._frame_count += 1
             self._stage_totals["decode"] += t1 - t0
             self._stage_totals["letterbox"] += t2 - t1
@@ -800,8 +816,13 @@ class YOLOv8Node(Node):
                 w_box = wrapper.tracker.width
                 h_box = wrapper.tracker.height
 
-                obb_angle = getattr(wrapper, "obb_angle", None)
-                if self.publish_kalman_target(xf, yf, w_box, h_box, lb, obb_angle):
+                kalman_request = KalmanPublishRequest(
+                    center_model=(xf, yf),
+                    size_model=(w_box, h_box),
+                    letterbox=lb,
+                    obb_angle=getattr(wrapper, "obb_angle", None),
+                )
+                if self.publish_kalman_target(kalman_request):
                     published = True
                     if self.show and vis_frame is not None:
                         bx1 = max(0, int(xf - w_box / 2))

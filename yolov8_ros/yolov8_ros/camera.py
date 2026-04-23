@@ -47,6 +47,7 @@ def _set_node_value_if_writable(node, value):
         return False
     try:
         if hasattr(node, "IsWritable") and not node.IsWritable():
+            # Some transport nodes exist but are firmware-locked at runtime.
             return False
         node.SetValue(value)
         return True
@@ -74,6 +75,7 @@ def _align_to_node_increment(node, requested_value):
     if increment <= 1:
         return clamped_value
     minimum = _get_int_node_value(node, "GetMin", 0)
+    # Hardware nodes reject off-grid values; floor-to-grid avoids set-value failures.
     aligned_value = minimum + ((clamped_value - minimum) // increment) * increment
     return _clamp_to_node_range(node, aligned_value)
 
