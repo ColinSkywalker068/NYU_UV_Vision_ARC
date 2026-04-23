@@ -102,8 +102,8 @@ def installShutdownHandlers(
 
 
 def shutdownRcl(
-    node: Optional[object] = None,
-    executor: Optional[object] = None,
+    node: object | None = None,
+    executor: object | None = None,
 ) -> None:
     """Destroy a node + executor + rclpy context, swallowing per-step errors."""
     if node is not None:

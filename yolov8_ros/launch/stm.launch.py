@@ -16,7 +16,10 @@ def _executePreflight(context, *_args, **_kwargs):
     """
     mode = LaunchConfiguration("preflight_mode").perform(context).strip().lower()
     force_gpu_clean_raw = (
-        LaunchConfiguration("preflight_force_gpu_clean").perform(context).strip().lower()
+        LaunchConfiguration("preflight_force_gpu_clean")
+        .perform(context)
+        .strip()
+        .lower()
     )
     verbose_raw = (
         LaunchConfiguration("preflight_verbose").perform(context).strip().lower()
