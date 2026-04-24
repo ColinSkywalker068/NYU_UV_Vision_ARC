@@ -1,14 +1,75 @@
+import os
+import sys
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def _executePreflight(context, *_args, **_kwargs):
+    """Safe GPU / stale-process preflight before any node is spawned.
+
+    Defaults to a *read-only* check. Opt into process termination or CUDA
+    cache flushing via launch args — never runs ``fuser -k`` on GPU device
+    nodes.
+    """
+    mode = LaunchConfiguration("preflight_mode").perform(context).strip().lower()
+    force_gpu_clean_raw = (
+        LaunchConfiguration("preflight_force_gpu_clean")
+        .perform(context)
+        .strip()
+        .lower()
+    )
+    verbose_raw = (
+        LaunchConfiguration("preflight_verbose").perform(context).strip().lower()
+    )
+    force_gpu_clean = force_gpu_clean_raw in ("1", "true", "yes", "on")
+    verbose = verbose_raw in ("1", "true", "yes", "on")
+    try:
+        from yolov8_ros.preflight import runLaunchPreflight
+    except ImportError:
+        here = os.path.dirname(os.path.abspath(__file__))
+        package_root = os.path.dirname(here)
+        if package_root not in sys.path:
+            sys.path.insert(0, package_root)
+        try:
+            from yolov8_ros.preflight import runLaunchPreflight
+        except ImportError as err:
+            print(f"[stm.launch] preflight import failed, skipping: {err}")
+            return []
+    runLaunchPreflight(mode=mode, force_gpu_clean=force_gpu_clean, verbose=verbose)
+    return []
+
+
 def generate_launch_description() -> LaunchDescription:
+    # --- Preflight args ---
+    preflight_mode_arg = DeclareLaunchArgument(
+        "preflight_mode",
+        default_value="clean",
+        description=(
+            "Preflight cleanup mode: 'check' (report only), 'clean' (SIGTERM stale "
+            "YOLO/camera/bridge PIDs), 'force' (SIGKILL survivors + torch cuda cache flush)."
+        ),
+    )
+    preflight_force_gpu_clean_arg = DeclareLaunchArgument(
+        "preflight_force_gpu_clean",
+        default_value="false",
+        description=(
+            "If true, escalates preflight to 'force' mode regardless of preflight_mode. "
+            "Never runs 'fuser -k' on GPU device nodes."
+        ),
+    )
+    preflight_verbose_arg = DeclareLaunchArgument(
+        "preflight_verbose",
+        default_value="false",
+        description="Verbose preflight logging",
+    )
+
     # --- Camera backend arg ---
     camera_type_arg = DeclareLaunchArgument(
         "camera_type",
-        default_value="realsense",
+        default_value="basler",
         description="Camera backend: realsense or basler",
     )
 
@@ -74,7 +135,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     realsense_exposure_arg = DeclareLaunchArgument(
         "realsense_exposure",
-        default_value="120.0",
+        default_value="180.0",
         description="RealSense manual exposure (higher than previous default)",
     )
     realsense_auto_exposure_arg = DeclareLaunchArgument(
@@ -162,8 +223,14 @@ def generate_launch_description() -> LaunchDescription:
         ],
     )
 
+    preflight_action = OpaqueFunction(function=_executePreflight)
+
     return LaunchDescription(
         [
+            preflight_mode_arg,
+            preflight_force_gpu_clean_arg,
+            preflight_verbose_arg,
+            preflight_action,
             camera_type_arg,
             serial_port_arg,
             serial_baudrate_arg,
