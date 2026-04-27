@@ -103,38 +103,36 @@ class CameraNode(Node):
         self.declare_parameter("realsense_use_max_native_fps", False)
 
         # Retrieve common params
-        self.camera_type = self.get_parameter("camera_type").value
-        imgsz_width = self.get_parameter("imgsz_width").value
-        imgsz_height = self.get_parameter("imgsz_height").value
+        self.camera_type = self._get_string_parameter("camera_type")
+        imgsz_width = self._get_int_parameter("imgsz_width")
+        imgsz_height = self._get_int_parameter("imgsz_height")
 
         # ─── camera init ───
         try:
             if self.camera_type == "basler":
-                fps = self.get_parameter("basler_fps").value
-                queue_timeout_ms = self.get_parameter("basler_queue_timeout_ms").value
+                fps = self._get_int_parameter("basler_fps")
+                queue_timeout_ms = self._get_float_parameter("basler_queue_timeout_ms")
                 basler_options = BaslerInitOptions(
                     width=imgsz_width,
                     height=imgsz_height,
                     fps=fps,
-                    exposure_us=self.get_parameter("basler_exposure_us").value,
-                    gain_db=self.get_parameter("basler_gain_db").value,
-                    use_full_sensor=self.get_parameter("basler_use_full_sensor").value,
-                    centered_roi=self.get_parameter("basler_centered_roi").value,
-                    binning=max(1, int(self.get_parameter("basler_binning").value)),
-                    decimation=max(
-                        1, int(self.get_parameter("basler_decimation").value)
-                    ),
-                    auto_exposure=self.get_parameter("basler_auto_exposure").value,
-                    auto_gain=self.get_parameter("basler_auto_gain").value,
-                    auto_white_balance=self.get_parameter(
+                    exposure_us=self._get_float_parameter("basler_exposure_us"),
+                    gain_db=self._get_float_parameter("basler_gain_db"),
+                    use_full_sensor=self._get_bool_parameter("basler_use_full_sensor"),
+                    centered_roi=self._get_bool_parameter("basler_centered_roi"),
+                    binning=max(1, self._get_int_parameter("basler_binning")),
+                    decimation=max(1, self._get_int_parameter("basler_decimation")),
+                    auto_exposure=self._get_bool_parameter("basler_auto_exposure"),
+                    auto_gain=self._get_bool_parameter("basler_auto_gain"),
+                    auto_white_balance=self._get_bool_parameter(
                         "basler_auto_white_balance"
-                    ).value,
-                    balance_red=self.get_parameter("basler_balance_red").value,
-                    balance_green=self.get_parameter("basler_balance_green").value,
-                    balance_blue=self.get_parameter("basler_balance_blue").value,
-                    enable_grab_thread=self.get_parameter(
+                    ),
+                    balance_red=self._get_float_parameter("basler_balance_red"),
+                    balance_green=self._get_float_parameter("basler_balance_green"),
+                    balance_blue=self._get_float_parameter("basler_balance_blue"),
+                    enable_grab_thread=self._get_bool_parameter(
                         "basler_enable_grab_thread"
-                    ).value,
+                    ),
                     # Guard against very small timeouts that cause frame starvation under load.
                     queue_timeout_sec=max(1.0, float(queue_timeout_ms)) / 1000.0,
                 )
@@ -253,6 +251,26 @@ class CameraNode(Node):
         timer_period = 1.0 / self.fps if self.fps > 0 else 1.0 / 60.0
         self.timer = self.create_timer(timer_period, self.timer_callback)
         self.get_logger().info(f"Camera node publishing at {1 / timer_period:.2f} Hz.")
+
+    def _get_parameter_value(self, name):
+        return self.get_parameter(name).value
+
+    def _get_string_parameter(self, name):
+        return str(self._get_parameter_value(name)).strip().lower()
+
+    def _get_int_parameter(self, name):
+        return int(self._get_parameter_value(name))
+
+    def _get_float_parameter(self, name):
+        return float(self._get_parameter_value(name))
+
+    def _get_bool_parameter(self, name):
+        value = self._get_parameter_value(name)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes", "on")
+        return bool(value)
 
     def _log_realsense_streams(self):
         requested = getattr(self.camera, "requested_stream", None)
