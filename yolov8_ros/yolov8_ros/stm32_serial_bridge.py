@@ -86,6 +86,17 @@ def compute_shortest_angle_delta(prev_rad: float, next_rad: float) -> float:
     return math.atan2(math.sin(next_rad - prev_rad), math.cos(next_rad - prev_rad))
 
 
+def convert_attitude_triplet_degrees_to_radians(
+    yaw: float, pitch: float, roll: float
+) -> tuple[float, float, float]:
+    """Convert RX attitude values from degrees to radians."""
+    return (
+        math.radians(yaw),
+        math.radians(pitch),
+        math.radians(roll),
+    )
+
+
 def compute_crc8(data: bytes) -> int:
     crc: int = SEASKY_CRC8_INIT
     for byte_value in data:
@@ -308,6 +319,9 @@ class STM32SerialTransmitter:
                 )
                 if len(payload) == expected_payload_size:
                     yaw, pitch, roll = struct.unpack("<fff", payload)
+                    yaw, pitch, roll = convert_attitude_triplet_degrees_to_radians(
+                        yaw, pitch, roll
+                    )
                     enemy_color, work_mode, bullet_speed = parse_attitude_flags(
                         flags_register
                     )

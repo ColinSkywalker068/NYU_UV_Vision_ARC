@@ -5,11 +5,21 @@ import argparse
 import logging
 import random
 import struct
+import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import serial
+
+CURRENT_FILE_PATH: Path = Path(__file__).resolve()
+PACKAGE_ROOT_PATH: Path = CURRENT_FILE_PATH.parents[2]
+MODULE_ROOT_PATH: Path = PACKAGE_ROOT_PATH / "yolov8_ros"
+if str(PACKAGE_ROOT_PATH) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_ROOT_PATH))
+if str(MODULE_ROOT_PATH) not in sys.path:
+    sys.path.insert(0, str(MODULE_ROOT_PATH))
 
 try:
     from yolov8_ros.stm32_serial_bridge import (
