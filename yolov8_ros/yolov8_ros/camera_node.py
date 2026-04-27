@@ -1,3 +1,5 @@
+import faulthandler
+import sys
 import traceback
 from dataclasses import dataclass
 
@@ -85,7 +87,7 @@ class CameraNode(Node):
             "basler_balance_green", 1.0
         )  # (tune to remove yellow tint)
         self.declare_parameter("basler_balance_blue", 2.2)
-        self.declare_parameter("basler_enable_grab_thread", True)
+        self.declare_parameter("basler_enable_grab_thread", False)
         self.declare_parameter("basler_queue_timeout_ms", 50.0)
 
         # Realsense specific
@@ -323,6 +325,7 @@ class CameraNode(Node):
 
 
 def main(args=None):
+    faulthandler.enable(file=sys.stderr, all_threads=True)
     rclpy.init(args=args)
     camera_node = CameraNode()
     installShutdownHandlers(

@@ -219,9 +219,10 @@ class BaslerCamera:
         balance_red=1.6,
         balance_green=1.0,
         balance_blue=2.2,
-        enable_grab_thread=True,
+        enable_grab_thread=False,
         queue_timeout_sec=0.05,
         retrieve_timeout_ms=1000,
+        enable_transport_tuning=False,
     ):
         self.target_width = width
         self.target_height = height
@@ -239,6 +240,7 @@ class BaslerCamera:
         self.balance_green = float(balance_green)
         self.balance_blue = float(balance_blue)
         self.enable_grab_thread = bool(enable_grab_thread)
+        self.enable_transport_tuning = bool(enable_transport_tuning)
         self.queue_timeout_sec = max(0.001, float(queue_timeout_sec))
         self.retrieve_timeout_ms = max(1, int(retrieve_timeout_ms))
 
@@ -269,7 +271,8 @@ class BaslerCamera:
         self.camera.Open()
 
         self._configure_camera()
-        self._configure_transport()
+        if self.enable_transport_tuning:
+            self._configure_transport()
 
         # Build converter BEFORE grabbing starts so it is ready for the
         # first RetrieveResult call — avoids racing the grab thread.
