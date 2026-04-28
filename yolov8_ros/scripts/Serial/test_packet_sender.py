@@ -3,13 +3,11 @@
 # RX chooses the color
 import argparse
 import logging
-import random
 import struct
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import serial
 
@@ -25,7 +23,6 @@ try:
     from yolov8_ros.stm32_serial_bridge import (
         SEASKY_COMMAND_VISION_RECV,
         TARGET_STATE_CONVERGING,
-        TARGET_STATE_NO_TARGET,
         build_seasky_frame,
         build_vision_flags,
         parse_attitude_flags,
@@ -44,7 +41,6 @@ except ModuleNotFoundError:
     from stm32_serial_bridge import (  # type: ignore
         SEASKY_COMMAND_VISION_RECV,
         TARGET_STATE_CONVERGING,
-        TARGET_STATE_NO_TARGET,
         build_seasky_frame,
         build_vision_flags,
         parse_attitude_flags,
@@ -68,8 +64,8 @@ DEFAULT_PORT: str = "/dev/ttyUSB0"
 DEFAULT_BAUDRATE: int = 115200
 DEFAULT_RATE_HZ: float = 20.0
 DEFAULT_MESSAGE_COUNT: int = 0
-DEFAULT_MIN_ANGLE_DEGREES: float = -30.0
-DEFAULT_MAX_ANGLE_DEGREES: float = 30.0
+PITCH_STEP_MAGNITUDE: float = 0.05
+PITCH_STEP_DURATION_SECONDS: float = 2.0
 
 
 @dataclass(frozen=True)
@@ -87,17 +83,15 @@ def parse_positive_rate(rate_hz: float) -> float:
     return rate_hz
 
 
-def generate_random_sample(min_angle: float, max_angle: float) -> VisionTestSample:
-    has_target: bool = bool(random.getrandbits(1))
-    target_state: int = (
-        TARGET_STATE_CONVERGING if has_target else TARGET_STATE_NO_TARGET
-    )
+def generate_pitch_step_sample(elapsed_seconds: float) -> VisionTestSample:
+    step_index: int = int(elapsed_seconds / PITCH_STEP_DURATION_SECONDS)
+    pitch: float = PITCH_STEP_MAGNITUDE if step_index % 2 == 0 else -PITCH_STEP_MAGNITUDE
     return VisionTestSample(
-        yaw=random.uniform(min_angle, max_angle),
-        pitch=random.uniform(min_angle, max_angle),
-        fire_mode=random.randint(0, 3),
-        target_state=target_state,
-        target_type=random.randint(0, 15),
+        yaw=0.0,
+        pitch=pitch,
+        fire_mode=0,
+        target_state=TARGET_STATE_CONVERGING,
+        target_type=0,
     )
 
 
@@ -116,7 +110,7 @@ def build_packet(sample: VisionTestSample) -> bytes:
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Send randomized Seasky vision packets to STM32 over serial"
+        description="Send deterministic pitch step Seasky vision packets to STM32 over serial"
     )
     parser.add_argument(
         "--port", type=str, default=DEFAULT_PORT, help="Serial device path"
@@ -135,24 +129,6 @@ def parse_arguments() -> argparse.Namespace:
         type=int,
         default=DEFAULT_MESSAGE_COUNT,
         help="Number of packets to send (0 means infinite)",
-    )
-    parser.add_argument(
-        "--min_angle",
-        type=float,
-        default=DEFAULT_MIN_ANGLE_DEGREES,
-        help="Minimum random angle in degrees",
-    )
-    parser.add_argument(
-        "--max_angle",
-        type=float,
-        default=DEFAULT_MAX_ANGLE_DEGREES,
-        help="Maximum random angle in degrees",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=None,
-        help="Optional random seed for reproducible data",
     )
     parser.add_argument(
         "--verbose",
@@ -224,19 +200,11 @@ def execute_sender(
     baudrate: int,
     rate_hz: float,
     count: int,
-    min_angle: float,
-    max_angle: float,
-    seed: Optional[int],
     verbose: bool,
 ) -> None:
-    if min_angle > max_angle:
-        raise ValueError("min_angle must be less than or equal to max_angle")
     interval_seconds: float = 1.0 / parse_positive_rate(rate_hz)
     if count < 0:
         raise ValueError("count must be greater than or equal to 0")
-    if seed is not None:
-        random.seed(seed)
-        LOGGER.info("Using deterministic random seed: %d", seed)
     rx_buffer: bytearray = bytearray()
     rx_count: list[int] = [0]
     with serial.Serial(
@@ -255,12 +223,12 @@ def execute_sender(
             count,
         )
         message_index: int = 0
+        start_time_seconds: float = time.monotonic()
         while True:
             if count > 0 and message_index >= count:
                 break
-            sample: VisionTestSample = generate_random_sample(
-                min_angle=min_angle, max_angle=max_angle
-            )
+            elapsed_seconds: float = time.monotonic() - start_time_seconds
+            sample: VisionTestSample = generate_pitch_step_sample(elapsed_seconds)
             packet: bytes = build_packet(sample)
             bytes_written: int = serial_device.write(packet)
             serial_device.flush()
@@ -308,9 +276,6 @@ def main() -> None:
             baudrate=int(arguments.baudrate),
             rate_hz=float(arguments.rate_hz),
             count=int(arguments.count),
-            min_angle=float(arguments.min_angle),
-            max_angle=float(arguments.max_angle),
-            seed=arguments.seed,
             verbose=bool(arguments.verbose),
         )
     except KeyboardInterrupt:
