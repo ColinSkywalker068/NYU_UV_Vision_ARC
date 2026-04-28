@@ -135,17 +135,6 @@ class VisionLogSink(Protocol):
         ...
 
 
-class ConsoleVisionLogSink:
-    def __init__(self, node_logger) -> None:
-        self._node_logger = node_logger
-
-    def write_line(self, line: str) -> None:
-        self._node_logger.info(line)
-
-    def close(self) -> None:
-        return
-
-
 class FileVisionLogSink:
     def __init__(self, log_dir: str) -> None:
         os.makedirs(log_dir, exist_ok=True)
@@ -490,23 +479,17 @@ class YOLOv8Node(Node):
         self._obb_angle_msg = Float32()
 
     def _create_runtime_logger(self) -> VisionRuntimeLogger:
-        if self.show:
-            return VisionRuntimeLogger(ConsoleVisionLogSink(self.get_logger()))
         log_dir = _resolve_runtime_log_dir(self.runtime_log_dir)
         sink = FileVisionLogSink(log_dir)
-        self.get_logger().info(f"Headless runtime logs: {sink.path}")
+        self.get_logger().info(f"Runtime logs: {sink.path}")
         return VisionRuntimeLogger(sink)
 
     def _log_info(self, message: str) -> None:
         self.get_logger().info(message)
-        if self.show:
-            return
         self._runtime_logger.log_note("INFO", message)
 
     def _log_error(self, message: str) -> None:
         self.get_logger().error(message)
-        if self.show:
-            return
         self._runtime_logger.log_note("ERROR", message)
 
     # ------------------------------------------------------------------
