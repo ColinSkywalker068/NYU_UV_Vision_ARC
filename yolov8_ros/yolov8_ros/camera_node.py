@@ -84,9 +84,7 @@ class CameraNode(Node):
         self.declare_parameter("basler_auto_gain", False)
         self.declare_parameter("basler_auto_white_balance", False)
         self.declare_parameter("basler_balance_red", 1.0)  # neutral manual WB
-        self.declare_parameter(
-            "basler_balance_green", 1.0
-        )
+        self.declare_parameter("basler_balance_green", 1.0)
         self.declare_parameter("basler_balance_blue", 1.0)
         self.declare_parameter("basler_enable_grab_thread", True)
         self.declare_parameter("basler_enable_transport_tuning", True)
