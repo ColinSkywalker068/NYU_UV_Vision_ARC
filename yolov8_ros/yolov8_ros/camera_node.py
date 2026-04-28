@@ -3,6 +3,7 @@ import sys
 import traceback
 from dataclasses import dataclass
 
+import cv2
 import rclpy
 from cv_bridge import CvBridge
 from rclpy.node import Node
@@ -71,6 +72,7 @@ class CameraNode(Node):
         self.declare_parameter("camera_type", "basler")
         self.declare_parameter("imgsz_width", 640)
         self.declare_parameter("imgsz_height", 640)
+        self.declare_parameter("basler_rotate_180", True)
 
         # Basler specific
         self.declare_parameter("basler_exposure_us", 6000.0)
@@ -110,6 +112,10 @@ class CameraNode(Node):
         self.camera_type = self._get_string_parameter("camera_type")
         imgsz_width = self._get_int_parameter("imgsz_width")
         imgsz_height = self._get_int_parameter("imgsz_height")
+        self.basler_rotate_180 = bool(
+            self.camera_type == "basler"
+            and self._get_bool_parameter("basler_rotate_180")
+        )
 
         # ─── camera init ───
         try:
@@ -335,6 +341,8 @@ class CameraNode(Node):
         try:
             frame = self.camera.get_frame()
             if frame is not None:
+                if self.basler_rotate_180:
+                    frame = cv2.rotate(frame, cv2.ROTATE_180)
                 msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
                 msg.header.stamp = self.get_clock().now().to_msg()
                 msg.header.frame_id = self.camera_type
