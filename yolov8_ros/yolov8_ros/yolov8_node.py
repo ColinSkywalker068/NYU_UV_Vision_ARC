@@ -1024,12 +1024,18 @@ class YOLOv8Node(Node):
             2,
             cv2.LINE_AA,
         )
-        if not self._window_created:
-            cv2.namedWindow(self.vis_window_name, cv2.WINDOW_NORMAL)
-            self._window_created = True
-        view = preview_scale(vis_frame, PREVIEW_MAX_W, PREVIEW_MAX_H)
-        cv2.imshow(self.vis_window_name, view)
-        cv2.waitKey(1)
+        try:
+            if not self._window_created:
+                cv2.namedWindow(self.vis_window_name, cv2.WINDOW_NORMAL)
+                self._window_created = True
+            view = preview_scale(vis_frame, PREVIEW_MAX_W, PREVIEW_MAX_H)
+            cv2.imshow(self.vis_window_name, view)
+            cv2.waitKey(1)
+        except cv2.error as exc:
+            self.show = False
+            self._log_error(
+                f"OpenCV visualization disabled after window error: {exc}"
+            )
 
     # ------------------------------------------------------------------
     # Stage timing  (Item 4)
