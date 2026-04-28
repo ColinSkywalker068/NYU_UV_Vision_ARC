@@ -1,10 +1,12 @@
 import argparse
 import logging
 import math
+import os
 import struct
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
 
 import rclpy
@@ -21,6 +23,7 @@ except (ImportError, ValueError):
 
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+_VISION_LOG_DIRNAME = "vision_logs"
 
 # ─── seasky protocol constants ───
 # Protocol frame structure
@@ -79,6 +82,35 @@ class CliOverrides:
     serial_verbose: Optional[bool]
     fire_mode: Optional[int]
     target_type: Optional[int]
+
+
+class FileRuntimeLogSink:
+    def __init__(self, log_dir: str) -> None:
+        os.makedirs(log_dir, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._path = os.path.join(log_dir, f"vision_serial_runtime_{stamp}.log")
+        self._handle = open(self._path, "a", encoding="utf-8")
+
+    def write_line(self, line: str) -> None:
+        self._handle.write(f"{line}\n")
+        self._handle.flush()
+
+    def close(self) -> None:
+        if not self._handle.closed:
+            self._handle.close()
+
+    @property
+    def path(self) -> str:
+        return self._path
+
+
+def _resolve_runtime_log_dir(explicit_dir: str) -> str:
+    if explicit_dir:
+        return explicit_dir
+    env_dir = os.getenv("VISION_LOG_DIR", "").strip()
+    if env_dir:
+        return env_dir
+    return os.path.join(os.getcwd(), _VISION_LOG_DIRNAME)
 
 
 def compute_shortest_angle_delta(prev_rad: float, next_rad: float) -> float:
@@ -361,10 +393,12 @@ class STM32SerialBridgeNode(Node):
         self.declare_parameter("serial_port", "/dev/ttyUSB0")
         self.declare_parameter("serial_baudrate", 115200)
         self.declare_parameter("serial_verbose", False)
+        self.declare_parameter("runtime_log_dir", "")
         self.transmit_enable: bool = bool(self.get_parameter("transmit_enable").value)
         self.serial_port: str = str(self.get_parameter("serial_port").value)
         self.serial_baudrate: int = int(self.get_parameter("serial_baudrate").value)
         self.serial_verbose: bool = bool(self.get_parameter("serial_verbose").value)
+        self.runtime_log_dir: str = str(self.get_parameter("runtime_log_dir").value)
         self.declare_parameter("fire_mode", DEFAULT_FIRE_MODE)
         self.declare_parameter("target_type", DEFAULT_TARGET_TYPE)
         self.fire_mode: int = int(self.get_parameter("fire_mode").value)
@@ -409,6 +443,9 @@ class STM32SerialBridgeNode(Node):
         self._omega_yaw: float = 0.0
         self._omega_pitch: float = 0.0
         self.transmitter: Optional[STM32SerialTransmitter] = None
+        self._runtime_log_sink = FileRuntimeLogSink(
+            _resolve_runtime_log_dir(self.runtime_log_dir)
+        )
         if self.transmit_enable:
             self.transmitter = STM32SerialTransmitter(
                 port=self.serial_port,
@@ -440,6 +477,7 @@ class STM32SerialBridgeNode(Node):
                 self.serial_baudrate,
             )
         )
+        self.get_logger().info(f"Serial runtime logs: {self._runtime_log_sink.path}")
         self.get_logger().info(
             "Attitude rate fusion: enabled=%s damp_yaw=%.4f damp_pitch=%.4f "
             "latency_yaw_s=%.4f latency_pitch_s=%.4f filter_alpha=%.3f gap_reset_s=%.3f"
@@ -451,6 +489,48 @@ class STM32SerialBridgeNode(Node):
                 self.latency_compensation_pitch_s,
                 self.angular_rate_filter_alpha,
                 self.attitude_rate_gap_reset_s,
+            )
+        )
+
+    def _write_runtime_log(self, line: str) -> None:
+        timestamp = datetime.now().isoformat(timespec="milliseconds")
+        self._runtime_log_sink.write_line(f"ts={timestamp} {line}")
+
+    def _log_tx_event(self, yaw: float, pitch: float, success: bool) -> None:
+        flags_register = build_vision_flags(
+            fire_mode=self.fire_mode,
+            target_state=self.target_state,
+            target_type=self.target_type,
+        )
+        self._write_runtime_log(
+            " ".join(
+                (
+                    "kind=serial_tx",
+                    f"ok={int(success)}",
+                    f"yaw={yaw:.6f}",
+                    f"pitch={pitch:.6f}",
+                    f"fire_mode={self.fire_mode}",
+                    f"target_state={self.target_state}",
+                    f"target_type={self.target_type}",
+                    f"flags=0x{flags_register:04X}",
+                )
+            )
+        )
+
+    def _log_rx_event(self, frame_data: dict[str, int | float]) -> None:
+        self._write_runtime_log(
+            " ".join(
+                (
+                    "kind=serial_rx",
+                    f"yaw={float(frame_data['yaw']):.6f}",
+                    f"pitch={float(frame_data['pitch']):.6f}",
+                    f"roll={float(frame_data['roll']):.6f}",
+                    f"enemy_color={int(frame_data['enemy_color'])}",
+                    f"work_mode={int(frame_data['work_mode'])}",
+                    f"bullet_speed={int(frame_data['bullet_speed'])}",
+                    f"flags=0x{int(frame_data['flags_register']):04X}",
+                    f"cmd=0x{int(frame_data['command_id']):04X}",
+                )
             )
         )
 
@@ -516,13 +596,14 @@ class STM32SerialBridgeNode(Node):
             out_yaw, out_pitch = self._compensate_outgoing_angles(
                 self.latest_yaw, self.latest_pitch
             )
-            self.transmitter.send_vision_data(
+            success = self.transmitter.send_vision_data(
                 pitch=out_pitch,
                 yaw=out_yaw,
                 fire_mode=self.fire_mode,
                 target_state=self.target_state,
                 target_type=self.target_type,
             )
+            self._log_tx_event(yaw=out_yaw, pitch=out_pitch, success=success)
 
     def handle_angles(self, msg: Float32MultiArray) -> None:
         if len(msg.data) < 2:
@@ -539,13 +620,14 @@ class STM32SerialBridgeNode(Node):
         self.latest_yaw = yaw
         self.latest_pitch = pitch
         out_yaw, out_pitch = self._compensate_outgoing_angles(yaw, pitch)
-        self.transmitter.send_vision_data(
+        success = self.transmitter.send_vision_data(
             pitch=out_pitch,
             yaw=out_yaw,
             fire_mode=self.fire_mode,
             target_state=self.target_state,
             target_type=self.target_type,
         )
+        self._log_tx_event(yaw=out_yaw, pitch=out_pitch, success=success)
 
     def handle_rx_poll(self) -> None:
         if not self.transmit_enable:
@@ -571,6 +653,7 @@ class STM32SerialBridgeNode(Node):
                 int(frame_data["command_id"]),
             ]
             self.attitude_flags_publisher.publish(flags_msg)
+            self._log_rx_event(frame_data)
 
     def destroy_node(self) -> bool:
         if getattr(self, "_shutting_down", False):
@@ -582,6 +665,7 @@ class STM32SerialBridgeNode(Node):
                 self.transmitter.close()
             except Exception as err:
                 self.get_logger().warning(f"Serial close error (non-fatal): {err}")
+        self._runtime_log_sink.close()
         return super().destroy_node()
 
 
