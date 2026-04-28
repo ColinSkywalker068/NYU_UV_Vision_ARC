@@ -207,8 +207,8 @@ class BaslerCamera:
         width=640,
         height=480,
         fps=0,
-        exposure_us=8000.0,
-        gain_db=10.0,
+        exposure_us=6000.0,
+        gain_db=8.0,
         use_full_sensor=True,
         centered_roi=True,
         binning=1,
@@ -216,9 +216,9 @@ class BaslerCamera:
         auto_exposure=False,
         auto_gain=False,
         auto_white_balance=False,
-        balance_red=1.6,
+        balance_red=1.0,
         balance_green=1.0,
-        balance_blue=2.2,
+        balance_blue=1.0,
         enable_grab_thread=True,
         queue_timeout_sec=0.05,
         retrieve_timeout_ms=1000,
@@ -468,6 +468,9 @@ class BaslerCamera:
         }
         for setting_name, getter in runtime_nodes.items():
             _record_setting(self.applied_settings, setting_name, getter)
+        self.applied_settings["BalanceRatioRed"] = self.balance_red
+        self.applied_settings["BalanceRatioGreen"] = self.balance_green
+        self.applied_settings["BalanceRatioBlue"] = self.balance_blue
         self.applied_settings["enable_grab_thread"] = self.enable_grab_thread
         self.applied_settings["enable_transport_tuning"] = self.enable_transport_tuning
 

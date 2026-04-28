@@ -25,8 +25,8 @@ Override defaults:
 
 ```bash
 ros2 launch yolov8_ros stm.launch.py \
-    basler_exposure_us:=8000.0 \
-    basler_gain_db:=10.0 \
+    basler_exposure_us:=6000.0 \
+    basler_gain_db:=8.0 \
     basler_auto_exposure:=false \
     basler_enable_grab_thread:=true \
     serial_port:=/dev/ttyACM0 \

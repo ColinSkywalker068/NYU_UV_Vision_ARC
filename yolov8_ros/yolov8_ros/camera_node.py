@@ -73,8 +73,8 @@ class CameraNode(Node):
         self.declare_parameter("imgsz_height", 640)
 
         # Basler specific
-        self.declare_parameter("basler_exposure_us", 8000.0)
-        self.declare_parameter("basler_gain_db", 10.0)
+        self.declare_parameter("basler_exposure_us", 6000.0)
+        self.declare_parameter("basler_gain_db", 8.0)
         self.declare_parameter("basler_fps", 60)
         self.declare_parameter("basler_use_full_sensor", True)
         self.declare_parameter("basler_centered_roi", True)
@@ -83,11 +83,11 @@ class CameraNode(Node):
         self.declare_parameter("basler_auto_exposure", False)
         self.declare_parameter("basler_auto_gain", False)
         self.declare_parameter("basler_auto_white_balance", False)
-        self.declare_parameter("basler_balance_red", 1.6)  # R/G/B channel gain
+        self.declare_parameter("basler_balance_red", 1.0)  # neutral manual WB
         self.declare_parameter(
             "basler_balance_green", 1.0
-        )  # (tune to remove yellow tint)
-        self.declare_parameter("basler_balance_blue", 2.2)
+        )
+        self.declare_parameter("basler_balance_blue", 1.0)
         self.declare_parameter("basler_enable_grab_thread", True)
         self.declare_parameter("basler_enable_transport_tuning", True)
         self.declare_parameter("basler_queue_timeout_ms", 50.0)
@@ -316,6 +316,9 @@ class CameraNode(Node):
             "GainAuto",
             "Gain",
             "BalanceWhiteAuto",
+            "BalanceRatioRed",
+            "BalanceRatioGreen",
+            "BalanceRatioBlue",
             "DeviceLinkThroughputLimitMode",
             "enable_grab_thread",
             "enable_transport_tuning",

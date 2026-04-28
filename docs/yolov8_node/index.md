@@ -59,8 +59,8 @@ Captures frames from either a **Basler** (pypylon) or **Intel RealSense** camera
 | `imgsz_width` | int | `640` | Published image width |
 | `imgsz_height` | int | `640` | Published image height |
 | **Basler-specific** | | | |
-| `basler_exposure_us` | float | `8000.0` | Exposure in microseconds |
-| `basler_gain_db` | float | `10.0` | Gain in dB |
+| `basler_exposure_us` | float | `6000.0` | Exposure in microseconds |
+| `basler_gain_db` | float | `8.0` | Gain in dB |
 | `basler_fps` | int | `60` | Target capture FPS |
 | `basler_use_full_sensor` | bool | `True` | Use full sensor area (ignores ROI width/height) |
 | `basler_centered_roi` | bool | `True` | Center ROI when not using full sensor |
@@ -347,8 +347,8 @@ Launches **3 nodes**: `camera_node` (Basler), `yolov8_modular_node`, `stm32_seri
 | `basler_width` | `640` | Published/inference image width |
 | `basler_height` | `640` | Published/inference image height |
 | `basler_fps` | `60` | Basler FPS |
-| `basler_exposure_us` | `8000.0` | Basler exposure (µs) |
-| `basler_gain_db` | `10.0` | Basler gain (dB) |
+| `basler_exposure_us` | `6000.0` | Basler exposure (µs) |
+| `basler_gain_db` | `8.0` | Basler gain (dB) |
 | `basler_auto_exposure` | `false` | Enable Basler auto exposure |
 | `basler_auto_gain` | `false` | Enable Basler auto gain |
 | `basler_auto_white_balance` | `false` | Enable Basler auto white balance |

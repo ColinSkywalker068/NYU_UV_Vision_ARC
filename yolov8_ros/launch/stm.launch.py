@@ -108,12 +108,12 @@ def generate_launch_description() -> LaunchDescription:
     )
     basler_exposure_arg = DeclareLaunchArgument(
         "basler_exposure_us",
-        default_value="8000.0",
+        default_value="6000.0",
         description="Basler exposure in microseconds",
     )
     basler_gain_arg = DeclareLaunchArgument(
         "basler_gain_db",
-        default_value="10.0",
+        default_value="8.0",
         description="Basler gain in dB",
     )
     basler_auto_exposure_arg = DeclareLaunchArgument(
