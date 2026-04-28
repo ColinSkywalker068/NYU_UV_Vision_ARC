@@ -207,8 +207,8 @@ class BaslerCamera:
         width=640,
         height=480,
         fps=0,
-        exposure_us=5000.0,
-        gain_db=5.0,
+        exposure_us=8000.0,
+        gain_db=10.0,
         use_full_sensor=True,
         centered_roi=True,
         binning=1,
@@ -219,10 +219,10 @@ class BaslerCamera:
         balance_red=1.6,
         balance_green=1.0,
         balance_blue=2.2,
-        enable_grab_thread=False,
+        enable_grab_thread=True,
         queue_timeout_sec=0.05,
         retrieve_timeout_ms=1000,
-        enable_transport_tuning=False,
+        enable_transport_tuning=True,
     ):
         self.target_width = width
         self.target_height = height
@@ -273,6 +273,7 @@ class BaslerCamera:
         self._configure_camera()
         if self.enable_transport_tuning:
             self._configure_transport()
+        self._record_runtime_settings()
 
         # Build converter BEFORE grabbing starts so it is ready for the
         # first RetrieveResult call — avoids racing the grab thread.
@@ -445,6 +446,30 @@ class BaslerCamera:
             )
         except Exception:
             self.actual_fps = 0.0
+
+    def _record_runtime_settings(self):
+        camera = self.camera
+        if camera is None:
+            return
+        runtime_nodes = {
+            "ExposureAuto": lambda: camera.ExposureAuto.GetValue(),
+            "ExposureTime": lambda: camera.ExposureTime.GetValue(),
+            "GainAuto": lambda: camera.GainAuto.GetValue(),
+            "Gain": lambda: camera.Gain.GetValue(),
+            "BalanceWhiteAuto": lambda: camera.BalanceWhiteAuto.GetValue(),
+            "ResultingFrameRate": lambda: camera.ResultingFrameRate.GetValue(),
+            "AcquisitionFrameRateEnable": (
+                lambda: camera.AcquisitionFrameRateEnable.GetValue()
+            ),
+            "AcquisitionFrameRate": lambda: camera.AcquisitionFrameRate.GetValue(),
+            "DeviceLinkThroughputLimitMode": (
+                lambda: camera.DeviceLinkThroughputLimitMode.GetValue()
+            ),
+        }
+        for setting_name, getter in runtime_nodes.items():
+            _record_setting(self.applied_settings, setting_name, getter)
+        self.applied_settings["enable_grab_thread"] = self.enable_grab_thread
+        self.applied_settings["enable_transport_tuning"] = self.enable_transport_tuning
 
     def _configure_transport(self):
         camera = self.camera

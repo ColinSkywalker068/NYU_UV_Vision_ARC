@@ -43,6 +43,7 @@ class BaslerInitOptions:
     balance_green: float
     balance_blue: float
     enable_grab_thread: bool
+    enable_transport_tuning: bool
     queue_timeout_sec: float
 
 
@@ -72,8 +73,8 @@ class CameraNode(Node):
         self.declare_parameter("imgsz_height", 640)
 
         # Basler specific
-        self.declare_parameter("basler_exposure_us", 5000.0)
-        self.declare_parameter("basler_gain_db", 5.0)
+        self.declare_parameter("basler_exposure_us", 8000.0)
+        self.declare_parameter("basler_gain_db", 10.0)
         self.declare_parameter("basler_fps", 60)
         self.declare_parameter("basler_use_full_sensor", True)
         self.declare_parameter("basler_centered_roi", True)
@@ -87,7 +88,8 @@ class CameraNode(Node):
             "basler_balance_green", 1.0
         )  # (tune to remove yellow tint)
         self.declare_parameter("basler_balance_blue", 2.2)
-        self.declare_parameter("basler_enable_grab_thread", False)
+        self.declare_parameter("basler_enable_grab_thread", True)
+        self.declare_parameter("basler_enable_transport_tuning", True)
         self.declare_parameter("basler_queue_timeout_ms", 50.0)
 
         # Realsense specific
@@ -135,6 +137,9 @@ class CameraNode(Node):
                     enable_grab_thread=self._get_bool_parameter(
                         "basler_enable_grab_thread"
                     ),
+                    enable_transport_tuning=self._get_bool_parameter(
+                        "basler_enable_transport_tuning"
+                    ),
                     # Guard against very small timeouts that cause frame starvation under load.
                     queue_timeout_sec=max(1.0, float(queue_timeout_ms)) / 1000.0,
                 )
@@ -155,6 +160,7 @@ class CameraNode(Node):
                     balance_green=basler_options.balance_green,
                     balance_blue=basler_options.balance_blue,
                     enable_grab_thread=basler_options.enable_grab_thread,
+                    enable_transport_tuning=basler_options.enable_transport_tuning,
                     queue_timeout_sec=basler_options.queue_timeout_sec,
                 )
                 self.fps = float(fps)
@@ -229,6 +235,7 @@ class CameraNode(Node):
                 if self.fps <= 0.0:
                     resulting_fps = float(getattr(self.camera, "actual_fps", 0.0))
                     self.fps = resulting_fps if resulting_fps > 0.0 else 60.0
+                self._log_basler_settings()
 
             self.get_logger().info(
                 f"{self.camera_type.capitalize()} Camera Initialized."
@@ -292,6 +299,32 @@ class CameraNode(Node):
             self.get_logger().info(
                 f"RealSense active color FPS unavailable; using fallback {fallback:.2f} FPS"
             )
+
+    def _log_basler_settings(self):
+        settings = getattr(self.camera, "get_applied_settings", lambda: {})()
+        ordered_keys = [
+            "Width",
+            "Height",
+            "OffsetX",
+            "OffsetY",
+            "PixelFormat",
+            "ResultingFrameRate",
+            "AcquisitionFrameRateEnable",
+            "AcquisitionFrameRate",
+            "ExposureAuto",
+            "ExposureTime",
+            "GainAuto",
+            "Gain",
+            "BalanceWhiteAuto",
+            "DeviceLinkThroughputLimitMode",
+            "enable_grab_thread",
+            "enable_transport_tuning",
+        ]
+        for key in ordered_keys:
+            if key not in settings and key == "ResultingFrameRate":
+                settings[key] = float(getattr(self.camera, "actual_fps", 0.0))
+            if key in settings:
+                self.get_logger().info(f"Basler {key}: {settings[key]}")
 
     def timer_callback(self):
         if self._shutting_down:

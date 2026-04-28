@@ -27,9 +27,15 @@ Override defaults:
 ros2 launch yolov8_ros stm.launch.py \
     basler_exposure_us:=8000.0 \
     basler_gain_db:=10.0 \
+    basler_auto_exposure:=false \
+    basler_enable_grab_thread:=true \
     serial_port:=/dev/ttyACM0 \
     serial_verbose:=true
 ```
+
+Notes:
+- `basler_width` / `basler_height` in `stm.launch.py` feed the published image size for the ROS pipeline.
+- The STM launch keeps `basler_use_full_sensor:=True`, so these values are not a hardware ROI crop unless that parameter is changed in a different launch path.
 
 **Nodes launched:** `camera_node` (basler) → `yolov8_modular_node` → `stm32_serial_bridge`
 

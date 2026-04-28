@@ -94,12 +94,12 @@ def generate_launch_description() -> LaunchDescription:
     basler_width_arg = DeclareLaunchArgument(
         "basler_width",
         default_value="640",
-        description="Basler frame width",
+        description="Published/inference image width for the Basler pipeline",
     )
     basler_height_arg = DeclareLaunchArgument(
         "basler_height",
         default_value="640",
-        description="Basler frame height",
+        description="Published/inference image height for the Basler pipeline",
     )
     basler_fps_arg = DeclareLaunchArgument(
         "basler_fps",
@@ -108,13 +108,38 @@ def generate_launch_description() -> LaunchDescription:
     )
     basler_exposure_arg = DeclareLaunchArgument(
         "basler_exposure_us",
-        default_value="5000.0",
+        default_value="8000.0",
         description="Basler exposure in microseconds",
     )
     basler_gain_arg = DeclareLaunchArgument(
         "basler_gain_db",
-        default_value="5.0",
+        default_value="10.0",
         description="Basler gain in dB",
+    )
+    basler_auto_exposure_arg = DeclareLaunchArgument(
+        "basler_auto_exposure",
+        default_value="false",
+        description="Enable Basler auto exposure",
+    )
+    basler_auto_gain_arg = DeclareLaunchArgument(
+        "basler_auto_gain",
+        default_value="false",
+        description="Enable Basler auto gain",
+    )
+    basler_auto_white_balance_arg = DeclareLaunchArgument(
+        "basler_auto_white_balance",
+        default_value="false",
+        description="Enable Basler auto white balance",
+    )
+    basler_enable_grab_thread_arg = DeclareLaunchArgument(
+        "basler_enable_grab_thread",
+        default_value="true",
+        description="Use background latest-frame Basler grabbing",
+    )
+    basler_enable_transport_tuning_arg = DeclareLaunchArgument(
+        "basler_enable_transport_tuning",
+        default_value="true",
+        description="Apply Basler USB transport/buffer tuning",
     )
 
     # --- RealSense camera args ---
@@ -178,6 +203,17 @@ def generate_launch_description() -> LaunchDescription:
                 "basler_fps": LaunchConfiguration("basler_fps"),
                 "basler_exposure_us": LaunchConfiguration("basler_exposure_us"),
                 "basler_gain_db": LaunchConfiguration("basler_gain_db"),
+                "basler_auto_exposure": LaunchConfiguration("basler_auto_exposure"),
+                "basler_auto_gain": LaunchConfiguration("basler_auto_gain"),
+                "basler_auto_white_balance": LaunchConfiguration(
+                    "basler_auto_white_balance"
+                ),
+                "basler_enable_grab_thread": LaunchConfiguration(
+                    "basler_enable_grab_thread"
+                ),
+                "basler_enable_transport_tuning": LaunchConfiguration(
+                    "basler_enable_transport_tuning"
+                ),
                 "basler_use_full_sensor": True,
                 "basler_centered_roi": True,
                 "realsense_width": LaunchConfiguration("realsense_width"),
@@ -240,6 +276,11 @@ def generate_launch_description() -> LaunchDescription:
             basler_fps_arg,
             basler_exposure_arg,
             basler_gain_arg,
+            basler_auto_exposure_arg,
+            basler_auto_gain_arg,
+            basler_auto_white_balance_arg,
+            basler_enable_grab_thread_arg,
+            basler_enable_transport_tuning_arg,
             realsense_width_arg,
             realsense_height_arg,
             realsense_fps_arg,
