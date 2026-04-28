@@ -85,7 +85,9 @@ def parse_positive_rate(rate_hz: float) -> float:
 
 def generate_pitch_step_sample(elapsed_seconds: float) -> VisionTestSample:
     step_index: int = int(elapsed_seconds / PITCH_STEP_DURATION_SECONDS)
-    pitch: float = PITCH_STEP_MAGNITUDE if step_index % 2 == 0 else -PITCH_STEP_MAGNITUDE
+    pitch: float = (
+        PITCH_STEP_MAGNITUDE if step_index % 2 == 0 else -PITCH_STEP_MAGNITUDE
+    )
     return VisionTestSample(
         yaw=0.0,
         pitch=pitch,
