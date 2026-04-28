@@ -108,7 +108,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     basler_exposure_arg = DeclareLaunchArgument(
         "basler_exposure_us",
-        default_value="6000.0",
+        default_value="3000.0",
         description="Basler exposure in microseconds",
     )
     basler_gain_arg = DeclareLaunchArgument(
@@ -128,8 +128,13 @@ def generate_launch_description() -> LaunchDescription:
     )
     basler_auto_white_balance_arg = DeclareLaunchArgument(
         "basler_auto_white_balance",
-        default_value="false",
+        default_value="true",
         description="Enable Basler auto white balance",
+    )
+    basler_rotate_180_arg = DeclareLaunchArgument(
+        "basler_rotate_180",
+        default_value="true",
+        description="Rotate Basler frames by 180 degrees before publish",
     )
     basler_enable_grab_thread_arg = DeclareLaunchArgument(
         "basler_enable_grab_thread",
@@ -208,6 +213,7 @@ def generate_launch_description() -> LaunchDescription:
                 "basler_auto_white_balance": LaunchConfiguration(
                     "basler_auto_white_balance"
                 ),
+                "basler_rotate_180": LaunchConfiguration("basler_rotate_180"),
                 "basler_enable_grab_thread": LaunchConfiguration(
                     "basler_enable_grab_thread"
                 ),
@@ -279,6 +285,7 @@ def generate_launch_description() -> LaunchDescription:
             basler_auto_exposure_arg,
             basler_auto_gain_arg,
             basler_auto_white_balance_arg,
+            basler_rotate_180_arg,
             basler_enable_grab_thread_arg,
             basler_enable_transport_tuning_arg,
             realsense_width_arg,

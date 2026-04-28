@@ -75,7 +75,7 @@ class CameraNode(Node):
         self.declare_parameter("basler_rotate_180", True)
 
         # Basler specific
-        self.declare_parameter("basler_exposure_us", 6000.0)
+        self.declare_parameter("basler_exposure_us", 3000.0)
         self.declare_parameter("basler_gain_db", 8.0)
         self.declare_parameter("basler_fps", 60)
         self.declare_parameter("basler_use_full_sensor", True)
@@ -84,7 +84,7 @@ class CameraNode(Node):
         self.declare_parameter("basler_decimation", 1)
         self.declare_parameter("basler_auto_exposure", False)
         self.declare_parameter("basler_auto_gain", False)
-        self.declare_parameter("basler_auto_white_balance", False)
+        self.declare_parameter("basler_auto_white_balance", True)
         self.declare_parameter("basler_balance_red", 1.0)  # neutral manual WB
         self.declare_parameter("basler_balance_green", 1.0)
         self.declare_parameter("basler_balance_blue", 1.0)
