@@ -1016,9 +1016,7 @@ class YOLOv8Node(Node):
             cv2.waitKey(1)
         except cv2.error as exc:
             self.show = False
-            self._log_error(
-                f"OpenCV visualization disabled after window error: {exc}"
-            )
+            self._log_error(f"OpenCV visualization disabled after window error: {exc}")
 
     # ------------------------------------------------------------------
     # Stage timing  (Item 4)
