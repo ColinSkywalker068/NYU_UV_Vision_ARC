@@ -59,6 +59,9 @@ def generate_launch_description() -> LaunchDescription:
     show_arg = DeclareLaunchArgument(
         "show", default_value="true", description="Show OpenCV visualization window"
     )
+    benchmark_arg = DeclareLaunchArgument(
+        "benchmark", default_value="false", description="Enable benchmark CSV logging"
+    )
 
     # --- Nodes ---
     camera_node = Node(
@@ -90,6 +93,7 @@ def generate_launch_description() -> LaunchDescription:
                 "show": LaunchConfiguration("show"),
                 "use_kalman": LaunchConfiguration("use_kalman"),
                 "tracker_type": LaunchConfiguration("tracker_type"),
+                "benchmark": LaunchConfiguration("benchmark"),
             }
         ],
     )
@@ -122,6 +126,7 @@ def generate_launch_description() -> LaunchDescription:
             use_kalman_arg,
             tracker_type_arg,
             show_arg,
+            benchmark_arg,
             camera_node,
             yolov8_node,
             stm_bridge_node,

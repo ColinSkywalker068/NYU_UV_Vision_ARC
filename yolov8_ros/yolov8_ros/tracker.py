@@ -224,3 +224,4 @@ class TrackerWrapper:
     def __init__(self, tracker):
         self.tracker = tracker
         self.lost_frames = 0
+        self.last_pred = None  # (px, py) from last frame's predict()

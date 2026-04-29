@@ -42,6 +42,9 @@ def generate_launch_description() -> LaunchDescription:
     tracker_type_arg = DeclareLaunchArgument(
         "tracker_type", default_value="lkf", description="Tracker type: lkf or ukf"
     )
+    benchmark_arg = DeclareLaunchArgument(
+        "benchmark", default_value="false", description="Enable benchmark CSV logging"
+    )
 
     hfov_arg = DeclareLaunchArgument(
         "hfov_degrees",
@@ -84,6 +87,7 @@ def generate_launch_description() -> LaunchDescription:
                 "show": LaunchConfiguration("show"),
                 "use_kalman": LaunchConfiguration("use_kalman"),
                 "tracker_type": LaunchConfiguration("tracker_type"),
+                "benchmark": LaunchConfiguration("benchmark"),
                 "enable_tracking": True,
                 "hfov_degrees": LaunchConfiguration("hfov_degrees"),
                 "vfov_degrees": LaunchConfiguration("vfov_degrees"),
@@ -105,6 +109,7 @@ def generate_launch_description() -> LaunchDescription:
             show_arg,
             use_kalman_arg,
             tracker_type_arg,
+            benchmark_arg,
             hfov_arg,
             vfov_arg,
             camera_node,

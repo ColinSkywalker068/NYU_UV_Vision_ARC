@@ -1,6 +1,9 @@
 import rclpy
 import sys
 import argparse
+import csv
+import os
+from datetime import datetime
 from rclpy.parameter import Parameter
 from rclpy.node import Node
 from std_msgs.msg import Int32, Int32MultiArray, Bool, Float32MultiArray
@@ -165,6 +168,8 @@ class YOLOv8Node(Node):
         self.declare_parameter("tracker_type", "lkf")
         self.declare_parameter("enable_color_verification", False)
 
+        self.declare_parameter("benchmark", False)
+
         self.declare_parameter("hfov_degrees", 79.2)
         self.declare_parameter("vfov_degrees", 63.78)
         self.declare_parameter("vis_window_name", "YOLOv8 Modular Node")
@@ -188,9 +193,28 @@ class YOLOv8Node(Node):
             "enable_color_verification"
         ).value
 
+        self.benchmark = self.get_parameter("benchmark").value
+
         self.hfov_rad = math.radians(self.get_parameter("hfov_degrees").value)
         self.vfov_rad = math.radians(self.get_parameter("vfov_degrees").value)
         self.vis_window_name = self.get_parameter("vis_window_name").value
+
+        self._bench_csv = None
+        self._bench_writer = None
+        self._bench_frame = 0
+        if self.benchmark:
+            bench_dir = os.path.expanduser("~/CV_Detection/benchmark_logs")
+            os.makedirs(bench_dir, exist_ok=True)
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            fname = f"{bench_dir}/bench_{self.tracker_type}_{stamp}.csv"
+            self._bench_csv = open(fname, "w", newline="")
+            self._bench_writer = csv.writer(self._bench_csv)
+            self._bench_writer.writerow([
+                "frame", "tracker_type", "track_id",
+                "pred_x", "pred_y", "actual_x", "actual_y",
+                "error_px", "dt", "fps"
+            ])
+            self.get_logger().info(f"Benchmark logging to: {fname}")
 
         self.target_class = BLUE_CLASS
         self.active_trackers = {}
@@ -365,9 +389,28 @@ class YOLOv8Node(Node):
                                             trk
                                         )
                                     else:
-                                        self.active_trackers[track_id].tracker.update(
-                                            cx, cy, w, h
-                                        )
+                                        wrapper = self.active_trackers[track_id]
+                                        if (
+                                            self.benchmark
+                                            and wrapper.last_pred is not None
+                                        ):
+                                            px, py = wrapper.last_pred
+                                            err = math.sqrt(
+                                                (px - cx) ** 2 + (py - cy) ** 2
+                                            )
+                                            self._bench_writer.writerow([
+                                                self._bench_frame,
+                                                self.tracker_type,
+                                                track_id,
+                                                f"{px:.2f}",
+                                                f"{py:.2f}",
+                                                f"{cx:.2f}",
+                                                f"{cy:.2f}",
+                                                f"{err:.2f}",
+                                                f"{dt:.4f}",
+                                                f"{self._fps_ema:.1f}",
+                                            ])
+                                        wrapper.tracker.update(cx, cy, w, h)
                                     self.active_trackers[track_id].lost_frames = 0
                             else:
                                 if best_direct_bbox is None:
@@ -383,6 +426,8 @@ class YOLOv8Node(Node):
                         continue
                     if not published_this_frame and wrapper.lost_frames == 0:
                         px, py = wrapper.tracker.predict(dt)
+                        if self.benchmark:
+                            wrapper.last_pred = (px, py)
                         state = wrapper.tracker.kf.statePost.flatten()
                         vx, vy = state[2], state[3]
                         ax, ay = state[4], state[5]
@@ -408,6 +453,11 @@ class YOLOv8Node(Node):
                     x1, y1, x2, y2 = best_direct_bbox
                     self.publish_bbox_and_angles(x1, y1, x2, y2, True)
                     published_this_frame = True
+
+            if self.benchmark:
+                self._bench_frame += 1
+                if self._bench_frame % 100 == 0:
+                    self._bench_csv.flush()
 
             if not published_this_frame:
                 c = self.imgsz_width // 2
@@ -445,6 +495,12 @@ class YOLOv8Node(Node):
         if getattr(self, "_shutting_down", False):
             return
         self._shutting_down = True
+        try:
+            if self._bench_csv is not None:
+                self._bench_csv.close()
+                self.get_logger().info("Benchmark CSV closed.")
+        except Exception:
+            pass
         try:
             cv2.destroyAllWindows()
         except Exception:
