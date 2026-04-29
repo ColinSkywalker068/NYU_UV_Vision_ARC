@@ -209,11 +209,20 @@ class YOLOv8Node(Node):
             fname = f"{bench_dir}/bench_{self.tracker_type}_{stamp}.csv"
             self._bench_csv = open(fname, "w", newline="")
             self._bench_writer = csv.writer(self._bench_csv)
-            self._bench_writer.writerow([
-                "frame", "tracker_type", "track_id",
-                "pred_x", "pred_y", "actual_x", "actual_y",
-                "error_px", "dt", "fps"
-            ])
+            self._bench_writer.writerow(
+                [
+                    "frame",
+                    "tracker_type",
+                    "track_id",
+                    "pred_x",
+                    "pred_y",
+                    "actual_x",
+                    "actual_y",
+                    "error_px",
+                    "dt",
+                    "fps",
+                ]
+            )
             self.get_logger().info(f"Benchmark logging to: {fname}")
 
         self.target_class = BLUE_CLASS
@@ -398,18 +407,20 @@ class YOLOv8Node(Node):
                                             err = math.sqrt(
                                                 (px - cx) ** 2 + (py - cy) ** 2
                                             )
-                                            self._bench_writer.writerow([
-                                                self._bench_frame,
-                                                self.tracker_type,
-                                                track_id,
-                                                f"{px:.2f}",
-                                                f"{py:.2f}",
-                                                f"{cx:.2f}",
-                                                f"{cy:.2f}",
-                                                f"{err:.2f}",
-                                                f"{dt:.4f}",
-                                                f"{self._fps_ema:.1f}",
-                                            ])
+                                            self._bench_writer.writerow(
+                                                [
+                                                    self._bench_frame,
+                                                    self.tracker_type,
+                                                    track_id,
+                                                    f"{px:.2f}",
+                                                    f"{py:.2f}",
+                                                    f"{cx:.2f}",
+                                                    f"{cy:.2f}",
+                                                    f"{err:.2f}",
+                                                    f"{dt:.4f}",
+                                                    f"{self._fps_ema:.1f}",
+                                                ]
+                                            )
                                         wrapper.tracker.update(cx, cy, w, h)
                                     self.active_trackers[track_id].lost_frames = 0
                             else:
