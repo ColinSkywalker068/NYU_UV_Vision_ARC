@@ -31,8 +31,6 @@ namespace yolov8_ros_cpp
 namespace
 {
 
-constexpr float kPaddingValue = 114.0F / 255.0F;
-
 template<typename T>
 T clamp_value(T value, T lo, T hi)
 {
@@ -116,53 +114,29 @@ void preprocess_bgr_frame(
   }
 
   metadata = make_letterbox_metadata(packet.width(), packet.height(), dst_w, dst_h);
-  const int plane = dst_w * dst_h;
-  std::fill_n(host_input, plane * 3, kPaddingValue);
-
   const int resized_w = static_cast<int>(packet.width() * metadata.scale);
   const int resized_h = static_cast<int>(packet.height() * metadata.scale);
-  const float inv_scale = static_cast<float>(1.0 / metadata.scale);
+  cv::Mat resized;
+  cv::resize(packet.frame, resized, cv::Size(resized_w, resized_h), 0.0, 0.0, cv::INTER_LINEAR);
 
-  for (int y = 0; y < resized_h; ++y) {
-    const float src_y = ((static_cast<float>(y) + 0.5F) * inv_scale) - 0.5F;
-    const int y0 = clamp_value(static_cast<int>(std::floor(src_y)), 0, packet.height() - 1);
-    const int y1 = clamp_value(y0 + 1, 0, packet.height() - 1);
-    const float wy = src_y - static_cast<float>(y0);
+  cv::Mat padded(dst_h, dst_w, CV_8UC3, cv::Scalar(114, 114, 114));
+  resized.copyTo(padded(cv::Rect(metadata.pad_x, metadata.pad_y, resized_w, resized_h)));
 
-    for (int x = 0; x < resized_w; ++x) {
-      const float src_x = ((static_cast<float>(x) + 0.5F) * inv_scale) - 0.5F;
-      const int x0 = clamp_value(static_cast<int>(std::floor(src_x)), 0, packet.width() - 1);
-      const int x1 = clamp_value(x0 + 1, 0, packet.width() - 1);
-      const float wx = src_x - static_cast<float>(x0);
+  cv::Mat rgb;
+  cv::cvtColor(padded, rgb, cv::COLOR_BGR2RGB);
 
-      const auto & p00 = packet.frame.at<cv::Vec3b>(y0, x0);
-      const auto & p01 = packet.frame.at<cv::Vec3b>(y0, x1);
-      const auto & p10 = packet.frame.at<cv::Vec3b>(y1, x0);
-      const auto & p11 = packet.frame.at<cv::Vec3b>(y1, x1);
+  cv::Mat rgb_float;
+  rgb.convertTo(rgb_float, CV_32FC3, 1.0 / 255.0);
 
-      const float blue =
-        ((1.0F - wx) * (1.0F - wy) * static_cast<float>(p00[0])) +
-        (wx * (1.0F - wy) * static_cast<float>(p01[0])) +
-        ((1.0F - wx) * wy * static_cast<float>(p10[0])) +
-        (wx * wy * static_cast<float>(p11[0]));
-      const float green =
-        ((1.0F - wx) * (1.0F - wy) * static_cast<float>(p00[1])) +
-        (wx * (1.0F - wy) * static_cast<float>(p01[1])) +
-        ((1.0F - wx) * wy * static_cast<float>(p10[1])) +
-        (wx * wy * static_cast<float>(p11[1]));
-      const float red =
-        ((1.0F - wx) * (1.0F - wy) * static_cast<float>(p00[2])) +
-        (wx * (1.0F - wy) * static_cast<float>(p01[2])) +
-        ((1.0F - wx) * wy * static_cast<float>(p10[2])) +
-        (wx * wy * static_cast<float>(p11[2]));
+  std::array<cv::Mat, 3> channels;
+  cv::split(rgb_float, channels.data());
 
-      const int dst_x = x + metadata.pad_x;
-      const int dst_y = y + metadata.pad_y;
-      const int index = (dst_y * dst_w) + dst_x;
-      host_input[index] = red / 255.0F;
-      host_input[plane + index] = green / 255.0F;
-      host_input[(2 * plane) + index] = blue / 255.0F;
-    }
+  const int plane = dst_w * dst_h;
+  for (int c = 0; c < 3; ++c) {
+    std::memcpy(
+      host_input + (c * plane),
+      channels[static_cast<std::size_t>(c)].ptr<float>(),
+      static_cast<std::size_t>(plane) * sizeof(float));
   }
 }
 

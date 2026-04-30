@@ -1,5 +1,6 @@
 #include "yolov8_ros_cpp/perception_node.hpp"
 
+#include <opencv2/highgui.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <sensor_msgs/image_encodings.hpp>
 
@@ -25,6 +26,8 @@ namespace
 constexpr int kDefaultMaxHsvCandidates = 3;
 constexpr int kDefaultMaxCoastFrames = 3;
 constexpr double kPi = 3.14159265358979323846;
+constexpr int kPreviewMaxWidth = 1280;
+constexpr int kPreviewMaxHeight = 720;
 
 sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
   const FramePacket & packet, const rclcpp::Time & stamp)
@@ -170,6 +173,9 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
 
 PerceptionNode::~PerceptionNode()
 {
+  if (show_ && !preview_failed_) {
+    cv::destroyWindow(vis_window_name_);
+  }
   deepstream_runtime_.reset();
   if (camera_backend_) {
     camera_backend_->release();
@@ -305,13 +311,14 @@ void PerceptionNode::process_detection_cycle(
   double color_ms = 0.0;
   const auto tracking_start = std::chrono::steady_clock::now();
   auto candidates = rank_candidates(extract_candidates(batch, packet, &color_ms));
+  std::optional<Candidate> selected_target;
   bool published = false;
   if (use_kalman_) {
     published = run_kalman_pipeline(candidates, dt, batch.letterbox);
   } else {
-    auto target = select_target(candidates);
-    if (target) {
-      publish_target(*target, batch.letterbox);
+    selected_target = select_target(candidates);
+    if (selected_target) {
+      publish_target(*selected_target, batch.letterbox);
       published = true;
     }
   }
@@ -328,6 +335,10 @@ void PerceptionNode::process_detection_cycle(
     publish_no_target(src_w, src_h);
   }
   const auto publish_done = std::chrono::steady_clock::now();
+
+  if (show_ && packet != nullptr && !packet->empty()) {
+    render_preview(*packet, candidates, selected_target);
+  }
 
   ++frame_count_;
   stage_totals_.capture_ms += capture_ms;
@@ -355,6 +366,59 @@ void PerceptionNode::publish_debug_image(const FramePacket & packet)
   auto msg = frame_to_image_message(packet, this->now());
   if (msg) {
     debug_image_publisher_->publish(std::move(msg));
+  }
+}
+
+void PerceptionNode::render_preview(
+  const FramePacket & packet,
+  const std::vector<Candidate> & candidates,
+  const std::optional<Candidate> & target)
+{
+  if (preview_failed_) {
+    return;
+  }
+
+  try {
+    cv::Mat preview = packet.frame.clone();
+    for (const auto & candidate : candidates) {
+      const cv::Scalar color = candidate.is_enemy ?
+        cv::Scalar(0, 255, 0) :
+        cv::Scalar(0, 165, 255);
+      cv::rectangle(preview, candidate.bbox_source, color, 2);
+      const std::string label =
+        std::to_string(candidate.class_id) + " " + cv::format("%.2f", candidate.confidence);
+      cv::putText(
+        preview,
+        label,
+        cv::Point(candidate.bbox_source.x, std::max(16, candidate.bbox_source.y - 4)),
+        cv::FONT_HERSHEY_SIMPLEX,
+        0.5,
+        color,
+        1,
+        cv::LINE_AA);
+    }
+
+    if (target.has_value()) {
+      cv::rectangle(preview, target->bbox_source, cv::Scalar(0, 0, 255), 3);
+    }
+
+    const double scale = std::min(
+      1.0,
+      std::min(
+        static_cast<double>(kPreviewMaxWidth) / std::max(1, preview.cols),
+        static_cast<double>(kPreviewMaxHeight) / std::max(1, preview.rows)));
+    if (scale < 1.0) {
+      cv::resize(preview, preview, cv::Size(), scale, scale, cv::INTER_AREA);
+    }
+
+    cv::imshow(vis_window_name_, preview);
+    cv::waitKey(1);
+  } catch (const cv::Exception & exc) {
+    preview_failed_ = true;
+    RCLCPP_WARN(
+      this->get_logger(),
+      "Disabling show preview after OpenCV display failure: %s",
+      exc.what());
   }
 }
 

@@ -56,6 +56,10 @@ private:
     const DetectorStageTimings & detector_timings,
     double capture_ms);
   void publish_debug_image(const FramePacket & packet);
+  void render_preview(
+    const FramePacket & packet,
+    const std::vector<Candidate> & candidates,
+    const std::optional<Candidate> & target);
   std::vector<Candidate> extract_candidates(
     const DetectionBatch & batch, const FramePacket * packet, double * color_ms) const;
   std::vector<Candidate> rank_candidates(std::vector<Candidate> candidates) const;
@@ -110,6 +114,7 @@ private:
   bool enable_color_verification_{true};
   bool use_robot_id_targeting_{false};
   bool debug_publish_image_raw_{false};
+  bool preview_failed_{false};
   bool stm_color_locked_{false};
   int imgsz_width_{640};
   int imgsz_height_{640};
