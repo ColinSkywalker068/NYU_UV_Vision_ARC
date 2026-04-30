@@ -17,7 +17,7 @@ import signal
 import sys
 import time
 import traceback
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import cv2
 import numpy as np
@@ -239,6 +239,8 @@ class YOLOv8Node(Node):
         self.declare_parameter("enable_color_verification", True)
         self.declare_parameter("target_color", "blue")
         self.declare_parameter("use_robot_id_targeting", False)
+        self.declare_parameter("enemy_color_red_value", 0)
+        self.declare_parameter("enemy_color_blue_value", 1)
         self.declare_parameter("max_hsv_candidates", _DEFAULT_MAX_HSV_CANDIDATES)
         self.declare_parameter("max_coast_frames", _DEFAULT_MAX_COAST_FRAMES)
 
@@ -272,6 +274,12 @@ class YOLOv8Node(Node):
         self.use_robot_id_targeting: bool = bool(
             self.get_parameter("use_robot_id_targeting").value
         )
+        self.enemy_color_red_value: int = int(
+            self.get_parameter("enemy_color_red_value").value
+        )
+        self.enemy_color_blue_value: int = int(
+            self.get_parameter("enemy_color_blue_value").value
+        )
         self.max_hsv_candidates: int = self.get_parameter("max_hsv_candidates").value
         self.max_coast_frames: int = self.get_parameter("max_coast_frames").value
 
@@ -303,6 +311,7 @@ class YOLOv8Node(Node):
         self.vis_window_name: str = self.get_parameter("vis_window_name").value
 
         self.target_class: int = BLUE_CLASS if self.target_color != "red" else RED_CLASS
+        self._stm_color_locked = False
         self.active_trackers: dict[int, TrackerWrapper] = {}
         self.last_frame_time = None
         self._fps_ema = 0.0
@@ -330,6 +339,8 @@ class YOLOv8Node(Node):
             f"inference_mode={self.inference_mode}, use_kalman={self.use_kalman}, "
             f"persist_tracking={self.persist_tracking}, target_color={self.target_color}, "
             f"use_robot_id_targeting={self.use_robot_id_targeting}, "
+            f"enemy_color_red_value={self.enemy_color_red_value}, "
+            f"enemy_color_blue_value={self.enemy_color_blue_value}, "
             f"max_hsv_candidates={self.max_hsv_candidates}, "
             f"max_coast_frames={self.max_coast_frames}"
         )
@@ -345,6 +356,9 @@ class YOLOv8Node(Node):
 
         self.image_subscription = self.create_subscription(
             Image, "image_raw", self.image_callback, image_qos
+        )
+        self.attitude_flags_subscription = self.create_subscription(
+            Int32MultiArray, "attitude_flags", self.handle_attitude_flags, 10
         )
         self.int_subscription = self.create_subscription(
             Int32, "robot_id", self.id_listener_callback, 10
@@ -370,6 +384,8 @@ class YOLOv8Node(Node):
     def id_listener_callback(self, msg: Int32):
         if not self.use_robot_id_targeting:
             return
+        if self._stm_color_locked:
+            return
         robot_id = msg.data
         if robot_id in RED_TEAM:
             self.target_class = BLUE_CLASS
@@ -377,6 +393,24 @@ class YOLOv8Node(Node):
         elif robot_id in BLUE_TEAM:
             self.target_class = RED_CLASS
             self.get_logger().info(f"ID {robot_id} is BLUE. Targeting RED.")
+
+    def handle_attitude_flags(self, msg: Int32MultiArray):
+        if not msg.data:
+            return
+
+        enemy_color = msg.data[0]
+        if enemy_color == self.enemy_color_red_value:
+            self.target_class = RED_CLASS
+            self._stm_color_locked = True
+            self.get_logger().info(
+                f"attitude_flags enemy color {enemy_color} -> targeting RED."
+            )
+        elif enemy_color == self.enemy_color_blue_value:
+            self.target_class = BLUE_CLASS
+            self._stm_color_locked = True
+            self.get_logger().info(
+                f"attitude_flags enemy color {enemy_color} -> targeting BLUE."
+            )
 
     # ------------------------------------------------------------------
     # Pipeline stages  (Items 14, 16)
@@ -575,15 +609,10 @@ class YOLOv8Node(Node):
             self._obb_angle_msg.data = 0.0
         self.obb_angle_publisher.publish(self._obb_angle_msg)
 
-    def publish_no_target(self):
-        """Publish centered zero-area bbox and zero angles (Item 1).
-
-        Uses (src_w/2, src_h/2)—not imgsz—because downstream expects
-        source-image-space coordinates after Item 2.  For the first frame
-        before any letterbox is computed, we fall back to imgsz.
-        """
-        cx = self.imgsz_width // 2
-        cy = self.imgsz_height // 2
+    def publish_no_target(self, src_w: int, src_h: int):
+        """Publish centered zero-area bbox and zero angles in source space."""
+        cx = src_w // 2
+        cy = src_h // 2
         self.bbox_msg.data = [cx, cy, cx, cy]
         self.override_msg.data = False
         self.bbox_publisher.publish(self.bbox_msg)
@@ -698,7 +727,7 @@ class YOLOv8Node(Node):
 
             # Stage: publish no-target fallback
             if not published_this_frame:
-                self.publish_no_target()
+                self.publish_no_target(lb.src_w, lb.src_h)
             t6 = time.monotonic()
 
             # Stage: render
