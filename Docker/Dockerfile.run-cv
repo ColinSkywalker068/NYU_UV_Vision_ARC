@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra
+ARG BASE_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus
 FROM ${BASE_IMAGE}
 
 # Set the working directory to simplify the commands in the ENTRYPOINT
@@ -12,5 +12,5 @@ ENTRYPOINT ["/bin/bash", "-c", "set -e; \
     uv clean; \
     echo '--- Step 2: Running uv build ---'; \
     uv build; \
-    echo '--- Step 3: Running yolov8_ros ---'; \
-    uv run yolov8_ros launch_old.py"]
+    echo '--- Step 3: Running yolov8_ros_cpp ---'; \
+    uv run yolov8_ros_cpp realsense.launch.py show:=false"]

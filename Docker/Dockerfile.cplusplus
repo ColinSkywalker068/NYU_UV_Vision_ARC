@@ -28,8 +28,9 @@ RUN apt-get update && \
 
 # Install libnvvpi3 from the Jetson repo so DeepStream can load cleanly.
 RUN apt-get update && apt-get install -y gnupg curl && \
+    mkdir -p /usr/share/keyrings && \
     curl -fsSL https://repo.download.nvidia.com/jetson/jetson-ota-public.asc \
-    | gpg --dearmor -o /usr/share/keyrings/jetson-ota-public.gpg && \
+    | gpg --batch --yes --dearmor -o /usr/share/keyrings/jetson-ota-public.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/jetson-ota-public.gpg] https://repo.download.nvidia.com/jetson/common r36.3 main" \
     > /etc/apt/sources.list.d/nvidia-l4t-apt-source.list && \
     echo "deb [signed-by=/usr/share/keyrings/jetson-ota-public.gpg] https://repo.download.nvidia.com/jetson/t234 r36.3 main" \

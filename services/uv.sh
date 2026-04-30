@@ -1,5 +1,6 @@
 HOME_DIR=$HOME
-CV_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra"
+CV_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus"
+CV_PYTHON_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra"
 
 # Resolve symlink to find the actual scripts directory
 SOURCE="${BASH_SOURCE[0]}"
@@ -45,11 +46,15 @@ case $1 in
     image=$2
     if [[ -z "$image" ]]; then
       PS3="Select a Docker image: "
-      select type in "Computer Vision" "Navigation (ARM64)" "Navigation (AMD64)" "Quit"
+      select type in "Computer Vision (C++)" "Computer Vision (Python Legacy)" "Navigation (ARM64)" "Navigation (AMD64)" "Quit"
       do
         case $type in
-          "Computer Vision")
+          "Computer Vision (C++)")
             image="$CV_IMAGE"
+            break
+            ;;
+          "Computer Vision (Python Legacy)")
+            image="$CV_PYTHON_IMAGE"
             break
             ;;
           "Navigation (ARM64)")
@@ -156,6 +161,7 @@ case $1 in
     cd $HOME_DIR/CV_Detection
     git pull
     sudo docker pull "$CV_IMAGE"
+    sudo docker pull "$CV_PYTHON_IMAGE"
     sudo docker pull nyuultraviolet/cv-dockerfile:nav-arm64
     ;;
   # Enable a systemd service
@@ -194,7 +200,7 @@ case $1 in
   *):
     echo "Usage: uv <command> <args>"
     echo -e "Docker"
-    echo "uv docker: start the system's default Docker container"
+    echo "uv docker: start the default CV container selector (C++ by default)"
     echo "uv docker <image> <docker flags>: start a specific Docker container. <image> can be a docker tag, 'cv', 'controls', or 'microros'"
     echo "sudo docker images: show Docker images"
     echo "sudo docker ps: show Docker containers"
