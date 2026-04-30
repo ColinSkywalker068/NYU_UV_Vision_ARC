@@ -2,8 +2,12 @@ from pathlib import Path
 
 from ultralytics import YOLO
 
-MODEL_PATH = Path("/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.pt")
-DATA_YAML_PATH = Path("/home/ultraviolet/CV_Detection/model_test/Datasets/roboflow-nitish/data.yaml")
+MODEL_PATH = Path(
+    "/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.pt"
+)
+DATA_YAML_PATH = Path(
+    "/home/ultraviolet/CV_Detection/model_test/Datasets/roboflow-nitish/data.yaml"
+)
 IMAGE_SIZE = 640
 WORKSPACE_GB = 4
 
