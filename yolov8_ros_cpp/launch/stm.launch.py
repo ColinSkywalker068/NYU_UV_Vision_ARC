@@ -97,6 +97,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="false",
         description="Enable RealSense auto exposure",
     )
+    realsense_use_poll_arg = DeclareLaunchArgument(
+        "realsense_use_poll",
+        default_value="false",
+        description="Use non-blocking RealSense poll_for_frames() instead of wait_for_frames()",
+    )
     realsense_use_max_native_fps_arg = DeclareLaunchArgument(
         "realsense_use_max_native_fps",
         default_value="true",
@@ -143,6 +148,7 @@ def generate_launch_description() -> LaunchDescription:
                 "realsense_auto_exposure": LaunchConfiguration(
                     "realsense_auto_exposure"
                 ),
+                "realsense_use_poll": LaunchConfiguration("realsense_use_poll"),
                 "realsense_use_max_native_fps": LaunchConfiguration(
                     "realsense_use_max_native_fps"
                 ),
@@ -187,6 +193,7 @@ def generate_launch_description() -> LaunchDescription:
             realsense_fps_arg,
             realsense_exposure_arg,
             realsense_auto_exposure_arg,
+            realsense_use_poll_arg,
             realsense_use_max_native_fps_arg,
             use_kalman_arg,
             inference_mode_arg,

@@ -24,6 +24,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="true",
         description="Enable RealSense auto exposure",
     )
+    rs_use_poll_arg = DeclareLaunchArgument(
+        "rs_use_poll",
+        default_value="false",
+        description="Use non-blocking RealSense poll_for_frames() instead of wait_for_frames()",
+    )
     model_path_arg = DeclareLaunchArgument(
         "model_path",
         default_value=default_model_path,
@@ -61,6 +66,7 @@ def generate_launch_description() -> LaunchDescription:
                 "realsense_fps": LaunchConfiguration("rs_fps"),
                 "realsense_exposure": LaunchConfiguration("rs_exposure"),
                 "realsense_auto_exposure": LaunchConfiguration("rs_auto_exposure"),
+                "realsense_use_poll": LaunchConfiguration("rs_use_poll"),
                 "model_path": LaunchConfiguration("model_path"),
                 "task": LaunchConfiguration("task"),
                 "conf": LaunchConfiguration("conf"),
@@ -81,6 +87,7 @@ def generate_launch_description() -> LaunchDescription:
             rs_fps_arg,
             rs_exposure_arg,
             rs_auto_exposure_arg,
+            rs_use_poll_arg,
             model_path_arg,
             task_arg,
             conf_arg,
