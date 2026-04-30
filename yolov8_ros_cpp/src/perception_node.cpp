@@ -63,8 +63,6 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<std::string>("deepstream_config_path", default_deepstream_config);
   this->declare_parameter<bool>("allow_native_tensorrt_fallback", false);
   this->declare_parameter<bool>("half", true);
-  this->declare_parameter<int>("imgsz_width", camera_config_.imgsz_width);
-  this->declare_parameter<int>("imgsz_height", camera_config_.imgsz_height);
   this->declare_parameter<bool>("show", false);
   this->declare_parameter<double>("conf", 0.45);
   this->declare_parameter<int>("tracker_timeout", 15);
