@@ -306,11 +306,11 @@ def _resolve_default_model_path() -> str:
     path if the package-relative file does not exist.
     """
     pkg_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    candidate = os.path.join(pkg_dir, "model_test", "bestmerge.engine")
+    candidate = os.path.join(pkg_dir, "model_test", "best-roboflow-nitish-obb.engine")
     if os.path.isfile(candidate):
         return candidate
     # Legacy fallback — kept for backward compat, emits a warning at startup
-    return "/home/ultraviolet/CV_Detection/model_test/bestmerge.engine"
+    return "/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.engine"
 
 
 # ---------------------------------------------------------------------------
