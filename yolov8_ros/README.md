@@ -25,11 +25,17 @@ Override defaults:
 
 ```bash
 ros2 launch yolov8_ros stm.launch.py \
-    basler_exposure_us:=8000.0 \
-    basler_gain_db:=10.0 \
+    basler_exposure_us:=6000.0 \
+    basler_gain_db:=8.0 \
+    basler_auto_exposure:=false \
+    basler_enable_grab_thread:=true \
     serial_port:=/dev/ttyACM0 \
     serial_verbose:=true
 ```
+
+Notes:
+- `basler_width` / `basler_height` in `stm.launch.py` feed the published image size for the ROS pipeline.
+- The STM launch keeps `basler_use_full_sensor:=True`, so these values are not a hardware ROI crop unless that parameter is changed in a different launch path.
 
 **Nodes launched:** `camera_node` (basler) → `yolov8_modular_node` → `stm32_serial_bridge`
 
@@ -86,6 +92,8 @@ Standalone scripts in `scripts/Camera/` (no ROS required):
 ```bash
 python3 scripts/Camera/basler_test.py --show          # Basler + YOLO inference test
 python3 scripts/Camera/realsense_test.py --show        # RealSense connectivity test
+python3 scripts/Camera/realsense_max_fps_test.py       # RealSense max-native FPS preview
+python3 scripts/Camera/realsense_max_fps_test.py --format yuyv --width 640 --height 360 --fps 90
 python3 scripts/Camera/camera_zoom_test.py             # Basler sensor diagnostics
 ```
 

@@ -10,7 +10,6 @@ log/
 
 # C extensions
 *.so
-*.log
 **/static/**
 # Distribution / packaging
 .Python

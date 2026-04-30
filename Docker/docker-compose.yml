@@ -3,6 +3,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.run-cv
+      network: host
+      args:
+      - BASE_IMAGE=${CV_BASE_IMAGE:-nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra}
     runtime: nvidia
     environment:
     - DISPLAY=$DISPLAY

@@ -5,7 +5,9 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description() -> LaunchDescription:
-    default_model_path = "/home/ultraviolet/CV_Detection/model_test/best.pt"
+    # Model path: empty string means the node uses its package-relative default
+    # (yolov8_ros/models/best.engine).  Override via launch arg to use a custom path.
+    default_model_path = ""
 
     # RealSense stream — aligned with testObb.py realsense_color_frames defaults (640x480 BGR8)
     rs_width_arg = DeclareLaunchArgument(
@@ -18,6 +20,16 @@ def generate_launch_description() -> LaunchDescription:
         "rs_fps",
         default_value="60",
         description="RealSense color FPS (matches testObb.py fallback when no --fps)",
+    )
+    rs_exposure_arg = DeclareLaunchArgument(
+        "rs_exposure",
+        default_value="120.0",
+        description="RealSense manual exposure (higher than previous default)",
+    )
+    rs_auto_exposure_arg = DeclareLaunchArgument(
+        "rs_auto_exposure",
+        default_value="true",
+        description="Enable RealSense auto exposure",
     )
 
     model_path_arg = DeclareLaunchArgument(
@@ -34,7 +46,9 @@ def generate_launch_description() -> LaunchDescription:
         description="Confidence threshold (Ultralytics predict default, matches testObb)",
     )
     show_arg = DeclareLaunchArgument(
-        "show", default_value="true", description="OpenCV debug window"
+        "show",
+        default_value="false",
+        description="OpenCV debug window (off by default for production)",
     )
     use_kalman_arg = DeclareLaunchArgument(
         "use_kalman", default_value="false", description="Kalman-smoothed publishing"
@@ -70,6 +84,8 @@ def generate_launch_description() -> LaunchDescription:
                 "realsense_width": LaunchConfiguration("rs_width"),
                 "realsense_height": LaunchConfiguration("rs_height"),
                 "realsense_fps": LaunchConfiguration("rs_fps"),
+                "realsense_exposure": LaunchConfiguration("rs_exposure"),
+                "realsense_auto_exposure": LaunchConfiguration("rs_auto_exposure"),
             }
         ],
     )
@@ -88,7 +104,6 @@ def generate_launch_description() -> LaunchDescription:
                 "use_kalman": LaunchConfiguration("use_kalman"),
                 "tracker_type": LaunchConfiguration("tracker_type"),
                 "benchmark": LaunchConfiguration("benchmark"),
-                "enable_tracking": True,
                 "hfov_degrees": LaunchConfiguration("hfov_degrees"),
                 "vfov_degrees": LaunchConfiguration("vfov_degrees"),
                 "imgsz_width": LaunchConfiguration("rs_width"),
@@ -103,6 +118,8 @@ def generate_launch_description() -> LaunchDescription:
             rs_width_arg,
             rs_height_arg,
             rs_fps_arg,
+            rs_exposure_arg,
+            rs_auto_exposure_arg,
             model_path_arg,
             task_arg,
             conf_arg,

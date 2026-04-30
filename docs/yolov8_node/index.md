@@ -59,8 +59,8 @@ Captures frames from either a **Basler** (pypylon) or **Intel RealSense** camera
 | `imgsz_width` | int | `640` | Published image width |
 | `imgsz_height` | int | `640` | Published image height |
 | **Basler-specific** | | | |
-| `basler_exposure_us` | float | `5000.0` | Exposure in microseconds |
-| `basler_gain_db` | float | `5.0` | Gain in dB |
+| `basler_exposure_us` | float | `6000.0` | Exposure in microseconds |
+| `basler_gain_db` | float | `8.0` | Gain in dB |
 | `basler_fps` | int | `60` | Target capture FPS |
 | `basler_use_full_sensor` | bool | `True` | Use full sensor area (ignores ROI width/height) |
 | `basler_centered_roi` | bool | `True` | Center ROI when not using full sensor |
@@ -68,6 +68,9 @@ Captures frames from either a **Basler** (pypylon) or **Intel RealSense** camera
 | `basler_decimation` | int | `1` | Pixel decimation factor (≥1) |
 | `basler_auto_exposure` | bool | `False` | Enable camera auto-exposure |
 | `basler_auto_gain` | bool | `False` | Enable camera auto-gain |
+| `basler_auto_white_balance` | bool | `False` | Enable camera auto white balance |
+| `basler_enable_grab_thread` | bool | `True` | Use a background latest-frame grab thread |
+| `basler_enable_transport_tuning` | bool | `True` | Apply Basler USB transport/buffer tuning |
 | **RealSense-specific** | | | |
 | `realsense_width` | int | `640` | Stream width |
 | `realsense_height` | int | `480` | Stream height |
@@ -341,15 +344,22 @@ Launches **3 nodes**: `camera_node` (Basler), `yolov8_modular_node`, `stm32_seri
 | `serial_port` | `/dev/ttyACM0` | STM32 serial device |
 | `serial_baudrate` | `115200` | Serial baud rate |
 | `serial_verbose` | `false` | Log all serial TX packets |
-| `basler_width` | `640` | Basler capture width |
-| `basler_height` | `640` | Basler capture height |
+| `basler_width` | `640` | Published/inference image width |
+| `basler_height` | `640` | Published/inference image height |
 | `basler_fps` | `60` | Basler FPS |
-| `basler_exposure_us` | `5000.0` | Basler exposure (µs) |
-| `basler_gain_db` | `5.0` | Basler gain (dB) |
+| `basler_exposure_us` | `6000.0` | Basler exposure (µs) |
+| `basler_gain_db` | `8.0` | Basler gain (dB) |
+| `basler_auto_exposure` | `false` | Enable Basler auto exposure |
+| `basler_auto_gain` | `false` | Enable Basler auto gain |
+| `basler_auto_white_balance` | `false` | Enable Basler auto white balance |
+| `basler_enable_grab_thread` | `true` | Use background latest-frame grabbing |
+| `basler_enable_transport_tuning` | `true` | Apply Basler transport tuning |
 | `use_kalman` | `true` | Enable Kalman lookahead in YOLO node |
 | `show` | `true` | Show OpenCV debug window |
 
 **Fixed values (not overridable at launch):** `basler_use_full_sensor=True`, `basler_centered_roi=True`, `transmit_enable=True`.
+
+Because `basler_use_full_sensor=True` is fixed in this launch path, `basler_width` / `basler_height` do not crop the Basler sensor. They define the ROS pipeline image size while the camera stays on the full sensor area.
 
 Example override:
 ```bash
