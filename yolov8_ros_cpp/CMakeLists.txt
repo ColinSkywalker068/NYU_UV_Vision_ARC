@@ -32,9 +32,17 @@ endif()
 
 find_path(TENSORRT_INCLUDE_DIR NvInfer.h
   PATHS /usr/include /usr/include/x86_64-linux-gnu /usr/include/aarch64-linux-gnu /usr/local/include)
+find_path(CUDART_INCLUDE_DIR cuda_runtime_api.h
+  PATHS
+    /usr/local/cuda/include
+    /usr/local/cuda/targets/x86_64-linux/include
+    /usr/local/cuda/targets/aarch64-linux/include
+    /usr/include
+    /usr/include/x86_64-linux-gnu
+    /usr/include/aarch64-linux-gnu)
 find_library(TENSORRT_LIBRARY NAMES nvinfer PATHS /usr/lib /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/local/lib)
 find_library(CUDART_LIBRARY NAMES cudart PATHS /usr/local/cuda/lib64 /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu)
-if(TENSORRT_INCLUDE_DIR AND TENSORRT_LIBRARY AND CUDART_LIBRARY)
+if(TENSORRT_INCLUDE_DIR AND CUDART_INCLUDE_DIR AND TENSORRT_LIBRARY AND CUDART_LIBRARY)
   set(HAVE_TENSORRT TRUE)
 endif()
 
@@ -113,7 +121,7 @@ endif()
 
 if(HAVE_TENSORRT)
   target_compile_definitions(yolov8_ros_cpp_components PRIVATE HAVE_TENSORRT=1)
-  target_include_directories(yolov8_ros_cpp_components PRIVATE ${TENSORRT_INCLUDE_DIR})
+  target_include_directories(yolov8_ros_cpp_components PRIVATE ${TENSORRT_INCLUDE_DIR} ${CUDART_INCLUDE_DIR})
   target_link_libraries(yolov8_ros_cpp_components ${TENSORRT_LIBRARY} ${CUDART_LIBRARY})
 endif()
 
