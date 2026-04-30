@@ -33,7 +33,7 @@ def generate_launch_description() -> LaunchDescription:
         "task", default_value="obb", description="YOLO task: detect, obb, segment"
     )
     conf_arg = DeclareLaunchArgument(
-        "conf", default_value="0.25", description="Confidence threshold"
+        "conf", default_value="0.30", description="Confidence threshold"
     )
     show_arg = DeclareLaunchArgument(
         "show", default_value="false", description="OpenCV debug window"

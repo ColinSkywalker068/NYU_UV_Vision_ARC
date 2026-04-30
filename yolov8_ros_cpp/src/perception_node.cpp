@@ -68,7 +68,7 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<bool>("allow_native_tensorrt_fallback", false);
   this->declare_parameter<bool>("half", true);
   this->declare_parameter<bool>("show", false);
-  this->declare_parameter<double>("conf", 0.45);
+  this->declare_parameter<double>("conf", 0.30);
   this->declare_parameter<int>("tracker_timeout", 15);
   this->declare_parameter<double>("prediction_lookahead_steps", 0.5);
   this->declare_parameter<std::string>("inference_mode", "predict");
@@ -308,6 +308,10 @@ void PerceptionNode::process_detection_cycle(
   }
   last_frame_time_ = now;
   have_last_frame_time_ = true;
+  {
+    const double instant_fps = 1.0 / std::max(dt, 1e-6);
+    preview_fps_ = preview_fps_ <= 0.0 ? instant_fps : (0.9 * preview_fps_) + (0.1 * instant_fps);
+  }
 
   double color_ms = 0.0;
   const auto tracking_start = std::chrono::steady_clock::now();
@@ -402,6 +406,16 @@ void PerceptionNode::render_preview(
     if (target.has_value()) {
       cv::rectangle(preview, target->bbox_source, cv::Scalar(0, 0, 255), 3);
     }
+
+    cv::putText(
+      preview,
+      "FPS " + cv::format("%.1f", preview_fps_),
+      cv::Point(12, 28),
+      cv::FONT_HERSHEY_SIMPLEX,
+      0.8,
+      cv::Scalar(255, 255, 255),
+      2,
+      cv::LINE_AA);
 
     const double scale = std::min(
       1.0,
@@ -664,11 +678,22 @@ std::string PerceptionNode::resolve_default_deepstream_config_path() const
 void PerceptionNode::log_stage_timing()
 {
   const double n = static_cast<double>(stage_log_interval_);
+  double avg_fps = preview_fps_;
+  const auto now = std::chrono::steady_clock::now();
+  if (have_last_stage_log_wall_time_) {
+    const double elapsed_s = std::chrono::duration<double>(now - last_stage_log_wall_time_).count();
+    if (elapsed_s > 0.0) {
+      avg_fps = n / elapsed_s;
+    }
+  }
+  last_stage_log_wall_time_ = now;
+  have_last_stage_log_wall_time_ = true;
   RCLCPP_INFO(
     this->get_logger(),
-    "Stage timing mean over %d frames: capture=%.2fms preprocess=%.2fms upload=%.2fms "
+    "Stage timing mean over %d frames: fps=%.1f capture=%.2fms preprocess=%.2fms upload=%.2fms "
     "inference=%.2fms download=%.2fms parse=%.2fms tracking=%.2fms color=%.2fms publish=%.2fms",
     stage_log_interval_,
+    avg_fps,
     stage_totals_.capture_ms / n,
     stage_totals_.preprocess_ms / n,
     stage_totals_.upload_ms / n,

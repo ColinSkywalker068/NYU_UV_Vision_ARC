@@ -20,6 +20,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <chrono>
 
 namespace yolov8_ros_cpp
 {
@@ -95,6 +96,8 @@ private:
   std::map<int, TrackerWrapper> active_trackers_;
   rclcpp::Time last_frame_time_;
   bool have_last_frame_time_{false};
+  std::chrono::steady_clock::time_point last_stage_log_wall_time_{};
+  bool have_last_stage_log_wall_time_{false};
   std::mutex state_mutex_;
 
   CameraConfig camera_config_;
@@ -125,12 +128,13 @@ private:
   int frame_count_{0};
   int enemy_color_red_value_{0};
   int enemy_color_blue_value_{1};
-  float conf_{0.45F};
+  float conf_{0.30F};
   float lookahead_steps_{0.5F};
   float hfov_rad_{0.0F};
   float vfov_rad_{0.0F};
   int target_class_{BLUE_CLASS};
   double fps_{60.0};
+  double preview_fps_{0.0};
   StageTotals stage_totals_;
 };
 
