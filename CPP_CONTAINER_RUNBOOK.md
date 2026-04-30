@@ -84,6 +84,12 @@ ros2 run yolov8_ros yolov8_modular_node --ros-args \
   -p imgsz_width:=640 \
   -p imgsz_height:=480 \
   -p show:=false
+
+Note on YOLO26 and post-processing:
+- Ultralytics YOLO26 models can export in two different inference modes.
+- `end2end=true` exports already contain final detections, so applying a legacy NMS step after inference is incorrect.
+- `end2end=false` exports still produce raw predictions and do require host-side decode + NMS, even for YOLO26. This commonly happens for TensorRT INT8 exports because Ultralytics may disable end-to-end export for compatibility.
+- The C++ pipeline now branches on engine metadata instead of assuming one fixed YOLO post-process path.
 ```
 
 Both nodes use topic `image_raw` (no remap needed if default names and no extra namespace).

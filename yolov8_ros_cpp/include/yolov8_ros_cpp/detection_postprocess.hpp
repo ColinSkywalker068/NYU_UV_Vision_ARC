@@ -15,6 +15,8 @@ struct EngineMetadata
 {
   std::unordered_map<int, std::string> class_names;
   std::optional<std::string> task;
+  std::optional<std::string> version;
+  bool end2end{false};
 };
 
 EngineMetadata read_engine_metadata_from_file(const std::string & model_path);
@@ -27,6 +29,7 @@ std::vector<Detection> parse_yolo_output_tensor(
   int num_classes,
   float conf_threshold,
   bool task_obb,
+  bool end2end,
   const rclcpp::Logger * logger = nullptr);
 
 }  // namespace yolov8_ros_cpp

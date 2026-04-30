@@ -113,6 +113,7 @@ struct DeepStreamRuntime::Impl
   std::map<std::uint64_t, FramePacket> frame_cache;
   int num_classes{1};
   bool task_obb{true};
+  bool end2end{false};
 #endif
 
   ~Impl()
@@ -186,6 +187,7 @@ struct DeepStreamRuntime::Impl
     const auto metadata = read_engine_metadata_from_file(config.model_path);
     num_classes = metadata.class_names.empty() ? 1 : static_cast<int>(metadata.class_names.size());
     task_obb = metadata.task.value_or(config.task) == "obb";
+    end2end = metadata.end2end;
 
     const std::vector<std::string> required_elements = {
       config.source_element,
@@ -748,6 +750,7 @@ struct DeepStreamRuntime::Impl
         std::max(1, num_classes),
         config.conf_threshold,
         task_obb,
+        end2end,
         &logger);
       const auto parse_done = std::chrono::steady_clock::now();
       result.timings.parse_ms = std::chrono::duration<double, std::milli>(

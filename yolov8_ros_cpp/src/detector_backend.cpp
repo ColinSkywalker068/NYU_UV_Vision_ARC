@@ -238,6 +238,7 @@ struct NativeTensorRTBackend::Impl
   int img_h{640};
   int nc{1};
   bool task_obb{false};
+  bool end2end{false};
 
   ~Impl()
   {
@@ -339,6 +340,7 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
     if (metadata.task.has_value()) {
       task_ = *metadata.task;
     }
+    end2end_ = metadata.end2end;
     if (class_names_.empty()) {
       class_names_.emplace(0, "plate");
     }
@@ -349,6 +351,7 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
 #ifdef HAVE_TENSORRT
   impl_ = std::make_unique<Impl>(logger);
   impl_->task_obb = (task_ == "obb");
+  impl_->end2end = end2end_;
   impl_->nc = class_names_.empty() ? 1 : static_cast<int>(class_names_.size());
 
   const std::string engine_bytes = read_file(model_path_);
@@ -572,6 +575,7 @@ DetectionBatch NativeTensorRTBackend::infer(
     impl_->nc,
     conf_threshold_,
     impl_->task_obb,
+    impl_->end2end,
     &logger);
   const auto parse_done = std::chrono::steady_clock::now();
 

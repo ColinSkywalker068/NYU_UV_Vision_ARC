@@ -150,6 +150,30 @@ std::unordered_map<int, std::string> extract_names(const std::string & json)
   return names;
 }
 
+std::optional<bool> extract_json_bool_value(const std::string & json, const std::string & key)
+{
+  const std::string needle = "\"" + key + "\"";
+  const auto key_pos = json.find(needle);
+  if (key_pos == std::string::npos) {
+    return std::nullopt;
+  }
+  const auto colon = json.find(':', key_pos + needle.size());
+  if (colon == std::string::npos) {
+    return std::nullopt;
+  }
+  const auto value_pos = json.find_first_not_of(" \t\r\n", colon + 1);
+  if (value_pos == std::string::npos) {
+    return std::nullopt;
+  }
+  if (json.compare(value_pos, 4, "true") == 0) {
+    return true;
+  }
+  if (json.compare(value_pos, 5, "false") == 0) {
+    return false;
+  }
+  return std::nullopt;
+}
+
 struct ParsedCandidate
 {
   float cx{0.0F};
@@ -230,6 +254,148 @@ std::vector<ParsedCandidate> rotated_nms(
   return kept;
 }
 
+float axis_aligned_iou(const ParsedCandidate & lhs, const ParsedCandidate & rhs)
+{
+  const float lhs_x1 = lhs.cx - (lhs.width * 0.5F);
+  const float lhs_y1 = lhs.cy - (lhs.height * 0.5F);
+  const float lhs_x2 = lhs.cx + (lhs.width * 0.5F);
+  const float lhs_y2 = lhs.cy + (lhs.height * 0.5F);
+  const float rhs_x1 = rhs.cx - (rhs.width * 0.5F);
+  const float rhs_y1 = rhs.cy - (rhs.height * 0.5F);
+  const float rhs_x2 = rhs.cx + (rhs.width * 0.5F);
+  const float rhs_y2 = rhs.cy + (rhs.height * 0.5F);
+
+  const float inter_x1 = std::max(lhs_x1, rhs_x1);
+  const float inter_y1 = std::max(lhs_y1, rhs_y1);
+  const float inter_x2 = std::min(lhs_x2, rhs_x2);
+  const float inter_y2 = std::min(lhs_y2, rhs_y2);
+  const float inter_w = std::max(0.0F, inter_x2 - inter_x1);
+  const float inter_h = std::max(0.0F, inter_y2 - inter_y1);
+  const float inter_area = inter_w * inter_h;
+  const float union_area = (lhs.width * lhs.height) + (rhs.width * rhs.height) - inter_area;
+  if (union_area <= 0.0F) {
+    return 0.0F;
+  }
+  return inter_area / union_area;
+}
+
+std::vector<ParsedCandidate> axis_aligned_nms(
+  std::vector<ParsedCandidate> candidates, float iou_threshold, int max_det)
+{
+  std::sort(
+    candidates.begin(), candidates.end(),
+    [](const ParsedCandidate & lhs, const ParsedCandidate & rhs) {
+      return lhs.confidence > rhs.confidence;
+    });
+
+  std::vector<ParsedCandidate> kept;
+  kept.reserve(std::min<int>(max_det, static_cast<int>(candidates.size())));
+  for (const auto & candidate : candidates) {
+    bool suppressed = false;
+    for (const auto & existing : kept) {
+      if (existing.class_id != candidate.class_id) {
+        continue;
+      }
+      if (axis_aligned_iou(existing, candidate) >= iou_threshold) {
+        suppressed = true;
+        break;
+      }
+    }
+    if (!suppressed) {
+      kept.push_back(candidate);
+      if (static_cast<int>(kept.size()) >= max_det) {
+        break;
+      }
+    }
+  }
+  return kept;
+}
+
+bool looks_like_end2end_shape(
+  const std::vector<int64_t> & shape, bool task_obb, bool end2end_metadata)
+{
+  if (shape.size() != 3U) {
+    return false;
+  }
+  const int expected_attrs = task_obb ? 7 : 6;
+  const int dim1 = static_cast<int>(shape[1]);
+  const int dim2 = static_cast<int>(shape[2]);
+  if (end2end_metadata) {
+    return true;
+  }
+  return (dim1 > expected_attrs && dim2 == expected_attrs) ||
+         (dim2 > expected_attrs && dim1 == expected_attrs);
+}
+
+std::vector<Detection> parse_end2end_output_tensor(
+  const float * tensor_data,
+  const std::vector<int64_t> & shape,
+  int img_w,
+  int img_h,
+  float conf_threshold,
+  bool task_obb,
+  const rclcpp::Logger * logger)
+{
+  std::vector<Detection> detections;
+  if (shape.size() != 3U) {
+    return detections;
+  }
+
+  const int expected_attrs = task_obb ? 7 : 6;
+  int num_detections = 0;
+  bool attrs_last = false;
+  if (static_cast<int>(shape[2]) == expected_attrs) {
+    num_detections = static_cast<int>(shape[1]);
+    attrs_last = true;
+  } else if (static_cast<int>(shape[1]) == expected_attrs) {
+    num_detections = static_cast<int>(shape[2]);
+    attrs_last = false;
+  } else {
+    if (logger != nullptr) {
+      RCLCPP_WARN(
+        *logger,
+        "Unexpected end2end YOLO output shape [%ld, %ld, %ld]",
+        shape[0], shape[1], shape[2]);
+    }
+    return detections;
+  }
+
+  detections.reserve(static_cast<std::size_t>(num_detections));
+  for (int i = 0; i < num_detections; ++i) {
+    const auto at = [&](int attr) -> float {
+        if (attrs_last) {
+          return tensor_data[static_cast<std::size_t>((i * expected_attrs) + attr)];
+        }
+        return tensor_data[static_cast<std::size_t>((attr * num_detections) + i)];
+      };
+
+    const float confidence = at(4);
+    if (!std::isfinite(confidence) || confidence < conf_threshold) {
+      continue;
+    }
+
+    const float x1f = clamp_value(at(0), 0.0F, static_cast<float>(img_w - 1));
+    const float y1f = clamp_value(at(1), 0.0F, static_cast<float>(img_h - 1));
+    const float x2f = clamp_value(at(2), 0.0F, static_cast<float>(img_w - 1));
+    const float y2f = clamp_value(at(3), 0.0F, static_cast<float>(img_h - 1));
+    const int x1 = static_cast<int>(std::floor(std::min(x1f, x2f)));
+    const int y1 = static_cast<int>(std::floor(std::min(y1f, y2f)));
+    const int x2 = static_cast<int>(std::ceil(std::max(x1f, x2f)));
+    const int y2 = static_cast<int>(std::ceil(std::max(y1f, y2f)));
+
+    Detection detection{};
+    detection.bbox_model = cv::Rect(x1, y1, std::max(0, x2 - x1), std::max(0, y2 - y1));
+    detection.confidence = confidence;
+    detection.class_id = std::max(0, static_cast<int>(std::lround(at(5))));
+    if (task_obb) {
+      detection.obb_angle = at(6);
+    }
+    detections.push_back(detection);
+  }
+
+  return detections;
+}
+
 }  // namespace
 
 EngineMetadata read_engine_metadata_from_file(const std::string & model_path)
@@ -242,6 +408,8 @@ EngineMetadata read_engine_metadata_from_file(const std::string & model_path)
   }
   metadata.class_names = extract_names(*json);
   metadata.task = extract_json_string_value(*json, "task");
+  metadata.version = extract_json_string_value(*json, "version");
+  metadata.end2end = extract_json_bool_value(*json, "end2end").value_or(false);
   return metadata;
 }
 
@@ -253,6 +421,7 @@ std::vector<Detection> parse_yolo_output_tensor(
   int num_classes,
   float conf_threshold,
   bool task_obb,
+  bool end2end,
   const rclcpp::Logger * logger)
 {
   std::vector<Detection> detections;
@@ -268,6 +437,11 @@ std::vector<Detection> parse_yolo_output_tensor(
       RCLCPP_WARN(*logger, "Unexpected YOLO output rank: %zu", shape.size());
     }
     return detections;
+  }
+
+  if (looks_like_end2end_shape(shape, task_obb, end2end)) {
+    return parse_end2end_output_tensor(
+      tensor_data, shape, img_w, img_h, conf_threshold, task_obb, logger);
   }
 
   const int channels = static_cast<int>(shape[1]);
@@ -311,9 +485,29 @@ std::vector<Detection> parse_yolo_output_tensor(
     parsed.push_back(candidate);
   }
 
-  const auto kept = rotated_nms(std::move(parsed), kNmsIouThreshold, 300);
+  const auto kept = task_obb ?
+    rotated_nms(std::move(parsed), kNmsIouThreshold, 300) :
+    axis_aligned_nms(std::move(parsed), kNmsIouThreshold, 300);
   detections.reserve(kept.size());
   for (const auto & candidate : kept) {
+    if (!task_obb) {
+      const int x1 = static_cast<int>(std::floor(clamp_value(
+        candidate.cx - (candidate.width * 0.5F), 0.0F, static_cast<float>(img_w - 1))));
+      const int y1 = static_cast<int>(std::floor(clamp_value(
+        candidate.cy - (candidate.height * 0.5F), 0.0F, static_cast<float>(img_h - 1))));
+      const int x2 = static_cast<int>(std::ceil(clamp_value(
+        candidate.cx + (candidate.width * 0.5F), 0.0F, static_cast<float>(img_w - 1))));
+      const int y2 = static_cast<int>(std::ceil(clamp_value(
+        candidate.cy + (candidate.height * 0.5F), 0.0F, static_cast<float>(img_h - 1))));
+
+      Detection detection{};
+      detection.bbox_model = cv::Rect(x1, y1, std::max(0, x2 - x1), std::max(0, y2 - y1));
+      detection.confidence = candidate.confidence;
+      detection.class_id = candidate.class_id;
+      detections.push_back(detection);
+      continue;
+    }
+
     float normalized_angle = 0.0F;
     const auto rect = regularize_rbox(candidate, &normalized_angle);
     cv::Point2f corners[4];

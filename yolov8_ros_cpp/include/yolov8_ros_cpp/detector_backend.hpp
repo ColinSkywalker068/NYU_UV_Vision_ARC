@@ -74,6 +74,7 @@ private:
   float conf_threshold_{0.25F};
   bool warned_unavailable_{false};
   bool initialized_{false};
+  bool end2end_{false};
   std::string backend_name_{"tensorrt_stub"};
   std::unordered_map<int, std::string> class_names_;
   std::unique_ptr<Impl> impl_;
