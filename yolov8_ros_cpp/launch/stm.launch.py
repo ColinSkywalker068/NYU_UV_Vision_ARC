@@ -128,9 +128,7 @@ def generate_launch_description() -> LaunchDescription:
                 "allow_native_tensorrt_fallback": LaunchConfiguration(
                     "allow_native_tensorrt_fallback"
                 ),
-                "deepstream_config_path": LaunchConfiguration(
-                    "deepstream_config_path"
-                ),
+                "deepstream_config_path": LaunchConfiguration("deepstream_config_path"),
                 "imgsz_width": LaunchConfiguration("basler_width"),
                 "imgsz_height": LaunchConfiguration("basler_height"),
                 "basler_fps": LaunchConfiguration("basler_fps"),
