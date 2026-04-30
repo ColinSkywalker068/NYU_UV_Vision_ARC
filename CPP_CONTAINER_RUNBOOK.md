@@ -2,9 +2,9 @@
 
 ## What works today
 
-- **C++ `camera_node`**: RealSense capture and `image_raw` publishing — use this.
-- **C++ `yolov8_modular_node`**: Inference is a **stub** (`DeepStreamDetector::infer` returns no detections). Turning on real YOLO in C++ means implementing TensorRT/DeepStream (or similar) in `yolov8_ros_cpp` — that is a full backend project, not a flag flip.
-- **Recommended hybrid**: run **C++ camera** + **Python `yolov8_modular_node`** on the same `image_raw` topic for real detections now.
+- **C++ `camera_node`**: camera capture and `image_raw` publishing.
+- **C++ `yolov8_modular_node`**: the branch is moving toward a dedicated C++/DeepStream container path, separate from the original Python image.
+- **Recommended hybrid**: use the Python image for the old hybrid flow, and use the new C++ image for the DeepStream branch.
 
 ## 1) Start container with GUI + devices
 
@@ -12,18 +12,7 @@ Run on host:
 
 ```bash
 xhost +local:root
-docker run --rm -it \
-  --runtime nvidia \
-  --network host \
-  --privileged \
-  --ipc host \
-  -e DISPLAY=$DISPLAY \
-  -e QT_X11_NO_MITSHM=1 \
-  -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
-  -v /tmp/argus_socket:/tmp/argus_socket \
-  -v /dev:/dev \
-  -v "$PWD":/home/ultraviolet/CV_Detection \
-  cv-realsense:pylon
+./services/run-cplusplus.sh
 ```
 
 Optional cleanup on host after container exits:
@@ -71,7 +60,7 @@ Quick package check:
 ros2 pkg list | rg yolov8_ros_cpp
 ```
 
-## 4a) Hybrid (recommended): C++ camera + Python YOLO
+## 4a) Legacy hybrid: C++ camera + Python YOLO
 
 Two terminals, both after sourcing (section 3).
 
@@ -99,18 +88,15 @@ ros2 run yolov8_ros yolov8_modular_node --ros-args \
 
 Both nodes use topic `image_raw` (no remap needed if default names and no extra namespace).
 
-## 4b) All-C++ launch (camera works; YOLO stub only)
+## 4b) C++ DeepStream launch
 
 ```bash
-ros2 launch yolov8_ros_cpp realsense.launch.py \
-  model_path:=/home/ultraviolet/CV_Detection/yolov8_ros/model_test/bestmerge.engine \
-  task:=obb \
-  rs_width:=640 rs_height:=480 rs_fps:=60 \
-  rs_auto_exposure:=true \
-  show:=true
+ros2 launch yolov8_ros_cpp stm.launch.py \
+  detector_backend:=deepstream \
+  camera_type:=basler
 ```
 
-This starts `camera_node` (C++) + `yolov8_modular_node` (C++), but the detector still logs `deepstream_stub` until you implement inference in `deepstream_detector.cpp`.
+This starts the new C++ DeepStream branch runtime from the separate image. Use the Python image only for the old hybrid flow.
 
 ## 5) Optional runtime checks (new terminal in same container)
 
@@ -126,5 +112,4 @@ ros2 topic hz /image_raw
 
 - If `Package 'yolov8_ros_cpp' not found`, re-run the source commands in section 3.
 - If `Package 'yolov8_ros' not found`, build `yolov8_ros` (section 2) and source `install/setup.bash` again.
-- C++ `yolov8_modular_node` stays on `deepstream_stub` until you add a real TensorRT/DeepStream path in the workspace.
-
+- Use the C++ DeepStream image for the branch runtime, and keep the Python image for the old hybrid path.

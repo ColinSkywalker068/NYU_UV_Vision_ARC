@@ -11,6 +11,7 @@
 #include <functional>
 #include <optional>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -54,10 +55,13 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   camera_config_ = load_camera_config(*this);
 
   const std::string default_model = resolve_default_model_path();
+  const std::string default_deepstream_config = resolve_default_deepstream_config_path();
   this->declare_parameter<std::string>("model_path", default_model);
   this->declare_parameter<std::string>("task", "obb");
   this->declare_parameter<std::string>("type", "yolo");
   this->declare_parameter<std::string>("detector_backend", "native_tensorrt");
+  this->declare_parameter<std::string>("deepstream_config_path", default_deepstream_config);
+  this->declare_parameter<bool>("allow_native_tensorrt_fallback", false);
   this->declare_parameter<bool>("half", true);
   this->declare_parameter<int>("imgsz_width", camera_config_.imgsz_width);
   this->declare_parameter<int>("imgsz_height", camera_config_.imgsz_height);
@@ -71,6 +75,8 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<bool>("enable_color_verification", true);
   this->declare_parameter<std::string>("target_color", "blue");
   this->declare_parameter<bool>("use_robot_id_targeting", false);
+  this->declare_parameter<int>("enemy_color_red_value", 0);
+  this->declare_parameter<int>("enemy_color_blue_value", 1);
   this->declare_parameter<int>("max_hsv_candidates", kDefaultMaxHsvCandidates);
   this->declare_parameter<int>("max_coast_frames", kDefaultMaxCoastFrames);
   this->declare_parameter<double>("hfov_degrees", 79.2);
@@ -83,6 +89,9 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   task_ = this->get_parameter("task").as_string();
   model_type_ = this->get_parameter("type").as_string();
   detector_backend_kind_ = this->get_parameter("detector_backend").as_string();
+  deepstream_config_path_ = this->get_parameter("deepstream_config_path").as_string();
+  allow_native_tensorrt_fallback_ =
+    this->get_parameter("allow_native_tensorrt_fallback").as_bool();
   half_ = this->get_parameter("half").as_bool();
   imgsz_width_ = this->get_parameter("imgsz_width").as_int();
   imgsz_height_ = this->get_parameter("imgsz_height").as_int();
@@ -97,6 +106,8 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   enable_color_verification_ = this->get_parameter("enable_color_verification").as_bool();
   target_color_ = this->get_parameter("target_color").as_string();
   use_robot_id_targeting_ = this->get_parameter("use_robot_id_targeting").as_bool();
+  enemy_color_red_value_ = this->get_parameter("enemy_color_red_value").as_int();
+  enemy_color_blue_value_ = this->get_parameter("enemy_color_blue_value").as_int();
   max_hsv_candidates_ = this->get_parameter("max_hsv_candidates").as_int();
   max_coast_frames_ = this->get_parameter("max_coast_frames").as_int();
   hfov_rad_ = static_cast<float>(
@@ -109,15 +120,11 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
 
   target_class_ = (target_color_ == "red") ? RED_CLASS : BLUE_CLASS;
 
-  camera_backend_ = create_camera_backend(camera_config_, this->get_logger());
-  camera_backend_->initialize();
-  fps_ = camera_backend_->actual_fps() > 0.0 ? camera_backend_->actual_fps() : 60.0;
-
-  detector_backend_ = create_detector_backend(
-    detector_backend_kind_, model_path_, task_, model_type_, half_, conf_);
-
   robot_id_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
     "robot_id", 10, std::bind(&PerceptionNode::id_listener_callback, this, std::placeholders::_1));
+  attitude_flags_subscription_ = this->create_subscription<std_msgs::msg::Int32MultiArray>(
+    "attitude_flags", 10,
+    std::bind(&PerceptionNode::handle_attitude_flags, this, std::placeholders::_1));
   bbox_publisher_ =
     this->create_publisher<std_msgs::msg::Int32MultiArray>("bounding_box", 10);
   override_publisher_ = this->create_publisher<std_msgs::msg::Bool>("override", 10);
@@ -130,14 +137,30 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
     debug_image_publisher_ = this->create_publisher<sensor_msgs::msg::Image>("image_raw", qos);
   }
 
-  timer_ = this->create_wall_timer(
-    std::chrono::duration<double>(1.0 / std::max(1.0, fps_)),
-    std::bind(&PerceptionNode::timer_callback, this));
+  if (detector_backend_kind_ == "deepstream") {
+    try {
+      initialize_deepstream_runtime();
+    } catch (const std::exception & exc) {
+      if (!allow_native_tensorrt_fallback_) {
+        throw;
+      }
+      RCLCPP_WARN(
+        this->get_logger(),
+        "DeepStream startup failed (%s). Falling back to native TensorRT because allow_native_tensorrt_fallback=true.",
+        exc.what());
+      detector_backend_kind_ = "native_tensorrt";
+      initialize_native_pipeline();
+    }
+  } else {
+    initialize_native_pipeline();
+  }
 
   RCLCPP_INFO(
     this->get_logger(),
     "Initialized PerceptionNode camera=%s backend=%s fps=%.2f debug_image_raw=%s",
     camera_config_.camera_type.c_str(),
+    deepstream_runtime_ != nullptr ?
+    deepstream_runtime_->backend_name().c_str() :
     detector_backend_->backend_name().c_str(),
     fps_,
     debug_publish_image_raw_ ? "true" : "false");
@@ -148,6 +171,7 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
 
 PerceptionNode::~PerceptionNode()
 {
+  deepstream_runtime_.reset();
   if (camera_backend_) {
     camera_backend_->release();
   }
@@ -155,7 +179,11 @@ PerceptionNode::~PerceptionNode()
 
 void PerceptionNode::id_listener_callback(const std_msgs::msg::Int32::SharedPtr msg)
 {
+  std::lock_guard<std::mutex> lock(state_mutex_);
   if (!use_robot_id_targeting_) {
+    return;
+  }
+  if (stm_color_locked_) {
     return;
   }
   if (is_red_team(msg->data)) {
@@ -163,6 +191,70 @@ void PerceptionNode::id_listener_callback(const std_msgs::msg::Int32::SharedPtr 
   } else if (is_blue_team(msg->data)) {
     target_class_ = RED_CLASS;
   }
+}
+
+void PerceptionNode::handle_attitude_flags(const std_msgs::msg::Int32MultiArray::SharedPtr msg)
+{
+  if (msg->data.empty()) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  const int enemy_color = msg->data[0];
+  if (enemy_color == enemy_color_red_value_) {
+    target_class_ = RED_CLASS;
+    stm_color_locked_ = true;
+  } else if (enemy_color == enemy_color_blue_value_) {
+    target_class_ = BLUE_CLASS;
+    stm_color_locked_ = true;
+  }
+}
+
+void PerceptionNode::initialize_native_pipeline()
+{
+  camera_backend_ = create_camera_backend(camera_config_, this->get_logger());
+  camera_backend_->initialize();
+  fps_ = camera_backend_->actual_fps() > 0.0 ? camera_backend_->actual_fps() : 60.0;
+
+  detector_backend_ = create_detector_backend(
+    detector_backend_kind_, model_path_, task_, model_type_, half_, conf_);
+  timer_ = this->create_wall_timer(
+    std::chrono::duration<double>(1.0 / std::max(1.0, fps_)),
+    std::bind(&PerceptionNode::timer_callback, this));
+}
+
+void PerceptionNode::initialize_deepstream_runtime()
+{
+  if (camera_config_.camera_type != "basler") {
+    throw std::runtime_error(
+            "DeepStream runtime currently supports camera_type=basler only");
+  }
+  if (inference_mode_ != "predict") {
+    throw std::runtime_error(
+            "DeepStream runtime currently supports inference_mode=predict only");
+  }
+
+  DeepStreamRuntime::Config config{};
+  config.model_path = model_path_;
+  config.config_template_path = deepstream_config_path_;
+  config.task = task_;
+  config.imgsz_width = imgsz_width_;
+  config.imgsz_height = imgsz_height_;
+  config.source_width = camera_config_.imgsz_width;
+  config.source_height = camera_config_.imgsz_height;
+  config.source_fps = camera_config_.basler_fps;
+  config.conf_threshold = conf_;
+  config.half = half_;
+  config.enable_color_verification = enable_color_verification_;
+  config.debug_publish_image_raw = debug_publish_image_raw_;
+
+  fps_ = static_cast<double>(std::max(1, camera_config_.basler_fps));
+  deepstream_runtime_ = std::make_unique<DeepStreamRuntime>(
+    this->get_logger(),
+    config,
+    [this](DeepStreamRuntime::Result && result) {
+      this->handle_deepstream_result(std::move(result));
+    });
 }
 
 void PerceptionNode::timer_callback()
@@ -174,8 +266,30 @@ void PerceptionNode::timer_callback()
   }
   const auto capture_done = std::chrono::steady_clock::now();
 
-  if (debug_publish_image_raw_) {
-    publish_debug_image(packet);
+  DetectorStageTimings detector_timings{};
+  const auto batch = detector_backend_->infer(packet, this->get_logger(), &detector_timings);
+  process_detection_cycle(
+    batch,
+    &packet,
+    detector_timings,
+    std::chrono::duration<double, std::milli>(capture_done - capture_start).count());
+}
+
+void PerceptionNode::handle_deepstream_result(DeepStreamRuntime::Result result)
+{
+  const FramePacket * packet = result.source_packet.has_value() ? &(*result.source_packet) : nullptr;
+  process_detection_cycle(result.batch, packet, result.timings, result.capture_ms);
+}
+
+void PerceptionNode::process_detection_cycle(
+  const DetectionBatch & batch,
+  const FramePacket * packet,
+  const DetectorStageTimings & detector_timings,
+  double capture_ms)
+{
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  if (debug_publish_image_raw_ && packet != nullptr) {
+    publish_debug_image(*packet);
   }
 
   double dt = 1.0 / 60.0;
@@ -188,9 +302,6 @@ void PerceptionNode::timer_callback()
   }
   last_frame_time_ = now;
   have_last_frame_time_ = true;
-
-  DetectorStageTimings detector_timings{};
-  const auto batch = detector_backend_->infer(packet, this->get_logger(), &detector_timings);
 
   double color_ms = 0.0;
   const auto tracking_start = std::chrono::steady_clock::now();
@@ -209,13 +320,18 @@ void PerceptionNode::timer_callback()
 
   const auto publish_start = std::chrono::steady_clock::now();
   if (!published) {
-    publish_no_target(packet.width(), packet.height());
+    const int src_w = batch.letterbox.src_w > 0 ?
+      batch.letterbox.src_w :
+      (packet != nullptr ? packet->width() : imgsz_width_);
+    const int src_h = batch.letterbox.src_h > 0 ?
+      batch.letterbox.src_h :
+      (packet != nullptr ? packet->height() : imgsz_height_);
+    publish_no_target(src_w, src_h);
   }
   const auto publish_done = std::chrono::steady_clock::now();
 
   ++frame_count_;
-  stage_totals_.capture_ms += std::chrono::duration<double, std::milli>(
-    capture_done - capture_start).count();
+  stage_totals_.capture_ms += capture_ms;
   stage_totals_.preprocess_ms += detector_timings.preprocess_ms;
   stage_totals_.upload_ms += detector_timings.upload_ms;
   stage_totals_.inference_ms += detector_timings.inference_ms;
@@ -244,7 +360,7 @@ void PerceptionNode::publish_debug_image(const FramePacket & packet)
 }
 
 std::vector<Candidate> PerceptionNode::extract_candidates(
-  const DetectionBatch & batch, const FramePacket & packet, double * color_ms) const
+  const DetectionBatch & batch, const FramePacket * packet, double * color_ms) const
 {
   std::vector<Candidate> candidates;
   candidates.reserve(batch.detections.size());
@@ -272,7 +388,7 @@ std::vector<Candidate> PerceptionNode::extract_candidates(
       detection.obb_angle});
   }
 
-  if (!enable_color_verification_ || candidates.empty() || packet.empty()) {
+  if (!enable_color_verification_ || candidates.empty() || packet == nullptr || packet->empty()) {
     return candidates;
   }
 
@@ -290,12 +406,12 @@ std::vector<Candidate> PerceptionNode::extract_candidates(
       continue;
     }
 
-    const auto clipped = candidate.bbox_source & cv::Rect(0, 0, packet.width(), packet.height());
+    const auto clipped = candidate.bbox_source & cv::Rect(0, 0, packet->width(), packet->height());
     if (clipped.width <= 0 || clipped.height <= 0) {
       candidate.is_enemy = false;
       continue;
     }
-    const auto roi = packet.frame(clipped);
+    const auto roi = packet->frame(clipped);
     candidate.is_enemy = check_enemy(roi, target_class_).first;
   }
   const auto color_done = std::chrono::steady_clock::now();
@@ -456,12 +572,29 @@ bool PerceptionNode::run_kalman_pipeline(
 
 std::string PerceptionNode::resolve_default_model_path() const
 {
-  const auto share_dir = std::filesystem::path(__FILE__).parent_path().parent_path();
-  const auto candidate = share_dir / "models" / "best.engine";
-  if (std::filesystem::exists(candidate)) {
-    return candidate.string();
+  const auto cwd_candidate = std::filesystem::current_path() / "model_test" / "bestmerge.engine";
+  if (std::filesystem::exists(cwd_candidate)) {
+    return cwd_candidate.string();
   }
-  return {};
+  return "/home/ultraviolet/CV_Detection/model_test/bestmerge.engine";
+}
+
+std::string PerceptionNode::resolve_default_deepstream_config_path() const
+{
+  const auto cwd_candidate =
+    std::filesystem::current_path() / "yolov8_ros_cpp" / "config" /
+    "deepstream_bestmerge_nvinfer.txt";
+  if (std::filesystem::exists(cwd_candidate)) {
+    return cwd_candidate.string();
+  }
+
+  const auto package_candidate =
+    std::filesystem::path(__FILE__).parent_path().parent_path() / "config" /
+    "deepstream_bestmerge_nvinfer.txt";
+  if (std::filesystem::exists(package_candidate)) {
+    return package_candidate.string();
+  }
+  return cwd_candidate.string();
 }
 
 void PerceptionNode::log_stage_timing()

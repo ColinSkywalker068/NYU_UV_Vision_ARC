@@ -17,6 +17,12 @@ find_package(std_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
 
 find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+  pkg_check_modules(GSTREAMER QUIET gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0)
+  if(GSTREAMER_FOUND)
+    set(HAVE_GSTREAMER TRUE)
+  endif()
+endif()
 
 find_path(LIBREALSENSE2_INCLUDE_DIR librealsense2/rs.hpp)
 find_library(LIBREALSENSE2_LIBRARY NAMES realsense2 librealsense2)
@@ -30,6 +36,18 @@ find_library(TENSORRT_LIBRARY NAMES nvinfer PATHS /usr/lib /usr/lib/x86_64-linux
 find_library(CUDART_LIBRARY NAMES cudart PATHS /usr/local/cuda/lib64 /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu)
 if(TENSORRT_INCLUDE_DIR AND TENSORRT_LIBRARY AND CUDART_LIBRARY)
   set(HAVE_TENSORRT TRUE)
+endif()
+
+find_path(DEEPSTREAM_INCLUDE_DIR nvdsmeta.h
+  PATHS
+    /opt/nvidia/deepstream/deepstream/sources/includes
+    /opt/nvidia/deepstream/deepstream/sources/includes/gst-plugins)
+find_library(DEEPSTREAM_META_LIBRARY NAMES nvds_meta
+  PATHS /opt/nvidia/deepstream/deepstream/lib)
+find_library(DEEPSTREAM_GST_META_LIBRARY NAMES nvdsgst_meta
+  PATHS /opt/nvidia/deepstream/deepstream/lib)
+if(DEEPSTREAM_INCLUDE_DIR AND DEEPSTREAM_META_LIBRARY AND DEEPSTREAM_GST_META_LIBRARY)
+  set(HAVE_DEEPSTREAM TRUE)
 endif()
 
 find_path(PYLON_INCLUDE_DIR pylon/PylonIncludes.h PATHS /opt/pylon/include)
@@ -49,8 +67,10 @@ add_library(yolov8_ros_cpp_components SHARED
   src/utils.cpp
   src/tracker.cpp
   src/camera_backend.cpp
+  src/detection_postprocess.cpp
   src/detector_backend.cpp
   src/deepstream_detector.cpp
+  src/deepstream_runtime.cpp
   src/camera_node.cpp
   src/yolov8_node.cpp
   src/perception_node.cpp
@@ -61,6 +81,21 @@ target_include_directories(yolov8_ros_cpp_components PUBLIC
   $<INSTALL_INTERFACE:include>
   ${OpenCV_INCLUDE_DIRS}
 )
+if(HAVE_GSTREAMER)
+  target_include_directories(yolov8_ros_cpp_components PRIVATE ${GSTREAMER_INCLUDE_DIRS})
+  target_link_directories(yolov8_ros_cpp_components PRIVATE ${GSTREAMER_LIBRARY_DIRS})
+  target_compile_options(yolov8_ros_cpp_components PRIVATE ${GSTREAMER_CFLAGS_OTHER})
+  target_compile_definitions(yolov8_ros_cpp_components PRIVATE HAVE_GSTREAMER=1)
+  target_link_libraries(yolov8_ros_cpp_components ${GSTREAMER_LIBRARIES})
+endif()
+if(HAVE_DEEPSTREAM)
+  target_compile_definitions(yolov8_ros_cpp_components PRIVATE HAVE_DEEPSTREAM=1)
+  target_include_directories(yolov8_ros_cpp_components PRIVATE ${DEEPSTREAM_INCLUDE_DIR})
+  target_link_libraries(yolov8_ros_cpp_components
+    ${DEEPSTREAM_META_LIBRARY}
+    ${DEEPSTREAM_GST_META_LIBRARY}
+  )
+endif()
 
 ament_target_dependencies(yolov8_ros_cpp_components
   rclcpp
@@ -140,6 +175,11 @@ install(
 
 install(
   DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY config
   DESTINATION share/${PROJECT_NAME}
 )
 

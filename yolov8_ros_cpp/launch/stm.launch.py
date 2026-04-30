@@ -1,14 +1,36 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description() -> LaunchDescription:
     camera_type_arg = DeclareLaunchArgument(
         "camera_type",
-        default_value="realsense",
+        default_value="basler",
         description="Camera backend: realsense or basler",
+    )
+    detector_backend_arg = DeclareLaunchArgument(
+        "detector_backend",
+        default_value="deepstream",
+        description="Detector backend: deepstream or native_tensorrt",
+    )
+    allow_native_fallback_arg = DeclareLaunchArgument(
+        "allow_native_tensorrt_fallback",
+        default_value="false",
+        description="Allow DeepStream startup to fall back to native TensorRT",
+    )
+    deepstream_config_arg = DeclareLaunchArgument(
+        "deepstream_config_path",
+        default_value=PathJoinSubstitution(
+            [
+                FindPackageShare("yolov8_ros_cpp"),
+                "config",
+                "deepstream_bestmerge_nvinfer.txt",
+            ]
+        ),
+        description="Optional DeepStream nvinfer config template path",
     )
     serial_port_arg = DeclareLaunchArgument(
         "serial_port",
@@ -102,6 +124,13 @@ def generate_launch_description() -> LaunchDescription:
         parameters=[
             {
                 "camera_type": LaunchConfiguration("camera_type"),
+                "detector_backend": LaunchConfiguration("detector_backend"),
+                "allow_native_tensorrt_fallback": LaunchConfiguration(
+                    "allow_native_tensorrt_fallback"
+                ),
+                "deepstream_config_path": LaunchConfiguration(
+                    "deepstream_config_path"
+                ),
                 "imgsz_width": LaunchConfiguration("basler_width"),
                 "imgsz_height": LaunchConfiguration("basler_height"),
                 "basler_fps": LaunchConfiguration("basler_fps"),
@@ -144,6 +173,9 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
             camera_type_arg,
+            detector_backend_arg,
+            allow_native_fallback_arg,
+            deepstream_config_arg,
             serial_port_arg,
             serial_baudrate_arg,
             serial_verbose_arg,
