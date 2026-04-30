@@ -356,7 +356,7 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
   impl_->end2end = end2end_;
   impl_->nc = class_names_.empty() ? 1 : static_cast<int>(class_names_.size());
 
-  const std::string engine_bytes = read_file(model_path_);
+  const std::string engine_bytes = read_engine_plan_from_file(model_path_);
   impl_->runtime.reset(nvinfer1::createInferRuntime(impl_->trt_logger));
   if (!impl_->runtime) {
     throw std::runtime_error("Failed to create TensorRT runtime");

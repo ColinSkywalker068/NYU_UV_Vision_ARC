@@ -61,6 +61,25 @@ std::optional<std::string> extract_engine_metadata(const std::string & data)
   return metadata;
 }
 
+std::size_t engine_plan_offset(const std::string & data)
+{
+  if (data.size() < sizeof(std::uint32_t)) {
+    return 0U;
+  }
+  std::uint32_t metadata_len = 0;
+  std::memcpy(&metadata_len, data.data(), sizeof(metadata_len));
+  const std::size_t json_offset = sizeof(metadata_len);
+  const std::size_t plan_offset = json_offset + metadata_len;
+  if (metadata_len == 0U || plan_offset > data.size()) {
+    return 0U;
+  }
+  const std::string metadata = data.substr(json_offset, metadata_len);
+  if (metadata.empty() || metadata.front() != '{' || metadata.back() != '}') {
+    return 0U;
+  }
+  return plan_offset;
+}
+
 std::optional<std::string> extract_json_string_value(
   const std::string & json, const std::string & key)
 {
@@ -412,6 +431,16 @@ EngineMetadata read_engine_metadata_from_file(const std::string & model_path)
   metadata.end2end = extract_json_bool_value(*json, "end2end").value_or(false);
   metadata.int8_export = extract_json_bool_value(*json, "int8").value_or(false);
   return metadata;
+}
+
+std::string read_engine_plan_from_file(const std::string & model_path)
+{
+  const auto file_data = read_file(model_path);
+  const std::size_t plan_offset = engine_plan_offset(file_data);
+  if (plan_offset == 0U) {
+    return file_data;
+  }
+  return file_data.substr(plan_offset);
 }
 
 std::vector<Detection> parse_yolo_output_tensor(

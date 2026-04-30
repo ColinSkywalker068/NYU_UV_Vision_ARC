@@ -21,6 +21,7 @@ struct EngineMetadata
 };
 
 EngineMetadata read_engine_metadata_from_file(const std::string & model_path);
+std::string read_engine_plan_from_file(const std::string & model_path);
 
 std::vector<Detection> parse_yolo_output_tensor(
   const float * tensor_data,
