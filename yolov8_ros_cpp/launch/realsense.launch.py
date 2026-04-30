@@ -5,7 +5,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description() -> LaunchDescription:
-    default_model_path = ""
+    default_model_path = "/home/ultraviolet/CV_Detection/model_test/bestmerge.engine"
 
     rs_width_arg = DeclareLaunchArgument(
         "rs_width", default_value="640", description="RealSense color width"
