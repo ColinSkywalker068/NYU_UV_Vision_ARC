@@ -8,12 +8,12 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description() -> LaunchDescription:
     camera_type_arg = DeclareLaunchArgument(
         "camera_type",
-        default_value="basler",
+        default_value="realsense",
         description="Camera backend: realsense or basler",
     )
     detector_backend_arg = DeclareLaunchArgument(
         "detector_backend",
-        default_value="deepstream",
+        default_value="native_tensorrt",
         description="Detector backend: deepstream or native_tensorrt",
     )
     allow_native_fallback_arg = DeclareLaunchArgument(
@@ -129,8 +129,8 @@ def generate_launch_description() -> LaunchDescription:
                     "allow_native_tensorrt_fallback"
                 ),
                 "deepstream_config_path": LaunchConfiguration("deepstream_config_path"),
-                "imgsz_width": LaunchConfiguration("basler_width"),
-                "imgsz_height": LaunchConfiguration("basler_height"),
+                "imgsz_width": LaunchConfiguration("realsense_width"),
+                "imgsz_height": LaunchConfiguration("realsense_height"),
                 "basler_fps": LaunchConfiguration("basler_fps"),
                 "basler_exposure_us": LaunchConfiguration("basler_exposure_us"),
                 "basler_gain_db": LaunchConfiguration("basler_gain_db"),
