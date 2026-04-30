@@ -17,6 +17,7 @@ struct EngineMetadata
   std::optional<std::string> task;
   std::optional<std::string> version;
   bool end2end{false};
+  bool int8_export{false};
 };
 
 EngineMetadata read_engine_metadata_from_file(const std::string & model_path);

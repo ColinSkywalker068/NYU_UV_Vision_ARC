@@ -410,6 +410,7 @@ EngineMetadata read_engine_metadata_from_file(const std::string & model_path)
   metadata.task = extract_json_string_value(*json, "task");
   metadata.version = extract_json_string_value(*json, "version");
   metadata.end2end = extract_json_bool_value(*json, "end2end").value_or(false);
+  metadata.int8_export = extract_json_bool_value(*json, "int8").value_or(false);
   return metadata;
 }
 

@@ -75,6 +75,8 @@ private:
   bool warned_unavailable_{false};
   bool initialized_{false};
   bool end2end_{false};
+  bool int8_export_{false};
+  std::string engine_version_;
   std::string backend_name_{"tensorrt_stub"};
   std::unordered_map<int, std::string> class_names_;
   std::unique_ptr<Impl> impl_;

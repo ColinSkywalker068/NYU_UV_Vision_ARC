@@ -340,7 +340,9 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
     if (metadata.task.has_value()) {
       task_ = *metadata.task;
     }
+    engine_version_ = metadata.version.value_or("");
     end2end_ = metadata.end2end;
+    int8_export_ = metadata.int8_export;
     if (class_names_.empty()) {
       class_names_.emplace(0, "plate");
     }
@@ -424,13 +426,19 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
     impl_->input_dtype != nvinfer1::DataType::kFLOAT &&
     impl_->input_dtype != nvinfer1::DataType::kHALF)
   {
-    throw std::runtime_error("Only FP32 and FP16 TensorRT input bindings are supported");
+    throw std::runtime_error(
+            "TensorRT engine uses unsupported input I/O datatype. "
+            "Ultralytics INT8 exports are supported when bindings stay FP32/FP16, "
+            "but true INT8 input bindings are not yet handled by this runtime.");
   }
   if (
     impl_->output_dtype != nvinfer1::DataType::kFLOAT &&
     impl_->output_dtype != nvinfer1::DataType::kHALF)
   {
-    throw std::runtime_error("Only FP32 and FP16 TensorRT output bindings are supported");
+    throw std::runtime_error(
+            "TensorRT engine uses unsupported output I/O datatype. "
+            "Ultralytics INT8 exports are supported when bindings stay FP32/FP16, "
+            "but true INT8 output bindings are not yet handled by this runtime.");
   }
 
   impl_->input_volume = static_cast<std::size_t>(volume_of(impl_->runtime_input_shape));
@@ -479,6 +487,15 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
     "cudaMalloc output buffer failed");
 
   backend_name_ = "native_tensorrt";
+  RCLCPP_INFO(
+    logger,
+    "TensorRT engine ready: task=%s version=%s export_int8=%s end2end=%s input_dtype=%d output_dtype=%d",
+    task_.c_str(),
+    engine_version_.empty() ? "unknown" : engine_version_.c_str(),
+    int8_export_ ? "true" : "false",
+    end2end_ ? "true" : "false",
+    static_cast<int>(impl_->input_dtype),
+    static_cast<int>(impl_->output_dtype));
 #else
   if (!warned_unavailable_) {
     RCLCPP_WARN(

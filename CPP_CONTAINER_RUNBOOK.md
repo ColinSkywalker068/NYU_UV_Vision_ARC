@@ -90,6 +90,8 @@ Note on YOLO26 and post-processing:
 - `end2end=true` exports already contain final detections, so applying a legacy NMS step after inference is incorrect.
 - `end2end=false` exports still produce raw predictions and do require host-side decode + NMS, even for YOLO26. This commonly happens for TensorRT INT8 exports because Ultralytics may disable end-to-end export for compatibility.
 - The C++ pipeline now branches on engine metadata instead of assuming one fixed YOLO post-process path.
+- Ultralytics INT8 engines are supported in the common export configuration where TensorRT keeps FP32 or FP16 I/O bindings and quantizes internally.
+- Engines with true INT8 input or output bindings still need explicit binding-scale handling and are rejected with a clear runtime error.
 ```
 
 Both nodes use topic `image_raw` (no remap needed if default names and no extra namespace).
