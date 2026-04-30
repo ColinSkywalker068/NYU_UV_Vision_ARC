@@ -1,6 +1,7 @@
 #include "yolov8_ros_cpp/perception_node.hpp"
 
 #include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <sensor_msgs/image_encodings.hpp>
 
