@@ -116,7 +116,8 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
     this->get_parameter("vfov_degrees").as_double() * kPi / 180.0);
   vis_window_name_ = this->get_parameter("vis_window_name").as_string();
   debug_publish_image_raw_ = this->get_parameter("debug_publish_image_raw").as_bool();
-  stage_log_interval_ = std::max(1, this->get_parameter("stage_log_interval").as_int());
+  stage_log_interval_ = std::max(
+    1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
 
   target_class_ = (target_color_ == "red") ? RED_CLASS : BLUE_CLASS;
 
