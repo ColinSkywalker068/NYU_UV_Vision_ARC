@@ -22,6 +22,7 @@ class ArmorDetector:
         self.match_max_angle_diff = 10.0
         self.armor_min_ratio = 0.6
         self.armor_max_ratio = 5.0
+        self.armor_max_y_diff_ratio = 0.5
         self.light_max_tilt = 40.0
 
     def fast_process(self, img, enemy_color, color_th=55):
@@ -79,7 +80,12 @@ class ArmorDetector:
                     continue
 
                 dist_x = abs(l1["center"][0] - l2["center"][0])
+                dist_y = abs(l1["center"][1] - l2["center"][1])
                 avg_len = (l1["length"] + l2["length"]) / 2.0
+                
+                if dist_y / avg_len > self.armor_max_y_diff_ratio:
+                    continue
+
                 ratio = dist_x / avg_len
 
                 if self.armor_min_ratio < ratio < self.armor_max_ratio:
