@@ -83,7 +83,7 @@ class ArmorDetector:
                 dist_x = abs(l1["center"][0] - l2["center"][0])
                 dist_y = abs(l1["center"][1] - l2["center"][1])
                 avg_len = (l1["length"] + l2["length"]) / 2.0
-                
+
                 if dist_y / avg_len > self.armor_max_y_diff_ratio:
                     continue
 
