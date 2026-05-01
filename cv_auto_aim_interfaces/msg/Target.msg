@@ -1,0 +1,22 @@
+uint8 DETECTING=0
+uint8 TRACKING=1
+uint8 COASTING=2
+
+std_msgs/Header header
+string source_id
+bool has_target
+bool is_coasting
+int32 track_id
+int32[4] bbox_xyxy
+float32 center_x
+float32 center_y
+float32 predicted_center_x
+float32 predicted_center_y
+float32 confidence
+int32 class_id
+bool is_enemy
+bool has_obb_angle
+float32 obb_angle
+uint8 state
+int32 image_width
+int32 image_height

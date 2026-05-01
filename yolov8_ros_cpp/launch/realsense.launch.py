@@ -43,20 +43,55 @@ def generate_launch_description() -> LaunchDescription:
     show_arg = DeclareLaunchArgument(
         "show", default_value="false", description="OpenCV debug window"
     )
-    use_kalman_arg = DeclareLaunchArgument(
-        "use_kalman", default_value="false", description="Kalman-smoothed publishing"
-    )
     hfov_arg = DeclareLaunchArgument(
         "hfov_degrees", default_value="69.4", description="Horizontal FOV deg"
     )
     vfov_arg = DeclareLaunchArgument(
         "vfov_degrees", default_value="42.5", description="Vertical FOV deg"
     )
+    track_min_hits_arg = DeclareLaunchArgument(
+        "track_min_hits", default_value="2", description="Frames required to confirm a track"
+    )
+    track_max_coast_frames_arg = DeclareLaunchArgument(
+        "track_max_coast_frames",
+        default_value="3",
+        description="Maximum published coast frames",
+    )
+    track_drop_frames_arg = DeclareLaunchArgument(
+        "track_drop_frames",
+        default_value="8",
+        description="Frames before dropping an unmatched track",
+    )
+    association_max_center_distance_ratio_arg = DeclareLaunchArgument(
+        "association_max_center_distance_ratio",
+        default_value="0.20",
+        description="Maximum normalized center distance for matching",
+    )
+    association_min_iou_arg = DeclareLaunchArgument(
+        "association_min_iou",
+        default_value="0.10",
+        description="Minimum IoU required for matching",
+    )
+    target_switch_min_score_delta_arg = DeclareLaunchArgument(
+        "target_switch_min_score_delta",
+        default_value="0.15",
+        description="Confidence delta required to steal target lock",
+    )
+    target_lock_hysteresis_frames_arg = DeclareLaunchArgument(
+        "target_lock_hysteresis_frames",
+        default_value="2",
+        description="Coast frames allowed before target lock yields",
+    )
+    publish_zero_angles_arg = DeclareLaunchArgument(
+        "publish_zero_angles_when_no_target",
+        default_value="true",
+        description="Publish zero yaw/pitch when there is no selected target",
+    )
 
-    perception_node = Node(
+    detector_node = Node(
         package="yolov8_ros_cpp",
-        executable="perception_node",
-        name="perception_node",
+        executable="armor_detector_node",
+        name="armor_detector_node",
         output="screen",
         parameters=[
             {
@@ -71,11 +106,52 @@ def generate_launch_description() -> LaunchDescription:
                 "task": LaunchConfiguration("task"),
                 "conf": LaunchConfiguration("conf"),
                 "show": LaunchConfiguration("show"),
-                "use_kalman": LaunchConfiguration("use_kalman"),
                 "hfov_degrees": LaunchConfiguration("hfov_degrees"),
                 "vfov_degrees": LaunchConfiguration("vfov_degrees"),
                 "imgsz_width": LaunchConfiguration("rs_width"),
                 "imgsz_height": LaunchConfiguration("rs_height"),
+            }
+        ],
+    )
+
+    tracker_node = Node(
+        package="yolov8_ros_cpp",
+        executable="armor_tracker_node",
+        name="armor_tracker_node",
+        output="screen",
+        parameters=[
+            {
+                "track_min_hits": LaunchConfiguration("track_min_hits"),
+                "track_max_coast_frames": LaunchConfiguration("track_max_coast_frames"),
+                "track_drop_frames": LaunchConfiguration("track_drop_frames"),
+                "association_max_center_distance_ratio": LaunchConfiguration(
+                    "association_max_center_distance_ratio"
+                ),
+                "association_min_iou": LaunchConfiguration("association_min_iou"),
+                "target_switch_min_score_delta": LaunchConfiguration(
+                    "target_switch_min_score_delta"
+                ),
+                "target_lock_hysteresis_frames": LaunchConfiguration(
+                    "target_lock_hysteresis_frames"
+                ),
+            }
+        ],
+    )
+
+    solver_node = Node(
+        package="yolov8_ros_cpp",
+        executable="aim_solver_node",
+        name="aim_solver_node",
+        output="screen",
+        parameters=[
+            {
+                "hfov_degrees": LaunchConfiguration("hfov_degrees"),
+                "vfov_degrees": LaunchConfiguration("vfov_degrees"),
+                "publish_zero_angles_when_no_target": LaunchConfiguration(
+                    "publish_zero_angles_when_no_target"
+                ),
+                "default_image_width": LaunchConfiguration("rs_width"),
+                "default_image_height": LaunchConfiguration("rs_height"),
             }
         ],
     )
@@ -92,9 +168,18 @@ def generate_launch_description() -> LaunchDescription:
             task_arg,
             conf_arg,
             show_arg,
-            use_kalman_arg,
             hfov_arg,
             vfov_arg,
-            perception_node,
+            track_min_hits_arg,
+            track_max_coast_frames_arg,
+            track_drop_frames_arg,
+            association_max_center_distance_ratio_arg,
+            association_min_iou_arg,
+            target_switch_min_score_delta_arg,
+            target_lock_hysteresis_frames_arg,
+            publish_zero_angles_arg,
+            detector_node,
+            tracker_node,
+            solver_node,
         ]
     )

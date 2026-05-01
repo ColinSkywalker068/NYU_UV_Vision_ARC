@@ -8,7 +8,7 @@ This is the NYU Robomaster's code for the Robomasters Robotics Competition.
 - [Pipeline Documentation](./Documentation/Pipeline/Pipeline.md)
 - [Resources to get started](./Documentation/Resources/Resources.md)
 - [Setup Pre-commit](./Documentation/Pre-commit.md)
-- [YOLOv8 Node Documentation](./docs/yolov8_node/index.md) — nodes, parameters, topics, launch files
+- [rm_auto_aim Parity Next Steps](./docs/RM_AUTO_AIM_PARITY_NEXT_STEPS.md)
 
 ---
 
@@ -27,18 +27,18 @@ To easily run the detection stack, use the `uv` tool wrapper:
 3. **Run the launch files:**
    - To launch with STM configs and Basler camera (standard start):
      ```bash
-     uv run yolov8_ros stm.launch.py
+     uv run yolov8_ros_cpp stm.launch.py
      ```
    - To launch with RealSense configs:
      ```bash
-     uv run yolov8_ros realsense.launch.py
+     uv run yolov8_ros_cpp realsense.launch.py
      ```
 
 ---
 
-### Node Documentation
+### Runtime Documentation
 
-Detailed technical documentation for every node and module in the `yolov8_ros` package, including all ROS parameters, topics, and launch file arguments, is available in **[docs/yolov8_node/](./docs/yolov8_node/index.md)**.
+Current runtime roadmap is available in **[docs/RM_AUTO_AIM_PARITY_NEXT_STEPS.md](./docs/RM_AUTO_AIM_PARITY_NEXT_STEPS.md)**.
 
 
 ### Update yml files

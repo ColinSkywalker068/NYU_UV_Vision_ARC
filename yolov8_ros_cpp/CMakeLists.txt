@@ -10,6 +10,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
+find_package(cv_auto_aim_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -79,6 +80,9 @@ add_library(yolov8_ros_cpp_components SHARED
   src/detector_backend.cpp
   src/deepstream_detector.cpp
   src/deepstream_runtime.cpp
+  src/armor_detector_node.cpp
+  src/armor_tracker_node.cpp
+  src/aim_solver_node.cpp
   src/camera_node.cpp
   src/yolov8_node.cpp
   src/perception_node.cpp
@@ -106,6 +110,7 @@ if(HAVE_DEEPSTREAM)
 endif()
 
 ament_target_dependencies(yolov8_ros_cpp_components
+  cv_auto_aim_interfaces
   rclcpp
   rclcpp_components
   sensor_msgs
@@ -141,6 +146,9 @@ if(HAVE_PYLON)
 endif()
 
 rclcpp_components_register_nodes(yolov8_ros_cpp_components
+  "yolov8_ros_cpp::ArmorDetectorNode"
+  "yolov8_ros_cpp::ArmorTrackerNode"
+  "yolov8_ros_cpp::AimSolverNode"
   "yolov8_ros_cpp::CameraNode"
   "yolov8_ros_cpp::YOLOv8Node"
   "yolov8_ros_cpp::PerceptionNode"
@@ -157,6 +165,18 @@ ament_target_dependencies(yolov8_modular_node rclcpp)
 add_executable(perception_node src/perception_node_main.cpp)
 target_link_libraries(perception_node yolov8_ros_cpp_components)
 ament_target_dependencies(perception_node rclcpp)
+
+add_executable(armor_detector_node src/armor_detector_node_main.cpp)
+target_link_libraries(armor_detector_node yolov8_ros_cpp_components)
+ament_target_dependencies(armor_detector_node cv_auto_aim_interfaces rclcpp)
+
+add_executable(armor_tracker_node src/armor_tracker_node_main.cpp)
+target_link_libraries(armor_tracker_node yolov8_ros_cpp_components)
+ament_target_dependencies(armor_tracker_node cv_auto_aim_interfaces rclcpp)
+
+add_executable(aim_solver_node src/aim_solver_node_main.cpp)
+target_link_libraries(aim_solver_node yolov8_ros_cpp_components)
+ament_target_dependencies(aim_solver_node cv_auto_aim_interfaces rclcpp)
 
 add_executable(stm32_serial_bridge
   src/seasky_protocol.cpp
@@ -175,7 +195,8 @@ install(
 )
 
 install(
-  TARGETS yolov8_ros_cpp_components camera_node yolov8_modular_node perception_node stm32_serial_bridge
+  TARGETS yolov8_ros_cpp_components camera_node yolov8_modular_node perception_node
+    armor_detector_node armor_tracker_node aim_solver_node stm32_serial_bridge
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -190,5 +211,22 @@ install(
   DIRECTORY config
   DESTINATION share/${PROJECT_NAME}
 )
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_tracking_core
+    test/test_tracking_core.cpp
+    src/tracker.cpp
+    src/utils.cpp
+  )
+  if(TARGET test_tracking_core)
+    target_include_directories(test_tracking_core PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+      ${OpenCV_INCLUDE_DIRS}
+    )
+    target_link_libraries(test_tracking_core ${OpenCV_LIBS})
+  endif()
+endif()
 
 ament_package()

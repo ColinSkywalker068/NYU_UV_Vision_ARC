@@ -312,6 +312,9 @@ public:
         std::chrono::steady_clock::now().time_since_epoch()).count());
     packet.source_id = source_id_;
     packet.owner = image;
+    if (config_.basler_flip) {
+      cv::flip(packet.frame, packet.frame, -1);
+    }
     return true;
   }
 
@@ -401,6 +404,7 @@ CameraConfig load_camera_config(rclcpp::Node & node)
   node.declare_parameter<double>("basler_exposure_us", config.basler_exposure_us);
   node.declare_parameter<double>("basler_gain_db", config.basler_gain_db);
   node.declare_parameter<int>("basler_fps", config.basler_fps);
+  node.declare_parameter<bool>("basler_flip", config.basler_flip);
   node.declare_parameter<bool>("basler_use_full_sensor", config.basler_use_full_sensor);
   node.declare_parameter<bool>("basler_centered_roi", config.basler_centered_roi);
   node.declare_parameter<int>("realsense_width", config.realsense_width);
@@ -422,6 +426,7 @@ CameraConfig load_camera_config(rclcpp::Node & node)
   config.basler_exposure_us = node.get_parameter("basler_exposure_us").as_double();
   config.basler_gain_db = node.get_parameter("basler_gain_db").as_double();
   config.basler_fps = node.get_parameter("basler_fps").as_int();
+  config.basler_flip = node.get_parameter("basler_flip").as_bool();
   config.basler_use_full_sensor = node.get_parameter("basler_use_full_sensor").as_bool();
   config.basler_centered_roi = node.get_parameter("basler_centered_roi").as_bool();
   config.realsense_width = node.get_parameter("realsense_width").as_int();

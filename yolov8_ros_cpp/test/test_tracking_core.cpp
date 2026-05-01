@@ -1,0 +1,131 @@
+#include "yolov8_ros_cpp/tracker.hpp"
+
+#include <gtest/gtest.h>
+
+namespace
+{
+
+yolov8_ros_cpp::TrackObservation make_detection(
+  float center_x, float center_y, float confidence, bool is_enemy = true,
+  int image_width = 640, int image_height = 480)
+{
+  yolov8_ros_cpp::TrackObservation observation;
+  observation.center = cv::Point2f(center_x, center_y);
+  observation.bbox = cv::Rect(
+    static_cast<int>(center_x - 20.0F),
+    static_cast<int>(center_y - 10.0F),
+    40,
+    20);
+  observation.confidence = confidence;
+  observation.class_id = 0;
+  observation.is_enemy = is_enemy;
+  observation.image_width = image_width;
+  observation.image_height = image_height;
+  return observation;
+}
+
+}  // namespace
+
+TEST(ArmorPlateTrackerTest, PredictAndUpdateRemainStable)
+{
+  yolov8_ros_cpp::ArmorPlateTracker tracker(100.0, 100.0, 40.0, 20.0);
+  const auto predicted = tracker.predict(1.0);
+  EXPECT_NEAR(predicted.first, 100.0, 1e-6);
+  EXPECT_NEAR(predicted.second, 100.0, 1e-6);
+
+  const auto updated = tracker.update(110.0, 100.0, 42.0, 22.0);
+  EXPECT_GT(updated.first, 100.0);
+  EXPECT_LT(updated.first, 110.0);
+  EXPECT_NEAR(updated.second, 100.0, 1e-3);
+  EXPECT_DOUBLE_EQ(tracker.width(), 42.0);
+  EXPECT_DOUBLE_EQ(tracker.height(), 22.0);
+}
+
+TEST(TrackManagerTest, ConfirmsCoastsAndDropsTracks)
+{
+  yolov8_ros_cpp::TrackConfig config;
+  config.track_min_hits = 2;
+  config.track_max_coast_frames = 2;
+  config.track_drop_frames = 3;
+  yolov8_ros_cpp::TrackManager manager(config);
+
+  auto result = manager.update({make_detection(100.0F, 120.0F, 0.8F)}, 1.0 / 60.0);
+  ASSERT_EQ(result.tracks.size(), 1U);
+  EXPECT_EQ(result.tracks.front().state, yolov8_ros_cpp::TrackState::kDetecting);
+  const int track_id = result.tracks.front().track_id;
+
+  result = manager.update({make_detection(102.0F, 120.0F, 0.82F)}, 1.0 / 60.0);
+  ASSERT_EQ(result.tracks.size(), 1U);
+  EXPECT_EQ(result.tracks.front().track_id, track_id);
+  EXPECT_EQ(result.tracks.front().state, yolov8_ros_cpp::TrackState::kTracking);
+  ASSERT_TRUE(result.selected_target.has_value());
+  EXPECT_EQ(result.selected_target->track_id, track_id);
+
+  result = manager.update({}, 1.0 / 60.0);
+  ASSERT_EQ(result.tracks.size(), 1U);
+  EXPECT_EQ(result.tracks.front().state, yolov8_ros_cpp::TrackState::kCoasting);
+  ASSERT_TRUE(result.selected_target.has_value());
+  EXPECT_EQ(result.selected_target->track_id, track_id);
+
+  result = manager.update({}, 1.0 / 60.0);
+  ASSERT_EQ(result.tracks.size(), 1U);
+  EXPECT_TRUE(result.selected_target.has_value());
+
+  result = manager.update({}, 1.0 / 60.0);
+  ASSERT_EQ(result.tracks.size(), 1U);
+  EXPECT_FALSE(result.selected_target.has_value());
+
+  result = manager.update({}, 1.0 / 60.0);
+  EXPECT_TRUE(result.tracks.empty());
+}
+
+TEST(TrackManagerTest, IgnoresNonEnemyDetectionsByDefault)
+{
+  yolov8_ros_cpp::TrackManager manager;
+  const auto result = manager.update({make_detection(200.0F, 200.0F, 0.95F, false)}, 1.0 / 60.0);
+  EXPECT_TRUE(result.tracks.empty());
+  EXPECT_FALSE(result.selected_target.has_value());
+}
+
+TEST(TrackManagerTest, RetainsLockedTargetUntilChallengerClearlyWins)
+{
+  yolov8_ros_cpp::TrackConfig config;
+  config.target_switch_min_score_delta = 0.15;
+  yolov8_ros_cpp::TrackManager manager(config);
+
+  auto result = manager.update(
+    {make_detection(120.0F, 220.0F, 0.70F), make_detection(310.0F, 220.0F, 0.60F)},
+    1.0 / 60.0);
+  ASSERT_EQ(result.tracks.size(), 2U);
+  const int initially_selected = result.selected_target->track_id;
+
+  result = manager.update(
+    {make_detection(125.0F, 220.0F, 0.72F), make_detection(305.0F, 220.0F, 0.65F)},
+    1.0 / 60.0);
+  ASSERT_TRUE(result.selected_target.has_value());
+  EXPECT_EQ(result.selected_target->track_id, initially_selected);
+
+  result = manager.update(
+    {make_detection(130.0F, 220.0F, 0.70F), make_detection(300.0F, 220.0F, 0.80F)},
+    1.0 / 60.0);
+  ASSERT_TRUE(result.selected_target.has_value());
+  EXPECT_NE(result.selected_target->track_id, initially_selected);
+}
+
+TEST(TrackManagerTest, MaintainsSeparateTracksForTwoTargets)
+{
+  yolov8_ros_cpp::TrackManager manager;
+
+  auto result = manager.update(
+    {make_detection(150.0F, 140.0F, 0.80F), make_detection(420.0F, 140.0F, 0.78F)},
+    1.0 / 60.0);
+  ASSERT_EQ(result.tracks.size(), 2U);
+
+  result = manager.update(
+    {make_detection(165.0F, 140.0F, 0.82F), make_detection(405.0F, 140.0F, 0.79F)},
+    1.0 / 60.0);
+  ASSERT_EQ(result.tracks.size(), 2U);
+  EXPECT_NE(result.tracks[0].track_id, result.tracks[1].track_id);
+  EXPECT_EQ(result.tracks[0].state, yolov8_ros_cpp::TrackState::kTracking);
+  EXPECT_EQ(result.tracks[1].state, yolov8_ros_cpp::TrackState::kTracking);
+}
