@@ -13,8 +13,14 @@
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <ctime>
+#include <cstdlib>
 #include <functional>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -170,6 +176,44 @@ private:
 namespace
 {
 
+constexpr char kVisionLogDirName[] = "vision_logs";
+
+std::string timestamp_now_iso8601_ms()
+{
+  const auto now = std::chrono::system_clock::now();
+  const auto seconds = std::chrono::time_point_cast<std::chrono::seconds>(now);
+  const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+    now - seconds).count();
+  const std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+  std::tm local_tm{};
+#ifdef _WIN32
+  localtime_s(&local_tm, &now_c);
+#else
+  localtime_r(&now_c, &local_tm);
+#endif
+
+  std::ostringstream out;
+  out << std::put_time(&local_tm, "%Y-%m-%dT%H:%M:%S")
+      << '.' << std::setw(3) << std::setfill('0') << milliseconds;
+  return out.str();
+}
+
+std::string timestamp_now_compact()
+{
+  const auto now = std::chrono::system_clock::now();
+  const std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+  std::tm local_tm{};
+#ifdef _WIN32
+  localtime_s(&local_tm, &now_c);
+#else
+  localtime_r(&now_c, &local_tm);
+#endif
+
+  std::ostringstream out;
+  out << std::put_time(&local_tm, "%Y%m%d_%H%M%S");
+  return out.str();
+}
+
 }  // namespace
 
 STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions & options)
@@ -179,14 +223,29 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions & options
   this->declare_parameter<std::string>("serial_port", "/dev/ttyUSB0");
   this->declare_parameter<int>("serial_baudrate", 115200);
   this->declare_parameter<bool>("serial_verbose", false);
+  this->declare_parameter<std::string>("runtime_log_dir", "");
   this->declare_parameter<int>("fire_mode", DEFAULT_FIRE_MODE);
   this->declare_parameter<int>("target_type", DEFAULT_TARGET_TYPE);
 
   transmit_enable_ = this->get_parameter("transmit_enable").as_bool();
   serial_verbose_ = this->get_parameter("serial_verbose").as_bool();
+  runtime_log_dir_ = this->get_parameter("runtime_log_dir").as_string();
   fire_mode_ = this->get_parameter("fire_mode").as_int();
   target_type_ = this->get_parameter("target_type").as_int();
   target_state_ = TARGET_STATE_NO_TARGET;
+
+  runtime_log_path_ =
+    (std::filesystem::path(resolve_runtime_log_dir()) /
+    ("vision_serial_runtime_" + timestamp_now_compact() + ".log")).string();
+  runtime_log_stream_.open(runtime_log_path_, std::ios::app);
+  if (!runtime_log_stream_.is_open()) {
+    RCLCPP_WARN(
+      this->get_logger(),
+      "Failed to open serial runtime log file: %s",
+      runtime_log_path_.c_str());
+  } else {
+    RCLCPP_INFO(this->get_logger(), "Serial runtime logs: %s", runtime_log_path_.c_str());
+  }
 
   if (transmit_enable_) {
     transport_ = std::make_unique<SerialTransport>(
@@ -213,12 +272,21 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions & options
   rx_timer_ = this->create_wall_timer(
     std::chrono::duration<double>(DEFAULT_RX_POLL_PERIOD_SECONDS),
     std::bind(&STM32SerialBridgeNode::handle_rx_poll, this));
+  RCLCPP_INFO(
+    this->get_logger(),
+    "STM32 serial bridge ready. transmit_enable=%s, port=%s, baud=%d",
+    transmit_enable_ ? "true" : "false",
+    this->get_parameter("serial_port").as_string().c_str(),
+    this->get_parameter("serial_baudrate").as_int());
 }
 
 STM32SerialBridgeNode::~STM32SerialBridgeNode()
 {
   if (transport_) {
     transport_->close();
+  }
+  if (runtime_log_stream_.is_open()) {
+    runtime_log_stream_.close();
   }
 }
 
@@ -258,6 +326,9 @@ void STM32SerialBridgeNode::handle_rx_poll()
     flags_msg.data = {
       frame.enemy_color, frame.work_mode, frame.bullet_speed, frame.flags_register, frame.command_id};
     attitude_flags_publisher_->publish(flags_msg);
+    log_rx_event(
+      frame.yaw, frame.pitch, frame.roll, frame.enemy_color, frame.work_mode, frame.bullet_speed,
+      frame.flags_register, frame.command_id);
   }
 }
 
@@ -266,8 +337,71 @@ void STM32SerialBridgeNode::maybe_send()
   if (!transmit_enable_ || !transport_) {
     return;
   }
-  transport_->send_vision_data(
+  const bool success = transport_->send_vision_data(
     latest_pitch_, latest_yaw_, fire_mode_, target_state_, target_type_);
+  log_tx_event(latest_yaw_, latest_pitch_, success);
+}
+
+std::string STM32SerialBridgeNode::resolve_runtime_log_dir() const
+{
+  if (!runtime_log_dir_.empty()) {
+    std::filesystem::create_directories(runtime_log_dir_);
+    return runtime_log_dir_;
+  }
+  if (const char * env_dir = std::getenv("VISION_LOG_DIR")) {
+    const std::string value(env_dir);
+    if (!value.empty()) {
+      std::filesystem::create_directories(value);
+      return value;
+    }
+  }
+  const auto log_dir = std::filesystem::current_path() / kVisionLogDirName;
+  std::filesystem::create_directories(log_dir);
+  return log_dir.string();
+}
+
+void STM32SerialBridgeNode::write_runtime_log_line(const std::string & line)
+{
+  if (!runtime_log_stream_.is_open()) {
+    return;
+  }
+  runtime_log_stream_ << "ts=" << timestamp_now_iso8601_ms() << ' ' << line << '\n';
+  runtime_log_stream_.flush();
+}
+
+void STM32SerialBridgeNode::log_tx_event(float yaw, float pitch, bool success)
+{
+  const uint16_t flags_register = build_vision_flags(fire_mode_, target_state_, target_type_);
+  std::ostringstream line;
+  line << std::fixed << std::setprecision(6)
+       << "kind=serial_tx ok=" << (success ? 1 : 0)
+       << " yaw=" << yaw
+       << " pitch=" << pitch
+       << " fire_mode=" << fire_mode_
+       << " target_state=" << target_state_
+       << " target_type=" << target_type_
+       << " flags=0x" << std::uppercase << std::hex << std::setw(4) << std::setfill('0')
+       << flags_register;
+  write_runtime_log_line(line.str());
+}
+
+void STM32SerialBridgeNode::log_rx_event(
+  float yaw, float pitch, float roll, int enemy_color, int work_mode, int bullet_speed,
+  int flags_register, int command_id)
+{
+  std::ostringstream line;
+  line << std::fixed << std::setprecision(6)
+       << "kind=serial_rx"
+       << " yaw=" << yaw
+       << " pitch=" << pitch
+       << " roll=" << roll
+       << " enemy_color=" << enemy_color
+       << " work_mode=" << work_mode
+       << " bullet_speed=" << bullet_speed
+       << " flags=0x" << std::uppercase << std::hex << std::setw(4) << std::setfill('0')
+       << flags_register
+       << " cmd=0x" << std::setw(4) << command_id;
+  write_runtime_log_line(line.str());
 }
 
 }  // namespace yolo_cpp
