@@ -117,6 +117,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="predict",
         description="Detector inference mode",
     )
+    debug_publish_image_raw_arg = DeclareLaunchArgument(
+        "debug_publish_image_raw",
+        default_value="false",
+        description="Publish debug image_raw frame from detector",
+    )
     show_arg = DeclareLaunchArgument(
         "show",
         default_value="false",
@@ -202,6 +207,9 @@ def generate_launch_description() -> LaunchDescription:
                     "realsense_use_max_native_fps"
                 ),
                 "show": LaunchConfiguration("show"),
+                "debug_publish_image_raw": LaunchConfiguration(
+                    "debug_publish_image_raw"
+                ),
                 "inference_mode": LaunchConfiguration("inference_mode"),
             }
         ],
@@ -287,6 +295,7 @@ def generate_launch_description() -> LaunchDescription:
             realsense_use_poll_arg,
             realsense_use_max_native_fps_arg,
             inference_mode_arg,
+            debug_publish_image_raw_arg,
             show_arg,
             track_min_hits_arg,
             track_max_coast_frames_arg,
