@@ -1,6 +1,6 @@
 # Pipeline
 
-Related pages: [Overview](./overview.md) | [Nodes](./nodes.md) | [Launch and Config](./launch-and-config.md) | [Development Notes](./development-notes.md)
+Related pages: [Overview](./overview.md) | [Nodes](./nodes.md) | [Interfaces](./interfaces.md) | [Legacy Pipeline Notes](./legacy-pipeline-notes.md) | [Launch and Config](./launch-and-config.md) | [Development Notes](./development-notes.md)
 
 The live `yolo_cpp` pipeline is split into small ROS 2 stages so each part can be tuned or swapped without rewriting the whole runtime.
 

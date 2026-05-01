@@ -143,3 +143,7 @@ dmypy.json
 *.pyo
 .vscode/launch.json
 .vscode/settings.json
+
+.ruff_cache
+.git*
+.cursor

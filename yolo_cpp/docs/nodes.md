@@ -1,6 +1,6 @@
 # Nodes
 
-Related pages: [Overview](./overview.md) | [Pipeline](./pipeline.md) | [Launch and Config](./launch-and-config.md) | [Development Notes](./development-notes.md)
+Related pages: [Overview](./overview.md) | [Pipeline](./pipeline.md) | [Interfaces](./interfaces.md) | [Legacy Pipeline Notes](./legacy-pipeline-notes.md) | [Launch and Config](./launch-and-config.md) | [Development Notes](./development-notes.md)
 
 ## CameraNode
 

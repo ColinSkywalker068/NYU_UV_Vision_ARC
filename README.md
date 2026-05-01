@@ -5,7 +5,7 @@ This is the NYU Robomaster's code for the Robomasters Robotics Competition.
 
 ## Table of Contents
 
-- [Pipeline Documentation](./Documentation/Pipeline/Pipeline.md)
+- [C++ Pipeline Docs](./yolo_cpp/docs/overview.md)
 - [Resources to get started](./Documentation/Resources/Resources.md)
 - [Setup Pre-commit](./Documentation/Pre-commit.md)
 - [rm_auto_aim Parity Next Steps](./docs/RM_AUTO_AIM_PARITY_NEXT_STEPS.md)
@@ -40,6 +40,7 @@ To easily run the detection stack, use the `uv` tool wrapper:
 
 Current runtime roadmap is available in **[docs/RM_AUTO_AIM_PARITY_NEXT_STEPS.md](./docs/RM_AUTO_AIM_PARITY_NEXT_STEPS.md)**.
 Package pipeline docs live in **[yolo_cpp/docs/overview.md](./yolo_cpp/docs/overview.md)**.
+The older illustrated pipeline writeup now lives in **[legacy/docs/Pipeline/Pipeline.md](./legacy/docs/Pipeline/Pipeline.md)**.
 
 
 ### Update yml files
