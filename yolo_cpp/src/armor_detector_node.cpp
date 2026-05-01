@@ -10,8 +10,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <ctime>
+#include <cstdlib>
 #include <filesystem>
 #include <functional>
+#include <iomanip>
+#include <sstream>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -26,6 +30,43 @@ namespace
 constexpr int kDefaultMaxHsvCandidates = 3;
 constexpr int kPreviewMaxWidth = 1280;
 constexpr int kPreviewMaxHeight = 720;
+constexpr char kVisionLogDirName[] = "vision_logs";
+
+std::string timestamp_now_iso8601_ms()
+{
+  const auto now = std::chrono::system_clock::now();
+  const auto seconds = std::chrono::time_point_cast<std::chrono::seconds>(now);
+  const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+    now - seconds).count();
+  const std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+  std::tm local_tm{};
+#ifdef _WIN32
+  localtime_s(&local_tm, &now_c);
+#else
+  localtime_r(&now_c, &local_tm);
+#endif
+
+  std::ostringstream out;
+  out << std::put_time(&local_tm, "%Y-%m-%dT%H:%M:%S")
+      << '.' << std::setw(3) << std::setfill('0') << milliseconds;
+  return out.str();
+}
+
+std::string timestamp_now_compact()
+{
+  const auto now = std::chrono::system_clock::now();
+  const std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+  std::tm local_tm{};
+#ifdef _WIN32
+  localtime_s(&local_tm, &now_c);
+#else
+  localtime_r(&now_c, &local_tm);
+#endif
+
+  std::ostringstream out;
+  out << std::put_time(&local_tm, "%Y%m%d_%H%M%S");
+  return out.str();
+}
 
 sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
   const FramePacket & packet, const rclcpp::Time & stamp)
@@ -76,6 +117,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<int>("enemy_color_red_value", 0);
   this->declare_parameter<int>("enemy_color_blue_value", 1);
   this->declare_parameter<int>("max_hsv_candidates", kDefaultMaxHsvCandidates);
+  this->declare_parameter<std::string>("runtime_log_dir", "");
   this->declare_parameter<std::string>("vis_window_name", "Armor Detector");
   this->declare_parameter<bool>("debug_publish_image_raw", false);
   this->declare_parameter<int>("stage_log_interval", 300);
@@ -100,10 +142,24 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   enemy_color_red_value_ = this->get_parameter("enemy_color_red_value").as_int();
   enemy_color_blue_value_ = this->get_parameter("enemy_color_blue_value").as_int();
   max_hsv_candidates_ = this->get_parameter("max_hsv_candidates").as_int();
+  runtime_log_dir_ = this->get_parameter("runtime_log_dir").as_string();
   vis_window_name_ = this->get_parameter("vis_window_name").as_string();
   debug_publish_image_raw_ = this->get_parameter("debug_publish_image_raw").as_bool();
   stage_log_interval_ = std::max(
     1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
+
+  runtime_log_path_ =
+    (std::filesystem::path(resolve_runtime_log_dir()) /
+    ("vision_runtime_" + timestamp_now_compact() + ".log")).string();
+  runtime_log_stream_.open(runtime_log_path_, std::ios::app);
+  if (!runtime_log_stream_.is_open()) {
+    RCLCPP_WARN(
+      this->get_logger(),
+      "Failed to open runtime vision log file: %s",
+      runtime_log_path_.c_str());
+  } else {
+    RCLCPP_INFO(this->get_logger(), "Runtime logs: %s", runtime_log_path_.c_str());
+  }
 
   target_class_ = (target_color_ == "red") ? RED_CLASS : BLUE_CLASS;
 
@@ -145,6 +201,8 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
     deepstream_runtime_->backend_name().c_str() :
     detector_backend_->backend_name().c_str(),
     fps_);
+  log_runtime_note("INFO", "Initializing Modular YOLOv8 Node...");
+  log_runtime_note("INFO", "Detector Initialized.");
 }
 
 ArmorDetectorNode::~ArmorDetectorNode()
@@ -158,6 +216,9 @@ ArmorDetectorNode::~ArmorDetectorNode()
   if (camera_backend_) {
     camera_backend_->release();
     camera_backend_.reset();
+  }
+  if (runtime_log_stream_.is_open()) {
+    runtime_log_stream_.close();
   }
 }
 
@@ -182,12 +243,21 @@ void ArmorDetectorNode::handle_attitude_flags(const std_msgs::msg::Int32MultiArr
 
   std::lock_guard<std::mutex> lock(state_mutex_);
   const int enemy_color = msg->data[0];
+  const int previous_target_class = target_class_;
   if (enemy_color == enemy_color_red_value_) {
     target_class_ = RED_CLASS;
     stm_color_locked_ = true;
   } else if (enemy_color == enemy_color_blue_value_) {
     target_class_ = BLUE_CLASS;
     stm_color_locked_ = true;
+  }
+
+  if (target_class_ != previous_target_class) {
+    const char * color_name = target_class_ == RED_CLASS ? "RED" : "BLUE";
+    log_runtime_note(
+      "INFO",
+      "attitude_flags enemy_color=" + std::to_string(enemy_color) +
+      " -> Targeting " + color_name + ".");
   }
 }
 
@@ -289,6 +359,9 @@ void ArmorDetectorNode::process_detection_cycle(
   double color_ms = 0.0;
   const auto publish_start = std::chrono::steady_clock::now();
   auto candidates = extract_candidates(batch, packet, &color_ms);
+  const auto detected_opponent = std::find_if(
+    candidates.begin(), candidates.end(),
+    [](const Candidate & candidate) {return candidate.is_enemy;});
   const std::string source_id = packet != nullptr && !packet->source_id.empty() ?
     packet->source_id :
     camera_config_.camera_type;
@@ -303,6 +376,17 @@ void ArmorDetectorNode::process_detection_cycle(
 
   if (show_ && packet != nullptr && !packet->empty()) {
     render_preview(*packet, candidates);
+  }
+
+  log_runtime_fps_once_per_second();
+  if (detected_opponent != candidates.end()) {
+    log_runtime_opponent_event(
+      *detected_opponent,
+      true,
+      capture_ms + detector_timings.preprocess_ms + detector_timings.upload_ms +
+      detector_timings.inference_ms + detector_timings.download_ms +
+      detector_timings.parse_ms + color_ms +
+      std::chrono::duration<double, std::milli>(publish_done - publish_start).count());
   }
 
   ++frame_count_;
@@ -511,6 +595,76 @@ std::string ArmorDetectorNode::resolve_default_deepstream_config_path() const
     return package_candidate.string();
   }
   return cwd_candidate.string();
+}
+
+std::string ArmorDetectorNode::resolve_runtime_log_dir() const
+{
+  if (!runtime_log_dir_.empty()) {
+    std::filesystem::create_directories(runtime_log_dir_);
+    return runtime_log_dir_;
+  }
+  if (const char * env_dir = std::getenv("VISION_LOG_DIR")) {
+    const std::string value(env_dir);
+    if (!value.empty()) {
+      std::filesystem::create_directories(value);
+      return value;
+    }
+  }
+  const auto log_dir = std::filesystem::current_path() / kVisionLogDirName;
+  std::filesystem::create_directories(log_dir);
+  return log_dir.string();
+}
+
+void ArmorDetectorNode::write_runtime_log_line(const std::string & line)
+{
+  if (!runtime_log_stream_.is_open()) {
+    return;
+  }
+  runtime_log_stream_ << "ts=" << timestamp_now_iso8601_ms() << ' ' << line << '\n';
+  runtime_log_stream_.flush();
+}
+
+void ArmorDetectorNode::log_runtime_note(const std::string & level, const std::string & message)
+{
+  write_runtime_log_line("level=" + level + " msg=" + message);
+}
+
+void ArmorDetectorNode::log_runtime_fps_once_per_second()
+{
+  const auto now = std::chrono::steady_clock::now();
+  if (have_last_runtime_fps_log_time_) {
+    const double elapsed_s =
+      std::chrono::duration<double>(now - last_runtime_fps_log_time_).count();
+    if (elapsed_s < 1.0) {
+      return;
+    }
+  }
+  have_last_runtime_fps_log_time_ = true;
+  last_runtime_fps_log_time_ = now;
+
+  std::ostringstream line;
+  line << std::fixed << std::setprecision(2) << "fps=" << preview_fps_;
+  write_runtime_log_line(line.str());
+}
+
+void ArmorDetectorNode::log_runtime_opponent_event(
+  const Candidate & target, bool color_pass, double latency_ms)
+{
+  const int x1 = target.bbox_source.x;
+  const int y1 = target.bbox_source.y;
+  const int x2 = target.bbox_source.x + target.bbox_source.width;
+  const int y2 = target.bbox_source.y + target.bbox_source.height;
+
+  std::ostringstream line;
+  line << std::fixed << std::setprecision(2)
+       << "fps=" << preview_fps_ << ' '
+       << "bbox=" << x1 << ',' << y1 << ',' << x2 << ',' << y2 << ' ';
+  line << std::setprecision(3)
+       << "conf=" << target.confidence << ' '
+       << "color_pass=" << (color_pass ? 1 : 0) << ' ';
+  line << std::setprecision(2)
+       << "latency_ms=" << latency_ms;
+  write_runtime_log_line(line.str());
 }
 
 void ArmorDetectorNode::log_stage_timing()

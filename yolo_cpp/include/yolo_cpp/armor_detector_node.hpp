@@ -14,6 +14,7 @@
 #include <std_msgs/msg/int32_multi_array.hpp>
 
 #include <chrono>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -64,6 +65,11 @@ private:
     const DetectionBatch & batch, const FramePacket * packet, double * color_ms) const;
   std::string resolve_default_model_path() const;
   std::string resolve_default_deepstream_config_path() const;
+  std::string resolve_runtime_log_dir() const;
+  void write_runtime_log_line(const std::string & line);
+  void log_runtime_note(const std::string & level, const std::string & message);
+  void log_runtime_fps_once_per_second();
+  void log_runtime_opponent_event(const Candidate & target, bool color_pass, double latency_ms);
   void log_stage_timing();
 
   std::shared_ptr<CameraBackend> camera_backend_;
@@ -79,6 +85,8 @@ private:
   bool have_last_frame_time_{false};
   std::chrono::steady_clock::time_point last_stage_log_wall_time_{};
   bool have_last_stage_log_wall_time_{false};
+  std::chrono::steady_clock::time_point last_runtime_fps_log_time_{};
+  bool have_last_runtime_fps_log_time_{false};
   std::mutex state_mutex_;
 
   CameraConfig camera_config_;
@@ -88,6 +96,8 @@ private:
   std::string detector_backend_kind_;
   std::string deepstream_config_path_;
   std::string inference_mode_;
+  std::string runtime_log_dir_;
+  std::string runtime_log_path_;
   std::string target_color_;
   std::string vis_window_name_;
   bool allow_native_tensorrt_fallback_{false};
@@ -111,6 +121,7 @@ private:
   double fps_{60.0};
   double preview_fps_{0.0};
   StageTotals stage_totals_;
+  std::ofstream runtime_log_stream_;
 };
 
 }  // namespace yolo_cpp
