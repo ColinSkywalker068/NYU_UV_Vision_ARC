@@ -31,8 +31,10 @@ CameraNode::CameraNode(const rclcpp::NodeOptions & options)
 
 CameraNode::~CameraNode()
 {
+  timer_.reset();
   if (backend_) {
     backend_->release();
+    backend_.reset();
   }
 }
 

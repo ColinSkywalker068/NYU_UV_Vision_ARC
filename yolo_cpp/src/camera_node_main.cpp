@@ -5,8 +5,11 @@
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<yolo_cpp::CameraNode>();
-  rclcpp::spin(node);
+  {
+    auto node = std::make_shared<yolo_cpp::CameraNode>();
+    rclcpp::spin(node);
+    node.reset();
+  }
   rclcpp::shutdown();
   return 0;
 }

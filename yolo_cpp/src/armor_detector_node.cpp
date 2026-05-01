@@ -147,12 +147,15 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
 
 ArmorDetectorNode::~ArmorDetectorNode()
 {
+  timer_.reset();
   if (show_ && !preview_failed_) {
     cv::destroyWindow(vis_window_name_);
   }
+  detector_backend_.reset();
   deepstream_runtime_.reset();
   if (camera_backend_) {
     camera_backend_->release();
+    camera_backend_.reset();
   }
 }
 
