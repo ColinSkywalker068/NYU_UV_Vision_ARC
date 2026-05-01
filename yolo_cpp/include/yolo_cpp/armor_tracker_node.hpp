@@ -5,6 +5,7 @@
 #include "cv_auto_aim_interfaces/msg/target.hpp"
 #include "cv_auto_aim_interfaces/msg/tracked_armors.hpp"
 #include "yolo_cpp/tracker.hpp"
+#include "yolo_cpp/utils.hpp"
 #include "yolo_cpp/visibility_control.hpp"
 
 #include <rclcpp/rclcpp.hpp>
