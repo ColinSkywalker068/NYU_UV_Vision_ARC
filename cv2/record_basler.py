@@ -171,7 +171,8 @@ class BaslerDriver:
         if res.GrabSucceeded():
             img = self.converter.Convert(res).GetArray()
             res.Release()
-            return img
+            # Camera is physically mounted upside down, flip 180 degrees
+            return cv2.flip(img, -1)
         res.Release()
         return None
 

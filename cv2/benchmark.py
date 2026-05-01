@@ -186,6 +186,9 @@ def main(args):
                 img = converter.Convert(res).GetArray()
                 res.Release()
 
+                # Camera is physically mounted upside down, flip 180 degrees
+                img = cv2.flip(img, -1)
+
                 # 3. Algorithm Execution
                 binary = detector.fast_process(img, args.target)
                 armors = detector.get_armor_centers(binary, min_area=dynamic_min_area)
