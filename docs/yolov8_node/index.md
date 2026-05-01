@@ -341,7 +341,7 @@ Launches **3 nodes**: `camera_node` (Basler), `yolov8_modular_node`, `stm32_seri
 
 | Argument | Default | Description |
 |---|---|---|
-| `serial_port` | `/dev/ttyACM0` | STM32 serial device |
+| `serial_port` | `/dev/ttyUSB0` | STM32 serial device |
 | `serial_baudrate` | `115200` | Serial baud rate |
 | `serial_verbose` | `false` | Log all serial TX packets |
 | `basler_width` | `640` | Published/inference image width |
@@ -355,7 +355,7 @@ Launches **3 nodes**: `camera_node` (Basler), `yolov8_modular_node`, `stm32_seri
 | `basler_enable_grab_thread` | `true` | Use background latest-frame grabbing |
 | `basler_enable_transport_tuning` | `true` | Apply Basler transport tuning |
 | `use_kalman` | `true` | Enable Kalman lookahead in YOLO node |
-| `show` | `true` | Show OpenCV debug window |
+| `show` | `false` | Show OpenCV debug window |
 
 **Fixed values (not overridable at launch):** `basler_use_full_sensor=True`, `basler_centered_roi=True`, `transmit_enable=True`.
 
