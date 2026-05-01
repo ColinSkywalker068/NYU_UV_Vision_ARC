@@ -1,0 +1,4 @@
+[2026-05-01 18:36:51] RECORDING: /home/ultraviolet/CV_Detection/cv2/videos/basler_raw_blue_20260501_183650.mp4
+Target: BLUE, Exposure: 723, Threshold: 55, Green Penalty: 0.0
+WB Red: 3.5, WB Green: 1.0, WB Blue: 0.9
+------------------------------------------
