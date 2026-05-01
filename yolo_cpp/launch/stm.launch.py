@@ -123,7 +123,9 @@ def generate_launch_description() -> LaunchDescription:
         description="Show OpenCV visualization window",
     )
     track_min_hits_arg = DeclareLaunchArgument(
-        "track_min_hits", default_value="2", description="Frames required to confirm a track"
+        "track_min_hits",
+        default_value="2",
+        description="Frames required to confirm a track",
     )
     track_max_coast_frames_arg = DeclareLaunchArgument(
         "track_max_coast_frames",
