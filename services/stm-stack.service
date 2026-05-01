@@ -8,10 +8,12 @@ Type=simple
 Restart=always
 RestartSec=5
 WorkingDirectory=/home/ultraviolet/CV_Detection
-# Ensure we don't hit interactive docker exec on an old container.
-ExecStartPre=-/usr/bin/docker rm -f uv-nyuultraviolet-cv-dockerfile-jp60-pytorch21-humble-tensorrt-realsense-wrapper
-ExecStart=/bin/bash -lc '/home/ultraviolet/CV_Detection/services/start-container.sh nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper bash -lc "cd /home/ultraviolet/CV_Detection && uv run yolov8_ros stm.launch.py show:=false"'
-ExecStop=/usr/bin/docker stop uv-nyuultraviolet-cv-dockerfile-jp60-pytorch21-humble-tensorrt-realsense-wrapper
+Environment=CV_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra
+Environment=UV_CONTAINER_NAME=uv-stm-stack
+# Ensure we do not attach to an older reused container from a previous boot.
+ExecStartPre=-/usr/bin/docker rm -f ${UV_CONTAINER_NAME}
+ExecStart=/bin/bash -lc "/home/ultraviolet/CV_Detection/services/start-container.sh ${CV_IMAGE} bash -lc 'cd /home/ultraviolet/CV_Detection && uv run yolov8_ros stm.launch.py show:=false'"
+ExecStop=-/usr/bin/docker stop ${UV_CONTAINER_NAME}
 
 [Install]
 WantedBy=multi-user.target
