@@ -143,3 +143,4 @@ dmypy.json
 *.pyo
 .vscode/launch.json
 .vscode/settings.json
+cv2/videos/
