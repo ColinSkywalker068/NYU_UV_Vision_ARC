@@ -66,6 +66,16 @@ std::string gst_clock_to_string(GstClockTime value)
   }
   return std::to_string(static_cast<std::uint64_t>(value));
 }
+
+void release_request_pad(GstElement * element, GstPad *& pad)
+{
+  if (element == nullptr || pad == nullptr) {
+    return;
+  }
+  gst_element_release_request_pad(element, pad);
+  gst_object_unref(pad);
+  pad = nullptr;
+}
 #endif
 
 }  // namespace
@@ -104,6 +114,9 @@ struct DeepStreamRuntime::Impl
   GstBus * bus{nullptr};
   GstAppSink * infer_sink{nullptr};
   GstAppSink * color_sink{nullptr};
+  GstPad * tee_infer_pad{nullptr};
+  GstPad * streammux_sink_pad{nullptr};
+  GstPad * tee_color_pad{nullptr};
   std::filesystem::path runtime_config_path;
   std::thread infer_thread;
   std::thread color_thread;
@@ -152,6 +165,10 @@ struct DeepStreamRuntime::Impl
     if (pipeline != nullptr) {
       gst_element_set_state(pipeline, GST_STATE_NULL);
     }
+
+    release_request_pad(tee, tee_infer_pad);
+    release_request_pad(streammux, streammux_sink_pad);
+    release_request_pad(tee, tee_color_pad);
 
     if (bus != nullptr) {
       gst_object_unref(bus);
@@ -363,25 +380,22 @@ struct DeepStreamRuntime::Impl
       throw std::runtime_error("Failed to link DeepStream inference path");
     }
 
-    GstPad * tee_infer_pad = gst_element_get_request_pad(tee, "src_%u");
+    tee_infer_pad = gst_element_request_pad_simple(tee, "src_%u");
     GstPad * infer_queue_sink_pad = gst_element_get_static_pad(infer_queue, "sink");
     if (
       tee_infer_pad == nullptr || infer_queue_sink_pad == nullptr ||
       gst_pad_link(tee_infer_pad, infer_queue_sink_pad) != GST_PAD_LINK_OK)
     {
-      if (tee_infer_pad != nullptr) {
-        gst_object_unref(tee_infer_pad);
-      }
+      release_request_pad(tee, tee_infer_pad);
       if (infer_queue_sink_pad != nullptr) {
         gst_object_unref(infer_queue_sink_pad);
       }
       throw std::runtime_error("Failed to link tee to inference queue");
     }
-    gst_object_unref(tee_infer_pad);
     gst_object_unref(infer_queue_sink_pad);
 
     GstPad * infer_src_pad = gst_element_get_static_pad(infer_nvmm_caps, "src");
-    GstPad * streammux_sink_pad = gst_element_get_request_pad(streammux, "sink_0");
+    streammux_sink_pad = gst_element_request_pad_simple(streammux, "sink_0");
     if (
       infer_src_pad == nullptr || streammux_sink_pad == nullptr ||
       gst_pad_link(infer_src_pad, streammux_sink_pad) != GST_PAD_LINK_OK)
@@ -389,33 +403,27 @@ struct DeepStreamRuntime::Impl
       if (infer_src_pad != nullptr) {
         gst_object_unref(infer_src_pad);
       }
-      if (streammux_sink_pad != nullptr) {
-        gst_object_unref(streammux_sink_pad);
-      }
+      release_request_pad(streammux, streammux_sink_pad);
       throw std::runtime_error("Failed to link inference branch to nvstreammux");
     }
     gst_object_unref(infer_src_pad);
-    gst_object_unref(streammux_sink_pad);
 
     if (need_color_branch) {
       if (!gst_element_link_many(color_queue, color_convert, color_caps, color_sink_elem, nullptr)) {
         throw std::runtime_error("Failed to link DeepStream color branch");
       }
-      GstPad * tee_color_pad = gst_element_get_request_pad(tee, "src_%u");
+      tee_color_pad = gst_element_request_pad_simple(tee, "src_%u");
       GstPad * color_queue_sink_pad = gst_element_get_static_pad(color_queue, "sink");
       if (
         tee_color_pad == nullptr || color_queue_sink_pad == nullptr ||
         gst_pad_link(tee_color_pad, color_queue_sink_pad) != GST_PAD_LINK_OK)
       {
-        if (tee_color_pad != nullptr) {
-          gst_object_unref(tee_color_pad);
-        }
+        release_request_pad(tee, tee_color_pad);
         if (color_queue_sink_pad != nullptr) {
           gst_object_unref(color_queue_sink_pad);
         }
         throw std::runtime_error("Failed to link tee to color queue");
       }
-      gst_object_unref(tee_color_pad);
       gst_object_unref(color_queue_sink_pad);
     }
 

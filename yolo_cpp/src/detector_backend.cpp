@@ -10,11 +10,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
-#include <fstream>
 #include <limits>
 #include <memory>
 #include <optional>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -92,17 +90,6 @@ float half_bits_to_float(std::uint16_t value)
   float result = 0.0F;
   std::memcpy(&result, &bits, sizeof(result));
   return result;
-}
-
-std::string read_file(const std::string & path)
-{
-  std::ifstream stream(path, std::ios::binary);
-  if (!stream) {
-    throw std::runtime_error("Failed to open model file: " + path);
-  }
-  std::ostringstream contents;
-  contents << stream.rdbuf();
-  return contents.str();
 }
 
 void preprocess_bgr_frame(
