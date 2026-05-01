@@ -13,12 +13,24 @@ namespace
 constexpr std::array<int, 11> kRedTeam{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 constexpr std::array<int, 11> kBlueTeam{101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111};
 
-const std::array<std::array<cv::Scalar, 2>, 1> kBlueRanges{
-  std::array<cv::Scalar, 2>{cv::Scalar(100, 150, 150), cv::Scalar(128, 255, 255)}};
+int compute_min_saturation(double mean_value_channel)
+{
+  if (mean_value_channel >= 200.0) {
+    return 55;
+  }
+  if (mean_value_channel >= 170.0) {
+    return 80;
+  }
+  return 120;
+}
 
-const std::array<std::array<cv::Scalar, 2>, 2> kRedRanges{
-  std::array<cv::Scalar, 2>{cv::Scalar(0, 150, 150), cv::Scalar(10, 255, 255)},
-  std::array<cv::Scalar, 2>{cv::Scalar(170, 150, 150), cv::Scalar(180, 255, 255)}};
+int compute_min_value(double mean_value_channel)
+{
+  if (mean_value_channel >= 200.0) {
+    return 80;
+  }
+  return 70;
+}
 
 template<typename ArrayT>
 bool contains_id(const ArrayT & ids, int robot_id)
@@ -131,26 +143,34 @@ std::pair<bool, int> check_enemy(const cv::Mat & roi_image, int target_class)
 
   cv::Mat hsv_roi;
   cv::cvtColor(roi_image, hsv_roi, cv::COLOR_BGR2HSV);
+  cv::GaussianBlur(hsv_roi, hsv_roi, cv::Size(3, 3), 0.0);
+
+  const cv::Scalar hsv_mean = cv::mean(hsv_roi);
+  const int min_saturation = compute_min_saturation(hsv_mean[2]);
+  const int min_value = compute_min_value(hsv_mean[2]);
 
   cv::Mat final_mask = cv::Mat::zeros(hsv_roi.rows, hsv_roi.cols, CV_8UC1);
   if (target_class == BLUE_CLASS) {
-    for (const auto & range : kBlueRanges) {
-      cv::Mat current_mask;
-      cv::inRange(hsv_roi, range[0], range[1], current_mask);
-      cv::bitwise_or(final_mask, current_mask, final_mask);
-    }
+    cv::inRange(
+      hsv_roi, cv::Scalar(85, min_saturation, min_value), cv::Scalar(135, 255, 255), final_mask);
   } else {
-    for (const auto & range : kRedRanges) {
-      cv::Mat current_mask;
-      cv::inRange(hsv_roi, range[0], range[1], current_mask);
-      cv::bitwise_or(final_mask, current_mask, final_mask);
-    }
+    cv::Mat low_red_mask;
+    cv::Mat high_red_mask;
+    cv::inRange(
+      hsv_roi, cv::Scalar(0, min_saturation, min_value), cv::Scalar(12, 255, 255), low_red_mask);
+    cv::inRange(
+      hsv_roi, cv::Scalar(168, min_saturation, min_value), cv::Scalar(180, 255, 255),
+      high_red_mask);
+    cv::bitwise_or(low_red_mask, high_red_mask, final_mask);
   }
 
+  cv::morphologyEx(final_mask, final_mask, cv::MORPH_OPEN, cv::Mat(), cv::Point(-1, -1), 1);
+  cv::morphologyEx(final_mask, final_mask, cv::MORPH_CLOSE, cv::Mat(), cv::Point(-1, -1), 1);
+
   const int color_area = cv::countNonZero(final_mask);
-  const double min_threshold =
-    static_cast<double>(roi_image.rows) * static_cast<double>(roi_image.cols) * 0.01;
-  return {static_cast<double>(color_area) > min_threshold, color_area};
+  const double roi_area = static_cast<double>(roi_image.rows) * static_cast<double>(roi_image.cols);
+  const double min_ratio = hsv_mean[2] >= 200.0 ? 0.006 : 0.01;
+  return {static_cast<double>(color_area) > roi_area * min_ratio, color_area};
 }
 
 }  // namespace yolo_cpp
