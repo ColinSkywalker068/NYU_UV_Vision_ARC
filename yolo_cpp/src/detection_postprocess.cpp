@@ -331,19 +331,41 @@ std::vector<ParsedCandidate> axis_aligned_nms(
 }
 
 bool looks_like_end2end_shape(
-  const std::vector<int64_t> & shape, bool task_obb, bool end2end_metadata)
+  const std::vector<int64_t> & shape,
+  int num_classes,
+  bool task_obb,
+  bool end2end_metadata,
+  std::optional<bool> export_includes_nms)
 {
   if (shape.size() != 3U) {
     return false;
   }
-  const int expected_attrs = task_obb ? 7 : 6;
-  const int dim1 = static_cast<int>(shape[1]);
-  const int dim2 = static_cast<int>(shape[2]);
+  if (export_includes_nms.has_value()) {
+    return *export_includes_nms;
+  }
   if (end2end_metadata) {
     return true;
   }
-  return (dim1 > expected_attrs && dim2 == expected_attrs) ||
-         (dim2 > expected_attrs && dim1 == expected_attrs);
+
+  const int expected_attrs = task_obb ? 7 : 6;
+  const int raw_attrs = 4 + std::max(1, num_classes) + (task_obb ? 1 : 0);
+  const int dim1 = static_cast<int>(shape[1]);
+  const int dim2 = static_cast<int>(shape[2]);
+  const bool matches_raw_shape = (dim1 == raw_attrs) || (dim2 == raw_attrs);
+  const bool matches_end2end_shape =
+    (dim1 > expected_attrs && dim2 == expected_attrs) ||
+    (dim2 > expected_attrs && dim1 == expected_attrs);
+
+  if (matches_raw_shape && !matches_end2end_shape) {
+    return false;
+  }
+  if (matches_end2end_shape && !matches_raw_shape) {
+    return true;
+  }
+
+  // Ambiguous shapes like [1, 7, N] for 2-class OBB models should default to
+  // raw output parsing unless the engine metadata explicitly says export NMS was enabled.
+  return false;
 }
 
 std::vector<Detection> parse_end2end_output_tensor(
@@ -430,6 +452,7 @@ EngineMetadata read_engine_metadata_from_file(const std::string & model_path)
   metadata.version = extract_json_string_value(*json, "version");
   metadata.end2end = extract_json_bool_value(*json, "end2end").value_or(false);
   metadata.int8_export = extract_json_bool_value(*json, "int8").value_or(false);
+  metadata.export_includes_nms = extract_json_bool_value(*json, "nms");
   return metadata;
 }
 
@@ -452,6 +475,7 @@ std::vector<Detection> parse_yolo_output_tensor(
   float conf_threshold,
   bool task_obb,
   bool end2end,
+  std::optional<bool> export_includes_nms,
   const rclcpp::Logger * logger)
 {
   std::vector<Detection> detections;
@@ -469,7 +493,9 @@ std::vector<Detection> parse_yolo_output_tensor(
     return detections;
   }
 
-  if (looks_like_end2end_shape(shape, task_obb, end2end)) {
+  if (looks_like_end2end_shape(
+      shape, num_classes, task_obb, end2end, export_includes_nms))
+  {
     return parse_end2end_output_tensor(
       tensor_data, shape, img_w, img_h, conf_threshold, task_obb, logger);
   }

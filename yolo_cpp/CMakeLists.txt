@@ -219,6 +219,19 @@ install(
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_detection_postprocess
+    test/test_detection_postprocess.cpp
+    src/detection_postprocess.cpp
+  )
+  if(TARGET test_detection_postprocess)
+    target_include_directories(test_detection_postprocess PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+      ${OpenCV_INCLUDE_DIRS}
+    )
+    ament_target_dependencies(test_detection_postprocess rclcpp)
+    target_link_libraries(test_detection_postprocess ${OpenCV_LIBS})
+  endif()
   ament_add_gtest(test_tracking_core
     test/test_tracking_core.cpp
     src/tracker.cpp

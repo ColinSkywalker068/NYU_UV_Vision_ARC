@@ -18,6 +18,7 @@ struct EngineMetadata
   std::optional<std::string> version;
   bool end2end{false};
   bool int8_export{false};
+  std::optional<bool> export_includes_nms;
 };
 
 EngineMetadata read_engine_metadata_from_file(const std::string & model_path);
@@ -32,6 +33,7 @@ std::vector<Detection> parse_yolo_output_tensor(
   float conf_threshold,
   bool task_obb,
   bool end2end,
+  std::optional<bool> export_includes_nms = std::nullopt,
   const rclcpp::Logger * logger = nullptr);
 
 }  // namespace yolo_cpp

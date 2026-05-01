@@ -127,6 +127,7 @@ struct DeepStreamRuntime::Impl
   int num_classes{1};
   bool task_obb{true};
   bool end2end{false};
+  std::optional<bool> export_includes_nms;
 #endif
 
   ~Impl()
@@ -205,6 +206,7 @@ struct DeepStreamRuntime::Impl
     num_classes = metadata.class_names.empty() ? 1 : static_cast<int>(metadata.class_names.size());
     task_obb = metadata.task.value_or(config.task) == "obb";
     end2end = metadata.end2end;
+    export_includes_nms = metadata.export_includes_nms;
 
     const std::vector<std::string> required_elements = {
       config.source_element,
@@ -759,6 +761,7 @@ struct DeepStreamRuntime::Impl
         config.conf_threshold,
         task_obb,
         end2end,
+        export_includes_nms,
         &logger);
       const auto parse_done = std::chrono::steady_clock::now();
       result.timings.parse_ms = std::chrono::duration<double, std::milli>(

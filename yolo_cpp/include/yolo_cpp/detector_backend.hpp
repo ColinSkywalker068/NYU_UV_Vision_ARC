@@ -76,6 +76,7 @@ private:
   bool initialized_{false};
   bool end2end_{false};
   bool int8_export_{false};
+  std::optional<bool> export_includes_nms_;
   std::string engine_version_;
   std::string backend_name_{"tensorrt_stub"};
   std::unordered_map<int, std::string> class_names_;

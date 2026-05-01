@@ -200,6 +200,7 @@ struct NativeTensorRTBackend::Impl
   int nc{1};
   bool task_obb{false};
   bool end2end{false};
+  std::optional<bool> export_includes_nms;
 
   ~Impl()
   {
@@ -304,6 +305,7 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
     engine_version_ = metadata.version.value_or("");
     end2end_ = metadata.end2end;
     int8_export_ = metadata.int8_export;
+    export_includes_nms_ = metadata.export_includes_nms;
     if (class_names_.empty()) {
       class_names_.emplace(0, "plate");
     }
@@ -315,6 +317,7 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
   impl_ = std::make_unique<Impl>(logger);
   impl_->task_obb = (task_ == "obb");
   impl_->end2end = end2end_;
+  impl_->export_includes_nms = export_includes_nms_;
   impl_->nc = class_names_.empty() ? 1 : static_cast<int>(class_names_.size());
 
   const std::string engine_bytes = read_engine_plan_from_file(model_path_);
@@ -450,10 +453,11 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
   backend_name_ = "native_tensorrt";
   RCLCPP_INFO(
     logger,
-    "TensorRT engine ready: task=%s version=%s export_int8=%s end2end=%s input_dtype=%d output_dtype=%d",
+    "TensorRT engine ready: task=%s version=%s export_int8=%s export_nms=%s end2end=%s input_dtype=%d output_dtype=%d",
     task_.c_str(),
     engine_version_.empty() ? "unknown" : engine_version_.c_str(),
     int8_export_ ? "true" : "false",
+    export_includes_nms_.has_value() ? (*export_includes_nms_ ? "true" : "false") : "unknown",
     end2end_ ? "true" : "false",
     static_cast<int>(impl_->input_dtype),
     static_cast<int>(impl_->output_dtype));
@@ -554,6 +558,7 @@ DetectionBatch NativeTensorRTBackend::infer(
     conf_threshold_,
     impl_->task_obb,
     impl_->end2end,
+    impl_->export_includes_nms,
     &logger);
   const auto parse_done = std::chrono::steady_clock::now();
 
