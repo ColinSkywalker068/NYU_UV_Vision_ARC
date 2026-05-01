@@ -50,7 +50,9 @@ def generate_launch_description() -> LaunchDescription:
         "vfov_degrees", default_value="42.5", description="Vertical FOV deg"
     )
     track_min_hits_arg = DeclareLaunchArgument(
-        "track_min_hits", default_value="2", description="Frames required to confirm a track"
+        "track_min_hits",
+        default_value="2",
+        description="Frames required to confirm a track",
     )
     track_max_coast_frames_arg = DeclareLaunchArgument(
         "track_max_coast_frames",
