@@ -6,6 +6,7 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description() -> LaunchDescription:
+    default_model_path = "/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.engine"
     camera_type_arg = DeclareLaunchArgument(
         "camera_type",
         default_value="realsense",
@@ -31,6 +32,11 @@ def generate_launch_description() -> LaunchDescription:
             ]
         ),
         description="Optional DeepStream nvinfer config template path",
+    )
+    model_path_arg = DeclareLaunchArgument(
+        "model_path",
+        default_value=default_model_path,
+        description="Path to YOLO weights (.pt / .engine / .onnx)",
     )
     serial_port_arg = DeclareLaunchArgument(
         "serial_port",
@@ -122,6 +128,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="false",
         description="Publish debug image_raw frame from detector",
     )
+    use_model_color_classes_arg = DeclareLaunchArgument(
+        "use_model_color_classes",
+        default_value="true",
+        description="Use model class IDs directly for enemy color instead of HSV verification",
+    )
     show_arg = DeclareLaunchArgument(
         "show",
         default_value="false",
@@ -186,6 +197,7 @@ def generate_launch_description() -> LaunchDescription:
                 "allow_native_tensorrt_fallback": LaunchConfiguration(
                     "allow_native_tensorrt_fallback"
                 ),
+                "model_path": LaunchConfiguration("model_path"),
                 "deepstream_config_path": LaunchConfiguration("deepstream_config_path"),
                 "imgsz_width": LaunchConfiguration("realsense_width"),
                 "imgsz_height": LaunchConfiguration("realsense_height"),
@@ -209,6 +221,9 @@ def generate_launch_description() -> LaunchDescription:
                 "show": LaunchConfiguration("show"),
                 "debug_publish_image_raw": LaunchConfiguration(
                     "debug_publish_image_raw"
+                ),
+                "use_model_color_classes": LaunchConfiguration(
+                    "use_model_color_classes"
                 ),
                 "inference_mode": LaunchConfiguration("inference_mode"),
             }
@@ -278,6 +293,7 @@ def generate_launch_description() -> LaunchDescription:
             detector_backend_arg,
             allow_native_fallback_arg,
             deepstream_config_arg,
+            model_path_arg,
             serial_port_arg,
             serial_baudrate_arg,
             serial_verbose_arg,
@@ -296,6 +312,7 @@ def generate_launch_description() -> LaunchDescription:
             realsense_use_max_native_fps_arg,
             inference_mode_arg,
             debug_publish_image_raw_arg,
+            use_model_color_classes_arg,
             show_arg,
             track_min_hits_arg,
             track_max_coast_frames_arg,

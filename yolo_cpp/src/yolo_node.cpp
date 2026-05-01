@@ -45,6 +45,7 @@ YoloNode::YoloNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<bool>("persist_tracking", true);
   this->declare_parameter<bool>("use_kalman", false);
   this->declare_parameter<bool>("enable_color_verification", true);
+  this->declare_parameter<bool>("use_model_color_classes", true);
   this->declare_parameter<std::string>("target_color", "blue");
   this->declare_parameter<bool>("use_robot_id_targeting", false);
   this->declare_parameter<int>("max_hsv_candidates", kDefaultMaxHsvCandidates);
@@ -67,6 +68,7 @@ YoloNode::YoloNode(const rclcpp::NodeOptions & options)
   persist_tracking_ = this->get_parameter("persist_tracking").as_bool();
   use_kalman_ = this->get_parameter("use_kalman").as_bool();
   enable_color_verification_ = this->get_parameter("enable_color_verification").as_bool();
+  use_model_color_classes_ = this->get_parameter("use_model_color_classes").as_bool();
   target_color_ = this->get_parameter("target_color").as_string();
   use_robot_id_targeting_ = this->get_parameter("use_robot_id_targeting").as_bool();
   max_hsv_candidates_ = this->get_parameter("max_hsv_candidates").as_int();
@@ -206,7 +208,11 @@ std::vector<Candidate> YoloNode::extract_candidates(
       detection.obb_angle});
   }
 
-  if (enable_color_verification_ && !candidates.empty()) {
+  if (use_model_color_classes_) {
+    for (auto & candidate : candidates) {
+      candidate.is_enemy = class_id_matches_target_color(candidate.class_id, target_class_);
+    }
+  } else if (enable_color_verification_ && !candidates.empty()) {
     std::sort(
       candidates.begin(), candidates.end(),
       [](const Candidate & lhs, const Candidate & rhs) {return lhs.confidence > rhs.confidence;});
@@ -377,11 +383,12 @@ bool YoloNode::run_kalman_pipeline(
 
 std::string YoloNode::resolve_default_model_path() const
 {
-  const auto cwd_candidate = std::filesystem::current_path() / "model_test" / "bestmerge.engine";
+  const auto cwd_candidate =
+    std::filesystem::current_path() / "model_test" / "best-roboflow-nitish-obb.engine";
   if (std::filesystem::exists(cwd_candidate)) {
     return cwd_candidate.string();
   }
-  return "/home/ultraviolet/CV_Detection/model_test/bestmerge.engine";
+  return "/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.engine";
 }
 
 }  // namespace yolo_cpp

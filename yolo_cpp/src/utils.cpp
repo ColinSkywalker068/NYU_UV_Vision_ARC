@@ -55,6 +55,17 @@ bool is_blue_team(int robot_id)
   return contains_id(kBlueTeam, robot_id);
 }
 
+bool class_id_matches_target_color(int detection_class_id, int target_class)
+{
+  if (target_class == BLUE_CLASS) {
+    return detection_class_id == BLUE_CLASS;
+  }
+  if (target_class == RED_CLASS) {
+    return detection_class_id == RED_CLASS;
+  }
+  return false;
+}
+
 LetterboxMetadata make_letterbox_metadata(int src_w, int src_h, int target_w, int target_h)
 {
   if (src_h == target_h && src_w == target_w) {

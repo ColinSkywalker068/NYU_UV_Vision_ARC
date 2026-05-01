@@ -72,6 +72,7 @@ private:
   bool persist_tracking_{true};
   bool use_kalman_{false};
   bool enable_color_verification_{true};
+  bool use_model_color_classes_{true};
   bool use_robot_id_targeting_{false};
   int imgsz_width_{640};
   int imgsz_height_{640};

@@ -68,6 +68,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<double>("conf", 0.30);
   this->declare_parameter<std::string>("inference_mode", "predict");
   this->declare_parameter<bool>("enable_color_verification", true);
+  this->declare_parameter<bool>("use_model_color_classes", true);
   this->declare_parameter<std::string>("target_color", "blue");
   this->declare_parameter<bool>("use_robot_id_targeting", false);
   this->declare_parameter<double>("hfov_degrees", 79.2);
@@ -93,6 +94,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   conf_ = static_cast<float>(this->get_parameter("conf").as_double());
   inference_mode_ = this->get_parameter("inference_mode").as_string();
   enable_color_verification_ = this->get_parameter("enable_color_verification").as_bool();
+  use_model_color_classes_ = this->get_parameter("use_model_color_classes").as_bool();
   target_color_ = this->get_parameter("target_color").as_string();
   use_robot_id_targeting_ = this->get_parameter("use_robot_id_targeting").as_bool();
   enemy_color_red_value_ = this->get_parameter("enemy_color_red_value").as_int();
@@ -147,7 +149,6 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
 
 ArmorDetectorNode::~ArmorDetectorNode()
 {
-  RCLCPP_INFO(this->get_logger(), "[DEBUG-rs-shutdown] ArmorDetectorNode shutdown start");
   timer_.reset();
   if (show_ && !preview_failed_) {
     cv::destroyWindow(vis_window_name_);
@@ -158,7 +159,6 @@ ArmorDetectorNode::~ArmorDetectorNode()
     camera_backend_->release();
     camera_backend_.reset();
   }
-  RCLCPP_INFO(this->get_logger(), "[DEBUG-rs-shutdown] ArmorDetectorNode shutdown complete");
 }
 
 void ArmorDetectorNode::id_listener_callback(const std_msgs::msg::Int32::SharedPtr msg)
@@ -226,7 +226,7 @@ void ArmorDetectorNode::initialize_deepstream_runtime()
   config.source_fps = camera_config_.basler_fps;
   config.conf_threshold = conf_;
   config.half = half_;
-  config.enable_color_verification = enable_color_verification_;
+  config.enable_color_verification = enable_color_verification_ && !use_model_color_classes_;
   config.debug_publish_image_raw = debug_publish_image_raw_;
 
   fps_ = static_cast<double>(std::max(1, camera_config_.basler_fps));
@@ -444,6 +444,13 @@ std::vector<Candidate> ArmorDetectorNode::extract_candidates(
       detection.obb_angle});
   }
 
+  if (use_model_color_classes_) {
+    for (auto & candidate : candidates) {
+      candidate.is_enemy = class_id_matches_target_color(candidate.class_id, target_class_);
+    }
+    return candidates;
+  }
+
   if (!enable_color_verification_ || candidates.empty() || packet == nullptr || packet->empty()) {
     return candidates;
   }
@@ -480,11 +487,12 @@ std::vector<Candidate> ArmorDetectorNode::extract_candidates(
 
 std::string ArmorDetectorNode::resolve_default_model_path() const
 {
-  const auto cwd_candidate = std::filesystem::current_path() / "model_test" / "bestmerge.engine";
+  const auto cwd_candidate =
+    std::filesystem::current_path() / "model_test" / "best-roboflow-nitish-obb.engine";
   if (std::filesystem::exists(cwd_candidate)) {
     return cwd_candidate.string();
   }
-  return "/home/ultraviolet/CV_Detection/model_test/bestmerge.engine";
+  return "/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.engine";
 }
 
 std::string ArmorDetectorNode::resolve_default_deepstream_config_path() const

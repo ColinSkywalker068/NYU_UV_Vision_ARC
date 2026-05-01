@@ -5,7 +5,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description() -> LaunchDescription:
-    default_model_path = "/home/ultraviolet/CV_Detection/model_test/bestmerge.engine"
+    default_model_path = "/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.engine"
 
     rs_width_arg = DeclareLaunchArgument(
         "rs_width", default_value="640", description="RealSense color width"
@@ -39,6 +39,11 @@ def generate_launch_description() -> LaunchDescription:
     )
     conf_arg = DeclareLaunchArgument(
         "conf", default_value="0.30", description="Confidence threshold"
+    )
+    use_model_color_classes_arg = DeclareLaunchArgument(
+        "use_model_color_classes",
+        default_value="true",
+        description="Use model class IDs directly for enemy color instead of HSV verification",
     )
     show_arg = DeclareLaunchArgument(
         "show", default_value="false", description="OpenCV debug window"
@@ -112,6 +117,9 @@ def generate_launch_description() -> LaunchDescription:
                 "model_path": LaunchConfiguration("model_path"),
                 "task": LaunchConfiguration("task"),
                 "conf": LaunchConfiguration("conf"),
+                "use_model_color_classes": LaunchConfiguration(
+                    "use_model_color_classes"
+                ),
                 "show": LaunchConfiguration("show"),
                 "debug_publish_image_raw": LaunchConfiguration(
                     "debug_publish_image_raw"
@@ -177,6 +185,7 @@ def generate_launch_description() -> LaunchDescription:
             model_path_arg,
             task_arg,
             conf_arg,
+            use_model_color_classes_arg,
             show_arg,
             debug_publish_image_raw_arg,
             hfov_arg,

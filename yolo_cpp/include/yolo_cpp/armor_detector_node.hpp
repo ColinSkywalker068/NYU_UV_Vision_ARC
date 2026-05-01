@@ -94,6 +94,7 @@ private:
   bool half_{true};
   bool show_{false};
   bool enable_color_verification_{true};
+  bool use_model_color_classes_{true};
   bool use_robot_id_targeting_{false};
   bool debug_publish_image_raw_{false};
   bool preview_failed_{false};

@@ -16,6 +16,7 @@ constexpr int BLUE_CLASS = 0;
 
 bool is_red_team(int robot_id);
 bool is_blue_team(int robot_id);
+bool class_id_matches_target_color(int detection_class_id, int target_class);
 
 struct LetterboxResult
 {
