@@ -185,7 +185,7 @@ def main():
     cv2.resizeWindow("Binary", 960, 540)
 
     # Trackbar for threshold
-    cv2.createTrackbar("ColorThresh", win_name, 35, 255, lambda x: None)
+    cv2.createTrackbar("ColorThresh", win_name, 55, 255, lambda x: None)
     cv2.createTrackbar("BrightThresh", win_name, 205, 255, lambda x: None)
 
     print(f"[INFO] Found {len(mp4_files)} videos.")
