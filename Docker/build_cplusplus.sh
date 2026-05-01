@@ -11,12 +11,18 @@ DOCKERFILE="${DOCKERFILE:-Dockerfile.cplusplus}"
 
 BASE_IMAGE="${IMAGE_REPO}:${BASE_TAG}"
 TARGET_IMAGE="${IMAGE_REPO}:${TARGET_TAG}"
+PYLON_DEB="${PYLON_DEB:-${4:-}}"
+
+if [[ -n "${PYLON_DEB}" ]]; then
+  echo "Including Basler Pylon package from build context: ${PYLON_DEB}"
+fi
 
 echo "Building ${TARGET_IMAGE} from ${BASE_IMAGE}..."
 if ! DOCKER_BUILDKIT=1 docker build \
   --progress=plain \
   --network=host \
   --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+  --build-arg PYLON_DEB="${PYLON_DEB}" \
   -f "${DOCKERFILE}" \
   -t "${TARGET_IMAGE}" \
   .; then
@@ -26,6 +32,7 @@ if ! DOCKER_BUILDKIT=1 docker build \
     --network=host \
     --no-cache \
     --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+    --build-arg PYLON_DEB="${PYLON_DEB}" \
     -f "${DOCKERFILE}" \
     -t "${TARGET_IMAGE}" \
     .
