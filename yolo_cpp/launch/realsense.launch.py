@@ -113,7 +113,9 @@ def generate_launch_description() -> LaunchDescription:
                 "task": LaunchConfiguration("task"),
                 "conf": LaunchConfiguration("conf"),
                 "show": LaunchConfiguration("show"),
-                "debug_publish_image_raw": LaunchConfiguration("debug_publish_image_raw"),
+                "debug_publish_image_raw": LaunchConfiguration(
+                    "debug_publish_image_raw"
+                ),
                 "hfov_degrees": LaunchConfiguration("hfov_degrees"),
                 "vfov_degrees": LaunchConfiguration("vfov_degrees"),
                 "imgsz_width": LaunchConfiguration("rs_width"),

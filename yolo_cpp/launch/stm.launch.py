@@ -207,7 +207,9 @@ def generate_launch_description() -> LaunchDescription:
                     "realsense_use_max_native_fps"
                 ),
                 "show": LaunchConfiguration("show"),
-                "debug_publish_image_raw": LaunchConfiguration("debug_publish_image_raw"),
+                "debug_publish_image_raw": LaunchConfiguration(
+                    "debug_publish_image_raw"
+                ),
                 "inference_mode": LaunchConfiguration("inference_mode"),
             }
         ],
