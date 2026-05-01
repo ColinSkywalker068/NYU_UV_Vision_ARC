@@ -94,7 +94,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     realsense_exposure_arg = DeclareLaunchArgument(
         "realsense_exposure",
-        default_value="180.0",
+        default_value="100.0",
         description="RealSense manual exposure",
     )
     realsense_auto_exposure_arg = DeclareLaunchArgument(
