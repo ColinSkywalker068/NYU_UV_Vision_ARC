@@ -26,19 +26,19 @@ The step that usually goes wrong is **not** the ROS build itself. The issue is t
 enabled when the Pylon SDK is already visible at `colcon build` time. Right now there are two supported ways
 to make that happen:
 
-1. Install Pylon into the image during `docker build` using a local `.deb`.
+1. Install Pylon into the image during `docker build` using a local Basler package, usually `tar.gz`.
 2. Mount or install Pylon into `/opt/pylon` inside the running container **before** running `colcon build`.
 
 If neither of those happened, `colcon build` still succeeds, but `yolo_cpp` prints a warning during CMake
 configure and compiles with the Basler backend disabled.
 
-### Option A: install a local `.deb` into the image
+### Option A: install a local `tar.gz` into the image
 
 Put the Basler package somewhere under the Docker build context, for example:
 
 ```bash
 mkdir -p Docker/pylon
-cp /path/to/your/pylon_*.deb Docker/pylon/
+cp /path/to/your/pylon_*.tar.gz Docker/pylon/
 ```
 
 Then build the image:
@@ -48,17 +48,17 @@ cd Docker
 ./build_cplusplus.sh nyuultraviolet/cv-dockerfile \
   jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra \
   jp60-pytorch21-humble-tensorrt-cplusplus \
-  pylon/your-package-name.deb
+  pylon/your-package-name.tar.gz
 ```
 
 You can also pass the same path via environment variable:
 
 ```bash
 cd Docker
-PYLON_DEB=pylon/your-package-name.deb ./build_cplusplus.sh
+PYLON_PACKAGE=pylon/your-package-name.tar.gz ./build_cplusplus.sh
 ```
 
-### Option B: install the `.deb` manually inside a running container
+### Option B: install the `tar.gz` manually inside a running container
 
 Start the container, make the `.deb` visible inside it, then install it before `colcon build`.
 
@@ -66,15 +66,18 @@ If the file is already on the host, one easy path is to copy it into the repo fi
 
 ```bash
 mkdir -p Docker/pylon
-cp /path/to/your/pylon_*.deb Docker/pylon/
+cp /path/to/your/pylon_*.tar.gz Docker/pylon/
 ./services/run-cplusplus.sh
 ```
 
 Inside the container:
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y /home/ultraviolet/CV_Detection/Docker/pylon/your-package-name.deb
+mkdir -p /tmp/pylon
+tar -xzf /home/ultraviolet/CV_Detection/Docker/pylon/your-package-name.tar.gz -C /tmp/pylon --strip-components=1
+find /tmp/pylon -maxdepth 2 -name 'pylon*.sh'
+chmod +x "$(find /tmp/pylon -maxdepth 2 -name 'pylon*.sh' | head -n 1)"
+"$(find /tmp/pylon -maxdepth 2 -name 'pylon*.sh' | head -n 1)" --accept-eula --default
 ldconfig
 ls /opt/pylon
 ```

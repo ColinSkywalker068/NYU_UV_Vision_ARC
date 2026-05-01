@@ -1,6 +1,6 @@
 ARG BASE_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra
 FROM ${BASE_IMAGE}
-ARG PYLON_DEB=""
+ARG PYLON_PACKAGE=""
 
 # C++ DeepStream image:
 # - keeps the original Python/ROS image intact
@@ -58,21 +58,42 @@ ENV GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream/lib/gst-plugins \
     LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream/lib:/usr/lib/aarch64-linux-gnu/tegra:${LD_LIBRARY_PATH}
 
 # Basler Pylon SDK is expected to be present at /opt/pylon.
-# If you have a local Basler .deb, pass it via:
-#   docker build --build-arg PYLON_DEB=path/to/pylon_xxx.deb ...
+# If you have a local Basler package archive or .deb, pass it via:
+#   docker build --build-arg PYLON_PACKAGE=path/to/pylon_xxx.tar.gz ...
 # The path is resolved relative to the Docker build context.
 RUN --mount=type=bind,source=.,target=/tmp/build-context \
-    if [ -n "${PYLON_DEB}" ]; then \
-      if [ ! -f "/tmp/build-context/${PYLON_DEB}" ]; then \
-        echo "PYLON_DEB was set to '${PYLON_DEB}', but that file was not found in the build context." >&2; \
+    if [ -n "${PYLON_PACKAGE}" ]; then \
+      if [ ! -f "/tmp/build-context/${PYLON_PACKAGE}" ]; then \
+        echo "PYLON_PACKAGE was set to '${PYLON_PACKAGE}', but that file was not found in the build context." >&2; \
         exit 1; \
       fi; \
-      apt-get update && \
-      apt-get install -y "/tmp/build-context/${PYLON_DEB}" && \
-      rm -rf /var/lib/apt/lists/* && \
-      ldconfig; \
+      case "${PYLON_PACKAGE}" in \
+        *.deb) \
+          apt-get update && \
+          apt-get install -y "/tmp/build-context/${PYLON_PACKAGE}" && \
+          rm -rf /var/lib/apt/lists/* && \
+          ldconfig; \
+          ;; \
+        *.tar.gz|*.tgz) \
+          mkdir -p /tmp/pylon && \
+          tar -xzf "/tmp/build-context/${PYLON_PACKAGE}" -C /tmp/pylon --strip-components=1 && \
+          PYLON_INSTALLER="$(find /tmp/pylon -maxdepth 2 -name 'pylon*.sh' | head -n 1)" && \
+          if [ -z "${PYLON_INSTALLER}" ]; then \
+            echo "Could not find a pylon installer shell script inside ${PYLON_PACKAGE}." >&2; \
+            exit 1; \
+          fi && \
+          chmod +x "${PYLON_INSTALLER}" && \
+          "${PYLON_INSTALLER}" --accept-eula --default && \
+          rm -rf /tmp/pylon && \
+          ldconfig; \
+          ;; \
+        *) \
+          echo "Unsupported PYLON_PACKAGE format: ${PYLON_PACKAGE}. Use .deb or .tar.gz." >&2; \
+          exit 1; \
+          ;; \
+      esac; \
     else \
-      echo "PYLON_DEB not provided; expecting /opt/pylon to be mounted before colcon build."; \
+      echo "PYLON_PACKAGE not provided; expecting /opt/pylon to be mounted before colcon build."; \
     fi
 
 ENV PYLON_ROOT=/opt/pylon
