@@ -7,10 +7,8 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
-#include <mutex>
 #include <stdexcept>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -66,79 +64,53 @@ rs2_format format_by_name(const std::string & name)
   return RS2_FORMAT_YUYV;
 }
 
-constexpr int kRealSenseWarmupFrames = 5;
-constexpr int kRealSenseRestartEmptyFrameThreshold = 30;
-constexpr int kRealSenseRestartBlackFrameThreshold = 10;
-constexpr int kRealSenseSoftRestartLimit = 2;
-constexpr auto kRealSenseRestartSettleDelay = std::chrono::milliseconds(250);
-constexpr auto kRealSenseHardwareResetSettleDelay = std::chrono::seconds(2);
-
-bool is_probably_black_frame(const cv::Mat & frame)
-{
-  if (frame.empty() || frame.channels() != 3) {
-    return false;
-  }
-
-  constexpr int kSampleGrid = 6;
-  const int sample_rows = std::min(frame.rows, kSampleGrid);
-  const int sample_cols = std::min(frame.cols, kSampleGrid);
-  for (int row_index = 0; row_index < sample_rows; ++row_index) {
-    const int y = sample_rows == 1 ? frame.rows / 2 : row_index * (frame.rows - 1) / (sample_rows - 1);
-    const auto * row = frame.ptr<cv::Vec3b>(y);
-    for (int col_index = 0; col_index < sample_cols; ++col_index) {
-      const int x = sample_cols == 1 ? frame.cols / 2 : col_index * (frame.cols - 1) / (sample_cols - 1);
-      const auto & pixel = row[x];
-      if (pixel[0] != 0 || pixel[1] != 0 || pixel[2] != 0) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 class RealSenseBackend final : public CameraBackend
 {
 public:
-  RealSenseBackend(const CameraConfig & config, rclcpp::Logger logger)
-  : config_(config), logger_(std::move(logger))
+  explicit RealSenseBackend(const CameraConfig & config)
+  : config_(config)
   {
-  }
-
-  ~RealSenseBackend() override
-  {
-    release();
   }
 
   void initialize() override
   {
-    std::lock_guard<std::mutex> lock(mutex_);
-    stop_pipeline_locked();
-    start_pipeline_locked();
+    rs2::context ctx;
+    auto devices = ctx.query_devices();
+    if (devices.size() == 0) {
+      throw std::runtime_error("No RealSense camera found");
+    }
+
+    rs2::config config;
+    try {
+      config.disable_all_streams();
+    } catch (...) {
+    }
+
+    discover_best_stream(ctx);
+    config.enable_stream(
+      RS2_STREAM_COLOR, requested_width_, requested_height_, stream_format_, requested_fps_);
+    profile_ = pipeline_.start(config);
+    configure_sensor();
+
+    auto stream_profile = profile_.get_stream(RS2_STREAM_COLOR).as<rs2::video_stream_profile>();
+    actual_fps_ = static_cast<double>(stream_profile.fps());
+    converted_bgr_.create(stream_profile.height(), stream_profile.width(), CV_8UC3);
   }
 
   bool capture(FramePacket & packet) override
   {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!streaming_ && !recover_stream_locked("capture requested while the RealSense pipeline was stopped")) {
-      return false;
-    }
-
     rs2::frameset frames;
-    try {
-      if (config_.realsense_use_poll) {
-        if (!pipeline_.poll_for_frames(&frames)) {
-          return handle_capture_failure_locked("poll_for_frames returned no frame");
-        }
-      } else {
-        frames = pipeline_.wait_for_frames(1000);
+    if (config_.realsense_use_poll) {
+      if (!pipeline_.poll_for_frames(&frames)) {
+        return false;
       }
-    } catch (const rs2::error & exc) {
-      return handle_capture_failure_locked(std::string("frame acquisition failed: ") + exc.what());
+    } else {
+      frames = pipeline_.wait_for_frames(1000);
     }
 
     rs2::video_frame color_frame = frames.get_color_frame();
     if (!color_frame) {
-      return handle_capture_failure_locked("frameset did not contain a color frame");
+      return false;
     }
 
     const int width = color_frame.get_width();
@@ -156,50 +128,32 @@ public:
       packet.pixel_format = PixelFormat::kBgr8;
       packet.storage_kind = BackingStoreKind::kHost;
       packet.owner = owner;
-    } else if (stream_format_ == RS2_FORMAT_RGB8) {
+      return true;
+    }
+
+    if (stream_format_ == RS2_FORMAT_RGB8) {
       cv::Mat rgb(
         height, width, CV_8UC3, const_cast<std::uint8_t *>(data), cv::Mat::AUTO_STEP);
       cv::cvtColor(rgb, converted_bgr_, cv::COLOR_RGB2BGR);
-      packet.frame = converted_bgr_;
-      packet.pixel_format = PixelFormat::kBgr8;
-      packet.storage_kind = BackingStoreKind::kHost;
-      packet.owner.reset();
     } else {
       cv::Mat yuyv(
         height, width, CV_8UC2, const_cast<std::uint8_t *>(data), cv::Mat::AUTO_STEP);
       cv::cvtColor(yuyv, converted_bgr_, cv::COLOR_YUV2BGR_YUY2);
-      packet.frame = converted_bgr_;
-      packet.pixel_format = PixelFormat::kBgr8;
-      packet.storage_kind = BackingStoreKind::kHost;
-      packet.owner.reset();
-    }
-    if (is_probably_black_frame(packet.frame)) {
-      ++consecutive_black_frames_;
-      consecutive_empty_frames_ = 0;
-      if (consecutive_black_frames_ < kRealSenseRestartBlackFrameThreshold) {
-        return false;
-      }
-
-      RCLCPP_WARN(
-        logger_,
-        "RealSense produced %d consecutive black frames; restarting the pipeline.",
-        consecutive_black_frames_);
-      return recover_stream_locked("camera returned black frames");
     }
 
-    consecutive_empty_frames_ = 0;
-    consecutive_black_frames_ = 0;
-    soft_restart_count_ = 0;
+    packet.frame = converted_bgr_;
+    packet.pixel_format = PixelFormat::kBgr8;
+    packet.storage_kind = BackingStoreKind::kHost;
+    packet.owner.reset();
     return true;
   }
 
   void release() override
   {
-    std::lock_guard<std::mutex> lock(mutex_);
-    stop_pipeline_locked();
-    consecutive_empty_frames_ = 0;
-    consecutive_black_frames_ = 0;
-    soft_restart_count_ = 0;
+    try {
+      pipeline_.stop();
+    } catch (...) {
+    }
   }
 
   double actual_fps() const override
@@ -213,186 +167,7 @@ public:
   }
 
 private:
-  bool handle_capture_failure_locked(const std::string & reason)
-  {
-    ++consecutive_empty_frames_;
-    consecutive_black_frames_ = 0;
-    if (consecutive_empty_frames_ < kRealSenseRestartEmptyFrameThreshold) {
-      return false;
-    }
-
-    RCLCPP_WARN(
-      logger_,
-      "RealSense produced %d consecutive empty/invalid frames; restarting the pipeline (%s).",
-      consecutive_empty_frames_,
-      reason.c_str());
-    return recover_stream_locked(reason);
-  }
-
-  bool recover_stream_locked(const std::string & reason)
-  {
-    stop_pipeline_locked();
-
-    const bool should_hardware_reset = soft_restart_count_ >= kRealSenseSoftRestartLimit;
-    if (should_hardware_reset && hardware_reset_locked()) {
-      RCLCPP_WARN(
-        logger_,
-        "Issued a RealSense hardware reset after repeated restart failures (%s).",
-        reason.c_str());
-      std::this_thread::sleep_for(kRealSenseHardwareResetSettleDelay);
-      soft_restart_count_ = 0;
-    }
-
-    try {
-      start_pipeline_locked();
-      ++soft_restart_count_;
-    } catch (const std::exception & exc) {
-      RCLCPP_ERROR(
-        logger_,
-        "Failed to recover the RealSense pipeline after %s: %s",
-        reason.c_str(),
-        exc.what());
-      return false;
-    }
-    return false;
-  }
-
-  void start_pipeline_locked()
-  {
-    rs2::context ctx;
-    auto devices = ctx.query_devices();
-    if (devices.size() == 0) {
-      throw std::runtime_error("No RealSense camera found");
-    }
-
-    device_serial_ = find_primary_device_serial(ctx);
-
-    rs2::config config;
-    try {
-      config.disable_all_streams();
-    } catch (...) {
-    }
-
-    if (!device_serial_.empty()) {
-      config.enable_device(device_serial_);
-    }
-
-    discover_best_stream(ctx, device_serial_);
-    config.enable_stream(
-      RS2_STREAM_COLOR, requested_width_, requested_height_, stream_format_, requested_fps_);
-
-    pipeline_ = rs2::pipeline(ctx);
-    try {
-      profile_ = pipeline_.start(config);
-      streaming_ = true;
-      configure_sensor();
-
-      auto stream_profile = profile_.get_stream(RS2_STREAM_COLOR).as<rs2::video_stream_profile>();
-      actual_fps_ = static_cast<double>(stream_profile.fps());
-      converted_bgr_.create(stream_profile.height(), stream_profile.width(), CV_8UC3);
-      warm_up_stream_locked();
-      consecutive_empty_frames_ = 0;
-      consecutive_black_frames_ = 0;
-    } catch (...) {
-      stop_pipeline_locked();
-      throw;
-    }
-  }
-
-  void stop_pipeline_locked()
-  {
-    if (!streaming_) {
-      profile_ = rs2::pipeline_profile();
-      pipeline_ = rs2::pipeline();
-      actual_fps_ = 0.0;
-      converted_bgr_.release();
-      return;
-    }
-
-    rs2::device device;
-    try {
-      device = profile_.get_device();
-    } catch (...) {
-    }
-
-    try {
-      pipeline_.stop();
-    } catch (...) {
-    }
-
-    close_active_sensors_locked(device);
-    profile_ = rs2::pipeline_profile();
-    pipeline_ = rs2::pipeline();
-    streaming_ = false;
-    actual_fps_ = 0.0;
-    converted_bgr_.release();
-    std::this_thread::sleep_for(kRealSenseRestartSettleDelay);
-  }
-
-  void warm_up_stream_locked()
-  {
-    for (int i = 0; i < kRealSenseWarmupFrames; ++i) {
-      try {
-        pipeline_.wait_for_frames(250);
-      } catch (...) {
-        return;
-      }
-    }
-  }
-
-  std::string find_primary_device_serial(const rs2::context & ctx) const
-  {
-    for (auto && device : ctx.query_devices()) {
-      try {
-        if (device.supports(RS2_CAMERA_INFO_SERIAL_NUMBER)) {
-          return device.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
-        }
-      } catch (...) {
-      }
-    }
-    return {};
-  }
-
-  bool hardware_reset_locked() const
-  {
-    if (device_serial_.empty()) {
-      return false;
-    }
-
-    rs2::context ctx;
-    for (auto && device : ctx.query_devices()) {
-      try {
-        if (
-          device.supports(RS2_CAMERA_INFO_SERIAL_NUMBER) &&
-          device_serial_ == device.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER))
-        {
-          device.hardware_reset();
-          return true;
-        }
-      } catch (...) {
-      }
-    }
-    return false;
-  }
-
-  void close_active_sensors_locked(const rs2::device & device)
-  {
-    try {
-      for (auto && sensor : device.query_sensors()) {
-        try {
-          sensor.stop();
-        } catch (...) {
-        }
-        try {
-          sensor.close();
-        } catch (...) {
-        }
-      }
-    } catch (...) {
-    }
-  }
-
-  void discover_best_stream(const rs2::context & ctx, const std::string & device_serial)
+  void discover_best_stream(const rs2::context & ctx)
   {
     static const std::vector<std::string> preferred_formats{"bgr8", "rgb8", "yuyv"};
     requested_width_ = config_.realsense_width;
@@ -404,13 +179,6 @@ private:
     int best_rank = static_cast<int>(preferred_formats.size());
 
     for (auto && device : ctx.query_devices()) {
-      if (
-        !device_serial.empty() &&
-        device.supports(RS2_CAMERA_INFO_SERIAL_NUMBER) &&
-        device.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) != device_serial)
-      {
-        continue;
-      }
       for (auto && sensor : device.query_sensors()) {
         if (!sensor.is<rs2::color_sensor>()) {
           continue;
@@ -479,9 +247,7 @@ private:
   }
 
   CameraConfig config_;
-  rclcpp::Logger logger_;
   const std::string source_id_{"realsense"};
-  std::mutex mutex_;
   int requested_width_{640};
   int requested_height_{480};
   int requested_fps_{60};
@@ -490,11 +256,6 @@ private:
   rs2::pipeline pipeline_;
   rs2::pipeline_profile profile_;
   cv::Mat converted_bgr_;
-  std::string device_serial_;
-  int consecutive_empty_frames_{0};
-  int consecutive_black_frames_{0};
-  int soft_restart_count_{0};
-  bool streaming_{false};
 };
 #endif
 
@@ -684,7 +445,7 @@ CameraConfig load_camera_config(rclcpp::Node & node)
 }
 
 std::shared_ptr<CameraBackend> create_camera_backend(
-  const CameraConfig & config, const rclcpp::Logger & logger)
+  const CameraConfig & config, const rclcpp::Logger &)
 {
   if (config.camera_type == "basler") {
 #ifdef HAVE_PYLON
@@ -698,7 +459,7 @@ std::shared_ptr<CameraBackend> create_camera_backend(
 
   if (config.camera_type == "realsense") {
 #ifdef HAVE_LIBREALSENSE2
-    return std::make_shared<RealSenseBackend>(config, logger);
+    return std::make_shared<RealSenseBackend>(config);
 #else
     return std::make_shared<UnsupportedCameraBackend>(
       "RealSense backend requested but librealsense2 headers/libs were not available at build time.",

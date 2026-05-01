@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
-#include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -27,12 +26,6 @@ namespace
 constexpr int kDefaultMaxHsvCandidates = 3;
 constexpr int kPreviewMaxWidth = 1280;
 constexpr int kPreviewMaxHeight = 720;
-
-bool allow_unsafe_preview_window()
-{
-  const char * env = std::getenv("YOLO_CPP_ENABLE_UNSAFE_OPENCV_PREVIEW");
-  return env != nullptr && std::string(env) == "1";
-}
 
 sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
   const FramePacket & packet, const rclcpp::Time & stamp)
@@ -110,15 +103,6 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   stage_log_interval_ = std::max(
     1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
 
-  if (show_ && !allow_unsafe_preview_window()) {
-    RCLCPP_WARN(
-      this->get_logger(),
-      "Disabling OpenCV preview window because it can trigger fatal GDK/X11 errors and interrupt camera cleanup. "
-      "Use debug_publish_image_raw instead, or set YOLO_CPP_ENABLE_UNSAFE_OPENCV_PREVIEW=1 to force the old preview path.");
-    show_ = false;
-    debug_publish_image_raw_ = true;
-  }
-
   target_class_ = (target_color_ == "red") ? RED_CLASS : BLUE_CLASS;
 
   robot_id_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
@@ -163,6 +147,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
 
 ArmorDetectorNode::~ArmorDetectorNode()
 {
+  RCLCPP_INFO(this->get_logger(), "[DEBUG-rs-shutdown] ArmorDetectorNode shutdown start");
   timer_.reset();
   if (show_ && !preview_failed_) {
     cv::destroyWindow(vis_window_name_);
@@ -173,6 +158,7 @@ ArmorDetectorNode::~ArmorDetectorNode()
     camera_backend_->release();
     camera_backend_.reset();
   }
+  RCLCPP_INFO(this->get_logger(), "[DEBUG-rs-shutdown] ArmorDetectorNode shutdown complete");
 }
 
 void ArmorDetectorNode::id_listener_callback(const std_msgs::msg::Int32::SharedPtr msg)
