@@ -6,7 +6,9 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description() -> LaunchDescription:
-    default_model_path = "/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.engine"
+    default_model_path = (
+        "/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.engine"
+    )
     camera_type_arg = DeclareLaunchArgument(
         "camera_type",
         default_value="realsense",
