@@ -57,7 +57,7 @@ class ArmorDetector:
             if width > 0 and (length / width) >= self.light_min_ratio:
                 theta = (angle if w >= h else angle + 90) % 180
                 tilt_angle = abs(theta - 90)
-                
+
                 if tilt_angle <= self.light_max_tilt:
                     lights.append(
                         {
@@ -73,18 +73,23 @@ class ArmorDetector:
         for i in range(len(lights)):
             for j in range(i + 1, len(lights)):
                 l1, l2 = lights[i], lights[j]
-                
+
                 angle_diff = abs(l1["angle"] - l2["angle"])
                 if angle_diff > self.match_max_angle_diff:
                     continue
-                    
+
                 dist_x = abs(l1["center"][0] - l2["center"][0])
                 avg_len = (l1["length"] + l2["length"]) / 2.0
                 ratio = dist_x / avg_len
-                
+
                 if self.armor_min_ratio < ratio < self.armor_max_ratio:
-                    len_sim = 1.0 - (abs(l1["length"] - l2["length"]) / max(l1["length"], l2["length"]))
-                    y_sim = 1.0 - min(abs(l1["center"][1] - l2["center"][1]) / avg_len, 1.0)
+                    len_sim = 1.0 - (
+                        abs(l1["length"] - l2["length"])
+                        / max(l1["length"], l2["length"])
+                    )
+                    y_sim = 1.0 - min(
+                        abs(l1["center"][1] - l2["center"][1]) / avg_len, 1.0
+                    )
                     angle_sim = 1.0 - (angle_diff / self.match_max_angle_diff)
                     base_sim = len_sim + y_sim + angle_sim
                     score = base_sim + (avg_len / 20.0)
@@ -96,7 +101,7 @@ class ArmorDetector:
                                 int((l1["center"][1] + l2["center"][1]) / 2),
                             ),
                             "score": score,
-                            "lights": (l1, l2)
+                            "lights": (l1, l2),
                         }
                     )
         return armors
@@ -121,7 +126,7 @@ def main(args):
             node.GetNode("PixelFormat").SetValue("BGR8")
         except:
             pass
-            
+
         # Hardware Color Enhancement
         try:
             node.GetNode("ColorAdjustmentSelector").SetValue("Red")
@@ -130,7 +135,7 @@ def main(args):
             node.GetNode("ColorAdjustmentSaturation").SetValue(2.0)
         except:
             pass
-            
+
         # Set Inverse WB based on Target selection
         if args.target == "blue":
             node.GetNode("BalanceRatioSelector").SetValue("Red")
@@ -197,26 +202,34 @@ def main(args):
                 if tracked_targets and armors:
                     tid_scores = {}
                     for tid, t_center in tracked_targets.items():
-                        best_dist = float('inf')
+                        best_dist = float("inf")
                         raw_score = 0.0
                         mapped_armor = None
                         for a in armors:
-                            dist = (t_center[0] - a["center"][0])**2 + (t_center[1] - a["center"][1])**2
+                            dist = (t_center[0] - a["center"][0]) ** 2 + (
+                                t_center[1] - a["center"][1]
+                            ) ** 2
                             if dist < best_dist:
                                 best_dist = dist
                                 raw_score = a["score"]
                                 mapped_armor = a
-                        
+
                         assigned_score = raw_score
                         if tid == current_best_tid:
                             assigned_score += 5.0
 
-                        tid_scores[tid] = {"score": assigned_score, "raw": raw_score, "armor": mapped_armor}
-                    
-                    current_best_tid = max(tid_scores, key=lambda k: tid_scores[k]["score"])
+                        tid_scores[tid] = {
+                            "score": assigned_score,
+                            "raw": raw_score,
+                            "armor": mapped_armor,
+                        }
+
+                    current_best_tid = max(
+                        tid_scores, key=lambda k: tid_scores[k]["score"]
+                    )
                     display_best_score = tid_scores[current_best_tid]["raw"]
                     best_center = tracked_targets[current_best_tid]
-                    
+
                     best_raw_armor = tid_scores[current_best_tid]["armor"]
                     if best_raw_armor:
                         l1, l2 = best_raw_armor["lights"]
@@ -239,7 +252,9 @@ def main(args):
 
                     # 5. Data Output (Simulating competition data stream)
                     if best_center:
-                        print(f"FPS: {fps:5.1f} | Best Target [{current_best_tid}]: ({best_center[0]:4d}, {best_center[1]:4d}) Score: {display_best_score:.2f}")
+                        print(
+                            f"FPS: {fps:5.1f} | Best Target [{current_best_tid}]: ({best_center[0]:4d}, {best_center[1]:4d}) Score: {display_best_score:.2f}"
+                        )
                     else:
                         print(f"FPS: {fps:5.1f} | Searching...")
 

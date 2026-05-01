@@ -11,7 +11,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
     from cv_trackers import EuclideanTracker, KalmanMultiTracker
 except ImportError:
-    print("[WARN] cv_trackers not found. Tracking will be disabled or error out if selected.")
+    print(
+        "[WARN] cv_trackers not found. Tracking will be disabled or error out if selected."
+    )
+
 
 class ArmorDetector:
     def __init__(self):
@@ -35,7 +38,7 @@ class ArmorDetector:
         _, color_mask = cv2.threshold(diff, color_th, 255, cv2.THRESH_BINARY)
         _, bright_mask = cv2.threshold(gray, bright_th, 255, cv2.THRESH_BINARY)
 
-        # Saturated white cores have R=255, B=255, so diff=0. 
+        # Saturated white cores have R=255, B=255, so diff=0.
         # Dilate the color mask slightly to bridge over the pure white core.
         kernel_diff = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         color_mask = cv2.dilate(color_mask, kernel_diff, iterations=1)
@@ -82,27 +85,32 @@ class ArmorDetector:
         for i in range(len(lights)):
             for j in range(i + 1, len(lights)):
                 l1, l2 = lights[i], lights[j]
-                
+
                 angle_diff = abs(l1["angle"] - l2["angle"])
                 if angle_diff > self.match_max_angle_diff:
                     continue
-                    
+
                 dist_x = abs(l1["center"][0] - l2["center"][0])
                 avg_len = (l1["length"] + l2["length"]) / 2.0
                 ratio = dist_x / avg_len
-                
+
                 if self.armor_min_ratio < ratio < self.armor_max_ratio:
                     # Confidence Score metrics
                     # 1. Length similarity (front facing bars look identical in length)
-                    len_sim = 1.0 - (abs(l1["length"] - l2["length"]) / max(l1["length"], l2["length"]))
+                    len_sim = 1.0 - (
+                        abs(l1["length"] - l2["length"])
+                        / max(l1["length"], l2["length"])
+                    )
                     # 2. Y-coordinate alignment (front facing bars are perfectly horizontal to each other)
-                    y_sim = 1.0 - min(abs(l1["center"][1] - l2["center"][1]) / avg_len, 1.0)
+                    y_sim = 1.0 - min(
+                        abs(l1["center"][1] - l2["center"][1]) / avg_len, 1.0
+                    )
                     # 3. Angle alignment
                     angle_sim = 1.0 - (angle_diff / self.match_max_angle_diff)
-                    
+
                     # Base geometric similarity (max 3.0)
                     base_sim = len_sim + y_sim + angle_sim
-                    
+
                     # Strongly prioritize targets that are closer (large size/length).
                     # Dividing by 20 so a closer target with length=100 adds +5.0,
                     # destroying a far target (length=20) which only gets +1.0 even if perfectly facing.
@@ -115,26 +123,40 @@ class ArmorDetector:
                                 int((l1["center"][1] + l2["center"][1]) / 2),
                             ),
                             "score": score,
-                            "lights": (l1, l2)
+                            "lights": (l1, l2),
                         }
                     )
         return lights, armors
 
+
 def main():
     parser = argparse.ArgumentParser(description="Test video qdetection logic on MP4")
-    parser.add_argument("video_path", type=str, nargs="?", default="cv2/videos/", help="Path to the MP4 file or directory containing videos")
     parser.add_argument(
-        "-t", "--target", type=str, default="blue", choices=["red", "blue"],
-        help="Target enemy color to track ('red' or 'blue')"
+        "video_path",
+        type=str,
+        nargs="?",
+        default="cv2/videos/",
+        help="Path to the MP4 file or directory containing videos",
     )
     parser.add_argument(
-        "--tracker", type=str, default="euclidean", choices=["euclidean", "kalman", "none"],
-        help="Tracker type to benchmark"
+        "-t",
+        "--target",
+        type=str,
+        default="blue",
+        choices=["red", "blue"],
+        help="Target enemy color to track ('red' or 'blue')",
+    )
+    parser.add_argument(
+        "--tracker",
+        type=str,
+        default="euclidean",
+        choices=["euclidean", "kalman", "none"],
+        help="Tracker type to benchmark",
     )
     args = parser.parse_args()
 
     video_path = args.video_path
-    
+
     mp4_files = []
     # If a directory is provided, find all mp4 files
     if os.path.isdir(video_path):
@@ -152,7 +174,7 @@ def main():
     win_name = "Video Testing"
     cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(win_name, 960, 540)
-    
+
     cv2.namedWindow("Binary", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("Binary", 960, 540)
 
@@ -199,7 +221,7 @@ def main():
                 if not ret:
                     print("[INFO] End of video.")
                     break
-            
+
             # We can dynamically change threshold
             cth = cv2.getTrackbarPos("ColorThresh", win_name)
             bth = cv2.getTrackbarPos("BrightThresh", win_name)
@@ -207,14 +229,16 @@ def main():
             # CV Pipeline Execution
             binary = detector.preprocess(frame, current_target, cth, bth)
             lights, armors = detector.find_targets(binary, min_area=dynamic_min_area)
-            
+
             armor_centers = [a["center"] for a in armors]
 
             if not paused:
                 if tracker:
                     tracked_targets = tracker.update(armor_centers)
                 else:
-                    tracked_targets = {f"Raw-{i}": c for i, c in enumerate(armor_centers)}
+                    tracked_targets = {
+                        f"Raw-{i}": c for i, c in enumerate(armor_centers)
+                    }
             else:
                 # When paused, don't update tracker (avoids filter going crazy)
                 # Just show raw detections for tuning
@@ -226,26 +250,32 @@ def main():
                 tid_scores = {}
                 for tid, t_center in tracked_targets.items():
                     # Find score of the closest raw armor detection
-                    best_dist = float('inf')
+                    best_dist = float("inf")
                     raw_score = 0.0
                     mapped_armor = None
                     for a in armors:
-                        dist = (t_center[0] - a["center"][0])**2 + (t_center[1] - a["center"][1])**2
+                        dist = (t_center[0] - a["center"][0]) ** 2 + (
+                            t_center[1] - a["center"][1]
+                        ) ** 2
                         if dist < best_dist:
                             best_dist = dist
                             raw_score = a["score"]
                             mapped_armor = a
-                    
+
                     assigned_score = raw_score
                     if tid == current_best_tid:
-                        assigned_score += 5.0 # Massive stickiness bonus
+                        assigned_score += 5.0  # Massive stickiness bonus
 
-                    tid_scores[tid] = {"score": assigned_score, "raw": raw_score, "armor": mapped_armor}
-                
+                    tid_scores[tid] = {
+                        "score": assigned_score,
+                        "raw": raw_score,
+                        "armor": mapped_armor,
+                    }
+
                 # Pick the ID with the highest score
                 current_best_tid = max(tid_scores, key=lambda k: tid_scores[k]["score"])
                 display_best_score = tid_scores[current_best_tid]["raw"]
-                
+
                 # Update dynamic contour minimum area based on best armor
                 if not paused:
                     best_raw_armor = tid_scores[current_best_tid]["armor"]
@@ -268,53 +298,98 @@ def main():
 
             # Drawing Results
             vis = frame.copy()
-            
+
             # Draw lights
             for l in lights:
                 cv2.drawContours(vis, [l["box"]], -1, (0, 255, 0), 1)
 
             # Draw tracked targets with IDs
             for tid, center in tracked_targets.items():
-                is_best = (tid == current_best_tid)
-                
+                is_best = tid == current_best_tid
+
                 if is_best:
-                    color = (255, 0, 255) # Magenta for highest confidence
+                    color = (255, 0, 255)  # Magenta for highest confidence
                     cv2.drawMarker(vis, center, color, cv2.MARKER_CROSS, 12, 2)
                     cv2.circle(vis, center, 8, color, 2)
                     cv2.putText(
-                        vis, f"BEST ID:{tid} ({display_best_score:.2f})", 
+                        vis,
+                        f"BEST ID:{tid} ({display_best_score:.2f})",
                         (center[0] + 10, center[1] - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        color,
+                        2,
                     )
                 else:
-                    color = (0, 0, 255) # Regular Red
+                    color = (0, 0, 255)  # Regular Red
                     cv2.circle(vis, center, 5, color, -1)
                     cv2.putText(
-                        vis, f"ID:{tid}", (center[0] + 10, center[1] - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1
+                        vis,
+                        f"ID:{tid}",
+                        (center[0] + 10, center[1] - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (0, 255, 255),
+                        1,
                     )
 
             # Draw UI
-            cv2.putText(vis, f"FPS: {int(fps)}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-            cv2.putText(vis, f"Targets: {len(tracked_targets)}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-            target_color_display = (255, 0, 0) if current_target == "blue" else (0, 0, 255)
-            cv2.putText(vis, f"TARGET: {current_target.upper()}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, target_color_display, 2)
+            cv2.putText(
+                vis,
+                f"FPS: {int(fps)}",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 255, 255),
+                2,
+            )
+            cv2.putText(
+                vis,
+                f"Targets: {len(tracked_targets)}",
+                (10, 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 255, 255),
+                2,
+            )
+            target_color_display = (
+                (255, 0, 0) if current_target == "blue" else (0, 0, 255)
+            )
+            cv2.putText(
+                vis,
+                f"TARGET: {current_target.upper()}",
+                (10, 90),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                target_color_display,
+                2,
+            )
             if paused:
-                cv2.putText(vis, "PAUSED", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                cv2.putText(
+                    vis,
+                    "PAUSED",
+                    (10, 120),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 0, 255),
+                    2,
+                )
 
             # Display windows
             cv2.imshow(win_name, vis)
             cv2.imshow("Binary", binary)
 
             # Delay adjusted based on pause state
-            delay = 0 if paused else max(1, int(1000 / 30.0))  # Assuming max 30 fps playback speed roughly
+            delay = (
+                0 if paused else max(1, int(1000 / 30.0))
+            )  # Assuming max 30 fps playback speed roughly
             key = cv2.waitKey(delay) & 0xFF
-            
+
             if key == ord("q"):
                 quit_all = True
                 break
             elif key == ord("n"):
-                break # breaks inner loop, proceeds to next video
+                break  # breaks inner loop, proceeds to next video
             elif key == ord(" "):
                 paused = not paused
             elif key == ord("r"):
@@ -327,6 +402,7 @@ def main():
         cap.release()
 
     cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     main()

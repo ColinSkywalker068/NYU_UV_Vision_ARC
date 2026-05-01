@@ -12,6 +12,7 @@ from cv_trackers import EuclideanTracker, KalmanMultiTracker
 # --- CONFIGURATION TOGGLE ---
 TRACKER_TYPE = "kalman"
 
+
 class ArmorDetector:
     def __init__(self):
         self.light_min_ratio = 3.0
@@ -82,18 +83,23 @@ class ArmorDetector:
         for i in range(len(lights)):
             for j in range(i + 1, len(lights)):
                 l1, l2 = lights[i], lights[j]
-                
+
                 angle_diff = abs(l1["angle"] - l2["angle"])
                 if angle_diff > self.match_max_angle_diff:
                     continue
-                    
+
                 dist_x = abs(l1["center"][0] - l2["center"][0])
                 avg_len = (l1["length"] + l2["length"]) / 2.0
                 ratio = dist_x / avg_len
-                
+
                 if self.armor_min_ratio < ratio < self.armor_max_ratio:
-                    len_sim = 1.0 - (abs(l1["length"] - l2["length"]) / max(l1["length"], l2["length"]))
-                    y_sim = 1.0 - min(abs(l1["center"][1] - l2["center"][1]) / avg_len, 1.0)
+                    len_sim = 1.0 - (
+                        abs(l1["length"] - l2["length"])
+                        / max(l1["length"], l2["length"])
+                    )
+                    y_sim = 1.0 - min(
+                        abs(l1["center"][1] - l2["center"][1]) / avg_len, 1.0
+                    )
                     angle_sim = 1.0 - (angle_diff / self.match_max_angle_diff)
                     base_sim = len_sim + y_sim + angle_sim
                     score = base_sim + (avg_len / 20.0)
@@ -105,7 +111,7 @@ class ArmorDetector:
                                 int((l1["center"][1] + l2["center"][1]) / 2),
                             ),
                             "score": score,
-                            "lights": (l1, l2)
+                            "lights": (l1, l2),
                         }
                     )
         return lights, armors
@@ -119,12 +125,12 @@ class BaslerDriver:
             )
             self.camera.Open()
             self.nodemap = self.camera.GetNodeMap()
-            
+
             try:
                 self.nodemap.GetNode("PixelFormat").SetValue("BGR8")
             except:
                 pass
-                
+
             try:
                 self.nodemap.GetNode("ColorAdjustmentSelector").SetValue("Red")
                 self.nodemap.GetNode("ColorAdjustmentSaturation").SetValue(1.5)
@@ -132,7 +138,7 @@ class BaslerDriver:
                 self.nodemap.GetNode("ColorAdjustmentSaturation").SetValue(1.5)
             except:
                 pass
-                
+
             self.converter = pylon.ImageFormatConverter()
             self.converter.OutputPixelFormat = pylon.PixelType_BGR8packed
             print(f"[CAM] Connected: {self.camera.GetDeviceInfo().GetModelName()}")
@@ -230,11 +236,21 @@ def main():
     cv2.resizeWindow(win_bin, 960, 540)
 
     cv2.createTrackbar("Exposure", win_main, params[mode]["exp"], 2000, lambda x: None)
-    cv2.createTrackbar("ColorThresh", win_main, params[mode]["color_th"], 100, lambda x: None)
-    cv2.createTrackbar("WB Red", win_main, int(params[mode]["wb_r"] * 10), 100, lambda x: None)
-    cv2.createTrackbar("WB Green", win_main, int(params[mode]["wb_g"] * 10), 100, lambda x: None)
-    cv2.createTrackbar("WB Blue", win_main, int(params[mode]["wb_b"] * 10), 100, lambda x: None)
-    cv2.createTrackbar("GrnPenalty", win_main, int(params[mode]["penalty"] * 100), 100, lambda x: None)
+    cv2.createTrackbar(
+        "ColorThresh", win_main, params[mode]["color_th"], 100, lambda x: None
+    )
+    cv2.createTrackbar(
+        "WB Red", win_main, int(params[mode]["wb_r"] * 10), 100, lambda x: None
+    )
+    cv2.createTrackbar(
+        "WB Green", win_main, int(params[mode]["wb_g"] * 10), 100, lambda x: None
+    )
+    cv2.createTrackbar(
+        "WB Blue", win_main, int(params[mode]["wb_b"] * 10), 100, lambda x: None
+    )
+    cv2.createTrackbar(
+        "GrnPenalty", win_main, int(params[mode]["penalty"] * 100), 100, lambda x: None
+    )
 
     prev_time = time.time()
     print("\n[INFO] R: RED Mode | B: BLUE Mode | SPACE: Toggle Record | Q: Quit\n")
@@ -243,7 +259,7 @@ def main():
     video_writer = None
     output_dir = os.path.join(os.path.dirname(__file__), "videos")
     os.makedirs(output_dir, exist_ok=True)
-    
+
     dynamic_min_area = 10
     current_best_tid = None
 
@@ -265,7 +281,9 @@ def main():
         if is_recording and video_writer is not None:
             video_writer.write(frame)
 
-        binary = detector.preprocess(frame, mode, cth, params[mode]["gamma"], penalty_factor=penalty_val)
+        binary = detector.preprocess(
+            frame, mode, cth, params[mode]["gamma"], penalty_factor=penalty_val
+        )
         lights, armors = detector.find_targets(binary, min_area=dynamic_min_area)
         armor_centers = [a["center"] for a in armors]
 
@@ -278,25 +296,31 @@ def main():
         if tracked_targets and armors:
             tid_scores = {}
             for tid, t_center in tracked_targets.items():
-                best_dist = float('inf')
+                best_dist = float("inf")
                 raw_score = 0.0
                 mapped_armor = None
                 for a in armors:
-                    dist = (t_center[0] - a["center"][0])**2 + (t_center[1] - a["center"][1])**2
+                    dist = (t_center[0] - a["center"][0]) ** 2 + (
+                        t_center[1] - a["center"][1]
+                    ) ** 2
                     if dist < best_dist:
                         best_dist = dist
                         raw_score = a["score"]
                         mapped_armor = a
-                
+
                 assigned_score = raw_score
                 if tid == current_best_tid:
                     assigned_score += 5.0
 
-                tid_scores[tid] = {"score": assigned_score, "raw": raw_score, "armor": mapped_armor}
-            
+                tid_scores[tid] = {
+                    "score": assigned_score,
+                    "raw": raw_score,
+                    "armor": mapped_armor,
+                }
+
             current_best_tid = max(tid_scores, key=lambda k: tid_scores[k]["score"])
             display_best_score = tid_scores[current_best_tid]["raw"]
-            
+
             best_raw_armor = tid_scores[current_best_tid]["armor"]
             if best_raw_armor:
                 l1, l2 = best_raw_armor["lights"]
@@ -318,26 +342,60 @@ def main():
             cv2.drawContours(vis, [l["box"]], -1, (0, 255, 0), 2)
 
         for tid, center in tracked_targets.items():
-            is_best = (tid == current_best_tid)
+            is_best = tid == current_best_tid
             if is_best:
                 color = (255, 0, 255)
                 cv2.drawMarker(vis, center, color, cv2.MARKER_CROSS, 12, 2)
                 cv2.circle(vis, center, 8, color, 2)
-                cv2.putText(vis, f"BEST ID:{tid} ({display_best_score:.2f})", (center[0] + 10, center[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                cv2.putText(
+                    vis,
+                    f"BEST ID:{tid} ({display_best_score:.2f})",
+                    (center[0] + 10, center[1] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    color,
+                    2,
+                )
             else:
                 color = (0, 0, 255)
                 cv2.circle(vis, center, 8, color, -1)
-                cv2.putText(vis, f"ID:{tid}", (center[0] + 10, center[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+                cv2.putText(
+                    vis,
+                    f"ID:{tid}",
+                    (center[0] + 10, center[1] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (0, 255, 255),
+                    2,
+                )
 
-        cv2.putText(vis, f"FPS: {int(fps)}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+        cv2.putText(
+            vis,
+            f"FPS: {int(fps)}",
+            (10, 40),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 255),
+            2,
+        )
 
         if is_recording:
             # Flashing red RECORDING indicator
             if int(time.time() * 2) % 2 == 0:
-                cv2.putText(vis, "[REC]", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
+                cv2.putText(
+                    vis, "[REC]", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3
+                )
 
         target_color_display = (255, 0, 0) if mode == "blue" else (0, 0, 255)
-        cv2.putText(vis, f"TARGET: {mode.upper()}", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 1, target_color_display, 2)
+        cv2.putText(
+            vis,
+            f"TARGET: {mode.upper()}",
+            (10, 120),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            target_color_display,
+            2,
+        )
 
         cv2.imshow(win_main, vis)
         cv2.imshow(win_bin, binary)
@@ -348,9 +406,11 @@ def main():
         elif key == ord(" "):
             if not is_recording:
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
-                filename = os.path.join(output_dir, f"basler_raw_{mode}_{timestamp}.mp4")
+                filename = os.path.join(
+                    output_dir, f"basler_raw_{mode}_{timestamp}.mp4"
+                )
                 h, w = frame.shape[:2]
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                 video_writer = cv2.VideoWriter(filename, fourcc, 60.0, (w, h))
                 is_recording = True
                 log_str = (
@@ -377,7 +437,9 @@ def main():
                 cv2.setTrackbarPos("WB Red", win_main, int(params[mode]["wb_r"] * 10))
                 cv2.setTrackbarPos("WB Green", win_main, int(params[mode]["wb_g"] * 10))
                 cv2.setTrackbarPos("WB Blue", win_main, int(params[mode]["wb_b"] * 10))
-                cv2.setTrackbarPos("GrnPenalty", win_main, int(params[mode]["penalty"] * 100))
+                cv2.setTrackbarPos(
+                    "GrnPenalty", win_main, int(params[mode]["penalty"] * 100)
+                )
         elif key == ord("b"):
             if mode != "blue":
                 mode = "blue"
@@ -386,7 +448,9 @@ def main():
                 cv2.setTrackbarPos("WB Red", win_main, int(params[mode]["wb_r"] * 10))
                 cv2.setTrackbarPos("WB Green", win_main, int(params[mode]["wb_g"] * 10))
                 cv2.setTrackbarPos("WB Blue", win_main, int(params[mode]["wb_b"] * 10))
-                cv2.setTrackbarPos("GrnPenalty", win_main, int(params[mode]["penalty"] * 100))
+                cv2.setTrackbarPos(
+                    "GrnPenalty", win_main, int(params[mode]["penalty"] * 100)
+                )
 
     if video_writer is not None:
         video_writer.release()
