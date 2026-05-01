@@ -27,11 +27,11 @@ To easily run the detection stack, use the `uv` tool wrapper:
 3. **Run the launch files:**
    - To launch with STM configs and Basler camera (standard start):
      ```bash
-     uv run yolov8_ros_cpp stm.launch.py
+     uv run yolo_cpp stm.launch.py
      ```
    - To launch with RealSense configs:
      ```bash
-     uv run yolov8_ros_cpp realsense.launch.py
+     uv run yolo_cpp realsense.launch.py
      ```
 
 ---
@@ -39,6 +39,7 @@ To easily run the detection stack, use the `uv` tool wrapper:
 ### Runtime Documentation
 
 Current runtime roadmap is available in **[docs/RM_AUTO_AIM_PARITY_NEXT_STEPS.md](./docs/RM_AUTO_AIM_PARITY_NEXT_STEPS.md)**.
+Package pipeline docs live in **[yolo_cpp/docs/overview.md](./yolo_cpp/docs/overview.md)**.
 
 
 ### Update yml files

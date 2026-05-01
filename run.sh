@@ -7,7 +7,7 @@ sleep 15
 # --- Commands to run INSIDE the Docker Container ---
 # We group the commands that must run inside the container into a single string.
 # The '&&' ensures that the next command only runs if the previous one was successful.
-COMMANDS_IN_DOCKER="uv clean && uv build && uv run yolov8_ros_cpp realsense.launch.py"
+COMMANDS_IN_DOCKER="uv clean && uv build && uv run yolo_cpp realsense.launch.py"
 
 # --- Execute the Commands ---
 # This line assumes 'uv docker' starts/enters a container and executes a command

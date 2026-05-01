@@ -3,7 +3,7 @@
 ## What works today
 
 - **C++ `camera_node`**: camera capture and `image_raw` publishing.
-- **C++ detector / tracker / solver**: active runtime path lives in `yolov8_ros_cpp`.
+- **C++ detector / tracker / solver**: active runtime path lives in `yolo_cpp`.
 
 ## 1) Start container with GUI + devices
 
@@ -27,7 +27,7 @@ xhost -local:root
 ```bash
 cd /home/ultraviolet/CV_Detection
 source /opt/ros/humble/setup.bash
-colcon build --packages-select yolov8_ros_cpp --symlink-install
+colcon build --packages-select yolo_cpp --symlink-install
 ```
 
 ## 3) Source ROS and workspace overlay
@@ -42,13 +42,13 @@ source /home/ultraviolet/CV_Detection/install/setup.bash
 Quick package check:
 
 ```bash
-ros2 pkg list | rg yolov8_ros_cpp
+ros2 pkg list | rg yolo_cpp
 ```
 
 ## 4) C++ runtime launch
 
 ```bash
-ros2 launch yolov8_ros_cpp stm.launch.py \
+ros2 launch yolo_cpp stm.launch.py \
   detector_backend:=deepstream \
   camera_type:=basler
 ```
@@ -67,4 +67,4 @@ ros2 topic hz /image_raw
 
 ## Notes
 
-- If `Package 'yolov8_ros_cpp' not found`, re-run the source commands in section 3.
+- If `Package 'yolo_cpp' not found`, re-run the source commands in section 3.

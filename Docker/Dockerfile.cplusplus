@@ -3,7 +3,7 @@ FROM ${BASE_IMAGE}
 
 # C++ DeepStream image:
 # - keeps the original Python/ROS image intact
-# - adds the Basler + DeepStream runtime needed by yolov8_ros_cpp
+# - adds the Basler + DeepStream runtime needed by yolo_cpp
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Core runtime and build dependencies for the C++ DeepStream path.

@@ -4,17 +4,17 @@ https://limewire.com/d/Ha8tz#M7d4qSlJjH
 
 ## Quick Start (ROS 2 Launch)
 
-Instead of multiple windows, the new modular node handles both camera and inference in one.
+Instead of multiple windows, the modular C++ stack handles camera, detection, tracking, and aiming in one launch flow.
 Open a terminal, run `uv update` to ensure environment is current.
 Then run:
 
 ```bash
 uv docker
-uv build yolov8_ros
-uv run yolov8_ros launch.py
+uv build yolo_cpp
+uv run yolo_cpp stm.launch.py
 ```
 
-This runs the `yolov8_modular_node` using the configuration in `/yolov8_ros/launch/launch.py`.
+This runs the active `yolo_cpp` stack using the package launch files.
 
 ## Manual Run (ROS 2 Node)
 
@@ -22,19 +22,19 @@ You can also run the node directly with custom parameters:
 
 ```bash
 uv docker
-uv build yolov8_ros
-uv run yolov8_ros yolov8_modular_node --ros-args -p model_path:='/home/ultraviolet/CV_Detection/yolov8_ros/models/best.engine' -p task:='obb' -p show:=True
+uv build yolo_cpp
+uv run yolo_cpp yolo_modular_node --ros-args -p model_path:='/home/ultraviolet/CV_Detection/model_test/bestmerge.engine' -p task:='obb' -p show:=True
 ```
 
 ## Python Standalone Run (No ROS)
 
-To test the camera or components without ROS, you can run the scripts in `yolov8_ros/scripts/`:
+To test the camera or components without ROS, you can still use the legacy Python helper scripts:
 
 **Basler Camera Test:**
 
 ```bash
 uv docker
-python3 src/yolov8_ros/scripts/Camera/basler_test.py --show
+python3 <legacy-python-camera-script> --show
 ```
 
 (Note: Adjust the path to the script based on where it is mounted in the container, usually under `src/` or similar).
@@ -47,11 +47,12 @@ python3 src/yolov8_ros/scripts/Camera/basler_test.py --show
 
 You will need two terminal windows:
 In either of the windows, run `uv update`.
-In the first run the yolov8_node:
+In the first run the legacy detector node:
 
 ```
 uv docker
-uv build yolov8_ros yolov8_node --ros-args -r video_frames:=/camera/camera/color/image_raw ...
+uv build
+uv run yolo_cpp realsense.launch.py
 ```
 
 In the second window run the realsense_node:

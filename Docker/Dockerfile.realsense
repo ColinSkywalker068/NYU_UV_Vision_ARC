@@ -124,7 +124,7 @@ ENV GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream/lib/gst-plugins \
 # --- BASLER PYLON SETUP START ---
 # Native C++ builds expect the Basler Pylon SDK to be present at /opt/pylon.
 # The vendor installer is not redistributed here, so provide it in the base image
-# or mount/install it separately before building yolov8_ros_cpp with Basler enabled.
+# or mount/install it separately before building yolo_cpp with Basler enabled.
 ENV PYLON_ROOT=/opt/pylon
 ENV PATH=$PATH:$PYLON_ROOT/bin
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PYLON_ROOT/lib

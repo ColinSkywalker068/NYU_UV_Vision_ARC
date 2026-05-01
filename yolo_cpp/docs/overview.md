@@ -1,0 +1,17 @@
+# yolo_cpp Overview
+
+Related pages: [Pipeline](./pipeline.md) | [Nodes](./nodes.md) | [Launch and Config](./launch-and-config.md) | [Development Notes](./development-notes.md)
+
+`yolo_cpp` is the active C++ ROS 2 package for the vision pipeline. It owns the live detector, tracker, solver, and STM bridge path that the team runs today, plus an older combined perception node that still exists for comparison and zero-copy experiments.
+
+The package is built around a straightforward flow:
+
+1. A camera backend provides frames from either RealSense or Basler.
+2. The detector publishes armor candidates on `detector/armors`.
+3. The tracker turns those detections into stable tracks on `tracker/tracked_armors` and picks a target on `tracker/target`.
+4. The aim solver converts the selected target into `bounding_box`, `bounding_box_angles`, `override`, and `obb_angle`.
+5. The STM bridge forwards targeting output and listens for attitude or color hints from the controller.
+
+Use [`stm.launch.py`](../launch/stm.launch.py) when you want the full active stack, including the STM bridge. Use [`realsense.launch.py`](../launch/realsense.launch.py) when you want a lighter RealSense-based detector, tracker, and solver loop without the serial bridge.
+
+If you need the exact container and build steps, the repo-level runbook is still the best source: [CPP_CONTAINER_RUNBOOK.md](../../CPP_CONTAINER_RUNBOOK.md). If you need the longer-term runtime direction, start with [RM_AUTO_AIM_PARITY_NEXT_STEPS.md](../../docs/RM_AUTO_AIM_PARITY_NEXT_STEPS.md).

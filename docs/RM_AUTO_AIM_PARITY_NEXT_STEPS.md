@@ -1,6 +1,6 @@
 # rm_auto_aim Parity Next Steps
 
-Scope: roadmap from current C++ 2D detector -> tracker -> solver pipeline in [`yolov8_ros_cpp`](/Users/Kushal/NYU/CV_Detection/yolov8_ros_cpp) toward fuller parity with [`TantalumKevin/rm_auto_aim`](https://github.com/TantalumKevin/rm_auto_aim).
+Scope: roadmap from current C++ 2D detector -> tracker -> solver pipeline in [`yolo_cpp`](/Users/Kushal/NYU/CV_Detection/yolo_cpp) toward fuller parity with [`TantalumKevin/rm_auto_aim`](https://github.com/TantalumKevin/rm_auto_aim).
 
 Current state:
 - We now have split C++ nodes for detection, tracking, and solver.
@@ -16,14 +16,14 @@ Goal:
 - Prove new 2D path is stable before adding 3D complexity.
 
 Packages / files to exercise:
-- [`yolov8_ros_cpp/launch/stm.launch.py`](/Users/Kushal/NYU/CV_Detection/yolov8_ros_cpp/launch/stm.launch.py)
-- [`yolov8_ros_cpp/launch/realsense.launch.py`](/Users/Kushal/NYU/CV_Detection/yolov8_ros_cpp/launch/realsense.launch.py)
-- [`yolov8_ros_cpp/src/armor_detector_node.cpp`](/Users/Kushal/NYU/CV_Detection/yolov8_ros_cpp/src/armor_detector_node.cpp)
-- [`yolov8_ros_cpp/src/armor_tracker_node.cpp`](/Users/Kushal/NYU/CV_Detection/yolov8_ros_cpp/src/armor_tracker_node.cpp)
-- [`yolov8_ros_cpp/src/aim_solver_node.cpp`](/Users/Kushal/NYU/CV_Detection/yolov8_ros_cpp/src/aim_solver_node.cpp)
+- [`yolo_cpp/launch/stm.launch.py`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/launch/stm.launch.py)
+- [`yolo_cpp/launch/realsense.launch.py`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/launch/realsense.launch.py)
+- [`yolo_cpp/src/armor_detector_node.cpp`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/src/armor_detector_node.cpp)
+- [`yolo_cpp/src/armor_tracker_node.cpp`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/src/armor_tracker_node.cpp)
+- [`yolo_cpp/src/aim_solver_node.cpp`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/src/aim_solver_node.cpp)
 
 Checklist:
-- Build workspace with `cv_auto_aim_interfaces` and `yolov8_ros_cpp`.
+- Build workspace with `cv_auto_aim_interfaces` and `yolo_cpp`.
 - Launch `realsense.launch.py` and verify:
   - `detector/armors` publishes detections.
   - `tracker/tracked_armors` publishes stable IDs.
@@ -76,7 +76,7 @@ Suggested interface additions:
 Files likely to change:
 - [`cv_auto_aim_interfaces/msg/Armor.msg`](/Users/Kushal/NYU/CV_Detection/cv_auto_aim_interfaces/msg/Armor.msg)
 - [`cv_auto_aim_interfaces/msg/Armors.msg`](/Users/Kushal/NYU/CV_Detection/cv_auto_aim_interfaces/msg/Armors.msg)
-- [`yolov8_ros_cpp/src/armor_detector_node.cpp`](/Users/Kushal/NYU/CV_Detection/yolov8_ros_cpp/src/armor_detector_node.cpp)
+- [`yolo_cpp/src/armor_detector_node.cpp`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/src/armor_detector_node.cpp)
 
 Exit criteria:
 - Detector can publish valid 3D pose in camera frame for detected armors.
@@ -107,9 +107,9 @@ Tracker work:
 - Continue lock / hysteresis behavior from current 2D tracker.
 
 Files likely to change:
-- [`yolov8_ros_cpp/include/yolov8_ros_cpp/tracker.hpp`](/Users/Kushal/NYU/CV_Detection/yolov8_ros_cpp/include/yolov8_ros_cpp/tracker.hpp)
-- [`yolov8_ros_cpp/src/tracker.cpp`](/Users/Kushal/NYU/CV_Detection/yolov8_ros_cpp/src/tracker.cpp)
-- [`yolov8_ros_cpp/src/armor_tracker_node.cpp`](/Users/Kushal/NYU/CV_Detection/yolov8_ros_cpp/src/armor_tracker_node.cpp)
+- [`yolo_cpp/include/yolo_cpp/tracker.hpp`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/include/yolo_cpp/tracker.hpp)
+- [`yolo_cpp/src/tracker.cpp`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/src/tracker.cpp)
+- [`yolo_cpp/src/armor_tracker_node.cpp`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/src/armor_tracker_node.cpp)
 
 Exit criteria:
 - Selected target has stable camera-frame position and velocity.

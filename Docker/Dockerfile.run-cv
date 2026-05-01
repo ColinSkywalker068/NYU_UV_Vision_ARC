@@ -12,5 +12,5 @@ ENTRYPOINT ["/bin/bash", "-c", "set -e; \
     uv clean; \
     echo '--- Step 2: Running uv build ---'; \
     uv build; \
-    echo '--- Step 3: Running yolov8_ros_cpp ---'; \
-    uv run yolov8_ros_cpp realsense.launch.py show:=false"]
+    echo '--- Step 3: Running yolo_cpp ---'; \
+    uv run yolo_cpp realsense.launch.py show:=false"]
