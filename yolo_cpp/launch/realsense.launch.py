@@ -43,6 +43,11 @@ def generate_launch_description() -> LaunchDescription:
     show_arg = DeclareLaunchArgument(
         "show", default_value="false", description="OpenCV debug window"
     )
+    debug_publish_image_raw_arg = DeclareLaunchArgument(
+        "debug_publish_image_raw",
+        default_value="false",
+        description="Publish detector/image_raw for external viewing instead of an in-process OpenCV window",
+    )
     hfov_arg = DeclareLaunchArgument(
         "hfov_degrees", default_value="69.4", description="Horizontal FOV deg"
     )
@@ -108,6 +113,7 @@ def generate_launch_description() -> LaunchDescription:
                 "task": LaunchConfiguration("task"),
                 "conf": LaunchConfiguration("conf"),
                 "show": LaunchConfiguration("show"),
+                "debug_publish_image_raw": LaunchConfiguration("debug_publish_image_raw"),
                 "hfov_degrees": LaunchConfiguration("hfov_degrees"),
                 "vfov_degrees": LaunchConfiguration("vfov_degrees"),
                 "imgsz_width": LaunchConfiguration("rs_width"),
@@ -170,6 +176,7 @@ def generate_launch_description() -> LaunchDescription:
             task_arg,
             conf_arg,
             show_arg,
+            debug_publish_image_raw_arg,
             hfov_arg,
             vfov_arg,
             track_min_hits_arg,

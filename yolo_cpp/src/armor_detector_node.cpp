@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -26,6 +27,12 @@ namespace
 constexpr int kDefaultMaxHsvCandidates = 3;
 constexpr int kPreviewMaxWidth = 1280;
 constexpr int kPreviewMaxHeight = 720;
+
+bool allow_unsafe_preview_window()
+{
+  const char * env = std::getenv("YOLO_CPP_ENABLE_UNSAFE_OPENCV_PREVIEW");
+  return env != nullptr && std::string(env) == "1";
+}
 
 sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
   const FramePacket & packet, const rclcpp::Time & stamp)
@@ -102,6 +109,15 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   debug_publish_image_raw_ = this->get_parameter("debug_publish_image_raw").as_bool();
   stage_log_interval_ = std::max(
     1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
+
+  if (show_ && !allow_unsafe_preview_window()) {
+    RCLCPP_WARN(
+      this->get_logger(),
+      "Disabling OpenCV preview window because it can trigger fatal GDK/X11 errors and interrupt camera cleanup. "
+      "Use debug_publish_image_raw instead, or set YOLO_CPP_ENABLE_UNSAFE_OPENCV_PREVIEW=1 to force the old preview path.");
+    show_ = false;
+    debug_publish_image_raw_ = true;
+  }
 
   target_class_ = (target_color_ == "red") ? RED_CLASS : BLUE_CLASS;
 

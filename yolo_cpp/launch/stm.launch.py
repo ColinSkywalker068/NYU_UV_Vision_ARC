@@ -122,6 +122,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="false",
         description="Show OpenCV visualization window",
     )
+    debug_publish_image_raw_arg = DeclareLaunchArgument(
+        "debug_publish_image_raw",
+        default_value="false",
+        description="Publish detector/image_raw for external viewing instead of an in-process OpenCV window",
+    )
     track_min_hits_arg = DeclareLaunchArgument(
         "track_min_hits",
         default_value="2",
@@ -202,6 +207,7 @@ def generate_launch_description() -> LaunchDescription:
                     "realsense_use_max_native_fps"
                 ),
                 "show": LaunchConfiguration("show"),
+                "debug_publish_image_raw": LaunchConfiguration("debug_publish_image_raw"),
                 "inference_mode": LaunchConfiguration("inference_mode"),
             }
         ],
@@ -288,6 +294,7 @@ def generate_launch_description() -> LaunchDescription:
             realsense_use_max_native_fps_arg,
             inference_mode_arg,
             show_arg,
+            debug_publish_image_raw_arg,
             track_min_hits_arg,
             track_max_coast_frames_arg,
             track_drop_frames_arg,
