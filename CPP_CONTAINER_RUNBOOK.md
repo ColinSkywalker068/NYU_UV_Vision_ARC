@@ -30,6 +30,11 @@ source /opt/ros/humble/setup.bash
 colcon build --packages-select yolo_cpp --symlink-install
 ```
 
+Important: Basler support is only compiled if the Pylon SDK is visible inside the container at build time,
+typically at `/opt/pylon`. `services/run-cplusplus.sh` now auto-mounts a host `/opt/pylon` into the container
+when that directory exists on the host. If Pylon is missing during `colcon build`, the build succeeds but the
+Basler backend is disabled and `camera_type:=basler` will throw at runtime.
+
 ## 3) Source ROS and workspace overlay
 
 Run in every new shell:

@@ -9,6 +9,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+set(PYLON_SEARCH_ROOTS /opt/pylon)
+if(DEFINED ENV{PYLON_ROOT} AND NOT "$ENV{PYLON_ROOT}" STREQUAL "")
+  list(PREPEND PYLON_SEARCH_ROOTS "$ENV{PYLON_ROOT}")
+endif()
+list(REMOVE_DUPLICATES PYLON_SEARCH_ROOTS)
+
 find_package(ament_cmake REQUIRED)
 find_package(cv_auto_aim_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -59,17 +65,34 @@ if(DEEPSTREAM_INCLUDE_DIR AND DEEPSTREAM_META_LIBRARY AND DEEPSTREAM_GST_META_LI
   set(HAVE_DEEPSTREAM TRUE)
 endif()
 
-find_path(PYLON_INCLUDE_DIR pylon/PylonIncludes.h PATHS /opt/pylon/include)
-find_library(PYLON_BASE_LIBRARY NAMES pylonbase PATHS /opt/pylon/lib /opt/pylon/lib64)
-find_library(PYLON_UTILITY_LIBRARY NAMES pylonutility PATHS /opt/pylon/lib /opt/pylon/lib64)
+find_path(PYLON_INCLUDE_DIR pylon/PylonIncludes.h
+  PATHS ${PYLON_SEARCH_ROOTS}
+  PATH_SUFFIXES include)
+find_library(PYLON_BASE_LIBRARY NAMES pylonbase
+  PATHS ${PYLON_SEARCH_ROOTS}
+  PATH_SUFFIXES lib lib64)
+find_library(PYLON_UTILITY_LIBRARY NAMES pylonutility
+  PATHS ${PYLON_SEARCH_ROOTS}
+  PATH_SUFFIXES lib lib64)
 find_library(PYLON_GENAPI_LIBRARY
   NAMES GenApi_gcc_v3_1_Basler_pylon GenApi_gcc_v3_0_Basler_pylon GenApi_MD_VC141_v3_1_Basler_pylon
-  PATHS /opt/pylon/lib /opt/pylon/lib64)
+  PATHS ${PYLON_SEARCH_ROOTS}
+  PATH_SUFFIXES lib lib64)
 find_library(PYLON_GCBASE_LIBRARY
   NAMES GCBase_gcc_v3_1_Basler_pylon GCBase_gcc_v3_0_Basler_pylon GCBase_MD_VC141_v3_1_Basler_pylon
-  PATHS /opt/pylon/lib /opt/pylon/lib64)
+  PATHS ${PYLON_SEARCH_ROOTS}
+  PATH_SUFFIXES lib lib64)
 if(PYLON_INCLUDE_DIR AND PYLON_BASE_LIBRARY AND PYLON_UTILITY_LIBRARY)
   set(HAVE_PYLON TRUE)
+  message(STATUS "Basler Pylon SDK found. Basler backend enabled.")
+  message(STATUS "  PYLON_INCLUDE_DIR=${PYLON_INCLUDE_DIR}")
+  message(STATUS "  PYLON_BASE_LIBRARY=${PYLON_BASE_LIBRARY}")
+  message(STATUS "  PYLON_UTILITY_LIBRARY=${PYLON_UTILITY_LIBRARY}")
+else()
+  message(WARNING
+    "Basler Pylon SDK not found. Basler backend will be disabled. "
+    "Expected headers/libs under one of: ${PYLON_SEARCH_ROOTS}. "
+    "Set PYLON_ROOT or mount/install /opt/pylon before building if you need camera_type=basler.")
 endif()
 
 add_library(yolo_cpp_components SHARED

@@ -52,6 +52,12 @@ reuse_container() {
 	fi
 }
 
+get_pylon_mount_arg() {
+	if [ -d "/opt/pylon" ]; then
+		echo "--volume /opt/pylon:/opt/pylon:ro"
+	fi
+}
+
 should_run_power_script() {
 	local image_name="$1"
 	[[ "$image_name" == *"realsense"* ]]
@@ -116,6 +122,7 @@ if [ $? -eq 0 ]; then
 		SUDO="sudo"
 	fi
 	DOCKER_CMD="${SUDO:+$SUDO }docker"
+	PYLON_MOUNT="$(get_pylon_mount_arg)"
 
 	# This file shows what Jetson board is running
 	# /proc or /sys files aren't mountable into docker
@@ -145,11 +152,13 @@ if [ $? -eq 0 ]; then
 			$DISPLAY_DEVICE \
 			$V4L2_DEVICES \
 			$HUGGINGFACE \
+			$PYLON_MOUNT \
 			"$IMAGE_NAME" "${CMD_ARGS[@]}"
 	fi
 # Generic Linux (KR260, Ubuntu, etc.)
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
 	CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
+	PYLON_MOUNT="$(get_pylon_mount_arg)"
 	if container_exists "docker" "$CONTAINER_NAME"; then
 		reuse_container "docker" "$CONTAINER_NAME" "${CMD_ARGS[@]}"
 	else
@@ -157,6 +166,7 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
 			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
 			--volume /dev:/dev \
 			--volume /home:/home \
+			$PYLON_MOUNT \
 			"$IMAGE_NAME" "${CMD_ARGS[@]}"
 	fi
 # MacOS
