@@ -261,7 +261,9 @@ def generate_launch_description() -> LaunchDescription:
                 "use_3d_solution": LaunchConfiguration("use_3d_solution"),
                 "output_mode": "offset",
                 "solver_latency_s": LaunchConfiguration("solver_latency_s"),
-                "default_bullet_speed_mps": LaunchConfiguration("default_bullet_speed_mps"),
+                "default_bullet_speed_mps": LaunchConfiguration(
+                    "default_bullet_speed_mps"
+                ),
             }
         ],
     )
