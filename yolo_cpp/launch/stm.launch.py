@@ -377,7 +377,9 @@ def generate_launch_description() -> LaunchDescription:
                 "target_topic": "processor/target",
                 "use_3d_solution": LaunchConfiguration("use_3d_solution"),
                 "output_mode": LaunchConfiguration("solver_output_mode"),
-                "default_bullet_speed_mps": LaunchConfiguration("default_bullet_speed_mps"),
+                "default_bullet_speed_mps": LaunchConfiguration(
+                    "default_bullet_speed_mps"
+                ),
                 "solver_latency_s": LaunchConfiguration("solver_latency_s"),
                 "compensate_gravity": LaunchConfiguration("compensate_gravity"),
             }
@@ -396,7 +398,9 @@ def generate_launch_description() -> LaunchDescription:
                 "serial_baudrate": LaunchConfiguration("serial_baudrate"),
                 "serial_verbose": LaunchConfiguration("serial_verbose"),
                 "hold_fire_mode": LaunchConfiguration("hold_fire_mode"),
-                "transmit_angles_in_degrees": LaunchConfiguration("transmit_angles_in_degrees"),
+                "transmit_angles_in_degrees": LaunchConfiguration(
+                    "transmit_angles_in_degrees"
+                ),
             }
         ],
     )
