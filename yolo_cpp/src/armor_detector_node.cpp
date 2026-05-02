@@ -8,7 +8,9 @@
 #include <sensor_msgs/image_encodings.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <ctime>
 #include <cstdlib>
@@ -31,6 +33,7 @@ constexpr int kDefaultMaxHsvCandidates = 3;
 constexpr int kPreviewMaxWidth = 1280;
 constexpr int kPreviewMaxHeight = 720;
 constexpr char kVisionLogDirName[] = "vision_logs";
+constexpr double kPi = 3.14159265358979323846;
 
 std::string timestamp_now_iso8601_ms()
 {
@@ -114,6 +117,19 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<bool>("use_robot_id_targeting", false);
   this->declare_parameter<double>("hfov_degrees", 79.2);
   this->declare_parameter<double>("vfov_degrees", 63.78);
+  this->declare_parameter<bool>("enable_3d_pose", true);
+  this->declare_parameter<std::string>("camera_frame_id", "");
+  this->declare_parameter<std::string>("camera_info_topic", "camera_info");
+  this->declare_parameter<double>("camera_fx", 0.0);
+  this->declare_parameter<double>("camera_fy", 0.0);
+  this->declare_parameter<double>("camera_cx", 0.0);
+  this->declare_parameter<double>("camera_cy", 0.0);
+  this->declare_parameter<std::vector<double>>("camera_distortion", std::vector<double>{});
+  this->declare_parameter<double>("small_armor_width_m", 0.135);
+  this->declare_parameter<double>("small_armor_height_m", 0.055);
+  this->declare_parameter<double>("large_armor_width_m", 0.225);
+  this->declare_parameter<double>("large_armor_height_m", 0.055);
+  this->declare_parameter<double>("large_armor_min_aspect_ratio", 3.2);
   this->declare_parameter<int>("enemy_color_red_value", 0);
   this->declare_parameter<int>("enemy_color_blue_value", 1);
   this->declare_parameter<int>("max_hsv_candidates", kDefaultMaxHsvCandidates);
@@ -139,6 +155,21 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   use_model_color_classes_ = this->get_parameter("use_model_color_classes").as_bool();
   target_color_ = this->get_parameter("target_color").as_string();
   use_robot_id_targeting_ = this->get_parameter("use_robot_id_targeting").as_bool();
+  hfov_rad_ = this->get_parameter("hfov_degrees").as_double() * kPi / 180.0;
+  vfov_rad_ = this->get_parameter("vfov_degrees").as_double() * kPi / 180.0;
+  enable_3d_pose_ = this->get_parameter("enable_3d_pose").as_bool();
+  camera_frame_id_ = this->get_parameter("camera_frame_id").as_string();
+  camera_info_topic_ = this->get_parameter("camera_info_topic").as_string();
+  camera_fx_ = this->get_parameter("camera_fx").as_double();
+  camera_fy_ = this->get_parameter("camera_fy").as_double();
+  camera_cx_ = this->get_parameter("camera_cx").as_double();
+  camera_cy_ = this->get_parameter("camera_cy").as_double();
+  camera_distortion_ = this->get_parameter("camera_distortion").as_double_array();
+  small_armor_width_m_ = this->get_parameter("small_armor_width_m").as_double();
+  small_armor_height_m_ = this->get_parameter("small_armor_height_m").as_double();
+  large_armor_width_m_ = this->get_parameter("large_armor_width_m").as_double();
+  large_armor_height_m_ = this->get_parameter("large_armor_height_m").as_double();
+  large_armor_min_aspect_ratio_ = this->get_parameter("large_armor_min_aspect_ratio").as_double();
   enemy_color_red_value_ = this->get_parameter("enemy_color_red_value").as_int();
   enemy_color_blue_value_ = this->get_parameter("enemy_color_blue_value").as_int();
   max_hsv_candidates_ = this->get_parameter("max_hsv_candidates").as_int();
@@ -168,6 +199,12 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   attitude_flags_subscription_ = this->create_subscription<std_msgs::msg::Int32MultiArray>(
     "attitude_flags", 10,
     std::bind(&ArmorDetectorNode::handle_attitude_flags, this, std::placeholders::_1));
+  if (enable_3d_pose_) {
+    camera_info_subscription_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
+      camera_info_topic_, rclcpp::SensorDataQoS(),
+      std::bind(&ArmorDetectorNode::handle_camera_info, this, std::placeholders::_1));
+    configure_static_camera_model();
+  }
   armors_publisher_ =
     this->create_publisher<cv_auto_aim_interfaces::msg::Armors>("detector/armors", 10);
   if (debug_publish_image_raw_) {
@@ -259,6 +296,91 @@ void ArmorDetectorNode::handle_attitude_flags(const std_msgs::msg::Int32MultiArr
       "attitude_flags enemy_color=" + std::to_string(enemy_color) +
       " -> Targeting " + color_name + ".");
   }
+}
+
+void ArmorDetectorNode::handle_camera_info(const sensor_msgs::msg::CameraInfo::SharedPtr msg)
+{
+  if (!enable_3d_pose_) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  camera_calibration_.model.camera_matrix = cv::Matx33d(
+    msg->k[0], msg->k[1], msg->k[2],
+    msg->k[3], msg->k[4], msg->k[5],
+    msg->k[6], msg->k[7], msg->k[8]);
+  camera_calibration_.model.distortion_coefficients = msg->d;
+  camera_calibration_.available = true;
+  camera_calibration_.from_camera_info = true;
+  camera_calibration_.image_width = static_cast<int>(msg->width);
+  camera_calibration_.image_height = static_cast<int>(msg->height);
+  pnp_solver_.emplace(
+    camera_calibration_.model, small_armor_width_m_, small_armor_height_m_,
+    large_armor_width_m_, large_armor_height_m_);
+}
+
+void ArmorDetectorNode::configure_static_camera_model()
+{
+  if (camera_fx_ <= 0.0 || camera_fy_ <= 0.0) {
+    return;
+  }
+
+  camera_calibration_.model.camera_matrix = cv::Matx33d(
+    camera_fx_, 0.0, camera_cx_ > 0.0 ? camera_cx_ : static_cast<double>(imgsz_width_) / 2.0,
+    0.0, camera_fy_, camera_cy_ > 0.0 ? camera_cy_ : static_cast<double>(imgsz_height_) / 2.0,
+    0.0, 0.0, 1.0);
+  camera_calibration_.model.distortion_coefficients = camera_distortion_;
+  camera_calibration_.available = true;
+  camera_calibration_.from_camera_info = false;
+  camera_calibration_.image_width = imgsz_width_;
+  camera_calibration_.image_height = imgsz_height_;
+  pnp_solver_.emplace(
+    camera_calibration_.model, small_armor_width_m_, small_armor_height_m_,
+    large_armor_width_m_, large_armor_height_m_);
+}
+
+PnPCameraModel ArmorDetectorNode::make_fov_camera_model(int image_width, int image_height) const
+{
+  const double fx = static_cast<double>(image_width) / (2.0 * std::tan(hfov_rad_ / 2.0));
+  const double fy = static_cast<double>(image_height) / (2.0 * std::tan(vfov_rad_ / 2.0));
+  PnPCameraModel model;
+  model.camera_matrix = cv::Matx33d(
+    fx, 0.0, static_cast<double>(image_width) / 2.0,
+    0.0, fy, static_cast<double>(image_height) / 2.0,
+    0.0, 0.0, 1.0);
+  model.distortion_coefficients = {};
+  return model;
+}
+
+std::optional<geometry_msgs::msg::Pose> ArmorDetectorNode::solve_candidate_pose(
+  const Candidate & candidate, int image_width, int image_height)
+{
+  if (!enable_3d_pose_ || !candidate.has_corners) {
+    return std::nullopt;
+  }
+
+  const double aspect = static_cast<double>(std::max(1, candidate.bbox_source.width)) /
+    static_cast<double>(std::max(1, candidate.bbox_source.height));
+  const int armor_type = aspect >= large_armor_min_aspect_ratio_ ?
+    cv_auto_aim_interfaces::msg::Armor::ARMOR_LARGE :
+    cv_auto_aim_interfaces::msg::Armor::ARMOR_SMALL;
+
+  geometry_msgs::msg::Pose pose;
+  if (pnp_solver_.has_value()) {
+    if (pnp_solver_->solve(candidate.corners_source, armor_type, pose)) {
+      return pose;
+    }
+    return std::nullopt;
+  }
+
+  const auto fov_model = make_fov_camera_model(image_width, image_height);
+  ArmorPnPSolver solver(
+    fov_model, small_armor_width_m_, small_armor_height_m_, large_armor_width_m_,
+    large_armor_height_m_);
+  if (solver.solve(candidate.corners_source, armor_type, pose)) {
+    return pose;
+  }
+  return std::nullopt;
 }
 
 void ArmorDetectorNode::initialize_native_pipeline()
@@ -365,13 +487,14 @@ void ArmorDetectorNode::process_detection_cycle(
   const std::string source_id = packet != nullptr && !packet->source_id.empty() ?
     packet->source_id :
     camera_config_.camera_type;
+  const std::string frame_id = camera_frame_id_.empty() ? source_id : camera_frame_id_;
   const int image_width = batch.letterbox.src_w > 0 ?
     batch.letterbox.src_w :
     (packet != nullptr ? packet->width() : imgsz_width_);
   const int image_height = batch.letterbox.src_h > 0 ?
     batch.letterbox.src_h :
     (packet != nullptr ? packet->height() : imgsz_height_);
-  publish_armors(candidates, source_id, stamp, image_width, image_height);
+  publish_armors(candidates, frame_id, stamp, image_width, image_height);
   const auto publish_done = std::chrono::steady_clock::now();
 
   if (show_ && packet != nullptr && !packet->empty()) {
@@ -433,6 +556,33 @@ void ArmorDetectorNode::publish_armors(
     armor.obb_angle = candidate.obb_angle.value_or(0.0F);
     armor.image_width = image_width;
     armor.image_height = image_height;
+    armor.has_corners = candidate.has_corners;
+    if (candidate.has_corners) {
+      for (std::size_t i = 0; i < candidate.corners_source.size(); ++i) {
+        armor.corners[i].x = candidate.corners_source[i].x;
+        armor.corners[i].y = candidate.corners_source[i].y;
+        armor.corners[i].z = 0.0F;
+      }
+    }
+    const double aspect = static_cast<double>(std::max(1, candidate.bbox_source.width)) /
+      static_cast<double>(std::max(1, candidate.bbox_source.height));
+    armor.armor_type = aspect >= large_armor_min_aspect_ratio_ ?
+      cv_auto_aim_interfaces::msg::Armor::ARMOR_LARGE :
+      cv_auto_aim_interfaces::msg::Armor::ARMOR_SMALL;
+    armor.armor_number = -1;
+    const double principal_x = camera_calibration_.available ?
+      camera_calibration_.model.camera_matrix(0, 2) :
+      static_cast<double>(image_width) / 2.0;
+    const double principal_y = camera_calibration_.available ?
+      camera_calibration_.model.camera_matrix(1, 2) :
+      static_cast<double>(image_height) / 2.0;
+    armor.distance_to_image_center = static_cast<float>(std::hypot(
+      static_cast<double>(candidate.center_source.x) - principal_x,
+      static_cast<double>(candidate.center_source.y) - principal_y));
+    if (const auto pose = solve_candidate_pose(candidate, image_width, image_height)) {
+      armor.has_pose = true;
+      armor.pose_camera = *pose;
+    }
     msg.armors.push_back(std::move(armor));
   }
   armors_publisher_->publish(std::move(msg));
@@ -525,7 +675,15 @@ std::vector<Candidate> ArmorDetectorNode::extract_candidates(
       detection.class_id,
       detection.track_id,
       true,
-      detection.obb_angle});
+      detection.obb_angle,
+      detection.has_corners,
+      {}});
+    if (detection.has_corners) {
+      auto & candidate = candidates.back();
+      for (std::size_t i = 0; i < detection.corners_model.size(); ++i) {
+        candidate.corners_source[i] = unletterbox_point(detection.corners_model[i], batch.letterbox);
+      }
+    }
   }
 
   if (use_model_color_classes_) {

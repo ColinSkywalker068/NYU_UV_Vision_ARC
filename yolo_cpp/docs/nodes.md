@@ -8,7 +8,7 @@ Related pages: [Overview](./overview.md) | [Pipeline](./pipeline.md) | [Interfac
 
 ## ArmorDetectorNode
 
-`ArmorDetectorNode` is the main entry into the split pipeline. It handles camera capture, detector backend setup, optional DeepStream fallback behavior, candidate extraction, and publication of `detector/armors`.
+`ArmorDetectorNode` is the main entry into the split pipeline. It handles camera capture, detector backend setup, optional DeepStream fallback behavior, candidate extraction, optional armor-corner PnP, and publication of `detector/armors`.
 
 This is the node to read first if you want to understand how model outputs become ROS messages.
 
@@ -18,13 +18,21 @@ This is the node to read first if you want to understand how model outputs becom
 
 The core tracking behavior lives in the tracker library code, while the node mostly handles ROS I/O and parameter wiring.
 
+## ArmorProcessorNode
+
+`ArmorProcessorNode` subscribes to `tracker/tracked_armors`, selects the active track, transforms its pose into the configured target frame, smooths pose and velocity, runs the small-gyro fire-gating observer, and publishes `processor/target`.
+
+It also publishes `debug/spin_info` and `processor/marker` for tuning. If the selected target lacks pose for a frame, the node keeps the 2D target alive and lets the solver use its fallback path.
+
 ## AimSolverNode
 
-`AimSolverNode` converts the selected tracked target into control-friendly outputs. It is intentionally small: subscribe to the selected target, compute yaw and pitch from image geometry, and publish the control topics.
+`AimSolverNode` converts the selected target into control-friendly outputs. It can solve from 3D pose and velocity with latency, bullet-speed, and optional gravity compensation, or fall back to the older image-center FOV projection.
+
+STM yaw/pitch feedback from `attitude_data` is interpreted as radians. Set `output_mode:=absolute` to add that feedback to the solved yaw/pitch before publishing `bounding_box_angles`; keep `output_mode:=offset` for pure offsets.
 
 ## STM32SerialBridgeNode
 
-`STM32SerialBridgeNode` is the serial boundary to the controller. It publishes and consumes compact protocol data rather than full perception messages, which keeps the handoff predictable for the embedded side.
+`STM32SerialBridgeNode` is the serial boundary to the controller. It publishes and consumes compact protocol data rather than full perception messages, which keeps the handoff predictable for the embedded side. It publishes STM RX attitude in radians on `attitude_data`, publishes flags on `attitude_flags`, and converts solver radians to degrees by default before STM TX.
 
 ## PerceptionNode
 

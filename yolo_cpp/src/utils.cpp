@@ -2,6 +2,7 @@
 
 #include <opencv2/imgproc.hpp>
 
+#include <algorithm>
 #include <cmath>
 
 namespace yolo_cpp
@@ -128,6 +129,19 @@ cv::Rect unletterbox_rect(const cv::Rect & rect, const LetterboxResult & lb)
   const int y2 =
     std::min(lb.src_h, static_cast<int>((rect.y + rect.height - lb.pad_y) / lb.scale));
   return cv::Rect(x, y, std::max(0, x2 - x), std::max(0, y2 - y));
+}
+
+cv::Point2f unletterbox_point(const cv::Point2f & point, const LetterboxMetadata & lb)
+{
+  if (lb.scale <= 0.0) {
+    return point;
+  }
+
+  const float x = static_cast<float>((static_cast<double>(point.x) - lb.pad_x) / lb.scale);
+  const float y = static_cast<float>((static_cast<double>(point.y) - lb.pad_y) / lb.scale);
+  return cv::Point2f(
+    std::clamp(x, 0.0F, static_cast<float>(std::max(0, lb.src_w - 1))),
+    std::clamp(y, 0.0F, static_cast<float>(std::max(0, lb.src_h - 1))));
 }
 
 std::pair<float, float> calculate_angles(

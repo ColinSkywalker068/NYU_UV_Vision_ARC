@@ -62,6 +62,13 @@ struct TrackObservation
   std::optional<float> obb_angle;
   int image_width{0};
   int image_height{0};
+  bool has_corners{false};
+  std::array<cv::Point2f, 4> corners_source{};
+  int armor_type{0};
+  int armor_number{-1};
+  float distance_to_image_center{0.0F};
+  bool has_pose{false};
+  cv::Point3d position_camera;
 };
 
 struct TrackSnapshot
@@ -73,6 +80,10 @@ struct TrackSnapshot
   std::uint32_t lost_frames{0};
   TrackObservation observation;
   cv::Point2f predicted_center;
+  bool has_pose{false};
+  cv::Point3d predicted_position_camera;
+  bool has_velocity{false};
+  cv::Vec3d velocity_camera;
   bool selectable{false};
 };
 
@@ -83,6 +94,7 @@ struct TrackConfig
   int track_drop_frames{8};
   double association_max_center_distance_ratio{0.20};
   double association_min_iou{0.10};
+  double association_max_3d_distance_m{0.35};
   double target_switch_min_score_delta{0.15};
   int target_lock_hysteresis_frames{2};
 };
@@ -116,6 +128,10 @@ private:
     std::uint32_t lost_frames{0};
     TrackObservation observation;
     cv::Point2f predicted_center;
+    bool has_3d_state{false};
+    cv::Point3d position_camera;
+    cv::Point3d predicted_position_camera;
+    cv::Vec3d velocity_camera;
   };
 
   struct RankedTrack

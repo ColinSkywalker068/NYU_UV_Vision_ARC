@@ -177,6 +177,7 @@ namespace
 {
 
 constexpr char kVisionLogDirName[] = "vision_logs";
+constexpr float kRadToDeg = 57.29577951308232F;
 
 std::string timestamp_now_iso8601_ms()
 {
@@ -225,13 +226,17 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions & options
   this->declare_parameter<bool>("serial_verbose", false);
   this->declare_parameter<std::string>("runtime_log_dir", "");
   this->declare_parameter<int>("fire_mode", DEFAULT_FIRE_MODE);
+  this->declare_parameter<int>("hold_fire_mode", 0);
   this->declare_parameter<int>("target_type", DEFAULT_TARGET_TYPE);
+  this->declare_parameter<bool>("transmit_angles_in_degrees", true);
 
   transmit_enable_ = this->get_parameter("transmit_enable").as_bool();
   serial_verbose_ = this->get_parameter("serial_verbose").as_bool();
   runtime_log_dir_ = this->get_parameter("runtime_log_dir").as_string();
   fire_mode_ = this->get_parameter("fire_mode").as_int();
+  hold_fire_mode_ = this->get_parameter("hold_fire_mode").as_int();
   target_type_ = this->get_parameter("target_type").as_int();
+  transmit_angles_in_degrees_ = this->get_parameter("transmit_angles_in_degrees").as_bool();
   target_state_ = TARGET_STATE_NO_TARGET;
 
   runtime_log_path_ =
@@ -260,6 +265,9 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions & options
 
   override_subscription_ = this->create_subscription<std_msgs::msg::Bool>(
     "override", 10, std::bind(&STM32SerialBridgeNode::handle_override, this, std::placeholders::_1));
+  suggest_fire_subscription_ = this->create_subscription<std_msgs::msg::Bool>(
+    "suggest_fire", 10,
+    std::bind(&STM32SerialBridgeNode::handle_suggest_fire, this, std::placeholders::_1));
   angle_subscription_ = this->create_subscription<std_msgs::msg::Float32MultiArray>(
     "bounding_box_angles", 10,
     std::bind(&STM32SerialBridgeNode::handle_angles, this, std::placeholders::_1));
@@ -300,6 +308,11 @@ void STM32SerialBridgeNode::handle_override(const std_msgs::msg::Bool::SharedPtr
   }
 }
 
+void STM32SerialBridgeNode::handle_suggest_fire(const std_msgs::msg::Bool::SharedPtr msg)
+{
+  suggest_fire_ = msg->data;
+}
+
 void STM32SerialBridgeNode::handle_angles(const std_msgs::msg::Float32MultiArray::SharedPtr msg)
 {
   if (msg->data.size() < 2) {
@@ -337,9 +350,12 @@ void STM32SerialBridgeNode::maybe_send()
   if (!transmit_enable_ || !transport_) {
     return;
   }
+  const float yaw_tx = transmit_angles_in_degrees_ ? latest_yaw_ * kRadToDeg : latest_yaw_;
+  const float pitch_tx = transmit_angles_in_degrees_ ? latest_pitch_ * kRadToDeg : latest_pitch_;
+  const int fire_mode = suggest_fire_ ? fire_mode_ : hold_fire_mode_;
   const bool success = transport_->send_vision_data(
-    latest_pitch_, latest_yaw_, fire_mode_, target_state_, target_type_);
-  log_tx_event(latest_yaw_, latest_pitch_, success);
+    pitch_tx, yaw_tx, fire_mode, target_state_, target_type_);
+  log_tx_event(yaw_tx, pitch_tx, success, fire_mode);
 }
 
 std::string STM32SerialBridgeNode::resolve_runtime_log_dir() const
@@ -369,15 +385,16 @@ void STM32SerialBridgeNode::write_runtime_log_line(const std::string & line)
   runtime_log_stream_.flush();
 }
 
-void STM32SerialBridgeNode::log_tx_event(float yaw, float pitch, bool success)
+void STM32SerialBridgeNode::log_tx_event(float yaw, float pitch, bool success, int fire_mode)
 {
-  const uint16_t flags_register = build_vision_flags(fire_mode_, target_state_, target_type_);
+  const uint16_t flags_register = build_vision_flags(fire_mode, target_state_, target_type_);
   std::ostringstream line;
   line << std::fixed << std::setprecision(6)
        << "kind=serial_tx ok=" << (success ? 1 : 0)
+       << " angle_unit=" << (transmit_angles_in_degrees_ ? "degrees" : "radians")
        << " yaw=" << yaw
        << " pitch=" << pitch
-       << " fire_mode=" << fire_mode_
+       << " fire_mode=" << fire_mode
        << " target_state=" << target_state_
        << " target_type=" << target_type_
        << " flags=0x" << std::uppercase << std::hex << std::setw(4) << std::setfill('0')

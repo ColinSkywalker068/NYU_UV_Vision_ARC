@@ -4,6 +4,7 @@
 #include <rclcpp/logging.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -330,6 +331,44 @@ std::vector<ParsedCandidate> axis_aligned_nms(
   return kept;
 }
 
+std::array<cv::Point2f, 4> order_armor_corners(const cv::Point2f points[4])
+{
+  std::array<cv::Point2f, 4> ordered{};
+  std::array<cv::Point2f, 4> sorted{points[0], points[1], points[2], points[3]};
+  std::sort(
+    sorted.begin(), sorted.end(),
+    [](const cv::Point2f & lhs, const cv::Point2f & rhs) {
+      if (lhs.y != rhs.y) {
+        return lhs.y < rhs.y;
+      }
+      return lhs.x < rhs.x;
+    });
+
+  std::array<cv::Point2f, 2> top{sorted[0], sorted[1]};
+  std::array<cv::Point2f, 2> bottom{sorted[2], sorted[3]};
+  std::sort(top.begin(), top.end(), [](const cv::Point2f & lhs, const cv::Point2f & rhs) {
+    return lhs.x < rhs.x;
+  });
+  std::sort(bottom.begin(), bottom.end(), [](const cv::Point2f & lhs, const cv::Point2f & rhs) {
+    return lhs.x < rhs.x;
+  });
+
+  ordered[0] = bottom[0];
+  ordered[1] = top[0];
+  ordered[2] = top[1];
+  ordered[3] = bottom[1];
+  return ordered;
+}
+
+std::array<cv::Point2f, 4> axis_aligned_corners(float x1, float y1, float x2, float y2)
+{
+  return {
+    cv::Point2f(x1, y2),
+    cv::Point2f(x1, y1),
+    cv::Point2f(x2, y1),
+    cv::Point2f(x2, y2)};
+}
+
 bool looks_like_end2end_shape(
   const std::vector<int64_t> & shape,
   int num_classes,
@@ -428,6 +467,12 @@ std::vector<Detection> parse_end2end_output_tensor(
     detection.bbox_model = cv::Rect(x1, y1, std::max(0, x2 - x1), std::max(0, y2 - y1));
     detection.confidence = confidence;
     detection.class_id = std::max(0, static_cast<int>(std::lround(at(5))));
+    detection.has_corners = true;
+    detection.corners_model = axis_aligned_corners(
+      std::min(x1f, x2f),
+      std::min(y1f, y2f),
+      std::max(x1f, x2f),
+      std::max(y1f, y2f));
     if (task_obb) {
       detection.obb_angle = at(6);
     }
@@ -560,6 +605,12 @@ std::vector<Detection> parse_yolo_output_tensor(
       detection.bbox_model = cv::Rect(x1, y1, std::max(0, x2 - x1), std::max(0, y2 - y1));
       detection.confidence = candidate.confidence;
       detection.class_id = candidate.class_id;
+      detection.has_corners = true;
+      detection.corners_model = axis_aligned_corners(
+        candidate.cx - (candidate.width * 0.5F),
+        candidate.cy - (candidate.height * 0.5F),
+        candidate.cx + (candidate.width * 0.5F),
+        candidate.cy + (candidate.height * 0.5F));
       detections.push_back(detection);
       continue;
     }
@@ -592,6 +643,8 @@ std::vector<Detection> parse_yolo_output_tensor(
     detection.bbox_model = cv::Rect(x1, y1, std::max(0, x2 - x1), std::max(0, y2 - y1));
     detection.confidence = candidate.confidence;
     detection.class_id = candidate.class_id;
+    detection.has_corners = true;
+    detection.corners_model = order_armor_corners(corners);
     if (task_obb) {
       detection.obb_angle = normalized_angle;
     }

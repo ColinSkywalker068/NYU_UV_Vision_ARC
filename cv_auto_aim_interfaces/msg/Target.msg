@@ -20,3 +20,10 @@ float32 obb_angle
 uint8 state
 int32 image_width
 int32 image_height
+bool tracking
+bool suggest_fire
+bool has_pose
+geometry_msgs/Pose pose
+bool has_velocity
+geometry_msgs/Vector3 velocity
+float32 range

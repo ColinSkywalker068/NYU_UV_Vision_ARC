@@ -3,12 +3,18 @@
 Scope: roadmap from current C++ 2D detector -> tracker -> solver pipeline in [`yolo_cpp`](/Users/Kushal/NYU/CV_Detection/yolo_cpp) toward fuller parity with [`TantalumKevin/rm_auto_aim`](https://github.com/TantalumKevin/rm_auto_aim).
 
 Current state:
-- We now have split C++ nodes for detection, tracking, and solver.
-- We now have custom tracking messages in [`cv_auto_aim_interfaces`](/Users/Kushal/NYU/CV_Detection/cv_auto_aim_interfaces).
-- We still operate in image space and publish yaw/pitch compatibility outputs for STM.
-- We do **not** yet have 3D pose solve, TF/world-frame tracking, target velocity in world frame, anti-spin observer, or ballistic compensation.
+- We have split C++ nodes for detection, tracking, processing, solving, and STM bridging.
+- We have custom tracking and solver messages in [`cv_auto_aim_interfaces`](/Users/Kushal/NYU/CV_Detection/cv_auto_aim_interfaces).
+- The detector can publish armor corners and optional camera-frame PnP pose.
+- The tracker can associate and predict in 3D when pose exists, with 2D fallback.
+- `armor_processor_node` transforms, filters, and fire-gates selected targets, including a small-gyro observer.
+- `aim_solver_node` can solve from 3D pose / velocity with bullet speed, latency, and gravity compensation, while preserving 2D fallback and STM compatibility outputs.
+- STM RX yaw/pitch feedback is treated as radians in ROS; STM TX yaw/pitch is converted to degrees by default in the serial bridge.
 
-Use this file as the handoff after 2D validation passes.
+Use this file as the validation checklist and tuning handoff after the 3D path compiles on the ROS/container target.
+
+Detailed follow-up plan:
+- [Spin and Armor Offset Next Steps](./SPIN_AND_ARMOR_OFFSET_NEXT_STEPS.md)
 
 ## Phase 0: Validate Current 2D Pipeline
 

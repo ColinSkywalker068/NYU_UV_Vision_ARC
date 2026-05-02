@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <utility>
@@ -49,6 +50,24 @@ cv_auto_aim_interfaces::msg::Armor make_armor_message(const TrackObservation & o
   armor.obb_angle = observation.obb_angle.value_or(0.0F);
   armor.image_width = observation.image_width;
   armor.image_height = observation.image_height;
+  armor.has_corners = observation.has_corners;
+  if (observation.has_corners) {
+    for (std::size_t i = 0; i < observation.corners_source.size(); ++i) {
+      armor.corners[i].x = observation.corners_source[i].x;
+      armor.corners[i].y = observation.corners_source[i].y;
+      armor.corners[i].z = 0.0F;
+    }
+  }
+  armor.armor_type = static_cast<uint8_t>(observation.armor_type);
+  armor.armor_number = observation.armor_number;
+  armor.distance_to_image_center = observation.distance_to_image_center;
+  armor.has_pose = observation.has_pose;
+  if (observation.has_pose) {
+    armor.pose_camera.position.x = observation.position_camera.x;
+    armor.pose_camera.position.y = observation.position_camera.y;
+    armor.pose_camera.position.z = observation.position_camera.z;
+    armor.pose_camera.orientation.w = 1.0;
+  }
   return armor;
 }
 
@@ -69,6 +88,22 @@ TrackObservation make_track_observation(const cv_auto_aim_interfaces::msg::Armor
   }
   observation.image_width = armor.image_width;
   observation.image_height = armor.image_height;
+  observation.has_corners = armor.has_corners;
+  if (armor.has_corners) {
+    for (std::size_t i = 0; i < observation.corners_source.size(); ++i) {
+      observation.corners_source[i] = cv::Point2f(armor.corners[i].x, armor.corners[i].y);
+    }
+  }
+  observation.armor_type = armor.armor_type;
+  observation.armor_number = armor.armor_number;
+  observation.distance_to_image_center = armor.distance_to_image_center;
+  observation.has_pose = armor.has_pose;
+  if (armor.has_pose) {
+    observation.position_camera = cv::Point3d(
+      armor.pose_camera.position.x,
+      armor.pose_camera.position.y,
+      armor.pose_camera.position.z);
+  }
   return observation;
 }
 
@@ -102,6 +137,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   config.association_max_center_distance_ratio =
     this->get_parameter("association_max_center_distance_ratio").as_double();
   config.association_min_iou = this->get_parameter("association_min_iou").as_double();
+  this->declare_parameter<double>("association_max_3d_distance_m", 0.35);
+  config.association_max_3d_distance_m =
+    this->get_parameter("association_max_3d_distance_m").as_double();
   config.target_switch_min_score_delta =
     this->get_parameter("target_switch_min_score_delta").as_double();
   config.target_lock_hysteresis_frames =
@@ -216,6 +254,22 @@ void ArmorTrackerNode::publish_tracked_armors(
     tracked.lost_frames = track.lost_frames;
     tracked.predicted_center_x = track.predicted_center.x;
     tracked.predicted_center_y = track.predicted_center.y;
+    tracked.has_pose = track.has_pose;
+    if (track.has_pose) {
+      tracked.pose_camera.position.x = track.observation.position_camera.x;
+      tracked.pose_camera.position.y = track.observation.position_camera.y;
+      tracked.pose_camera.position.z = track.observation.position_camera.z;
+      tracked.pose_camera.orientation.w = 1.0;
+      tracked.predicted_position_camera.x = track.predicted_position_camera.x;
+      tracked.predicted_position_camera.y = track.predicted_position_camera.y;
+      tracked.predicted_position_camera.z = track.predicted_position_camera.z;
+    }
+    tracked.has_velocity = track.has_velocity;
+    if (track.has_velocity) {
+      tracked.velocity_camera.x = track.velocity_camera[0];
+      tracked.velocity_camera.y = track.velocity_camera[1];
+      tracked.velocity_camera.z = track.velocity_camera[2];
+    }
     msg.tracks.push_back(std::move(tracked));
   }
   tracked_armors_publisher_->publish(std::move(msg));
@@ -233,6 +287,10 @@ void ArmorTrackerNode::publish_target(
     msg.is_coasting = false;
     msg.track_id = -1;
     msg.state = cv_auto_aim_interfaces::msg::Target::DETECTING;
+    msg.tracking = false;
+    msg.suggest_fire = false;
+    msg.has_pose = false;
+    msg.has_velocity = false;
     msg.bbox_xyxy = {0, 0, 0, 0};
     if (!source_msg.armors.empty()) {
       msg.image_width = source_msg.armors.front().image_width;
@@ -244,6 +302,8 @@ void ArmorTrackerNode::publish_target(
 
   const auto & snapshot = *target;
   msg.has_target = true;
+  msg.tracking = true;
+  msg.suggest_fire = true;
   msg.is_coasting = snapshot.state == TrackState::kCoasting;
   msg.track_id = snapshot.track_id;
   msg.bbox_xyxy = {
@@ -263,6 +323,23 @@ void ArmorTrackerNode::publish_target(
   msg.state = to_msg_state(snapshot.state);
   msg.image_width = snapshot.observation.image_width;
   msg.image_height = snapshot.observation.image_height;
+  msg.has_pose = snapshot.has_pose;
+  if (snapshot.has_pose) {
+    msg.pose.position.x = snapshot.observation.position_camera.x;
+    msg.pose.position.y = snapshot.observation.position_camera.y;
+    msg.pose.position.z = snapshot.observation.position_camera.z;
+    msg.pose.orientation.w = 1.0;
+    msg.range = static_cast<float>(std::sqrt(
+      (snapshot.observation.position_camera.x * snapshot.observation.position_camera.x) +
+      (snapshot.observation.position_camera.y * snapshot.observation.position_camera.y) +
+      (snapshot.observation.position_camera.z * snapshot.observation.position_camera.z)));
+  }
+  msg.has_velocity = snapshot.has_velocity;
+  if (snapshot.has_velocity) {
+    msg.velocity.x = snapshot.velocity_camera[0];
+    msg.velocity.y = snapshot.velocity_camera[1];
+    msg.velocity.z = snapshot.velocity_camera[2];
+  }
   target_publisher_->publish(std::move(msg));
 }
 

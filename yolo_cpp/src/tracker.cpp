@@ -101,6 +101,14 @@ double normalized_center_distance(
   return std::hypot(dx, dy) / diagonal;
 }
 
+double distance_3d(const cv::Point3d & lhs, const cv::Point3d & rhs)
+{
+  return std::sqrt(
+    ((lhs.x - rhs.x) * (lhs.x - rhs.x)) +
+    ((lhs.y - rhs.y) * (lhs.y - rhs.y)) +
+    ((lhs.z - rhs.z) * (lhs.z - rhs.z)));
+}
+
 cv::Point2f project_center(const ArmorPlateTracker & tracker, double dt)
 {
   const auto projected = tracker.project(dt);
@@ -361,6 +369,12 @@ TrackingFrameResult TrackManager::update(
         static_cast<float>(predicted.second)),
       track.observation.image_width,
       track.observation.image_height);
+    if (track.has_3d_state) {
+      track.predicted_position_camera = cv::Point3d(
+        track.position_camera.x + (track.velocity_camera[0] * dt_safe),
+        track.position_camera.y + (track.velocity_camera[1] * dt_safe),
+        track.position_camera.z + (track.velocity_camera[2] * dt_safe));
+    }
   }
 
   std::vector<std::vector<double>> cost_matrix(
@@ -374,19 +388,30 @@ TrackingFrameResult TrackManager::update(
       tracks_[track_index].observation.image_height);
     for (std::size_t detection_index = 0; detection_index < enemy_detections.size(); ++detection_index) {
       const auto & detection = enemy_detections[detection_index];
-      const double center_ratio = normalized_center_distance(
-        tracks_[track_index].predicted_center,
-        detection.center,
-        detection.image_width,
-        detection.image_height);
-      const double iou = rect_iou(predicted_bbox, detection.bbox);
-      if (
-        center_ratio > config_.association_max_center_distance_ratio ||
-        iou < config_.association_min_iou)
-      {
-        continue;
+      if (tracks_[track_index].has_3d_state && detection.has_pose) {
+        const double position_distance = distance_3d(
+          tracks_[track_index].predicted_position_camera,
+          detection.position_camera);
+        if (position_distance > config_.association_max_3d_distance_m) {
+          continue;
+        }
+        cost_matrix[track_index][detection_index] =
+          position_distance / std::max(1e-6, config_.association_max_3d_distance_m);
+      } else {
+        const double center_ratio = normalized_center_distance(
+          tracks_[track_index].predicted_center,
+          detection.center,
+          detection.image_width,
+          detection.image_height);
+        const double iou = rect_iou(predicted_bbox, detection.bbox);
+        if (
+          center_ratio > config_.association_max_center_distance_ratio ||
+          iou < config_.association_min_iou)
+        {
+          continue;
+        }
+        cost_matrix[track_index][detection_index] = center_ratio + (1.0 - iou);
       }
-      cost_matrix[track_index][detection_index] = center_ratio + (1.0 - iou);
     }
   }
 
@@ -409,6 +434,32 @@ TrackingFrameResult TrackManager::update(
         static_cast<double>(detection.bbox.height));
       track.hit_streak += 1U;
       track.lost_frames = 0;
+      if (detection.has_pose) {
+        if (track.has_3d_state) {
+          const cv::Vec3d measured_velocity(
+            (detection.position_camera.x - track.position_camera.x) / dt_safe,
+            (detection.position_camera.y - track.position_camera.y) / dt_safe,
+            (detection.position_camera.z - track.position_camera.z) / dt_safe);
+          track.velocity_camera = cv::Vec3d(
+            (0.5 * track.velocity_camera[0]) + (0.5 * measured_velocity[0]),
+            (0.5 * track.velocity_camera[1]) + (0.5 * measured_velocity[1]),
+            (0.5 * track.velocity_camera[2]) + (0.5 * measured_velocity[2]));
+          track.position_camera = cv::Point3d(
+            (0.3 * track.predicted_position_camera.x) + (0.7 * detection.position_camera.x),
+            (0.3 * track.predicted_position_camera.y) + (0.7 * detection.position_camera.y),
+            (0.3 * track.predicted_position_camera.z) + (0.7 * detection.position_camera.z));
+        } else {
+          track.position_camera = detection.position_camera;
+          track.velocity_camera = cv::Vec3d(0.0, 0.0, 0.0);
+          track.has_3d_state = true;
+        }
+        track.predicted_position_camera = cv::Point3d(
+          track.position_camera.x + (track.velocity_camera[0] * dt_safe),
+          track.position_camera.y + (track.velocity_camera[1] * dt_safe),
+          track.position_camera.z + (track.velocity_camera[2] * dt_safe));
+      } else if (track.has_3d_state) {
+        track.position_camera = track.predicted_position_camera;
+      }
       track.observation = detection;
       track.state =
         track.hit_streak >= static_cast<std::uint32_t>(config_.track_min_hits) ?
@@ -422,6 +473,9 @@ TrackingFrameResult TrackManager::update(
     } else {
       auto & track = tracks_[track_index];
       track.lost_frames += 1U;
+      if (track.has_3d_state) {
+        track.position_camera = track.predicted_position_camera;
+      }
       if (track.state == TrackState::kTracking || track.state == TrackState::kCoasting) {
         track.state = TrackState::kCoasting;
       }
@@ -446,6 +500,12 @@ TrackingFrameResult TrackManager::update(
     record.lost_frames = 0U;
     record.observation = detection;
     record.predicted_center = detection.center;
+    if (detection.has_pose) {
+      record.has_3d_state = true;
+      record.position_camera = detection.position_camera;
+      record.predicted_position_camera = detection.position_camera;
+      record.velocity_camera = cv::Vec3d(0.0, 0.0, 0.0);
+    }
     tracks_.push_back(std::move(record));
   }
 
@@ -484,6 +544,14 @@ TrackSnapshot TrackManager::make_snapshot(const TrackRecord & track) const
   snapshot.hit_streak = track.hit_streak;
   snapshot.lost_frames = track.lost_frames;
   snapshot.observation = track.observation;
+  if (track.has_3d_state) {
+    snapshot.has_pose = true;
+    snapshot.observation.has_pose = true;
+    snapshot.observation.position_camera = track.position_camera;
+    snapshot.predicted_position_camera = track.predicted_position_camera;
+    snapshot.has_velocity = true;
+    snapshot.velocity_camera = track.velocity_camera;
+  }
   if (track.state == TrackState::kCoasting && track.lost_frames > 0U) {
     snapshot.observation.center = clamp_center(
       track.predicted_center,
@@ -495,6 +563,9 @@ TrackSnapshot TrackManager::make_snapshot(const TrackRecord & track) const
       track.tracker.height(),
       track.observation.image_width,
       track.observation.image_height);
+    if (track.has_3d_state) {
+      snapshot.observation.position_camera = track.position_camera;
+    }
   }
   snapshot.predicted_center = clamp_center(
     track.predicted_center,

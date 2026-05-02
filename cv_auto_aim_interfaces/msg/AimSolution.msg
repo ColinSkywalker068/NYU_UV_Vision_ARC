@@ -1,0 +1,11 @@
+std_msgs/Header header
+bool has_solution
+bool used_3d
+bool suggest_fire
+float32 yaw
+float32 pitch
+float32 yaw_degrees
+float32 pitch_degrees
+float32 flight_time
+float32 range
+float32 bullet_speed

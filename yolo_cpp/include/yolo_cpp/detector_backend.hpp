@@ -6,10 +6,11 @@
 
 #include <rclcpp/logger.hpp>
 
+#include <array>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <memory>
 #include <vector>
 
 namespace yolo_cpp
@@ -22,6 +23,8 @@ struct Detection
   int class_id{0};
   std::optional<int> track_id;
   std::optional<float> obb_angle;
+  bool has_corners{false};
+  std::array<cv::Point2f, 4> corners_model{};
 };
 
 struct DetectorStageTimings

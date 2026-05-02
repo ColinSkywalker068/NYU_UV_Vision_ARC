@@ -1,3 +1,6 @@
+uint8 ARMOR_SMALL=0
+uint8 ARMOR_LARGE=1
+
 int32[4] bbox_xyxy
 float32 center_x
 float32 center_y
@@ -8,3 +11,10 @@ bool has_obb_angle
 float32 obb_angle
 int32 image_width
 int32 image_height
+bool has_corners
+geometry_msgs/Point32[4] corners
+uint8 armor_type
+int32 armor_number
+float32 distance_to_image_center
+bool has_pose
+geometry_msgs/Pose pose_camera

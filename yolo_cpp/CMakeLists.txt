@@ -19,8 +19,13 @@ find_package(ament_cmake REQUIRED)
 find_package(cv_auto_aim_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
 
 find_package(PkgConfig QUIET)
@@ -97,6 +102,7 @@ endif()
 
 add_library(yolo_cpp_components SHARED
   src/utils.cpp
+  src/pnp_solver.cpp
   src/tracker.cpp
   src/camera_backend.cpp
   src/detection_postprocess.cpp
@@ -105,6 +111,7 @@ add_library(yolo_cpp_components SHARED
   src/deepstream_runtime.cpp
   src/armor_detector_node.cpp
   src/armor_tracker_node.cpp
+  src/armor_processor_node.cpp
   src/aim_solver_node.cpp
   src/camera_node.cpp
   src/yolo_node.cpp
@@ -136,8 +143,13 @@ ament_target_dependencies(yolo_cpp_components
   cv_auto_aim_interfaces
   rclcpp
   rclcpp_components
+  geometry_msgs
   sensor_msgs
   std_msgs
+  tf2
+  tf2_geometry_msgs
+  tf2_ros
+  visualization_msgs
 )
 target_link_libraries(yolo_cpp_components ${OpenCV_LIBS})
 
@@ -171,6 +183,7 @@ endif()
 rclcpp_components_register_nodes(yolo_cpp_components
   "yolo_cpp::ArmorDetectorNode"
   "yolo_cpp::ArmorTrackerNode"
+  "yolo_cpp::ArmorProcessorNode"
   "yolo_cpp::AimSolverNode"
   "yolo_cpp::CameraNode"
   "yolo_cpp::YoloNode"
@@ -191,15 +204,42 @@ ament_target_dependencies(perception_node rclcpp)
 
 add_executable(armor_detector_node src/armor_detector_node_main.cpp)
 target_link_libraries(armor_detector_node yolo_cpp_components)
-ament_target_dependencies(armor_detector_node cv_auto_aim_interfaces rclcpp)
+ament_target_dependencies(
+  armor_detector_node
+  cv_auto_aim_interfaces
+  geometry_msgs
+  rclcpp
+  sensor_msgs
+  std_msgs
+)
 
 add_executable(armor_tracker_node src/armor_tracker_node_main.cpp)
 target_link_libraries(armor_tracker_node yolo_cpp_components)
-ament_target_dependencies(armor_tracker_node cv_auto_aim_interfaces rclcpp)
+ament_target_dependencies(
+  armor_tracker_node
+  cv_auto_aim_interfaces
+  geometry_msgs
+  rclcpp
+  std_msgs
+)
+
+add_executable(armor_processor_node src/armor_processor_node_main.cpp)
+target_link_libraries(armor_processor_node yolo_cpp_components)
+ament_target_dependencies(
+  armor_processor_node
+  cv_auto_aim_interfaces
+  geometry_msgs
+  rclcpp
+  std_msgs
+  tf2
+  tf2_geometry_msgs
+  tf2_ros
+  visualization_msgs
+)
 
 add_executable(aim_solver_node src/aim_solver_node_main.cpp)
 target_link_libraries(aim_solver_node yolo_cpp_components)
-ament_target_dependencies(aim_solver_node cv_auto_aim_interfaces rclcpp)
+ament_target_dependencies(aim_solver_node cv_auto_aim_interfaces rclcpp std_msgs)
 
 add_executable(stm32_serial_bridge
   src/seasky_protocol.cpp
@@ -219,7 +259,7 @@ install(
 
 install(
   TARGETS yolo_cpp_components camera_node yolo_modular_node perception_node
-    armor_detector_node armor_tracker_node aim_solver_node stm32_serial_bridge
+    armor_detector_node armor_tracker_node armor_processor_node aim_solver_node stm32_serial_bridge
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}

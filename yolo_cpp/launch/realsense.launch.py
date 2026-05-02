@@ -96,10 +96,70 @@ def generate_launch_description() -> LaunchDescription:
         default_value="2",
         description="Coast frames allowed before target lock yields",
     )
+    association_max_3d_distance_arg = DeclareLaunchArgument(
+        "association_max_3d_distance_m",
+        default_value="0.35",
+        description="Maximum 3D association distance when PnP pose is available",
+    )
     publish_zero_angles_arg = DeclareLaunchArgument(
         "publish_zero_angles_when_no_target",
         default_value="true",
         description="Publish zero yaw/pitch when there is no selected target",
+    )
+    enable_3d_pose_arg = DeclareLaunchArgument(
+        "enable_3d_pose",
+        default_value="true",
+        description="Enable armor corner PnP pose solving in the detector",
+    )
+    camera_frame_id_arg = DeclareLaunchArgument(
+        "camera_frame_id",
+        default_value="camera_optical_frame",
+        description="Frame id attached to detector PnP poses",
+    )
+    camera_info_topic_arg = DeclareLaunchArgument(
+        "camera_info_topic",
+        default_value="camera_info",
+        description="CameraInfo topic used for calibrated PnP intrinsics",
+    )
+    camera_fx_arg = DeclareLaunchArgument(
+        "camera_fx",
+        default_value="0.0",
+        description="Optional static camera fx; FOV fallback is used when unset",
+    )
+    camera_fy_arg = DeclareLaunchArgument(
+        "camera_fy",
+        default_value="0.0",
+        description="Optional static camera fy; FOV fallback is used when unset",
+    )
+    camera_cx_arg = DeclareLaunchArgument(
+        "camera_cx",
+        default_value="0.0",
+        description="Optional static camera cx",
+    )
+    camera_cy_arg = DeclareLaunchArgument(
+        "camera_cy",
+        default_value="0.0",
+        description="Optional static camera cy",
+    )
+    processor_target_frame_arg = DeclareLaunchArgument(
+        "processor_target_frame",
+        default_value="camera_optical_frame",
+        description="Frame used for processor target pose output",
+    )
+    use_3d_solution_arg = DeclareLaunchArgument(
+        "use_3d_solution",
+        default_value="true",
+        description="Use processor pose/velocity when available for yaw/pitch solving",
+    )
+    solver_latency_arg = DeclareLaunchArgument(
+        "solver_latency_s",
+        default_value="0.03",
+        description="Latency used by the 3D ballistic prediction",
+    )
+    default_bullet_speed_arg = DeclareLaunchArgument(
+        "default_bullet_speed_mps",
+        default_value="18.0",
+        description="Fallback bullet speed for 3D solving",
     )
 
     detector_node = Node(
@@ -128,6 +188,13 @@ def generate_launch_description() -> LaunchDescription:
                 ),
                 "hfov_degrees": LaunchConfiguration("hfov_degrees"),
                 "vfov_degrees": LaunchConfiguration("vfov_degrees"),
+                "enable_3d_pose": LaunchConfiguration("enable_3d_pose"),
+                "camera_frame_id": LaunchConfiguration("camera_frame_id"),
+                "camera_info_topic": LaunchConfiguration("camera_info_topic"),
+                "camera_fx": LaunchConfiguration("camera_fx"),
+                "camera_fy": LaunchConfiguration("camera_fy"),
+                "camera_cx": LaunchConfiguration("camera_cx"),
+                "camera_cy": LaunchConfiguration("camera_cy"),
                 "imgsz_width": LaunchConfiguration("rs_width"),
                 "imgsz_height": LaunchConfiguration("rs_height"),
             }
@@ -154,6 +221,21 @@ def generate_launch_description() -> LaunchDescription:
                 "target_lock_hysteresis_frames": LaunchConfiguration(
                     "target_lock_hysteresis_frames"
                 ),
+                "association_max_3d_distance_m": LaunchConfiguration(
+                    "association_max_3d_distance_m"
+                ),
+            }
+        ],
+    )
+
+    processor_node = Node(
+        package="yolo_cpp",
+        executable="armor_processor_node",
+        name="armor_processor_node",
+        output="screen",
+        parameters=[
+            {
+                "target_frame": LaunchConfiguration("processor_target_frame"),
             }
         ],
     )
@@ -172,6 +254,11 @@ def generate_launch_description() -> LaunchDescription:
                 ),
                 "default_image_width": LaunchConfiguration("rs_width"),
                 "default_image_height": LaunchConfiguration("rs_height"),
+                "target_topic": "processor/target",
+                "use_3d_solution": LaunchConfiguration("use_3d_solution"),
+                "output_mode": "offset",
+                "solver_latency_s": LaunchConfiguration("solver_latency_s"),
+                "default_bullet_speed_mps": LaunchConfiguration("default_bullet_speed_mps"),
             }
         ],
     )
@@ -199,9 +286,22 @@ def generate_launch_description() -> LaunchDescription:
             association_min_iou_arg,
             target_switch_min_score_delta_arg,
             target_lock_hysteresis_frames_arg,
+            association_max_3d_distance_arg,
             publish_zero_angles_arg,
+            enable_3d_pose_arg,
+            camera_frame_id_arg,
+            camera_info_topic_arg,
+            camera_fx_arg,
+            camera_fy_arg,
+            camera_cx_arg,
+            camera_cy_arg,
+            processor_target_frame_arg,
+            use_3d_solution_arg,
+            solver_latency_arg,
+            default_bullet_speed_arg,
             detector_node,
             tracker_node,
+            processor_node,
             solver_node,
         ]
     )

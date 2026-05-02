@@ -34,6 +34,11 @@ TEST(DetectionPostprocessTest, AppliesLocalNmsForTwoClassObbExportWithoutEmbedde
   EXPECT_NEAR(detections.front().confidence, 0.90F, 1e-6F);
   ASSERT_TRUE(detections.front().obb_angle.has_value());
   EXPECT_NEAR(*detections.front().obb_angle, 0.0F, 1e-6F);
+  EXPECT_TRUE(detections.front().has_corners);
+  EXPECT_NEAR(detections.front().corners_model[0].x, 80.0F, 1e-6F);
+  EXPECT_NEAR(detections.front().corners_model[0].y, 110.0F, 1e-6F);
+  EXPECT_NEAR(detections.front().corners_model[2].x, 120.0F, 1e-6F);
+  EXPECT_NEAR(detections.front().corners_model[2].y, 90.0F, 1e-6F);
   EXPECT_GT(detections.front().bbox_model.width, 0);
   EXPECT_GT(detections.front().bbox_model.height, 0);
 }

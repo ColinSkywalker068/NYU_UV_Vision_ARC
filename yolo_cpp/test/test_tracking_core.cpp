@@ -24,6 +24,15 @@ yolo_cpp::TrackObservation make_detection(
   return observation;
 }
 
+yolo_cpp::TrackObservation make_detection_3d(
+  float center_x, float center_y, float confidence, cv::Point3d position_camera)
+{
+  auto observation = make_detection(center_x, center_y, confidence);
+  observation.has_pose = true;
+  observation.position_camera = position_camera;
+  return observation;
+}
+
 }  // namespace
 
 TEST(ArmorPlateTrackerTest, PredictAndUpdateRemainStable)
@@ -128,4 +137,30 @@ TEST(TrackManagerTest, MaintainsSeparateTracksForTwoTargets)
   EXPECT_NE(result.tracks[0].track_id, result.tracks[1].track_id);
   EXPECT_EQ(result.tracks[0].state, yolo_cpp::TrackState::kTracking);
   EXPECT_EQ(result.tracks[1].state, yolo_cpp::TrackState::kTracking);
+}
+
+TEST(TrackManagerTest, Uses3DGateWhenPoseIsAvailable)
+{
+  yolo_cpp::TrackConfig config;
+  config.association_max_3d_distance_m = 0.25;
+  yolo_cpp::TrackManager manager(config);
+
+  auto result = manager.update(
+    {make_detection_3d(100.0F, 120.0F, 0.8F, cv::Point3d(0.0, 0.0, 2.0))},
+    1.0 / 60.0);
+  ASSERT_EQ(result.tracks.size(), 1U);
+  const int first_track = result.tracks.front().track_id;
+  EXPECT_TRUE(result.tracks.front().has_pose);
+
+  result = manager.update(
+    {make_detection_3d(102.0F, 121.0F, 0.82F, cv::Point3d(0.02, 0.0, 2.0))},
+    1.0 / 60.0);
+  ASSERT_EQ(result.tracks.size(), 1U);
+  EXPECT_EQ(result.tracks.front().track_id, first_track);
+  EXPECT_TRUE(result.tracks.front().has_velocity);
+
+  result = manager.update(
+    {make_detection_3d(104.0F, 122.0F, 0.9F, cv::Point3d(1.0, 0.0, 2.0))},
+    1.0 / 60.0);
+  ASSERT_EQ(result.tracks.size(), 2U);
 }

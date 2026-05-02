@@ -15,8 +15,12 @@ Related pages: [Overview](./overview.md) | [Pipeline](./pipeline.md) | [Nodes](.
 - `is_enemy`: whether the candidate matches the current target color logic
 - `has_obb_angle`, `obb_angle`: optional oriented-box heading
 - `image_width`, `image_height`: frame size used to interpret the box
+- `has_corners`, `corners`: four image-space armor corners for PnP
+- `armor_type`, `armor_number`: size class and optional armor id
+- `has_pose`, `pose_camera`: optional camera-frame PnP result
+- `distance_to_image_center`: pixel distance from the principal point or image center
 
-This is the message shape the detector uses before any temporal tracking is applied.
+This is the message shape the detector uses before any temporal tracking is applied. The extra 3D fields are optional so 2D-only detections still flow through the stack.
 
 ## Armors
 
@@ -37,6 +41,9 @@ The detector publishes this on `detector/armors`. If you want to inspect raw per
 - `state`: `DETECTING`, `TRACKING`, or `COASTING`
 - `age`, `hit_streak`, `lost_frames`: lifecycle counters
 - `predicted_center_x`, `predicted_center_y`: tracker prediction
+- `has_pose`, `pose_camera`: filtered camera-frame pose for the track
+- `predicted_position_camera`: camera-frame 3D prediction
+- `has_velocity`, `velocity_camera`: camera-frame velocity estimate
 
 This is the bridge from frame-by-frame detections to stable target identity.
 
@@ -60,14 +67,31 @@ The tracker publishes this on `tracker/tracked_armors`. It is the right topic fo
 - geometry via `bbox_xyxy`, `center_*`, and `predicted_center_*`
 - classification via `class_id`, `is_enemy`, and optional `obb_angle`
 - frame dimensions so the solver can compute angles consistently
+- optional 3D pose, velocity, range, tracking state, and fire suggestion
 
-The tracker publishes this on `tracker/target`, and `AimSolverNode` consumes it directly.
+The tracker publishes a 2D-compatible target on `tracker/target`. The processor publishes the full filtered target on `processor/target`, and the 3D solver consumes that topic in the full launch files.
+
+## SpinInfo
+
+`SpinInfo.msg` is debug state from the small-gyro observer:
+
+- `target_spinning`: whether repeated armor jumps indicate spinning motion
+- `suggest_fire`: whether the observer currently allows firing
+- `jump_count`, `yaw_diff`, `jump_period`, `time_after_jumping`: observer timing and jump metrics
+
+## AimSolution
+
+`AimSolution.msg` is the solver debug output:
+
+- `has_solution`, `used_3d`, `suggest_fire`
+- yaw and pitch in radians plus degree copies for inspection
+- estimated `flight_time`, `range`, and `bullet_speed`
 
 ## How the Interfaces Fit Together
 
 The message flow is:
 
-`Armor` -> `Armors` -> `TrackedArmor` -> `TrackedArmors` -> `Target`
+`Armor` -> `Armors` -> `TrackedArmor` -> `TrackedArmors` -> `Target` -> `AimSolution`
 
 That progression mirrors the runtime:
 
@@ -75,4 +99,5 @@ That progression mirrors the runtime:
 2. The detector publishes the frame-wide detection set.
 3. The tracker adds temporal identity and prediction.
 4. The tracker publishes both the full tracked set and the single chosen target.
-5. The solver turns the selected target into yaw, pitch, and controller-facing topics.
+5. The processor transforms, filters, and fire-gates the selected target.
+6. The solver turns the selected target into yaw, pitch, and controller-facing topics.

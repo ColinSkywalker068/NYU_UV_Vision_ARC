@@ -10,3 +10,8 @@ uint32 hit_streak
 uint32 lost_frames
 float32 predicted_center_x
 float32 predicted_center_y
+bool has_pose
+geometry_msgs/Pose pose_camera
+geometry_msgs/Point predicted_position_camera
+bool has_velocity
+geometry_msgs/Vector3 velocity_camera
