@@ -1,3 +1,6 @@
+/// @file tracker.cpp
+/// @brief Implements Kalman tracking, Hungarian association, coasting, and target lock.
+
 #include "yolo_cpp/tracker.hpp"
 
 #include <algorithm>
@@ -12,6 +15,7 @@ namespace yolo_cpp
 namespace
 {
 
+/// Multiply two 6x6 matrices used by the image-space Kalman filter.
 void multiply_6x6(const double a[6][6], const double b[6][6], double out[6][6])
 {
   for (int r = 0; r < 6; ++r) {
@@ -25,6 +29,7 @@ void multiply_6x6(const double a[6][6], const double b[6][6], double out[6][6])
   }
 }
 
+/// Transpose a 6x6 matrix used by covariance propagation.
 void transpose_6x6(const double in[6][6], double out[6][6])
 {
   for (int r = 0; r < 6; ++r) {
@@ -37,6 +42,7 @@ void transpose_6x6(const double in[6][6], double out[6][6])
 constexpr double kMinimumDt = 1e-3;
 constexpr double kInvalidAssignmentCost = 1e6;
 
+/// Clamp a predicted center into image bounds.
 cv::Point2f clamp_center(
   const cv::Point2f & center, int image_width, int image_height)
 {
@@ -47,6 +53,7 @@ cv::Point2f clamp_center(
     std::clamp(center.y, 0.0F, max_y));
 }
 
+/// Build an image-bounded rectangle from a center and size.
 cv::Rect rect_from_center(
   const cv::Point2f & center, double width, double height, int image_width, int image_height)
 {
@@ -69,6 +76,7 @@ cv::Rect rect_from_center(
   return cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1));
 }
 
+/// Compute axis-aligned box IoU for track association.
 double rect_iou(const cv::Rect & lhs, const cv::Rect & rhs)
 {
   const int x1 = std::max(lhs.x, rhs.x);
@@ -87,6 +95,7 @@ double rect_iou(const cv::Rect & lhs, const cv::Rect & rhs)
   return inter / denom;
 }
 
+/// Compute center distance normalized by image diagonal.
 double normalized_center_distance(
   const cv::Point2f & lhs, const cv::Point2f & rhs, int image_width, int image_height)
 {
@@ -101,6 +110,7 @@ double normalized_center_distance(
   return std::hypot(dx, dy) / diagonal;
 }
 
+/// Compute Euclidean distance between two camera-frame 3D points.
 double distance_3d(const cv::Point3d & lhs, const cv::Point3d & rhs)
 {
   return std::sqrt(
@@ -109,6 +119,7 @@ double distance_3d(const cv::Point3d & lhs, const cv::Point3d & rhs)
     ((lhs.z - rhs.z) * (lhs.z - rhs.z)));
 }
 
+/// Project a track center without mutating tracker state.
 cv::Point2f project_center(const ArmorPlateTracker & tracker, double dt)
 {
   const auto projected = tracker.project(dt);
@@ -117,6 +128,7 @@ cv::Point2f project_center(const ArmorPlateTracker & tracker, double dt)
     static_cast<float>(projected.second));
 }
 
+/// Solve rectangular assignment with a square-padded Hungarian algorithm.
 std::vector<int> solve_hungarian(const std::vector<std::vector<double>> & cost_matrix)
 {
   if (cost_matrix.empty() || cost_matrix.front().empty()) {

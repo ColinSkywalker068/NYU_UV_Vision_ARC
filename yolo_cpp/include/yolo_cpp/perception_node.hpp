@@ -26,10 +26,14 @@
 namespace yolo_cpp
 {
 
+/// Legacy combined camera, detector, tracker, and 2D solver node.
 class YOLO_CPP_PUBLIC PerceptionNode : public rclcpp::Node
 {
 public:
+  /// Create the combined perception pipeline.
   explicit PerceptionNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+
+  /// Release camera, detector/runtime, preview, and log resources.
   ~PerceptionNode() override;
 
 private:
@@ -46,41 +50,82 @@ private:
     double publish_ms{0.0};
   };
 
+  /// Update enemy-color targeting from robot id.
   void id_listener_callback(const std_msgs::msg::Int32::SharedPtr msg);
+
+  /// Update controller-provided targeting flags.
   void handle_attitude_flags(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
+
+  /// Capture and process one frame in native mode.
   void timer_callback();
+
+  /// Process one asynchronous DeepStream result.
   void handle_deepstream_result(DeepStreamRuntime::Result result);
+
+  /// Create the native camera and detector backends.
   void initialize_native_pipeline();
+
+  /// Create and start the DeepStream runtime.
   void initialize_deepstream_runtime();
+
+  /// Run candidate extraction, tracking, target selection, and publishing.
   void process_detection_cycle(
     const DetectionBatch & batch,
     const FramePacket * packet,
     const DetectorStageTimings & detector_timings,
     double capture_ms);
+  /// Publish the current frame for debugging.
   void publish_debug_image(const FramePacket & packet);
+
+  /// Render optional OpenCV preview overlays.
   void render_preview(
     const FramePacket & packet,
     const std::vector<Candidate> & candidates,
     const std::optional<Candidate> & target);
+  /// Convert model detections into filtered source-image candidates.
   std::vector<Candidate> extract_candidates(
     const DetectionBatch & batch, const FramePacket * packet, double * color_ms) const;
+  /// Sort candidates by target preference.
   std::vector<Candidate> rank_candidates(std::vector<Candidate> candidates) const;
+
+  /// Select the best candidate for the legacy 2D path.
   std::optional<Candidate> select_target(const std::vector<Candidate> & candidates) const;
+
+  /// Publish 2D target messages for a selected candidate.
   void publish_target(const Candidate & target, const LetterboxMetadata & lb);
+
+  /// Publish an explicit no-target state.
   void publish_no_target(int src_w, int src_h);
+
+  /// Publish a Kalman-projected target when tracking is enabled.
   bool publish_kalman_target(
     double xf, double yf, double width, double height, const LetterboxMetadata & lb,
     const std::optional<float> & obb_angle);
+  /// Update legacy per-class Kalman trackers and publish the selected track.
   bool run_kalman_pipeline(
     const std::vector<Candidate> & candidates, double dt, const LetterboxMetadata & lb);
+  /// Resolve the default model path from package/runtime conventions.
   std::string resolve_default_model_path() const;
+
+  /// Resolve the default DeepStream nvinfer config path.
   std::string resolve_default_deepstream_config_path() const;
+
+  /// Resolve the runtime log directory.
   std::string resolve_runtime_log_dir() const;
+
+  /// Append one runtime log line.
   void write_runtime_log_line(const std::string & line);
+
+  /// Write a structured runtime note.
   void log_runtime_note(const std::string & level, const std::string & message);
+
+  /// Emit runtime FPS periodically.
   void log_runtime_fps_once_per_second();
+
+  /// Log candidate targeting/color state for offline tuning.
   void log_runtime_opponent_event(
     const Candidate & target, bool color_pass, double latency_ms);
+  /// Periodically log accumulated stage timings.
   void log_stage_timing();
 
   std::shared_ptr<CameraBackend> camera_backend_;

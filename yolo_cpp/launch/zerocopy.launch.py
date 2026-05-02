@@ -1,9 +1,12 @@
+"""Launch the legacy combined perception component with intra-process transport."""
+
 from launch import LaunchDescription
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
 
 
 def generate_launch_description():
+    """Create a composable container for zero-copy perception experiments."""
     container = ComposableNodeContainer(
         name="yolo_container",
         namespace="",

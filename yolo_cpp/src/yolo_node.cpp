@@ -1,3 +1,6 @@
+/// @file yolo_node.cpp
+/// @brief Implements the legacy image-subscriber YOLO command node.
+
 #include "yolo_cpp/yolo_node.hpp"
 
 #include <opencv2/imgproc.hpp>
@@ -25,6 +28,7 @@ constexpr double kPi = 3.14159265358979323846;
 
 }  // namespace
 
+/// Declare legacy YOLO parameters and subscribe to image_raw.
 YoloNode::YoloNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("yolo_modular_node", options),
   detector_("", "", "", true, 0.25F)
@@ -118,6 +122,7 @@ void YoloNode::id_listener_callback(const std_msgs::msg::Int32::SharedPtr msg)
 
 void YoloNode::image_callback(sensor_msgs::msg::Image::ConstSharedPtr msg)
 {
+  // This path publishes direct command topics and predates the modular Armors/Target pipeline.
   try {
     const cv::Mat frame = decode_frame(*msg);
     if (frame.empty()) {
@@ -160,6 +165,7 @@ void YoloNode::image_callback(sensor_msgs::msg::Image::ConstSharedPtr msg)
 
 cv::Mat YoloNode::decode_frame(const sensor_msgs::msg::Image & msg)
 {
+  // The legacy node only accepts BGR8 because the detector wrapper expects OpenCV BGR input.
   if (msg.encoding != sensor_msgs::image_encodings::BGR8) {
     RCLCPP_WARN(
       this->get_logger(), "Unsupported image encoding '%s'; expected bgr8",

@@ -1,3 +1,6 @@
+/// @file armor_processor_node.cpp
+/// @brief Implements 3D target filtering, TF transforms, spin observation, and markers.
+
 #include "yolo_cpp/armor_processor_node.hpp"
 
 #include <geometry_msgs/msg/point_stamped.hpp>
@@ -17,11 +20,13 @@ namespace
 
 constexpr double kPi = 3.14159265358979323846;
 
+/// Compute Euclidean range for a point in meters.
 double point_range(const geometry_msgs::msg::Point & point)
 {
   return std::sqrt((point.x * point.x) + (point.y * point.y) + (point.z * point.z));
 }
 
+/// Normalize an angle to [-pi, pi].
 double normalize_angle(double value)
 {
   while (value > kPi) {
@@ -35,6 +40,7 @@ double normalize_angle(double value)
 
 }  // namespace
 
+/// Declare processor/filter parameters and create TF, target, debug, and marker interfaces.
 ArmorProcessorNode::ArmorProcessorNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("armor_processor_node", options)
 {
@@ -78,6 +84,7 @@ ArmorProcessorNode::ArmorProcessorNode(const rclcpp::NodeOptions & options)
 void ArmorProcessorNode::handle_tracks(
   const cv_auto_aim_interfaces::msg::TrackedArmors::SharedPtr msg)
 {
+  // The processor deliberately consumes only the selected track to keep solver behavior stable.
   rclcpp::Time stamp(msg->header.stamp);
   if (stamp.nanoseconds() == 0) {
     stamp = this->get_clock()->now();
@@ -234,6 +241,8 @@ void ArmorProcessorNode::predict_without_measurement(const rclcpp::Time & stamp)
 
 void ArmorProcessorNode::apply_spin_observer(cv_auto_aim_interfaces::msg::Target & target)
 {
+  // Detect armor jumps by comparing target yaw over time; jumps gate firing while still allowing
+  // close-range following when configured.
   cv_auto_aim_interfaces::msg::SpinInfo info;
   info.header = target.header;
 

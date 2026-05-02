@@ -20,9 +20,11 @@
 namespace yolo_cpp
 {
 
+/// Converts detector armor candidates into stable tracks and a selected target.
 class YOLO_CPP_PUBLIC ArmorTrackerNode : public rclcpp::Node
 {
 public:
+  /// Create subscriptions, publishers, and configure the track manager.
   explicit ArmorTrackerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
   ~ArmorTrackerNode() override = default;
 
@@ -33,15 +35,24 @@ private:
     double publish_ms{0.0};
   };
 
+  /// Process one detector output frame.
   void armors_callback(const cv_auto_aim_interfaces::msg::Armors::SharedPtr msg);
+
+  /// Update enemy-color targeting from robot id.
   void id_listener_callback(const std_msgs::msg::Int32::SharedPtr msg);
+
+  /// Update controller-sourced color/targeting flags.
   void handle_attitude_flags(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
+
+  /// Publish every active track for downstream processor/debug consumers.
   void publish_tracked_armors(
     const cv_auto_aim_interfaces::msg::Armors & source_msg,
     const TrackingFrameResult & result);
+  /// Publish the currently selected 2D target, or an empty target message.
   void publish_target(
     const cv_auto_aim_interfaces::msg::Armors & source_msg,
     const std::optional<TrackSnapshot> & target);
+  /// Periodically log tracking and publish timings.
   void log_stage_timing();
 
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::Armors>::SharedPtr armors_subscription_;

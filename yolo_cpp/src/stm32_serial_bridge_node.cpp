@@ -1,3 +1,6 @@
+/// @file stm32_serial_bridge_node.cpp
+/// @brief Implements ROS-to-Seasky serial transport for the STM32 controller.
+
 #include "yolo_cpp/stm32_serial_bridge_node.hpp"
 
 #include "yolo_cpp/seasky_protocol.hpp"
@@ -28,6 +31,7 @@
 namespace yolo_cpp
 {
 
+/// Convert an integer baud rate parameter into a termios constant.
 speed_t baud_to_constant(int baudrate)
 {
   switch (baudrate) {
@@ -45,6 +49,7 @@ speed_t baud_to_constant(int baudrate)
   }
 }
 
+/// Thin non-blocking POSIX serial wrapper for Seasky TX/RX frames.
 class SerialTransport
 {
 public:
@@ -63,6 +68,7 @@ public:
 
   bool connect()
   {
+    // The bridge stays alive without a serial device so vision can be tested on dev machines.
     fd_ = ::open(port_.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (fd_ < 0) {
       RCLCPP_WARN(
@@ -106,6 +112,7 @@ public:
   bool send_vision_data(
     float pitch, float yaw, int fire_mode, int target_state, int target_type)
   {
+    // The STM32 protocol expects pitch before yaw in the float payload.
     if (!connected_ || fd_ < 0) {
       return false;
     }

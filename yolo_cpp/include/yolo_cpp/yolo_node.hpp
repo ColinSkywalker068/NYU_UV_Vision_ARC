@@ -20,28 +20,47 @@
 namespace yolo_cpp
 {
 
+/// Legacy image-subscriber YOLO node retained for comparison with the modular stack.
 class YOLO_CPP_PUBLIC YoloNode : public rclcpp::Node
 {
 public:
+  /// Create the image subscription, detector wrapper, and command publishers.
   explicit YoloNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
   ~YoloNode() override = default;
 
 private:
+  /// Update enemy-color targeting from robot id.
   void id_listener_callback(const std_msgs::msg::Int32::SharedPtr msg);
+
+  /// Decode and process one subscribed image.
   void image_callback(sensor_msgs::msg::Image::ConstSharedPtr msg);
 
+  /// Convert a ROS Image into an OpenCV matrix supported by the detector.
   cv::Mat decode_frame(const sensor_msgs::msg::Image & msg);
+
+  /// Convert detector outputs into source-image candidates.
   std::vector<Candidate> extract_candidates(
     const std::vector<Detection> & detections, const LetterboxResult & lb) const;
+  /// Sort candidates by target preference.
   std::vector<Candidate> rank_candidates(std::vector<Candidate> candidates) const;
+
+  /// Select the best candidate for immediate 2D aiming.
   std::optional<Candidate> select_target(const std::vector<Candidate> & candidates) const;
+
+  /// Publish command topics for a selected target.
   void publish_target(const Candidate & target, const LetterboxResult & lb);
+
+  /// Publish command topics for the no-target state.
   void publish_no_target(int src_w, int src_h);
+
+  /// Publish a Kalman-projected target.
   bool publish_kalman_target(
     double xf, double yf, double width, double height, const LetterboxResult & lb,
     const std::optional<float> & obb_angle);
+  /// Update legacy trackers and publish the selected tracked target.
   bool run_kalman_pipeline(
     const std::vector<Candidate> & candidates, double dt, const LetterboxResult & lb);
+  /// Resolve the default model path from package/runtime conventions.
   std::string resolve_default_model_path() const;
 
   DeepStreamDetector detector_;

@@ -12,20 +12,29 @@ namespace yolo_cpp
 
 enum class PixelFormat
 {
+  /// OpenCV-style 8-bit BGR image data.
   kBgr8,
+  /// 8-bit RGB image data.
   kRgb8,
+  /// Packed YUYV camera data.
   kYuyv,
+  /// Unknown or backend-specific format.
   kUnknown
 };
 
 enum class BackingStoreKind
 {
+  /// Standard host memory.
   kHost,
+  /// Page-locked host memory suitable for faster device transfer.
   kPinnedHost,
+  /// Device memory.
   kGpu,
+  /// NVIDIA multimedia buffer memory.
   kNvmm
 };
 
+/// Captured frame plus ownership and transport metadata.
 struct FramePacket
 {
   cv::Mat frame;
@@ -35,8 +44,13 @@ struct FramePacket
   std::string source_id;
   std::shared_ptr<void> owner;
 
+  /// Return frame width in pixels.
   int width() const {return frame.cols;}
+
+  /// Return frame height in pixels.
   int height() const {return frame.rows;}
+
+  /// Return true when no frame data is attached.
   bool empty() const {return frame.empty();}
 };
 

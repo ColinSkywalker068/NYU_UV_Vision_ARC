@@ -18,21 +18,42 @@ namespace yolo_cpp
 
 class SerialTransport;
 
+/// Bridges ROS aim commands to the STM32 Seasky serial protocol.
 class YOLO_CPP_PUBLIC STM32SerialBridgeNode : public rclcpp::Node
 {
 public:
+  /// Open serial transport, subscriptions, publishers, and RX polling timer.
   explicit STM32SerialBridgeNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+
+  /// Flush logs and close serial transport.
   ~STM32SerialBridgeNode() override;
 
 private:
+  /// Update whether the vision stack currently owns aim control.
   void handle_override(const std_msgs::msg::Bool::SharedPtr msg);
+
+  /// Update fire suggestion state from the aim solver.
   void handle_suggest_fire(const std_msgs::msg::Bool::SharedPtr msg);
+
+  /// Cache latest yaw/pitch command and attempt transmission.
   void handle_angles(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
+
+  /// Poll serial RX for attitude frames from the STM32.
   void handle_rx_poll();
+
+  /// Send the latest vision command when transmission is enabled.
   void maybe_send();
+
+  /// Resolve the runtime log directory for serial telemetry.
   std::string resolve_runtime_log_dir() const;
+
+  /// Append one line to the serial runtime log.
   void write_runtime_log_line(const std::string & line);
+
+  /// Log one transmitted command event.
   void log_tx_event(float yaw, float pitch, bool success, int fire_mode);
+
+  /// Log one received attitude/status frame.
   void log_rx_event(
     float yaw, float pitch, float roll, int enemy_color, int work_mode, int bullet_speed,
     int flags_register, int command_id);

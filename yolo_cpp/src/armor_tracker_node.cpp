@@ -1,3 +1,6 @@
+/// @file armor_tracker_node.cpp
+/// @brief Implements ROS bindings around TrackManager and target selection messages.
+
 #include "yolo_cpp/armor_tracker_node.hpp"
 
 #include "cv_auto_aim_interfaces/msg/armor.hpp"
@@ -20,6 +23,7 @@ namespace yolo_cpp
 namespace
 {
 
+/// Convert internal TrackState values to cv_auto_aim_interfaces constants.
 std::uint8_t to_msg_state(TrackState state)
 {
   switch (state) {
@@ -33,6 +37,7 @@ std::uint8_t to_msg_state(TrackState state)
   return cv_auto_aim_interfaces::msg::TrackedArmor::DETECTING;
 }
 
+/// Convert a tracker observation back to an Armor message for tracked outputs.
 cv_auto_aim_interfaces::msg::Armor make_armor_message(const TrackObservation & observation)
 {
   cv_auto_aim_interfaces::msg::Armor armor;
@@ -71,6 +76,7 @@ cv_auto_aim_interfaces::msg::Armor make_armor_message(const TrackObservation & o
   return armor;
 }
 
+/// Convert an Armor message into the normalized tracker observation type.
 TrackObservation make_track_observation(const cv_auto_aim_interfaces::msg::Armor & armor)
 {
   const int x1 = armor.bbox_xyxy[0];
@@ -109,6 +115,7 @@ TrackObservation make_track_observation(const cv_auto_aim_interfaces::msg::Armor
 
 }  // namespace
 
+/// Declare tracker parameters and wire detector input to tracked output topics.
 ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("armor_tracker_node", options)
 {
@@ -164,6 +171,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
 
 void ArmorTrackerNode::armors_callback(const cv_auto_aim_interfaces::msg::Armors::SharedPtr msg)
 {
+  // Keep association state under a mutex because color-control callbacks can update target class.
   std::lock_guard<std::mutex> lock(state_mutex_);
 
   rclcpp::Time stamp(msg->header.stamp);

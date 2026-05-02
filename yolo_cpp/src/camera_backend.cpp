@@ -1,3 +1,6 @@
+/// @file camera_backend.cpp
+/// @brief Implements Basler, RealSense, and unsupported camera backend selection.
+
 #include "yolo_cpp/camera_backend.hpp"
 
 #include <opencv2/imgproc.hpp>
@@ -27,6 +30,7 @@ namespace yolo_cpp
 namespace
 {
 
+/// Placeholder backend that reports missing optional SDK support at runtime.
 class UnsupportedCameraBackend : public CameraBackend
 {
 public:
@@ -53,6 +57,7 @@ private:
 };
 
 #ifdef HAVE_LIBREALSENSE2
+/// Map a launch/config format name to a RealSense SDK pixel format.
 rs2_format format_by_name(const std::string & name)
 {
   if (name == "bgr8") {
@@ -64,6 +69,7 @@ rs2_format format_by_name(const std::string & name)
   return RS2_FORMAT_YUYV;
 }
 
+/// RealSense color-stream backend with optional polling and color conversion.
 class RealSenseBackend final : public CameraBackend
 {
 public:
@@ -167,6 +173,7 @@ public:
   }
 
 private:
+  /// Pick the highest usable color FPS and preferred format for the requested resolution.
   void discover_best_stream(const rs2::context & ctx)
   {
     static const std::vector<std::string> preferred_formats{"bgr8", "rgb8", "yuyv"};
@@ -215,6 +222,7 @@ private:
     }
   }
 
+  /// Apply exposure, gain, and white-balance controls supported by the active device.
   void configure_sensor()
   {
     auto device = profile_.get_device();
@@ -260,6 +268,7 @@ private:
 #endif
 
 #ifdef HAVE_PYLON
+/// Basler Pylon backend that owns SDK initialization and BGR conversion.
 class BaslerBackend final : public CameraBackend
 {
 public:

@@ -17,17 +17,28 @@
 namespace yolo_cpp
 {
 
+/// Converts selected targets into yaw/pitch commands and fire suggestions.
 class YOLO_CPP_PUBLIC AimSolverNode : public rclcpp::Node
 {
 public:
+  /// Create solver subscriptions and command publishers.
   explicit AimSolverNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
   ~AimSolverNode() override = default;
 
 private:
+  /// Solve and publish aim output for one target message.
   void handle_target(const cv_auto_aim_interfaces::msg::Target::SharedPtr msg);
+
+  /// Update measured robot attitude and bullet speed.
   void handle_attitude(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
+
+  /// Update controller-provided flags used by solver behavior.
   void handle_attitude_flags(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
+
+  /// Publish an explicit no-target command state.
   void publish_no_target(int image_width, int image_height);
+
+  /// Compute yaw/pitch from target pose, velocity, latency, and ballistic settings.
   std::pair<float, float> solve_3d_angles(
     const cv_auto_aim_interfaces::msg::Target & target, float * flight_time, float * range) const;
 

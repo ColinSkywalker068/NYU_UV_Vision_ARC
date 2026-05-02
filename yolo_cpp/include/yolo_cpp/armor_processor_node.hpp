@@ -20,9 +20,11 @@
 namespace yolo_cpp
 {
 
+/// Filters selected tracks in 3D space and observes spin behavior before solving aim.
 class YOLO_CPP_PUBLIC ArmorProcessorNode : public rclcpp::Node
 {
 public:
+  /// Create the processor, TF listener, and publishers.
   explicit ArmorProcessorNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
   ~ArmorProcessorNode() override = default;
 
@@ -48,13 +50,23 @@ private:
     geometry_msgs::msg::Point last_jump_position;
   };
 
+  /// Select and filter the best tracked armor from one tracker frame.
   void handle_tracks(const cv_auto_aim_interfaces::msg::TrackedArmors::SharedPtr msg);
+
+  /// Transform a camera-frame point into the configured target frame.
   bool transform_point(
     const std_msgs::msg::Header & header, const geometry_msgs::msg::Point & point,
     geometry_msgs::msg::Point & transformed);
+  /// Update the position/velocity filter with a measured target point.
   void update_filter(int track_id, const rclcpp::Time & stamp, const geometry_msgs::msg::Point & measurement);
+
+  /// Advance filter state when the selected target is coasting.
   void predict_without_measurement(const rclcpp::Time & stamp);
+
+  /// Annotate the target with spin-following and fire-suggestion state.
   void apply_spin_observer(cv_auto_aim_interfaces::msg::Target & target);
+
+  /// Publish visualization markers for the selected processed target.
   void publish_markers(const cv_auto_aim_interfaces::msg::Target & target);
 
   std::string target_frame_{"shooter_link"};

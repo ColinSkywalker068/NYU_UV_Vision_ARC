@@ -1,3 +1,5 @@
+"""Launch a RealSense-only detector, tracker, processor, and solver stack."""
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
@@ -5,6 +7,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description() -> LaunchDescription:
+    """Create the lightweight RealSense auto-aim launch graph."""
     default_model_path = (
         "/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.engine"
     )

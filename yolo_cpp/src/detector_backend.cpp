@@ -1,3 +1,6 @@
+/// @file detector_backend.cpp
+/// @brief Implements native TensorRT detector loading, preprocessing, inference, and fallback.
+
 #include "yolo_cpp/detector_backend.hpp"
 #include "yolo_cpp/detection_postprocess.hpp"
 
@@ -29,12 +32,14 @@ namespace yolo_cpp
 namespace
 {
 
+/// Clamp a value into an inclusive range.
 template<typename T>
 T clamp_value(T value, T lo, T hi)
 {
   return std::max(lo, std::min(value, hi));
 }
 
+/// Convert float32 to IEEE 754 half bits for FP16 input buffers.
 std::uint16_t float_to_half_bits(float value)
 {
   std::uint32_t bits = 0;
@@ -61,6 +66,7 @@ std::uint16_t float_to_half_bits(float value)
     sign | (static_cast<std::uint32_t>(exponent) << 10) | (mantissa >> 13));
 }
 
+/// Convert IEEE 754 half bits back to float32.
 float half_bits_to_float(std::uint16_t value)
 {
   const std::uint32_t sign = (static_cast<std::uint32_t>(value & 0x8000U)) << 16;
@@ -92,6 +98,7 @@ float half_bits_to_float(std::uint16_t value)
   return result;
 }
 
+/// Letterbox, normalize, and pack a BGR frame into a TensorRT input buffer.
 void preprocess_bgr_frame(
   const FramePacket & packet, float * host_input, int dst_w, int dst_h,
   LetterboxMetadata & metadata)
@@ -128,6 +135,7 @@ void preprocess_bgr_frame(
 }
 
 #ifdef HAVE_TENSORRT
+/// Deleter for TensorRT objects that are released with delete in this API version.
 template<typename T>
 struct TrtDeleter
 {
@@ -137,6 +145,7 @@ struct TrtDeleter
   }
 };
 
+/// Bridges TensorRT logger callbacks into ROS logging.
 class TrtLogger : public nvinfer1::ILogger
 {
 public:
@@ -155,6 +164,7 @@ private:
   rclcpp::Logger logger_;
 };
 
+/// Throw a runtime_error when a CUDA API call fails.
 void throw_if_cuda_failed(cudaError_t status, const char * what)
 {
   if (status != cudaSuccess) {
@@ -165,6 +175,7 @@ void throw_if_cuda_failed(cudaError_t status, const char * what)
 
 }  // namespace
 
+/// Optional TensorRT implementation state hidden from builds without TensorRT headers.
 struct NativeTensorRTBackend::Impl
 {
 #ifdef HAVE_TENSORRT
@@ -233,6 +244,7 @@ namespace
 {
 
 #ifdef HAVE_TENSORRT
+/// Convert TensorRT dimensions into a standard vector.
 std::vector<int64_t> dims_to_vector(const nvinfer1::Dims & dims)
 {
   std::vector<int64_t> result;
@@ -243,6 +255,7 @@ std::vector<int64_t> dims_to_vector(const nvinfer1::Dims & dims)
   return result;
 }
 
+/// Return the element volume for a fully specified tensor shape.
 int64_t volume_of(const std::vector<int64_t> & shape)
 {
   int64_t volume = 1;
@@ -255,6 +268,7 @@ int64_t volume_of(const std::vector<int64_t> & shape)
   return volume;
 }
 
+/// Resolve dynamic batch/spatial dimensions for this package's fixed-size inference path.
 std::vector<int64_t> resolve_runtime_shape(
   const std::vector<int64_t> & shape, int img_h, int img_w)
 {
@@ -291,6 +305,7 @@ NativeTensorRTBackend::~NativeTensorRTBackend() = default;
 
 void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
 {
+  // Metadata is read first so class count, task, and NMS behavior are known before allocation.
   if (initialized_) {
     return;
   }

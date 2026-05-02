@@ -3,7 +3,7 @@
 <package format="3">
   <name>yolo_cpp</name>
   <version>0.1.0</version>
-  <description>C++ ROS 2 implementation of the CV detection pipeline.</description>
+  <description>ROS 2 C++ auto-aim pipeline for camera capture, YOLO armor detection, tracking, ballistic aim solving, and STM32 serial output.</description>
   <maintainer email="shubhamgupto@gmail.com">parallels</maintainer>
   <license>TODO: License declaration</license>
 

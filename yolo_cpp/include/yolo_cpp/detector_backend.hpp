@@ -18,15 +18,23 @@ namespace yolo_cpp
 
 struct Detection
 {
+  /// Bounding box in letterboxed model coordinates.
   cv::Rect bbox_model;
+  /// Detector confidence after class/objectness decoding.
   float confidence{0.0F};
+  /// Model class id, usually color/team-specific for this project.
   int class_id{0};
+  /// Optional model-provided track id from end-to-end exports.
   std::optional<int> track_id;
+  /// Optional oriented-box angle in radians.
   std::optional<float> obb_angle;
+  /// True when corners_model contains valid oriented-box corners.
   bool has_corners{false};
+  /// Oriented armor corners in model coordinates.
   std::array<cv::Point2f, 4> corners_model{};
 };
 
+/// Per-stage timing emitted by detector backends for runtime logs.
 struct DetectorStageTimings
 {
   double preprocess_ms{0.0};
@@ -36,25 +44,41 @@ struct DetectorStageTimings
   double parse_ms{0.0};
 };
 
+/// Detections plus the letterbox transform needed to return to source pixels.
 struct DetectionBatch
 {
   std::vector<Detection> detections;
   LetterboxMetadata letterbox;
 };
 
+/// Common interface for native TensorRT and DeepStream detector implementations.
 class DetectorBackend
 {
 public:
   virtual ~DetectorBackend() = default;
+
+  /// Run inference for one frame packet.
+  ///
+  /// Args:
+  ///   packet: Captured frame and source metadata.
+  ///   logger: ROS logger for diagnostics.
+  ///   timings: Optional timing sink populated by the backend.
+  ///
+  /// Returns:
+  ///   Detection batch in model coordinates with letterbox metadata.
   virtual DetectionBatch infer(
     const FramePacket & packet, const rclcpp::Logger & logger,
     DetectorStageTimings * timings = nullptr) = 0;
+
+  /// Return a stable backend name for logs and debug output.
   virtual const std::string & backend_name() const = 0;
 };
 
+/// TensorRT detector backend that loads a serialized YOLO engine directly.
 class NativeTensorRTBackend final : public DetectorBackend
 {
 public:
+  /// Configure a native TensorRT backend.
   NativeTensorRTBackend(
     std::string model_path, std::string task, std::string model_type, bool half,
     float conf_threshold);
@@ -86,9 +110,11 @@ private:
   std::unique_ptr<Impl> impl_;
 };
 
+/// DeepStream-compatible backend facade with a native TensorRT fallback path.
 class DeepStreamBackend final : public DetectorBackend
 {
 public:
+  /// Configure a DeepStream-backed detector.
   DeepStreamBackend(
     std::string model_path, std::string task, std::string model_type, bool half,
     float conf_threshold);
@@ -104,6 +130,7 @@ private:
   std::string backend_name_{"deepstream_fallback"};
 };
 
+/// Create a detector backend from a launch/configured backend kind.
 std::unique_ptr<DetectorBackend> create_detector_backend(
   const std::string & backend_kind, const std::string & model_path, const std::string & task,
   const std::string & model_type, bool half, float conf_threshold);

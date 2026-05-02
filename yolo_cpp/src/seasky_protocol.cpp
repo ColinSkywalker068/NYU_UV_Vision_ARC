@@ -1,3 +1,6 @@
+/// @file seasky_protocol.cpp
+/// @brief Implements Seasky serial framing, CRCs, flags, and attitude parsing.
+
 #include "yolo_cpp/seasky_protocol.hpp"
 
 #include <algorithm>
@@ -29,18 +32,21 @@ constexpr int SEASKY_TAIL_SIZE_BYTES = 2;
 constexpr int SEASKY_MIN_DATA_LENGTH = 4;
 constexpr int SEASKY_MAX_DATA_LENGTH = 128;
 
+/// Append a little-endian uint16 field to a byte vector.
 void append_u16(std::vector<uint8_t> & data, uint16_t value)
 {
   data.push_back(static_cast<uint8_t>(value & 0xFF));
   data.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
 }
 
+/// Read a little-endian uint16 field from a byte vector.
 uint16_t read_u16(const std::vector<uint8_t> & data, std::size_t offset)
 {
   return static_cast<uint16_t>(data[offset]) |
          (static_cast<uint16_t>(data[offset + 1]) << 8);
 }
 
+/// Decode enemy color, work mode, and bullet speed from an attitude flags register.
 std::tuple<int, int, int> parse_attitude_flags(uint16_t flags_register)
 {
   const int enemy_color = flags_register & FLAG_ENEMY_COLOR_MASK;
@@ -120,6 +126,7 @@ std::vector<uint8_t> build_seasky_frame(
 
 std::vector<AttitudeFrame> parse_attitude_frames(std::vector<uint8_t> & rx_buffer)
 {
+  // Keep incomplete trailing bytes in rx_buffer so the next serial read can complete a frame.
   std::vector<AttitudeFrame> parsed_frames;
 
   while (true) {

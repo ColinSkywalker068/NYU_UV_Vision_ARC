@@ -1,3 +1,6 @@
+/// @file perception_node.cpp
+/// @brief Implements the legacy combined camera, detector, tracker, and 2D aim node.
+
 #include "yolo_cpp/perception_node.hpp"
 
 #include <opencv2/highgui.hpp>
@@ -36,6 +39,7 @@ constexpr int kPreviewMaxWidth = 1280;
 constexpr int kPreviewMaxHeight = 720;
 constexpr char kVisionLogDirName[] = "vision_logs";
 
+/// Return local wall-clock time formatted for human-readable runtime logs.
 std::string timestamp_now_iso8601_ms()
 {
   const auto now = std::chrono::system_clock::now();
@@ -56,6 +60,7 @@ std::string timestamp_now_iso8601_ms()
   return out.str();
 }
 
+/// Return compact local wall-clock time suitable for log file names.
 std::string timestamp_now_compact()
 {
   const auto now = std::chrono::system_clock::now();
@@ -72,6 +77,7 @@ std::string timestamp_now_compact()
   return out.str();
 }
 
+/// Copy an internal BGR frame packet into a ROS Image message.
 sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
   const FramePacket & packet, const rclcpp::Time & stamp)
 {
@@ -95,6 +101,7 @@ sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
 
 }  // namespace
 
+/// Declare parameters and start the combined legacy perception pipeline.
 PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("perception_node", options)
 {
@@ -369,6 +376,7 @@ void PerceptionNode::process_detection_cycle(
   const DetectorStageTimings & detector_timings,
   double capture_ms)
 {
+  // The combined node keeps direct command topics alive while the modular stack evolves.
   std::lock_guard<std::mutex> lock(state_mutex_);
   if (debug_publish_image_raw_ && packet != nullptr) {
     publish_debug_image(*packet);
@@ -526,6 +534,7 @@ void PerceptionNode::render_preview(
 std::vector<Candidate> PerceptionNode::extract_candidates(
   const DetectionBatch & batch, const FramePacket * packet, double * color_ms) const
 {
+  // Convert model-space detections back to source pixels before ranking and optional tracking.
   std::vector<Candidate> candidates;
   candidates.reserve(batch.detections.size());
   for (const auto & detection : batch.detections) {

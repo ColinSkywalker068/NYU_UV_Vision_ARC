@@ -18,6 +18,7 @@ namespace yolo_cpp
 
 struct CameraConfig
 {
+  /// Backend selector: "basler" or "realsense".
   std::string camera_type{"basler"};
   int imgsz_width{640};
   int imgsz_height{640};
@@ -39,20 +40,36 @@ struct CameraConfig
   bool realsense_use_max_native_fps{false};
 };
 
+/// Common camera capture interface used by detector and perception nodes.
 class CameraBackend
 {
 public:
   virtual ~CameraBackend() = default;
+
+  /// Open the camera and configure hardware parameters.
   virtual void initialize() = 0;
+
+  /// Capture a frame into packet.
+  ///
+  /// Returns:
+  ///   True when packet contains a usable frame.
   virtual bool capture(FramePacket & packet) = 0;
+
+  /// Release device resources.
   virtual void release() = 0;
+
+  /// Return measured or configured source FPS.
   virtual double actual_fps() const = 0;
+
+  /// Return a stable source id such as "basler" or "realsense".
   virtual const std::string & source_id() const = 0;
 };
 
+/// Create the configured camera backend.
 std::shared_ptr<CameraBackend> create_camera_backend(
   const CameraConfig & config, const rclcpp::Logger & logger);
 
+/// Load camera-related ROS parameters from a node into CameraConfig.
 CameraConfig load_camera_config(rclcpp::Node & node);
 
 }  // namespace yolo_cpp

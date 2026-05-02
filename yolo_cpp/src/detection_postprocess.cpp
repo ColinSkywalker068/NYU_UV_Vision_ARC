@@ -1,3 +1,6 @@
+/// @file detection_postprocess.cpp
+/// @brief Parses YOLO/TensorRT outputs, metadata, corners, and NMS into detections.
+
 #include "yolo_cpp/detection_postprocess.hpp"
 
 #include <opencv2/imgproc.hpp>
@@ -27,12 +30,14 @@ namespace
 constexpr float kNmsIouThreshold = 0.45F;
 constexpr float kPi = 3.14159265358979323846F;
 
+/// Clamp a value into an inclusive range.
 template<typename T>
 T clamp_value(T value, T lo, T hi)
 {
   return std::max(lo, std::min(value, hi));
 }
 
+/// Read an engine/model file as binary data.
 std::string read_file(const std::string & path)
 {
   std::ifstream stream(path, std::ios::binary);
@@ -44,6 +49,7 @@ std::string read_file(const std::string & path)
   return contents.str();
 }
 
+/// Extract Ultralytics-style JSON metadata prefix from an engine file.
 std::optional<std::string> extract_engine_metadata(const std::string & data)
 {
   if (data.size() < sizeof(std::uint32_t)) {
@@ -62,6 +68,7 @@ std::optional<std::string> extract_engine_metadata(const std::string & data)
   return metadata;
 }
 
+/// Return the offset where serialized TensorRT plan bytes begin after metadata.
 std::size_t engine_plan_offset(const std::string & data)
 {
   if (data.size() < sizeof(std::uint32_t)) {
@@ -81,6 +88,7 @@ std::size_t engine_plan_offset(const std::string & data)
   return plan_offset;
 }
 
+/// Extract a simple JSON string value without pulling in a JSON dependency.
 std::optional<std::string> extract_json_string_value(
   const std::string & json, const std::string & key)
 {
@@ -101,6 +109,7 @@ std::optional<std::string> extract_json_string_value(
   return json.substr(first_quote + 1, second_quote - first_quote - 1);
 }
 
+/// Parse the model class-name map from lightweight metadata JSON.
 std::unordered_map<int, std::string> extract_names(const std::string & json)
 {
   std::unordered_map<int, std::string> names;
@@ -170,6 +179,7 @@ std::unordered_map<int, std::string> extract_names(const std::string & json)
   return names;
 }
 
+/// Extract a simple JSON bool value without pulling in a JSON dependency.
 std::optional<bool> extract_json_bool_value(const std::string & json, const std::string & key)
 {
   const std::string needle = "\"" + key + "\"";
@@ -194,6 +204,7 @@ std::optional<bool> extract_json_bool_value(const std::string & json, const std:
   return std::nullopt;
 }
 
+/// Internal candidate representation before conversion to public Detection messages.
 struct ParsedCandidate
 {
   float cx{0.0F};
@@ -205,6 +216,7 @@ struct ParsedCandidate
   int class_id{0};
 };
 
+/// Normalize YOLO OBB width/height/angle to OpenCV's rotated rectangle convention.
 cv::RotatedRect regularize_rbox(const ParsedCandidate & candidate, float * normalized_angle)
 {
   float width = candidate.width;
@@ -223,6 +235,7 @@ cv::RotatedRect regularize_rbox(const ParsedCandidate & candidate, float * norma
     angle * 180.0F / kPi);
 }
 
+/// Compute IoU for oriented boxes using OpenCV polygon intersection.
 float rotated_iou(const ParsedCandidate & lhs, const ParsedCandidate & rhs)
 {
   float lhs_angle = 0.0F;
@@ -242,6 +255,7 @@ float rotated_iou(const ParsedCandidate & lhs, const ParsedCandidate & rhs)
   return intersection_area / union_area;
 }
 
+/// Run class-aware non-maximum suppression for oriented boxes.
 std::vector<ParsedCandidate> rotated_nms(
   std::vector<ParsedCandidate> candidates, float iou_threshold, int max_det)
 {
@@ -274,6 +288,7 @@ std::vector<ParsedCandidate> rotated_nms(
   return kept;
 }
 
+/// Compute IoU for center-format axis-aligned boxes.
 float axis_aligned_iou(const ParsedCandidate & lhs, const ParsedCandidate & rhs)
 {
   const float lhs_x1 = lhs.cx - (lhs.width * 0.5F);
@@ -299,6 +314,7 @@ float axis_aligned_iou(const ParsedCandidate & lhs, const ParsedCandidate & rhs)
   return inter_area / union_area;
 }
 
+/// Run class-aware non-maximum suppression for axis-aligned boxes.
 std::vector<ParsedCandidate> axis_aligned_nms(
   std::vector<ParsedCandidate> candidates, float iou_threshold, int max_det)
 {

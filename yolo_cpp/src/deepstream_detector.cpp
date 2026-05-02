@@ -1,3 +1,6 @@
+/// @file deepstream_detector.cpp
+/// @brief Provides the legacy detector wrapper around the native TensorRT backend.
+
 #include "yolo_cpp/deepstream_detector.hpp"
 
 namespace yolo_cpp
@@ -14,6 +17,7 @@ DeepStreamDetector::DeepStreamDetector(
 std::vector<Detection> DeepStreamDetector::infer(
   const cv::Mat & frame, const rclcpp::Logger & logger)
 {
+  // Adapt the old cv::Mat API into the newer FramePacket detector backend API.
   FramePacket packet{};
   packet.frame = frame;
   packet.pixel_format = PixelFormat::kBgr8;

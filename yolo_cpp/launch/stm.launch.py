@@ -1,3 +1,5 @@
+"""Launch the full camera-to-STM32 auto-aim stack."""
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -6,6 +8,7 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description() -> LaunchDescription:
+    """Create the complete detector, tracker, processor, solver, and serial bridge graph."""
     default_model_path = (
         "/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.engine"
     )

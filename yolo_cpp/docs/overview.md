@@ -1,6 +1,6 @@
 # yolo_cpp Overview
 
-Related pages: [Pipeline](./pipeline.md) | [Nodes](./nodes.md) | [Interfaces](./interfaces.md) | [Legacy Pipeline Notes](./legacy-pipeline-notes.md) | [Launch and Config](./launch-and-config.md) | [Development Notes](./development-notes.md)
+Related pages: [Pipeline](./pipeline.md) | [Nodes](./nodes.md) | [Interfaces](./interfaces.md) | [Legacy Pipeline Notes](./legacy-pipeline-notes.md) | [Launch and Config](./launch-and-config.md) | [Development Notes](./development-notes.md) | [Documentation Coverage](./documentation-coverage.md)
 
 `yolo_cpp` is the active C++ ROS 2 package for the vision pipeline. It owns the live detector, tracker, processor, solver, and STM bridge path that the team runs today, plus an older combined perception node that still exists for comparison and zero-copy experiments.
 

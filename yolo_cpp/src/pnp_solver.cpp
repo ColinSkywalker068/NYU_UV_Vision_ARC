@@ -1,3 +1,6 @@
+/// @file pnp_solver.cpp
+/// @brief Implements armor-plane object points and OpenCV solvePnP pose conversion.
+
 #include "yolo_cpp/pnp_solver.hpp"
 
 #include <opencv2/calib3d.hpp>
@@ -11,6 +14,7 @@ namespace yolo_cpp
 namespace
 {
 
+/// Build the 3D corner template for an armor plate centered on the origin.
 std::vector<cv::Point3f> make_armor_points(double width_m, double height_m)
 {
   const auto half_x = static_cast<float>(width_m / 2.0);
@@ -22,6 +26,7 @@ std::vector<cv::Point3f> make_armor_points(double width_m, double height_m)
     cv::Point3f(half_x, half_y, 0.0F)};
 }
 
+/// Convert an OpenCV rotation matrix into a geometry_msgs quaternion.
 void rotation_matrix_to_quaternion(const cv::Mat & rotation, geometry_msgs::msg::Pose & pose)
 {
   const double m00 = rotation.at<double>(0, 0);
@@ -80,6 +85,7 @@ bool ArmorPnPSolver::solve(
   const std::array<cv::Point2f, 4> & image_points, int armor_type,
   geometry_msgs::msg::Pose & pose) const
 {
+  // SOLVEPNP_IPPE is appropriate for planar rectangular armor targets.
   const auto & object_points = armor_type == 1 ? large_armor_points_ : small_armor_points_;
   cv::Mat camera_matrix(camera_model_.camera_matrix);
   cv::Mat dist_coeffs(camera_model_.distortion_coefficients, true);

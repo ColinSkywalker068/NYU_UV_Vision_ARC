@@ -3,7 +3,7 @@
 <package format="3">
   <name>cv_auto_aim_interfaces</name>
   <version>0.1.0</version>
-  <description>Custom ROS 2 interfaces for the C++ auto-aim detector, tracker, and solver pipeline.</description>
+  <description>Custom ROS 2 messages that describe armor detections, tracks, selected targets, spin state, and aim solutions for the C++ auto-aim pipeline.</description>
   <maintainer email="shubhamgupto@gmail.com">parallels</maintainer>
   <license>TODO: License declaration</license>
 

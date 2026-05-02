@@ -1,3 +1,6 @@
+/// @file armor_detector_node.cpp
+/// @brief Implements camera capture, YOLO armor detection, color filtering, and Armor messages.
+
 #include "yolo_cpp/armor_detector_node.hpp"
 
 #include "cv_auto_aim_interfaces/msg/armor.hpp"
@@ -35,6 +38,7 @@ constexpr int kPreviewMaxHeight = 720;
 constexpr char kVisionLogDirName[] = "vision_logs";
 constexpr double kPi = 3.14159265358979323846;
 
+/// Return local wall-clock time formatted for human-readable runtime logs.
 std::string timestamp_now_iso8601_ms()
 {
   const auto now = std::chrono::system_clock::now();
@@ -55,6 +59,7 @@ std::string timestamp_now_iso8601_ms()
   return out.str();
 }
 
+/// Return compact local wall-clock time suitable for log file names.
 std::string timestamp_now_compact()
 {
   const auto now = std::chrono::system_clock::now();
@@ -71,6 +76,7 @@ std::string timestamp_now_compact()
   return out.str();
 }
 
+/// Copy an internal BGR frame packet into a ROS Image message.
 sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
   const FramePacket & packet, const rclcpp::Time & stamp)
 {
@@ -94,6 +100,7 @@ sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
 
 }  // namespace
 
+/// Declare parameters, choose the inference runtime, and start capture processing.
 ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("armor_detector_node", options)
 {
@@ -460,6 +467,8 @@ void ArmorDetectorNode::process_detection_cycle(
   const DetectorStageTimings & detector_timings,
   double capture_ms)
 {
+  // This is the detector's central data boundary: model outputs become candidates,
+  // optional debug images, runtime telemetry, and ROS interface messages.
   std::lock_guard<std::mutex> lock(state_mutex_);
   const auto stamp = this->get_clock()->now();
   if (debug_publish_image_raw_ && packet != nullptr) {
@@ -659,6 +668,8 @@ void ArmorDetectorNode::render_preview(
 std::vector<Candidate> ArmorDetectorNode::extract_candidates(
   const DetectionBatch & batch, const FramePacket * packet, double * color_ms) const
 {
+  // Rebuild source coordinates before color checks so downstream nodes never need to know
+  // the model letterbox transform.
   std::vector<Candidate> candidates;
   candidates.reserve(batch.detections.size());
   for (const auto & detection : batch.detections) {

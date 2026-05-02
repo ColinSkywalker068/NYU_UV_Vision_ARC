@@ -26,10 +26,14 @@
 namespace yolo_cpp
 {
 
+/// Captures camera frames, runs armor detection, validates color, and publishes candidates.
 class YOLO_CPP_PUBLIC ArmorDetectorNode : public rclcpp::Node
 {
 public:
+  /// Create the detector node and initialize the configured camera/inference pipeline.
   explicit ArmorDetectorNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+
+  /// Release camera, detector, DeepStream, and log resources.
   ~ArmorDetectorNode() override;
 
 private:
@@ -54,39 +58,80 @@ private:
     int image_height{0};
   };
 
+  /// Update enemy-color targeting from the robot id topic.
   void id_listener_callback(const std_msgs::msg::Int32::SharedPtr msg);
+
+  /// Update controller-provided targeting flags such as enemy color lock.
   void handle_attitude_flags(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
+
+  /// Cache calibrated camera intrinsics for PnP pose solving.
   void handle_camera_info(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
+
+  /// Capture and process one frame in the native synchronous pipeline.
   void timer_callback();
+
+  /// Process one asynchronous DeepStream result.
   void handle_deepstream_result(DeepStreamRuntime::Result result);
+
+  /// Create the native camera and detector backends.
   void initialize_native_pipeline();
+
+  /// Create and start the DeepStream runtime.
   void initialize_deepstream_runtime();
+
+  /// Convert detections into candidates, publish messages, previews, and timing logs.
   void process_detection_cycle(
     const DetectionBatch & batch,
     const FramePacket * packet,
     const DetectorStageTimings & detector_timings,
     double capture_ms);
+  /// Publish a cv_auto_aim_interfaces/Armors message for detector output.
   void publish_armors(
     const std::vector<Candidate> & candidates,
     const std::string & source_id,
     const rclcpp::Time & stamp,
     int image_width,
     int image_height);
+  /// Solve a camera-frame pose for a candidate when corners and intrinsics are available.
   std::optional<geometry_msgs::msg::Pose> solve_candidate_pose(
     const Candidate & candidate, int image_width, int image_height);
+  /// Build PnP calibration from static parameters when CameraInfo is unavailable.
   void configure_static_camera_model();
+
+  /// Create a pinhole camera model from configured horizontal/vertical FOV.
   PnPCameraModel make_fov_camera_model(int image_width, int image_height) const;
+
+  /// Publish a ROS debug image for downstream visualization.
   void publish_debug_image(const FramePacket & packet, const rclcpp::Time & stamp);
+
+  /// Render the optional OpenCV preview window.
   void render_preview(const FramePacket & packet, const std::vector<Candidate> & candidates);
+
+  /// Apply letterbox reversal, color filtering, and candidate shaping.
   std::vector<Candidate> extract_candidates(
     const DetectionBatch & batch, const FramePacket * packet, double * color_ms) const;
+  /// Resolve the default model path from package/runtime conventions.
   std::string resolve_default_model_path() const;
+
+  /// Resolve the default DeepStream nvinfer config path.
   std::string resolve_default_deepstream_config_path() const;
+
+  /// Resolve the directory used for runtime CSV-style logs.
   std::string resolve_runtime_log_dir() const;
+
+  /// Append one line to the runtime log when logging is configured.
   void write_runtime_log_line(const std::string & line);
+
+  /// Write a structured runtime note to ROS logs and the runtime log file.
   void log_runtime_note(const std::string & level, const std::string & message);
+
+  /// Emit an FPS log once per wall-clock second.
   void log_runtime_fps_once_per_second();
+
+  /// Log a target/color-verification event for offline tuning.
   void log_runtime_opponent_event(const Candidate & target, bool color_pass, double latency_ms);
+
+  /// Periodically log accumulated stage timings.
   void log_stage_timing();
 
   std::shared_ptr<CameraBackend> camera_backend_;

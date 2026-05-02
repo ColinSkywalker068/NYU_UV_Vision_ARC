@@ -14,9 +14,11 @@
 namespace yolo_cpp
 {
 
+/// Owns the asynchronous DeepStream capture/inference runtime.
 class DeepStreamRuntime
 {
 public:
+  /// Runtime configuration derived from ROS parameters and package defaults.
   struct Config
   {
     std::string model_path;
@@ -35,6 +37,7 @@ public:
     std::string source_id{"basler"};
   };
 
+  /// One completed DeepStream inference callback payload.
   struct Result
   {
     DetectionBatch batch;
@@ -43,14 +46,17 @@ public:
     double capture_ms{0.0};
   };
 
+  /// Callback invoked from the runtime whenever a frame has detections.
   using ResultCallback = std::function<void(Result &&)>;
 
+  /// Start the DeepStream runtime and deliver results to callback.
   DeepStreamRuntime(
     rclcpp::Logger logger,
     Config config,
     ResultCallback callback);
   ~DeepStreamRuntime();
 
+  /// Return the backend name used in logs.
   const std::string & backend_name() const;
 
 private:

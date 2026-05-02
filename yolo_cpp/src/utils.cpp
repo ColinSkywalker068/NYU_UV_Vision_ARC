@@ -1,3 +1,6 @@
+/// @file utils.cpp
+/// @brief Implements color/team helpers, letterbox transforms, angle math, and HSV checks.
+
 #include "yolo_cpp/utils.hpp"
 
 #include <opencv2/imgproc.hpp>
@@ -14,6 +17,7 @@ namespace
 constexpr std::array<int, 11> kRedTeam{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 constexpr std::array<int, 11> kBlueTeam{101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111};
 
+/// Choose a saturation threshold that is stricter for dimmer ROIs.
 int compute_min_saturation(double mean_value_channel)
 {
   if (mean_value_channel >= 200.0) {
@@ -25,6 +29,7 @@ int compute_min_saturation(double mean_value_channel)
   return 120;
 }
 
+/// Choose a minimum value threshold from the ROI brightness.
 int compute_min_value(double mean_value_channel)
 {
   if (mean_value_channel >= 200.0) {
@@ -33,6 +38,7 @@ int compute_min_value(double mean_value_channel)
   return 70;
 }
 
+/// Return true when a robot id appears in a fixed team-id array.
 template<typename ArrayT>
 bool contains_id(const ArrayT & ids, int robot_id)
 {
@@ -162,6 +168,7 @@ std::pair<float, float> calculate_angles(
 
 std::pair<bool, int> check_enemy(const cv::Mat & roi_image, int target_class)
 {
+  // HSV masks are a fallback when model classes are not trusted for team color.
   if (roi_image.empty()) {
     return {false, 0};
   }

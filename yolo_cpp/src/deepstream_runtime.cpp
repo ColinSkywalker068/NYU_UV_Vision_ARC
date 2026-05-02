@@ -1,3 +1,6 @@
+/// @file deepstream_runtime.cpp
+/// @brief Implements the optional asynchronous GStreamer/DeepStream inference runtime.
+
 #include "yolo_cpp/deepstream_runtime.hpp"
 
 #include "yolo_cpp/detection_postprocess.hpp"
@@ -37,6 +40,7 @@ namespace yolo_cpp
 namespace
 {
 
+/// Read a text config template or throw a runtime error with path context.
 std::string read_text_file(const std::string & path)
 {
   std::ifstream stream(path);
@@ -49,6 +53,7 @@ std::string read_text_file(const std::string & path)
   return content;
 }
 
+/// Replace every occurrence of needle with replacement inside text.
 void replace_all(std::string & text, const std::string & needle, const std::string & replacement)
 {
   std::size_t pos = 0;
@@ -59,6 +64,7 @@ void replace_all(std::string & text, const std::string & needle, const std::stri
 }
 
 #if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
+/// Format a GstClockTime for diagnostics without losing GST_CLOCK_TIME_NONE.
 std::string gst_clock_to_string(GstClockTime value)
 {
   if (value == GST_CLOCK_TIME_NONE) {
@@ -67,6 +73,7 @@ std::string gst_clock_to_string(GstClockTime value)
   return std::to_string(static_cast<std::uint64_t>(value));
 }
 
+/// Release a GStreamer request pad and null out the caller's pointer.
 void release_request_pad(GstElement * element, GstPad *& pad)
 {
   if (element == nullptr || pad == nullptr) {
@@ -80,6 +87,7 @@ void release_request_pad(GstElement * element, GstPad *& pad)
 
 }  // namespace
 
+/// Private runtime state because GStreamer and DeepStream headers are optional.
 struct DeepStreamRuntime::Impl
 {
   Impl(rclcpp::Logger logger_in, Config config_in, ResultCallback callback_in)
@@ -135,6 +143,7 @@ struct DeepStreamRuntime::Impl
     stop();
   }
 
+  /// Validate dependencies, materialize config, build the graph, and start worker threads.
   void start()
   {
 #if !defined(HAVE_GSTREAMER) || !defined(HAVE_DEEPSTREAM)
@@ -148,6 +157,7 @@ struct DeepStreamRuntime::Impl
 #endif
   }
 
+  /// Stop workers and release GStreamer objects in reverse ownership order.
   void stop()
   {
 #if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
@@ -191,6 +201,7 @@ struct DeepStreamRuntime::Impl
   }
 
 #if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
+  /// Verify GStreamer/DeepStream elements and read model metadata needed for parsing.
   void validate_runtime()
   {
     GError * error = nullptr;
@@ -229,6 +240,7 @@ struct DeepStreamRuntime::Impl
     }
   }
 
+  /// Render the nvinfer config template into a temporary runtime config file.
   void materialize_config()
   {
     std::string config_text = read_text_file(config.config_template_path);
@@ -248,6 +260,7 @@ struct DeepStreamRuntime::Impl
     stream << config_text;
   }
 
+  /// Create a required GStreamer element or throw with the missing factory name.
   GstElement * make_element(const char * factory, const char * name)
   {
     GstElement * element = gst_element_factory_make(factory, name);

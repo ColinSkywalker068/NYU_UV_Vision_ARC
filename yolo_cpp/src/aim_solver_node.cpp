@@ -1,3 +1,6 @@
+/// @file aim_solver_node.cpp
+/// @brief Implements target-to-yaw/pitch solving and legacy command publication.
+
 #include "yolo_cpp/aim_solver_node.hpp"
 
 #include "yolo_cpp/utils.hpp"
@@ -19,6 +22,7 @@ namespace
 
 constexpr double kPi = 3.14159265358979323846;
 
+/// Convert a fixed xyxy integer box array into an OpenCV rectangle.
 cv::Rect rect_from_xyxy(const std::array<int32_t, 4> & bbox_xyxy)
 {
   const int x1 = bbox_xyxy[0];
@@ -30,6 +34,7 @@ cv::Rect rect_from_xyxy(const std::array<int32_t, 4> & bbox_xyxy)
 
 }  // namespace
 
+/// Declare solver parameters and connect target, attitude, and output topics.
 AimSolverNode::AimSolverNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("aim_solver_node", options)
 {
@@ -85,6 +90,7 @@ AimSolverNode::AimSolverNode(const rclcpp::NodeOptions & options)
 
 void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::SharedPtr msg)
 {
+  // Keep legacy command topics populated even when the richer AimSolution message is used.
   const int image_width = msg->image_width > 0 ? msg->image_width : default_image_width_;
   const int image_height = msg->image_height > 0 ? msg->image_height : default_image_height_;
 
@@ -166,6 +172,7 @@ void AimSolverNode::handle_attitude_flags(const std_msgs::msg::Int32MultiArray::
 std::pair<float, float> AimSolverNode::solve_3d_angles(
   const cv_auto_aim_interfaces::msg::Target & target, float * flight_time, float * range) const
 {
+  // Iterate because target lead depends on flight time, and flight time depends on led range.
   const float speed = std::max(1.0F, bullet_speed_mps_);
   double x = target.pose.position.x;
   double y = target.pose.position.y;

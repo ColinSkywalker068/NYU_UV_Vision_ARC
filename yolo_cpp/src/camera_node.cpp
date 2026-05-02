@@ -1,3 +1,6 @@
+/// @file camera_node.cpp
+/// @brief Implements the legacy raw camera image publisher node.
+
 #include "yolo_cpp/camera_node.hpp"
 
 #include <rclcpp_components/register_node_macro.hpp>
@@ -10,6 +13,7 @@
 namespace yolo_cpp
 {
 
+/// Initialize the selected camera backend and publish frames at the measured FPS.
 CameraNode::CameraNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("camera_node", options),
   last_warning_time_(this->get_clock()->now())
@@ -63,6 +67,7 @@ void CameraNode::publish_no_frame_warning()
 
 sensor_msgs::msg::Image::UniquePtr CameraNode::to_image_message(const FramePacket & packet)
 {
+  // Copy frame data into a ROS-owned message so backend frame owners can be released safely.
   if (packet.empty()) {
     return nullptr;
   }
