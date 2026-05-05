@@ -4,6 +4,8 @@ from pypylon import pylon
 import time
 import sys
 import os
+import threading
+import queue
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -11,6 +13,35 @@ from cv_trackers import EuclideanTracker, KalmanMultiTracker
 
 # --- CONFIGURATION TOGGLE ---
 TRACKER_TYPE = "kalman"
+
+class ThreadedVideoWriter:
+    def __init__(self, filename, fourcc, fps, frameSize):
+        self.writer = cv2.VideoWriter(filename, fourcc, fps, frameSize)
+        self.queue = queue.Queue(maxsize=512)
+        self.thread = threading.Thread(target=self._write_loop, daemon=True)
+        self.running = True
+        self.thread.start()
+
+    def _write_loop(self):
+        while self.running or not self.queue.empty():
+            try:
+                frame = self.queue.get(timeout=0.1)
+                self.writer.write(frame)
+                self.queue.task_done()
+            except queue.Empty:
+                pass
+
+    def write(self, frame):
+        if self.running:
+            try:
+                self.queue.put_nowait(frame)
+            except queue.Full:
+                pass
+
+    def release(self):
+        self.running = False
+        self.thread.join()
+        self.writer.release()
 
 
 class ArmorDetector:
@@ -269,8 +300,10 @@ def main():
 
     dynamic_min_area = 10
     current_best_tid = None
+    frame_count = 0
 
     while True:
+        frame_count += 1
         exp = cv2.getTrackbarPos("Exposure", win_main)
         cth = cv2.getTrackbarPos("ColorThresh", win_main)
         wb_r = cv2.getTrackbarPos("WB Red", win_main) / 10.0
@@ -404,8 +437,9 @@ def main():
             2,
         )
 
-        cv2.imshow(win_main, vis)
-        cv2.imshow(win_bin, binary)
+        if not is_recording or frame_count % 5 == 0:
+            cv2.imshow(win_main, vis)
+            cv2.imshow(win_bin, binary)
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
@@ -418,7 +452,7 @@ def main():
                 )
                 h, w = frame.shape[:2]
                 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                video_writer = cv2.VideoWriter(filename, fourcc, 60.0, (w, h))
+                video_writer = ThreadedVideoWriter(filename, fourcc, 80.0, (w, h))
                 is_recording = True
                 log_str = (
                     f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] RECORDING: {filename}\n"
