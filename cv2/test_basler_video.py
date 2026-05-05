@@ -40,9 +40,13 @@ class ArmorDetector:
                 diff = cv2.subtract(b, penalty)
         else:
             if enemy_color == "red":
-                diff = cv2.subtract(cv2.extractChannel(img, 2), cv2.extractChannel(img, 0))
+                diff = cv2.subtract(
+                    cv2.extractChannel(img, 2), cv2.extractChannel(img, 0)
+                )
             else:
-                diff = cv2.subtract(cv2.extractChannel(img, 0), cv2.extractChannel(img, 2))
+                diff = cv2.subtract(
+                    cv2.extractChannel(img, 0), cv2.extractChannel(img, 2)
+                )
 
         _, binary = cv2.threshold(diff, color_th, 255, cv2.THRESH_BINARY)
         return cv2.dilate(binary, self.kernel, iterations=1)

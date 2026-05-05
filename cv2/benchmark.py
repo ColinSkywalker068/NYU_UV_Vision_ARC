@@ -216,7 +216,7 @@ def main(args):
                 # 3. Algorithm Execution
                 binary = detector.fast_process(img, args.target)
                 armors = detector.get_armor_centers(binary, min_area=dynamic_min_area)
-                
+
                 # Math flip for coordinates only
                 h, w = img.shape[:2]
                 armor_coords = []
