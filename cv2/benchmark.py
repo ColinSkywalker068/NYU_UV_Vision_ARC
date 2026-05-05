@@ -37,8 +37,6 @@ class ThreadedCamera:
                 )
                 if res.GrabSucceeded():
                     img = self.converter.Convert(res).GetArray()
-                    # Hardware is upside down; flip in background thread for usability
-                    img = cv2.flip(img, -1)
                     if self.q.full():
                         try:
                             self.q.get_nowait()
