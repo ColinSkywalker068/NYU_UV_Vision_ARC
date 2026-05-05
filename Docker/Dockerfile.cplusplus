@@ -53,8 +53,8 @@ WORKDIR /opt/nvidia/deepstream/deepstream
 RUN ./install.sh && ldconfig
 RUN rm -rf /root/.cache/gstreamer-1.0/
 
-ENV GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins \
-    GST_PLUGIN_PATH_1_0=/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins \
+ENV GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins \
+    GST_PLUGIN_PATH_1_0=/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins \
     LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream/lib:/usr/lib/aarch64-linux-gnu/tegra:${LD_LIBRARY_PATH}
 
 COPY pylon/ /tmp/pylon-packages/
@@ -81,7 +81,7 @@ RUN if [ -n "${PYLON_PACKAGE}" ]; then \
         *.tar.gz|*.tgz) \
           mkdir -p /tmp/pylon && \
           tar -xzf "/tmp/pylon-packages/${PYLON_PACKAGE_BASENAME}" -C /tmp/pylon --strip-components=1 && \
-          PYLON_INSTALLER="$(find /tmp/pylon -maxdepth 2 -type f \( -name 'install*.sh' -o -name 'setup*.sh' \) | head -n 1)" && \
+          PYLON_INSTALLER="$(find /tmp/pylon -maxdepth 2 -type f \( -name 'install*.sh' -o -name 'setup*.sh' -o -name 'pylon-setup*.sh' \) ! -name 'pylon-setup-env.sh' | head -n 1)" && \
           if [ -n "${PYLON_INSTALLER}" ]; then \
             chmod +x "${PYLON_INSTALLER}" && \
             "${PYLON_INSTALLER}" --accept-eula --default; \
@@ -164,10 +164,24 @@ RUN apt-get update && \
     fi && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf /root/.cache/gstreamer-1.0/ && \
-    (gst-inspect-1.0 pylonsrc >/dev/null 2>&1 || \
-      (echo "WARNING: GStreamer element 'pylonsrc' is not available. The Pylon SDK is installed, but this archive may not include Basler's GStreamer plugin." >&2 && \
-       echo "         DeepStream camera_type=basler requires pylonsrc unless source_element is changed." >&2 && \
-       find /opt/pylon -maxdepth 4 -iname '*gst*' -o -iname '*pylon*.so*' | sort | head -n 80 >&2))
+    if ! gst-inspect-1.0 pylonsrc >/dev/null 2>&1; then \
+      echo "WARNING: GStreamer element 'pylonsrc' is not available." >&2; \
+      echo "         DeepStream camera_type=basler requires pylonsrc unless source_element is changed." >&2; \
+      echo "Installed gst-plugin-pylon files:" >&2; \
+      dpkg -L gst-plugin-pylon >&2 || true; \
+      PYLON_GST_PLUGIN="$(find /usr/lib /opt/pylon -type f \( -iname '*pylon*.so' -o -iname 'libgst*.so' \) 2>/dev/null | grep -Ei 'gst.*pylon|pylon.*gst' | head -n 1)" && \
+      if [ -n "${PYLON_GST_PLUGIN}" ]; then \
+        echo "Candidate plugin: ${PYLON_GST_PLUGIN}" >&2; \
+        ldd "${PYLON_GST_PLUGIN}" >&2 || true; \
+        GST_DEBUG=GST_PLUGIN_LOADING:6 gst-inspect-1.0 "${PYLON_GST_PLUGIN}" >&2 || true; \
+      fi; \
+      echo "Pylon SDK libraries:" >&2; \
+      find /opt/pylon -maxdepth 3 -iname 'libpylonbase.so*' -o -iname 'libpylonutility.so*' | sort >&2; \
+      if [ -n "${PYLON_GSTREAMER_PACKAGE}" ]; then \
+        echo "PYLON_GSTREAMER_PACKAGE was provided, so failing the build because pylonsrc did not load." >&2; \
+        exit 1; \
+      fi; \
+    fi
 
 WORKDIR /home/ultraviolet/CV_Detection
 CMD ["/bin/bash"]
