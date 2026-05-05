@@ -12,9 +12,13 @@ DOCKERFILE="${DOCKERFILE:-Dockerfile.cplusplus}"
 BASE_IMAGE="${IMAGE_REPO}:${BASE_TAG}"
 TARGET_IMAGE="${IMAGE_REPO}:${TARGET_TAG}"
 PYLON_PACKAGE="${PYLON_PACKAGE:-${4:-}}"
+PYLON_GSTREAMER_PACKAGE="${PYLON_GSTREAMER_PACKAGE:-${5:-}}"
 
 if [[ -n "${PYLON_PACKAGE}" ]]; then
   echo "Including Basler Pylon package from build context: ${PYLON_PACKAGE}"
+fi
+if [[ -n "${PYLON_GSTREAMER_PACKAGE}" ]]; then
+  echo "Including Basler Pylon GStreamer package from build context: ${PYLON_GSTREAMER_PACKAGE}"
 fi
 
 echo "Building ${TARGET_IMAGE} from ${BASE_IMAGE}..."
@@ -23,6 +27,7 @@ if ! DOCKER_BUILDKIT=1 docker build \
   --network=host \
   --build-arg BASE_IMAGE="${BASE_IMAGE}" \
   --build-arg PYLON_PACKAGE="${PYLON_PACKAGE}" \
+  --build-arg PYLON_GSTREAMER_PACKAGE="${PYLON_GSTREAMER_PACKAGE}" \
   -f "${DOCKERFILE}" \
   -t "${TARGET_IMAGE}" \
   .; then
@@ -33,6 +38,7 @@ if ! DOCKER_BUILDKIT=1 docker build \
     --no-cache \
     --build-arg BASE_IMAGE="${BASE_IMAGE}" \
     --build-arg PYLON_PACKAGE="${PYLON_PACKAGE}" \
+    --build-arg PYLON_GSTREAMER_PACKAGE="${PYLON_GSTREAMER_PACKAGE}" \
     -f "${DOCKERFILE}" \
     -t "${TARGET_IMAGE}" \
     .

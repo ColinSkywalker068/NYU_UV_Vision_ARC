@@ -113,8 +113,38 @@ ENV PATH=$PATH:$PYLON_ROOT/bin
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PYLON_ROOT/lib
 
 # Keep this late so kmod/plugin-path tweaks do not invalidate the heavy DeepStream layers.
+ARG PYLON_GSTREAMER_PACKAGE=""
 RUN apt-get update && \
     apt-get install -y --no-install-recommends kmod && \
+    if [ -n "${PYLON_GSTREAMER_PACKAGE}" ]; then \
+      PYLON_GSTREAMER_BASENAME="$(basename "${PYLON_GSTREAMER_PACKAGE}")" && \
+      if [ ! -f "/tmp/pylon-packages/${PYLON_GSTREAMER_BASENAME}" ]; then \
+        echo "PYLON_GSTREAMER_PACKAGE was set to '${PYLON_GSTREAMER_PACKAGE}', but that file was not found in Docker/pylon/." >&2; \
+        echo "Files available under Docker/pylon/:" >&2; \
+        find /tmp/pylon-packages -maxdepth 1 -type f -printf '  %f\n' >&2 || true; \
+        exit 1; \
+      fi; \
+      case "${PYLON_GSTREAMER_BASENAME}" in \
+        *.deb) \
+          apt-get install -y "/tmp/pylon-packages/${PYLON_GSTREAMER_BASENAME}"; \
+          ;; \
+        *.tar.gz|*.tgz) \
+          mkdir -p /tmp/pylon-gst && \
+          tar -xzf "/tmp/pylon-packages/${PYLON_GSTREAMER_BASENAME}" -C /tmp/pylon-gst && \
+          PYLON_GSTREAMER_DEBS="$(find /tmp/pylon-gst -type f -name '*.deb' -print)" && \
+          if [ -z "${PYLON_GSTREAMER_DEBS}" ]; then \
+            echo "Could not find any .deb files inside ${PYLON_GSTREAMER_BASENAME}." >&2; \
+            exit 1; \
+          fi && \
+          apt-get install -y ${PYLON_GSTREAMER_DEBS} && \
+          rm -rf /tmp/pylon-gst; \
+          ;; \
+        *) \
+          echo "Unsupported PYLON_GSTREAMER_PACKAGE format: ${PYLON_GSTREAMER_PACKAGE}. Use .deb or .tar.gz containing .deb files." >&2; \
+          exit 1; \
+          ;; \
+      esac; \
+    fi && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf /root/.cache/gstreamer-1.0/ && \
     (gst-inspect-1.0 pylonsrc >/dev/null 2>&1 || \
