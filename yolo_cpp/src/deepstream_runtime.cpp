@@ -334,13 +334,15 @@ struct DeepStreamRuntime::Impl
     g_object_set(G_OBJECT(source_caps), "caps", source_caps_value, nullptr);
     gst_caps_unref(source_caps_value);
 
-    GstCaps * infer_caps_value = gst_caps_new_simple(
-      "video/x-raw(memory:NVMM)",
-      "format", G_TYPE_STRING, "NV12",
-      "width", G_TYPE_INT, config.imgsz_width,
-      "height", G_TYPE_INT, config.imgsz_height,
-      "framerate", GST_TYPE_FRACTION, config.source_fps, 1,
-      nullptr);
+    const std::string infer_caps_text =
+      "video/x-raw(memory:NVMM),format=NV12,width=" +
+      std::to_string(config.imgsz_width) +
+      ",height=" + std::to_string(config.imgsz_height) +
+      ",framerate=" + std::to_string(config.source_fps) + "/1";
+    GstCaps * infer_caps_value = gst_caps_from_string(infer_caps_text.c_str());
+    if (infer_caps_value == nullptr) {
+      throw std::runtime_error("Failed to create DeepStream NVMM caps: " + infer_caps_text);
+    }
     g_object_set(G_OBJECT(infer_nvmm_caps), "caps", infer_caps_value, nullptr);
     gst_caps_unref(infer_caps_value);
 
