@@ -255,9 +255,6 @@ class BaslerDriver:
                 )
                 if res.GrabSucceeded():
                     img = self.converter.Convert(res).GetArray()
-                    # Camera is physically mounted upside down, flip 180 degrees
-                    # We do the flip here in the background thread!
-                    img = cv2.flip(img, -1)
                     if self.q.full():
                         try:
                             self.q.get_nowait()

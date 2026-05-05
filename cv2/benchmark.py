@@ -277,11 +277,9 @@ def main(args):
                 armors = detector.get_armor_centers(binary, min_area=dynamic_min_area)
 
                 # Math flip for coordinates only
-                h, w = img.shape[:2]
                 armor_coords = []
                 for a in armors:
-                    cx, cy = a["center"]
-                    armor_coords.append((w - cx, h - cy))
+                    armor_coords.append(a["center"])
 
                 if tracker:
                     tracked_targets = tracker.update(armor_coords)
