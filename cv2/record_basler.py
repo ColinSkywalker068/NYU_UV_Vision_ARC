@@ -63,7 +63,7 @@ class ArmorDetector:
             ).astype("uint8")
             img = cv2.LUT(img, table)
 
-        b, g, r = cv2.split(img)
+        b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
 
         if penalty_factor > 0:
             if enemy_color == "red":
@@ -178,12 +178,7 @@ class BaslerDriver:
             except:
                 pass
 
-            # Hardware image flip
-            try:
-                self.nodemap.GetNode("ReverseX").SetValue(True)
-                self.nodemap.GetNode("ReverseY").SetValue(True)
-            except:
-                pass
+
 
             try:
                 self.nodemap.GetNode("ColorAdjustmentSelector").SetValue("Red")
@@ -333,6 +328,8 @@ def main():
         frame = cam.get_frame()
         if frame is None:
             continue
+
+        frame = cv2.flip(frame, -1)
 
         # Write RAW frame if recording
         if is_recording and video_writer is not None:

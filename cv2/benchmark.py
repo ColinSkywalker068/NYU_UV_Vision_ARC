@@ -28,7 +28,7 @@ class ArmorDetector:
 
     def fast_process(self, img, enemy_color, color_th=55):
         # Extract channels (zero-copy references)
-        b, g, r = cv2.split(img)
+        b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
 
         if enemy_color == "red":
             # Hardware WB Green & Hardware Saturation handle the background.
@@ -142,13 +142,6 @@ def main(args):
         except:
             pass
 
-        # Hardware image flip
-        try:
-            node.GetNode("ReverseX").SetValue(True)
-            node.GetNode("ReverseY").SetValue(True)
-        except:
-            pass
-
         # Hardware Color Enhancement
         try:
             node.GetNode("ColorAdjustmentSelector").SetValue("Red")
@@ -210,6 +203,9 @@ def main(args):
                 # 2. Frame Capture
                 img = converter.Convert(res).GetArray()
                 res.Release()
+
+                # Camera is physically mounted upside down, flip 180 degrees
+                img = cv2.flip(img, -1)
 
                 # 3. Algorithm Execution
                 binary = detector.fast_process(img, args.target)
