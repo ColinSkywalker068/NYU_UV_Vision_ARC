@@ -81,6 +81,13 @@ RUN if [ -n "${PYLON_PACKAGE}" ]; then \
         *.tar.gz|*.tgz) \
           mkdir -p /tmp/pylon && \
           tar -xzf "/tmp/pylon-packages/${PYLON_PACKAGE_BASENAME}" -C /tmp/pylon --strip-components=1 && \
+          PYLON_NESTED_PACKAGE="$(find /tmp/pylon -maxdepth 2 -type f \( -name 'pylon*.tar.gz' -o -name 'pylon*.tgz' \) | head -n 1)" && \
+          if [ ! -f /tmp/pylon/include/pylon/PylonIncludes.h ] && [ -n "${PYLON_NESTED_PACKAGE}" ]; then \
+            mkdir -p /tmp/pylon-inner && \
+            tar -xzf "${PYLON_NESTED_PACKAGE}" -C /tmp/pylon-inner --strip-components=1 && \
+            rm -rf /tmp/pylon && \
+            mv /tmp/pylon-inner /tmp/pylon; \
+          fi && \
           PYLON_INSTALLER="$(find /tmp/pylon -maxdepth 2 -type f \( -name 'install*.sh' -o -name 'setup*.sh' -o -name 'pylon-setup*.sh' \) ! -name 'pylon-setup-env.sh' | head -n 1)" && \
           if [ -n "${PYLON_INSTALLER}" ]; then \
             chmod +x "${PYLON_INSTALLER}" && \
