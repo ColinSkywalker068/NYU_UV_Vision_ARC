@@ -182,6 +182,9 @@ def main(args):
     frame_count = 0
     fps = 0
 
+    dynamic_min_area = 10
+    current_best_tid = None
+
     print("[RUNNING] Press 'Q' to stop. Output: [X, Y] coordinates")
 
     try:
