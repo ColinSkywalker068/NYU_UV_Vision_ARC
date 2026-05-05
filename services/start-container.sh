@@ -71,6 +71,8 @@ get_cplusplus_env_args() {
 export GST_PLUGIN_PATH=$gst_plugin_path
 export GST_PLUGIN_PATH_1_0=\$GST_PLUGIN_PATH
 export LD_LIBRARY_PATH=$ld_library_path:\${LD_LIBRARY_PATH:-}
+export GST_REGISTRY=/tmp/gst-registry-deepstream.bin
+rm -rf /root/.cache/gstreamer-1.0
 EOF
 	cat > "$bashrc_file" <<EOF
 if [ -f /root/.bashrc ]; then
@@ -78,7 +80,7 @@ if [ -f /root/.bashrc ]; then
 fi
 . $env_file
 EOF
-	echo "--env GST_PLUGIN_PATH=$gst_plugin_path --env GST_PLUGIN_PATH_1_0=$gst_plugin_path --env LD_LIBRARY_PATH=$ld_library_path --env BASH_ENV=$env_file --env ENV=$env_file --volume $env_file:$env_file:ro --volume $bashrc_file:$bashrc_file:ro"
+	echo "--env GST_PLUGIN_PATH=$gst_plugin_path --env GST_PLUGIN_PATH_1_0=$gst_plugin_path --env LD_LIBRARY_PATH=$ld_library_path --env GST_REGISTRY=/tmp/gst-registry-deepstream.bin --env BASH_ENV=$env_file --env ENV=$env_file --volume $env_file:$env_file:ro --volume $bashrc_file:$bashrc_file:ro"
 }
 
 prepare_cplusplus_command() {
