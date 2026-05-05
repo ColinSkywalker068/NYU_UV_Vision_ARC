@@ -303,7 +303,7 @@ def main(args):
 
         # Save profile
         s = io.StringIO()
-        ps = pstats.Stats(pr, stream=s).sort_stats('tottime')
+        ps = pstats.Stats(pr, stream=s).sort_stats("tottime")
         ps.print_stats(50)
 
         prof_path = os.path.join(
