@@ -257,6 +257,8 @@ struct DeepStreamRuntime::Impl
       ("model-engine-file=" + config.model_path);
     replace_all(config_text, "__MODEL_SOURCE_CONFIG__", model_source_config);
     replace_all(config_text, "__MODEL_ENGINE_FILE__", config.model_path);
+    replace_all(config_text, "__INPUT_WIDTH__", std::to_string(config.imgsz_width));
+    replace_all(config_text, "__INPUT_HEIGHT__", std::to_string(config.imgsz_height));
     replace_all(config_text, "__NUM_CLASSES__", std::to_string(std::max(1, num_classes)));
     replace_all(config_text, "__CONF_THRESHOLD__", std::to_string(config.conf_threshold));
     replace_all(config_text, "__NETWORK_MODE__", config.half ? "2" : "0");
