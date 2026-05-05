@@ -357,13 +357,25 @@ private:
     }
   }
 
+  void set_enum_if_writable(GenApi::INodeMap & node_map, const char * name, const char * value)
+  {
+    GenApi::CEnumerationPtr node(node_map.GetNode(name));
+    if (!node || !GenApi::IsWritable(node)) {
+      return;
+    }
+    GenApi::CEnumEntryPtr entry(node->GetEntryByName(value));
+    if (entry && GenApi::IsReadable(entry)) {
+      node->SetIntValue(entry->GetValue());
+    }
+  }
+
   void configure_camera()
   {
     auto & node_map = camera_.GetNodeMap();
     set_if_writable<GenApi::CBooleanPtr>(node_map, "AcquisitionFrameRateEnable", true);
     set_if_writable<GenApi::CFloatPtr>(
       node_map, "AcquisitionFrameRate", static_cast<double>(config_.basler_fps));
-    set_if_writable<GenApi::CEnumerationPtr>(node_map, "ExposureAuto", "Off");
+    set_enum_if_writable(node_map, "ExposureAuto", "Off");
     set_if_writable<GenApi::CFloatPtr>(node_map, "ExposureTime", config_.basler_exposure_us);
     set_if_writable<GenApi::CFloatPtr>(node_map, "Gain", config_.basler_gain_db);
 
