@@ -53,9 +53,9 @@ WORKDIR /opt/nvidia/deepstream/deepstream
 RUN ./install.sh && ldconfig
 RUN rm -rf /root/.cache/gstreamer-1.0/
 
-ENV GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins \
-    GST_PLUGIN_PATH_1_0=/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins \
-    LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream/lib:/usr/lib/aarch64-linux-gnu/tegra:${LD_LIBRARY_PATH}
+ENV GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream-6.4/lib/gst-plugins:/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins \
+    GST_PLUGIN_PATH_1_0=/opt/nvidia/deepstream/deepstream-6.4/lib/gst-plugins:/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins \
+    LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream-6.4/lib:/opt/nvidia/deepstream/deepstream/lib:/usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/nvidia:${LD_LIBRARY_PATH}
 
 COPY pylon/ /tmp/pylon-packages/
 
