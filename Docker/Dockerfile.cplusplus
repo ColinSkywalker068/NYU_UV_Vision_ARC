@@ -53,8 +53,8 @@ WORKDIR /opt/nvidia/deepstream/deepstream
 RUN ./install.sh && ldconfig
 RUN rm -rf /root/.cache/gstreamer-1.0/
 
-ENV GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream/lib/gst-plugins \
-    GST_PLUGIN_PATH_1_0=/opt/nvidia/deepstream/deepstream/lib/gst-plugins \
+ENV GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins \
+    GST_PLUGIN_PATH_1_0=/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins \
     LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream/lib:/usr/lib/aarch64-linux-gnu/tegra:${LD_LIBRARY_PATH}
 
 COPY pylon/ /tmp/pylon-packages/
@@ -111,6 +111,16 @@ RUN if [ -n "${PYLON_PACKAGE}" ]; then \
 ENV PYLON_ROOT=/opt/pylon
 ENV PATH=$PATH:$PYLON_ROOT/bin
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PYLON_ROOT/lib
+
+# Keep this late so kmod/plugin-path tweaks do not invalidate the heavy DeepStream layers.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends kmod && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /root/.cache/gstreamer-1.0/ && \
+    (gst-inspect-1.0 pylonsrc >/dev/null 2>&1 || \
+      (echo "WARNING: GStreamer element 'pylonsrc' is not available. The Pylon SDK is installed, but this archive may not include Basler's GStreamer plugin." >&2 && \
+       echo "         DeepStream camera_type=basler requires pylonsrc unless source_element is changed." >&2 && \
+       find /opt/pylon -maxdepth 4 -iname '*gst*' -o -iname '*pylon*.so*' | sort | head -n 80 >&2))
 
 WORKDIR /home/ultraviolet/CV_Detection
 CMD ["/bin/bash"]
