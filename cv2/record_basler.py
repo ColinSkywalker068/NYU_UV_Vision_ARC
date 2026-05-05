@@ -178,6 +178,15 @@ class BaslerDriver:
             self.camera.Open()
             self.nodemap = self.camera.GetNodeMap()
 
+            # Force 1-byte raw payload to prevent USB bandwidth throttle
+            try:
+                self.nodemap.GetNode("PixelFormat").SetValue("BayerRG8")
+            except:
+                try:
+                    self.nodemap.GetNode("PixelFormat").SetValue("BayerBG8")
+                except:
+                    pass
+
             # Un-cap the hardware frame rate limit!
             try:
                 self.nodemap.GetNode("AcquisitionFrameRateEnable").SetValue(False)
@@ -189,9 +198,12 @@ class BaslerDriver:
 
             # Optimize Throughput
             try:
-                self.nodemap.GetNode("DeviceLinkThroughputLimit").SetValue(380000000)
+                self.nodemap.GetNode("DeviceLinkThroughputLimitMode").SetValue("Off")
             except:
-                pass
+                try:
+                    self.nodemap.GetNode("DeviceLinkThroughputLimit").SetValue(380000000)
+                except:
+                    pass
 
             try:
                 self.nodemap.GetNode("ColorAdjustmentSelector").SetValue("Red")
