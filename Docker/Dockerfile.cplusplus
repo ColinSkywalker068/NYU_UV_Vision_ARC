@@ -173,7 +173,8 @@ RUN apt-get update && \
     rm -rf /root/.cache/gstreamer-1.0/ && \
     for required_element in nvstreammux nvinfer nvvideoconvert appsink; do \
       if ! gst-inspect-1.0 "${required_element}" >/dev/null 2>&1; then \
-        echo "ERROR: Required DeepStream/GStreamer element '${required_element}' is not available." >&2; \
+        echo "WARNING: Required DeepStream/GStreamer element '${required_element}' is not available during docker build." >&2; \
+        echo "         On Jetson, some DeepStream plugins need host NVIDIA driver libraries mounted by docker run --runtime nvidia." >&2; \
         echo "GST_PLUGIN_PATH=${GST_PLUGIN_PATH}" >&2; \
         echo "DeepStream plugin files:" >&2; \
         find /opt/nvidia/deepstream -type f \( -iname '*infer*.so' -o -iname '*streammux*.so' -o -iname '*convert*.so' \) 2>/dev/null | sort >&2; \
@@ -182,7 +183,6 @@ RUN apt-get update && \
           echo "ldd for candidate plugin ${CANDIDATE_PLUGIN}:" >&2; \
           ldd "${CANDIDATE_PLUGIN}" >&2 || true; \
         fi; \
-        exit 1; \
       fi; \
     done && \
     if ! gst-inspect-1.0 pylonsrc >/dev/null 2>&1; then \
