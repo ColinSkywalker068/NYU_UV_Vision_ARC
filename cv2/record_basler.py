@@ -53,6 +53,7 @@ class ArmorDetector:
         self.armor_max_ratio = 5.0
         self.armor_max_y_diff_ratio = 0.5
         self.light_max_tilt = 40.0
+        self.kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 7))
 
     def preprocess(self, img, enemy_color, color_th, gamma_val, penalty_factor=0.0):
         if gamma_val != 1.0:
@@ -62,7 +63,7 @@ class ArmorDetector:
             ).astype("uint8")
             img = cv2.LUT(img, table)
 
-        b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+        b, g, r = cv2.split(img)
 
         if penalty_factor > 0:
             if enemy_color == "red":
@@ -79,8 +80,7 @@ class ArmorDetector:
 
         _, binary = cv2.threshold(diff, color_th, 255, cv2.THRESH_BINARY)
 
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 7))
-        binary = cv2.dilate(binary, kernel, iterations=1)
+        binary = cv2.dilate(binary, self.kernel, iterations=1)
         return binary
 
     def find_targets(self, binary, min_area=10):
@@ -92,6 +92,11 @@ class ArmorDetector:
             area = cv2.contourArea(cnt)
             if area < min_area:
                 continue
+                
+            x, y, w, h = cv2.boundingRect(cnt)
+            if w < 2 or h < 4 or w > h * 2:
+                continue
+                
             rect = cv2.minAreaRect(cnt)
             (cx, cy), (w, h), angle = rect
             length, width = (w, h) if w > h else (h, w)
@@ -112,16 +117,20 @@ class ArmorDetector:
                     }
                 )
 
+        lights.sort(key=lambda l: l["center"][0])
         armors = []
         for i in range(len(lights)):
             for j in range(i + 1, len(lights)):
                 l1, l2 = lights[i], lights[j]
+                
+                dist_x = l2["center"][0] - l1["center"][0]
+                if dist_x > 300:
+                    break
 
                 angle_diff = abs(l1["angle"] - l2["angle"])
                 if angle_diff > self.match_max_angle_diff:
                     continue
 
-                dist_x = abs(l1["center"][0] - l2["center"][0])
                 dist_y = abs(l1["center"][1] - l2["center"][1])
                 avg_len = (l1["length"] + l2["length"]) / 2.0
 
@@ -166,6 +175,13 @@ class BaslerDriver:
 
             try:
                 self.nodemap.GetNode("PixelFormat").SetValue("BGR8")
+            except:
+                pass
+                
+            # Hardware image flip
+            try:
+                self.nodemap.GetNode("ReverseX").SetValue(True)
+                self.nodemap.GetNode("ReverseY").SetValue(True)
             except:
                 pass
 
