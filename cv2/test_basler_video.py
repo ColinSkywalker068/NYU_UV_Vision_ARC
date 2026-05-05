@@ -398,8 +398,8 @@ def main():
 
             # Delay adjusted based on pause state
             delay = (
-                0 if paused else max(1, int(1000 / 30.0))
-            )  # Assuming max 30 fps playback speed roughly
+                0 if paused else max(1, int(1000 / 120.0))
+            )  # Assuming max 120 fps playback speed roughly
             key = cv2.waitKey(delay) & 0xFF
 
             if key == ord("q"):

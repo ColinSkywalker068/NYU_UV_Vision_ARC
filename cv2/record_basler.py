@@ -378,8 +378,6 @@ def main():
         if frame is None:
             continue
 
-        frame = cv2.flip(frame, -1)
-
         # Write RAW frame if recording
         if is_recording and video_writer is not None:
             video_writer.write(frame)
@@ -515,7 +513,7 @@ def main():
                 )
                 h, w = frame.shape[:2]
                 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                video_writer = ThreadedVideoWriter(filename, fourcc, 80.0, (w, h))
+                video_writer = ThreadedVideoWriter(filename, fourcc, 120.0, (w, h))
                 is_recording = True
                 log_str = (
                     f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] RECORDING: {filename}\n"
