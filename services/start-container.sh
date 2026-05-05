@@ -65,22 +65,7 @@ get_cplusplus_env_args() {
 	fi
 	local gst_plugin_path="/opt/nvidia/deepstream/deepstream-6.4/lib/gst-plugins:/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins"
 	local ld_library_path="/opt/nvidia/deepstream/deepstream-6.4/lib:/opt/nvidia/deepstream/deepstream/lib:/usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/nvidia:/opt/pylon/lib:/usr/local/cuda/lib64:/usr/local/cuda/compat:/usr/lib/aarch64-linux-gnu"
-	local env_file="/tmp/cv-cplusplus-env.sh"
-	local bashrc_file="/tmp/cv-cplusplus-bashrc"
-	cat > "$env_file" <<EOF
-export GST_PLUGIN_PATH=$gst_plugin_path
-export GST_PLUGIN_PATH_1_0=\$GST_PLUGIN_PATH
-export LD_LIBRARY_PATH=$ld_library_path:\${LD_LIBRARY_PATH:-}
-export GST_REGISTRY=/tmp/gst-registry-deepstream.bin
-rm -rf /root/.cache/gstreamer-1.0
-EOF
-	cat > "$bashrc_file" <<EOF
-if [ -f /root/.bashrc ]; then
-	. /root/.bashrc
-fi
-. $env_file
-EOF
-	echo "--env GST_PLUGIN_PATH=$gst_plugin_path --env GST_PLUGIN_PATH_1_0=$gst_plugin_path --env LD_LIBRARY_PATH=$ld_library_path --env GST_REGISTRY=/tmp/gst-registry-deepstream.bin --env BASH_ENV=$env_file --env ENV=$env_file --volume $env_file:$env_file:ro --volume $bashrc_file:$bashrc_file:ro"
+	echo "--env CV_CPLUSPLUS_GST_PLUGIN_PATH=$gst_plugin_path --env CV_CPLUSPLUS_LD_LIBRARY_PATH=$ld_library_path --env GST_PLUGIN_PATH=$gst_plugin_path --env GST_PLUGIN_PATH_1_0=$gst_plugin_path --env LD_LIBRARY_PATH=$ld_library_path --env GST_REGISTRY=/tmp/gst-registry-deepstream.bin"
 }
 
 prepare_cplusplus_command() {
@@ -89,7 +74,10 @@ prepare_cplusplus_command() {
 		return
 	fi
 	if [[ ${#CMD_ARGS[@]} -eq 0 || (${#CMD_ARGS[@]} -eq 1 && "${CMD_ARGS[0]}" == "bash") ]]; then
-		CMD_ARGS=(bash --rcfile /tmp/cv-cplusplus-bashrc)
+		CMD_ARGS=(bash -lc 'export GST_PLUGIN_PATH="$CV_CPLUSPLUS_GST_PLUGIN_PATH"; export GST_PLUGIN_PATH_1_0="$GST_PLUGIN_PATH"; export LD_LIBRARY_PATH="$CV_CPLUSPLUS_LD_LIBRARY_PATH:${LD_LIBRARY_PATH:-}"; export GST_REGISTRY=/tmp/gst-registry-deepstream.bin; rm -rf /root/.cache/gstreamer-1.0; exec bash -i')
+	elif [[ ${#CMD_ARGS[@]} -ge 2 && "${CMD_ARGS[0]}" == "bash" && "${CMD_ARGS[1]}" == "-lc" ]]; then
+		local user_cmd="${CMD_ARGS[*]:2}"
+		CMD_ARGS=(bash -lc "export GST_PLUGIN_PATH=\"\$CV_CPLUSPLUS_GST_PLUGIN_PATH\"; export GST_PLUGIN_PATH_1_0=\"\$GST_PLUGIN_PATH\"; export LD_LIBRARY_PATH=\"\$CV_CPLUSPLUS_LD_LIBRARY_PATH:\${LD_LIBRARY_PATH:-}\"; export GST_REGISTRY=/tmp/gst-registry-deepstream.bin; rm -rf /root/.cache/gstreamer-1.0; $user_cmd")
 	fi
 }
 
