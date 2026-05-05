@@ -65,7 +65,30 @@ get_cplusplus_env_args() {
 	fi
 	local gst_plugin_path="/opt/nvidia/deepstream/deepstream-6.4/lib/gst-plugins:/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins"
 	local ld_library_path="/opt/nvidia/deepstream/deepstream-6.4/lib:/opt/nvidia/deepstream/deepstream/lib:/usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/nvidia:/opt/pylon/lib:/usr/local/cuda/lib64:/usr/local/cuda/compat:/usr/lib/aarch64-linux-gnu"
-	echo "--env GST_PLUGIN_PATH=$gst_plugin_path --env GST_PLUGIN_PATH_1_0=$gst_plugin_path --env LD_LIBRARY_PATH=$ld_library_path"
+	local env_file="/tmp/cv-cplusplus-env.sh"
+	local bashrc_file="/tmp/cv-cplusplus-bashrc"
+	cat > "$env_file" <<EOF
+export GST_PLUGIN_PATH=$gst_plugin_path
+export GST_PLUGIN_PATH_1_0=\$GST_PLUGIN_PATH
+export LD_LIBRARY_PATH=$ld_library_path:\${LD_LIBRARY_PATH:-}
+EOF
+	cat > "$bashrc_file" <<EOF
+if [ -f /root/.bashrc ]; then
+	. /root/.bashrc
+fi
+. $env_file
+EOF
+	echo "--env GST_PLUGIN_PATH=$gst_plugin_path --env GST_PLUGIN_PATH_1_0=$gst_plugin_path --env LD_LIBRARY_PATH=$ld_library_path --env BASH_ENV=$env_file --env ENV=$env_file --volume $env_file:$env_file:ro --volume $bashrc_file:$bashrc_file:ro"
+}
+
+prepare_cplusplus_command() {
+	local image_name="$1"
+	if [[ "$image_name" != *"cplusplus"* ]]; then
+		return
+	fi
+	if [[ ${#CMD_ARGS[@]} -eq 0 || (${#CMD_ARGS[@]} -eq 1 && "${CMD_ARGS[0]}" == "bash") ]]; then
+		CMD_ARGS=(bash --rcfile /tmp/cv-cplusplus-bashrc)
+	fi
 }
 
 should_run_power_script() {
@@ -91,6 +114,7 @@ run_power_script_if_needed() {
 grep -aq "NVIDIA" /proc/device-tree/model 2>/dev/null
 if [ $? -eq 0 ]; then
 	run_power_script_if_needed "$IMAGE_NAME"
+	prepare_cplusplus_command "$IMAGE_NAME"
 	CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
 	# Check for V4L2 camera devices
 	V4L2_DEVICES=""
@@ -169,6 +193,7 @@ if [ $? -eq 0 ]; then
 	fi
 # Generic Linux (KR260, Ubuntu, etc.)
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+	prepare_cplusplus_command "$IMAGE_NAME"
 	CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
 	PYLON_MOUNT="$(get_pylon_mount_arg)"
 	CPP_ENV="$(get_cplusplus_env_args "$IMAGE_NAME")"
@@ -185,6 +210,7 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
 	fi
 # MacOS
 elif [[ "$OSTYPE" == "darwin"* ]]; then
+	prepare_cplusplus_command "$IMAGE_NAME"
 	CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
 	CPP_ENV="$(get_cplusplus_env_args "$IMAGE_NAME")"
 	if container_exists "docker" "$CONTAINER_NAME"; then
