@@ -269,9 +269,10 @@ def main(args):
                     print(f"FPS: {fps:5.1f} | Searching...")
 
             # Optional Visualization (Disable for absolute max performance)
-            cv2.imshow("RealSense Bench", img)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
+            if not args.no_gui:
+                cv2.imshow("RealSense Bench", img)
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
 
     except KeyboardInterrupt:
         print("[INFO] Terminated by user.")
@@ -301,6 +302,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-d", "--duration", type=int, default=60, help="Benchmark duration in seconds"
+    )
+    parser.add_argument(
+        "--no-gui",
+        action="store_true",
+        help="Disable all cv2.imshow GUI elements for maximum performance",
     )
 
     args = parser.parse_args()

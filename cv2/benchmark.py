@@ -271,9 +271,10 @@ def main(args):
                         print(f"FPS: {fps:5.1f} | Searching...")
 
                 # Optional Visualization (Disable for absolute max performance)
-                cv2.imshow("Bench", img)
-                if cv2.waitKey(1) & 0xFF == ord("q"):
-                    break
+                if not args.no_gui:
+                    cv2.imshow("Bench", img)
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        break
             else:
                 res.Release()
 
@@ -301,6 +302,11 @@ if __name__ == "__main__":
         default=TRACKER_TYPE,
         choices=["euclidean", "kalman", "none"],
         help="Tracker type to benchmark ('euclidean', 'kalman', 'none')",
+    )
+    parser.add_argument(
+        "--no-gui",
+        action="store_true",
+        help="Disable all cv2.imshow GUI elements for maximum performance",
     )
     args = parser.parse_args()
 
