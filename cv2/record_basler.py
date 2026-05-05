@@ -204,7 +204,7 @@ class BaslerDriver:
             self.converter = pylon.ImageFormatConverter()
             self.converter.OutputPixelFormat = pylon.PixelType_BGR8packed
             print(f"[CAM] Connected: {self.camera.GetDeviceInfo().GetModelName()}")
-            
+
             # Start background thread
             self.q = queue.Queue(maxsize=1)
             self.running = True
@@ -236,7 +236,9 @@ class BaslerDriver:
     def _run(self):
         while self.running and self.camera.IsGrabbing():
             try:
-                res = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
+                res = self.camera.RetrieveResult(
+                    5000, pylon.TimeoutHandling_ThrowException
+                )
                 if res.GrabSucceeded():
                     img = self.converter.Convert(res).GetArray()
                     # Camera is physically mounted upside down, flip 180 degrees

@@ -32,7 +32,9 @@ class ThreadedCamera:
     def _run(self):
         while self.running and self.camera.IsGrabbing():
             try:
-                res = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
+                res = self.camera.RetrieveResult(
+                    5000, pylon.TimeoutHandling_ThrowException
+                )
                 if res.GrabSucceeded():
                     img = self.converter.Convert(res).GetArray()
                     if self.q.full():
@@ -54,6 +56,7 @@ class ThreadedCamera:
     def stop(self):
         self.running = False
         self.thread.join()
+
 
 class ArmorDetector:
     def __init__(self):
@@ -244,7 +247,7 @@ def main(args):
 
     pr = cProfile.Profile()
     pr.enable()
-    
+
     threaded_cam = ThreadedCamera(camera, converter)
 
     try:
