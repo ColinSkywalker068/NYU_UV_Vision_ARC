@@ -204,6 +204,13 @@ class BaslerDriver:
             self.converter = pylon.ImageFormatConverter()
             self.converter.OutputPixelFormat = pylon.PixelType_BGR8packed
             print(f"[CAM] Connected: {self.camera.GetDeviceInfo().GetModelName()}")
+            
+            # Start background thread
+            self.q = queue.Queue(maxsize=1)
+            self.running = True
+            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+            self.thread = threading.Thread(target=self._run, daemon=True)
+            self.thread.start()
         except Exception as e:
             print(f"[ERR] Camera failed: {e}")
             sys.exit()
@@ -226,17 +233,30 @@ class BaslerDriver:
         except:
             pass
 
+    def _run(self):
+        while self.running and self.camera.IsGrabbing():
+            try:
+                res = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
+                if res.GrabSucceeded():
+                    img = self.converter.Convert(res).GetArray()
+                    # Camera is physically mounted upside down, flip 180 degrees
+                    # We do the flip here in the background thread!
+                    img = cv2.flip(img, -1)
+                    if self.q.full():
+                        try:
+                            self.q.get_nowait()
+                        except queue.Empty:
+                            pass
+                    self.q.put(img)
+                res.Release()
+            except Exception as e:
+                pass
+
     def get_frame(self):
-        if not self.camera.IsGrabbing():
-            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
-        res = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
-        if res.GrabSucceeded():
-            img = self.converter.Convert(res).GetArray()
-            res.Release()
-            # Camera is physically mounted upside down, flip 180 degrees
-            return cv2.flip(img, -1)
-        res.Release()
-        return None
+        try:
+            return self.q.get(timeout=2.0)
+        except queue.Empty:
+            return None
 
     def get_temperature(self):
         try:

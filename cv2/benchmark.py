@@ -7,6 +7,8 @@ import os
 import cProfile
 import pstats
 import io
+import threading
+import queue
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from cv_trackers import EuclideanTracker, KalmanMultiTracker
@@ -17,6 +19,41 @@ import argparse
 # Default if no arguments are passed
 TRACKER_TYPE = "kalman"
 
+
+class ThreadedCamera:
+    def __init__(self, camera, converter):
+        self.camera = camera
+        self.converter = converter
+        self.q = queue.Queue(maxsize=1)
+        self.running = True
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+
+    def _run(self):
+        while self.running and self.camera.IsGrabbing():
+            try:
+                res = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
+                if res.GrabSucceeded():
+                    img = self.converter.Convert(res).GetArray()
+                    if self.q.full():
+                        try:
+                            self.q.get_nowait()
+                        except queue.Empty:
+                            pass
+                    self.q.put(img)
+                res.Release()
+            except Exception as e:
+                pass
+
+    def get_frame(self):
+        try:
+            return self.q.get(timeout=2.0)
+        except queue.Empty:
+            return None
+
+    def stop(self):
+        self.running = False
+        self.thread.join()
 
 class ArmorDetector:
     def __init__(self):
@@ -207,14 +244,14 @@ def main(args):
 
     pr = cProfile.Profile()
     pr.enable()
+    
+    threaded_cam = ThreadedCamera(camera, converter)
 
     try:
         while camera.IsGrabbing():
-            res = camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
-            if res.GrabSucceeded():
-                # 2. Frame Capture
-                img = converter.Convert(res).GetArray()
-                res.Release()
+            img = threaded_cam.get_frame()
+            if img is not None:
+                # 2. Frame Capture (done in background)
 
                 # Camera is physically mounted upside down, but we skip cv2.flip
                 # to save ~4ms per frame. Detection works fine upside down.
@@ -302,13 +339,12 @@ def main(args):
                     cv2.imshow("Bench", img)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
-            else:
-                res.Release()
 
     except KeyboardInterrupt:
         print("[INFO] Terminated by user.")
     finally:
         pr.disable()
+        threaded_cam.stop()
         camera.StopGrabbing()
         camera.Close()
         cv2.destroyAllWindows()
