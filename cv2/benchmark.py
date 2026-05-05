@@ -198,7 +198,7 @@ def main(args):
     current_best_tid = None
 
     print("[RUNNING] Press 'Q' to stop. Output: [X, Y] coordinates")
-    
+
     pr = cProfile.Profile()
     pr.enable()
 
@@ -300,13 +300,15 @@ def main(args):
         camera.StopGrabbing()
         camera.Close()
         cv2.destroyAllWindows()
-        
+
         # Save profile
         s = io.StringIO()
         ps = pstats.Stats(pr, stream=s).sort_stats(pstats.SortKey.TOTTIME)
         ps.print_stats(50)
-        
-        prof_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profile_output.txt")
+
+        prof_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "profile_output.txt"
+        )
         with open(prof_path, "w") as f:
             f.write(s.getvalue())
         print(f"[INFO] Profiling results saved to {prof_path}")
