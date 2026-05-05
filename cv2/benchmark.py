@@ -30,15 +30,15 @@ class ArmorDetector:
         self.kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 7))
 
     def fast_process(self, img, enemy_color, color_th=55):
-        # Extract channels (zero-copy references)
-        b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
-
+        # Extract contiguous arrays for NEON SIMD acceleration
         if enemy_color == "red":
-            # Hardware WB Green & Hardware Saturation handle the background.
-            # Revert to pure, fast subtraction for 100+ FPS.
-            diff = cv2.subtract(r, b)
+            primary = cv2.extractChannel(img, 2)
+            secondary = cv2.extractChannel(img, 0)
         else:
-            diff = cv2.subtract(b, r)
+            primary = cv2.extractChannel(img, 0)
+            secondary = cv2.extractChannel(img, 2)
+
+        diff = cv2.subtract(primary, secondary)
 
         _, binary = cv2.threshold(diff, color_th, 255, cv2.THRESH_BINARY)
 
@@ -210,13 +210,19 @@ def main(args):
                 img = converter.Convert(res).GetArray()
                 res.Release()
 
-                # Camera is physically mounted upside down, flip 180 degrees
-                img = cv2.flip(img, -1)
+                # Camera is physically mounted upside down, but we skip cv2.flip
+                # to save ~4ms per frame. Detection works fine upside down.
 
                 # 3. Algorithm Execution
                 binary = detector.fast_process(img, args.target)
                 armors = detector.get_armor_centers(binary, min_area=dynamic_min_area)
-                armor_coords = [a["center"] for a in armors]
+                
+                # Math flip for coordinates only
+                h, w = img.shape[:2]
+                armor_coords = []
+                for a in armors:
+                    cx, cy = a["center"]
+                    armor_coords.append((w - cx, h - cy))
 
                 if tracker:
                     tracked_targets = tracker.update(armor_coords)

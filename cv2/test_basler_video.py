@@ -27,10 +27,11 @@ class ArmorDetector:
         self.kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 7))
 
     def preprocess(self, img, enemy_color, color_th=55, penalty_factor=0.0):
-        b, g, r = cv2.split(img)
-
         # Apply subtraction with optional penalty
         if penalty_factor > 0:
+            b = cv2.extractChannel(img, 0)
+            g = cv2.extractChannel(img, 1)
+            r = cv2.extractChannel(img, 2)
             if enemy_color == "red":
                 penalty = cv2.addWeighted(b, 1.0, g, penalty_factor, 0)
                 diff = cv2.subtract(r, penalty)
@@ -39,9 +40,9 @@ class ArmorDetector:
                 diff = cv2.subtract(b, penalty)
         else:
             if enemy_color == "red":
-                diff = cv2.subtract(r, b)
+                diff = cv2.subtract(cv2.extractChannel(img, 2), cv2.extractChannel(img, 0))
             else:
-                diff = cv2.subtract(b, r)
+                diff = cv2.subtract(cv2.extractChannel(img, 0), cv2.extractChannel(img, 2))
 
         _, binary = cv2.threshold(diff, color_th, 255, cv2.THRESH_BINARY)
         return cv2.dilate(binary, self.kernel, iterations=1)

@@ -63,9 +63,10 @@ class ArmorDetector:
             ).astype("uint8")
             img = cv2.LUT(img, table)
 
-        b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
-
         if penalty_factor > 0:
+            b = cv2.extractChannel(img, 0)
+            g = cv2.extractChannel(img, 1)
+            r = cv2.extractChannel(img, 2)
             if enemy_color == "red":
                 penalty = cv2.addWeighted(b, 1.0, g, penalty_factor, 0)
                 diff = cv2.subtract(r, penalty)
@@ -74,9 +75,9 @@ class ArmorDetector:
                 diff = cv2.subtract(b, penalty)
         else:
             if enemy_color == "red":
-                diff = cv2.subtract(r, b)
+                diff = cv2.subtract(cv2.extractChannel(img, 2), cv2.extractChannel(img, 0))
             else:
-                diff = cv2.subtract(b, r)
+                diff = cv2.subtract(cv2.extractChannel(img, 0), cv2.extractChannel(img, 2))
 
         _, binary = cv2.threshold(diff, color_th, 255, cv2.THRESH_BINARY)
 
