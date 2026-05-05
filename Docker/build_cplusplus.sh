@@ -31,17 +31,22 @@ if ! DOCKER_BUILDKIT=1 docker build \
   -f "${DOCKERFILE}" \
   -t "${TARGET_IMAGE}" \
   .; then
-  echo "Primary build failed. Retrying once with --no-cache..."
-  DOCKER_BUILDKIT=1 docker build \
-    --progress=plain \
-    --network=host \
-    --no-cache \
-    --build-arg BASE_IMAGE="${BASE_IMAGE}" \
-    --build-arg PYLON_PACKAGE="${PYLON_PACKAGE}" \
-    --build-arg PYLON_GSTREAMER_PACKAGE="${PYLON_GSTREAMER_PACKAGE}" \
-    -f "${DOCKERFILE}" \
-    -t "${TARGET_IMAGE}" \
-    .
+  if [[ "${RETRY_NO_CACHE:-0}" == "1" ]]; then
+    echo "Primary build failed. Retrying once with --no-cache..."
+    DOCKER_BUILDKIT=1 docker build \
+      --progress=plain \
+      --network=host \
+      --no-cache \
+      --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+      --build-arg PYLON_PACKAGE="${PYLON_PACKAGE}" \
+      --build-arg PYLON_GSTREAMER_PACKAGE="${PYLON_GSTREAMER_PACKAGE}" \
+      -f "${DOCKERFILE}" \
+      -t "${TARGET_IMAGE}" \
+      .
+  else
+    echo "Primary build failed. Re-run with RETRY_NO_CACHE=1 only if you intentionally want a full no-cache rebuild." >&2
+    exit 1
+  fi
 fi
 
 echo "Done: ${TARGET_IMAGE}"

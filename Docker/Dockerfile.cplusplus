@@ -116,6 +116,21 @@ ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PYLON_ROOT/lib
 ARG PYLON_GSTREAMER_PACKAGE=""
 RUN apt-get update && \
     apt-get install -y --no-install-recommends kmod && \
+    install_pylon_gstreamer_deb() { \
+      PYLON_GSTREAMER_DEB="$1"; \
+      PYLON_DEB_DEP_VERSION="$(dpkg-deb -f "${PYLON_GSTREAMER_DEB}" Depends 2>/dev/null | tr ',' '\n' | sed -n 's/^ *pylon *(= *\([^)]*\)).*/\1/p' | head -n 1)"; \
+      if [ -z "${PYLON_DEB_DEP_VERSION}" ] && dpkg-deb -f "${PYLON_GSTREAMER_DEB}" Depends 2>/dev/null | tr ',' '\n' | grep -Eq '^ *pylon($|[ (])'; then \
+        PYLON_DEB_DEP_VERSION="9999.0"; \
+      fi; \
+      if [ -n "${PYLON_DEB_DEP_VERSION}" ] && ! dpkg-query -W -f='${Version}' pylon >/dev/null 2>&1; then \
+        mkdir -p /tmp/pylon-dummy/DEBIAN && \
+        printf 'Package: pylon\nVersion: %s\nSection: misc\nPriority: optional\nArchitecture: %s\nMaintainer: CV Detection <none>\nDescription: Dummy pylon package for tar-installed Basler SDK\n The Basler pylon SDK is installed under /opt/pylon from the upstream tarball.\n' "${PYLON_DEB_DEP_VERSION}" "$(dpkg --print-architecture)" > /tmp/pylon-dummy/DEBIAN/control && \
+        dpkg-deb --build /tmp/pylon-dummy /tmp/pylon-dummy.deb >/dev/null && \
+        dpkg -i /tmp/pylon-dummy.deb && \
+        rm -rf /tmp/pylon-dummy /tmp/pylon-dummy.deb; \
+      fi; \
+      apt-get install -y --no-install-recommends "${PYLON_GSTREAMER_DEB}"; \
+    } && \
     if [ -n "${PYLON_GSTREAMER_PACKAGE}" ]; then \
       PYLON_GSTREAMER_BASENAME="$(basename "${PYLON_GSTREAMER_PACKAGE}")" && \
       if [ ! -f "/tmp/pylon-packages/${PYLON_GSTREAMER_BASENAME}" ]; then \
@@ -126,7 +141,7 @@ RUN apt-get update && \
       fi; \
       case "${PYLON_GSTREAMER_BASENAME}" in \
         *.deb) \
-          apt-get install -y "/tmp/pylon-packages/${PYLON_GSTREAMER_BASENAME}"; \
+          install_pylon_gstreamer_deb "/tmp/pylon-packages/${PYLON_GSTREAMER_BASENAME}"; \
           ;; \
         *.tar.gz|*.tgz) \
           mkdir -p /tmp/pylon-gst && \
@@ -136,7 +151,9 @@ RUN apt-get update && \
             echo "Could not find any .deb files inside ${PYLON_GSTREAMER_BASENAME}." >&2; \
             exit 1; \
           fi && \
-          apt-get install -y ${PYLON_GSTREAMER_DEBS} && \
+          for deb in ${PYLON_GSTREAMER_DEBS}; do \
+            install_pylon_gstreamer_deb "${deb}"; \
+          done && \
           rm -rf /tmp/pylon-gst; \
           ;; \
         *) \
