@@ -178,8 +178,6 @@ class BaslerDriver:
             except:
                 pass
 
-
-
             try:
                 self.nodemap.GetNode("ColorAdjustmentSelector").SetValue("Red")
                 self.nodemap.GetNode("ColorAdjustmentSaturation").SetValue(1.5)
