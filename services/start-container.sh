@@ -58,6 +58,16 @@ get_pylon_mount_arg() {
 	fi
 }
 
+get_cplusplus_env_args() {
+	local image_name="$1"
+	if [[ "$image_name" != *"cplusplus"* ]]; then
+		return
+	fi
+	local gst_plugin_path="/opt/nvidia/deepstream/deepstream-6.4/lib/gst-plugins:/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins"
+	local ld_library_path="/opt/nvidia/deepstream/deepstream-6.4/lib:/opt/nvidia/deepstream/deepstream/lib:/usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/nvidia:/opt/pylon/lib:/usr/local/cuda/lib64:/usr/local/cuda/compat:/usr/lib/aarch64-linux-gnu"
+	echo "--env GST_PLUGIN_PATH=$gst_plugin_path --env GST_PLUGIN_PATH_1_0=$gst_plugin_path --env LD_LIBRARY_PATH=$ld_library_path"
+}
+
 should_run_power_script() {
 	local image_name="$1"
 	[[ "$image_name" == *"realsense"* ]]
@@ -123,6 +133,7 @@ if [ $? -eq 0 ]; then
 	fi
 	DOCKER_CMD="${SUDO:+$SUDO }docker"
 	PYLON_MOUNT="$(get_pylon_mount_arg)"
+	CPP_ENV="$(get_cplusplus_env_args "$IMAGE_NAME")"
 
 	# This file shows what Jetson board is running
 	# /proc or /sys files aren't mountable into docker
@@ -153,12 +164,14 @@ if [ $? -eq 0 ]; then
 			$V4L2_DEVICES \
 			$HUGGINGFACE \
 			$PYLON_MOUNT \
+			$CPP_ENV \
 			"$IMAGE_NAME" "${CMD_ARGS[@]}"
 	fi
 # Generic Linux (KR260, Ubuntu, etc.)
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
 	CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
 	PYLON_MOUNT="$(get_pylon_mount_arg)"
+	CPP_ENV="$(get_cplusplus_env_args "$IMAGE_NAME")"
 	if container_exists "docker" "$CONTAINER_NAME"; then
 		reuse_container "docker" "$CONTAINER_NAME" "${CMD_ARGS[@]}"
 	else
@@ -167,17 +180,20 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
 			--volume /dev:/dev \
 			--volume /home:/home \
 			$PYLON_MOUNT \
+			$CPP_ENV \
 			"$IMAGE_NAME" "${CMD_ARGS[@]}"
 	fi
 # MacOS
 elif [[ "$OSTYPE" == "darwin"* ]]; then
 	CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
+	CPP_ENV="$(get_cplusplus_env_args "$IMAGE_NAME")"
 	if container_exists "docker" "$CONTAINER_NAME"; then
 		reuse_container "docker" "$CONTAINER_NAME" "${CMD_ARGS[@]}"
 	else
 		docker run -it --name "$CONTAINER_NAME" --privileged --network host \
 			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
 			--env DISPLAY=host.docker.internal:0.0 \
+			$CPP_ENV \
 			"$IMAGE_NAME" "${CMD_ARGS[@]}"
 	fi
 # Fallback (Windows)
