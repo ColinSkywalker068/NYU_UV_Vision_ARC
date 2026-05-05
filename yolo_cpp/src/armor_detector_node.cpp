@@ -233,6 +233,17 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
       detector_backend_kind_ = "native_tensorrt";
       initialize_native_pipeline();
     }
+    catch (...) {
+      if (!allow_native_tensorrt_fallback_) {
+        throw std::runtime_error(
+                "DeepStream startup failed with a non-std exception, likely from the Basler/Pylon GStreamer source");
+      }
+      RCLCPP_WARN(
+        this->get_logger(),
+        "DeepStream startup failed with a non-std exception, likely from the Basler/Pylon GStreamer source. Falling back to native TensorRT because allow_native_tensorrt_fallback=true.");
+      detector_backend_kind_ = "native_tensorrt";
+      initialize_native_pipeline();
+    }
   } else {
     initialize_native_pipeline();
   }
