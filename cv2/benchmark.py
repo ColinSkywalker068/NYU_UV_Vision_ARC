@@ -139,11 +139,8 @@ def main(args):
         node.GetNode("ExposureTime").SetValue(723.0)  # Your verified value
         node.GetNode("Gain").SetValue(0.0)
         node.GetNode("Gamma").SetValue(0.9)
-        # Hardware Debayering attempt
-        try:
-            node.GetNode("PixelFormat").SetValue("BGR8")
-        except:
-            pass
+        # Hardware Debayering attempt was causing 3x USB bandwidth throttling
+        # Reverting to camera default (Bayer) and letting pylon converter handle it
 
         # Hardware Color Enhancement
         try:

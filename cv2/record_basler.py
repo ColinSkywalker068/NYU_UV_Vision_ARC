@@ -178,10 +178,8 @@ class BaslerDriver:
             self.camera.Open()
             self.nodemap = self.camera.GetNodeMap()
 
-            try:
-                self.nodemap.GetNode("PixelFormat").SetValue("BGR8")
-            except:
-                pass
+            # Hardware Debayering attempt was causing 3x USB bandwidth throttling
+            # Reverting to camera default (Bayer) and letting pylon converter handle it
 
             try:
                 self.nodemap.GetNode("ColorAdjustmentSelector").SetValue("Red")
