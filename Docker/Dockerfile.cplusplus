@@ -81,13 +81,21 @@ RUN if [ -n "${PYLON_PACKAGE}" ]; then \
         *.tar.gz|*.tgz) \
           mkdir -p /tmp/pylon && \
           tar -xzf "/tmp/pylon-packages/${PYLON_PACKAGE_BASENAME}" -C /tmp/pylon --strip-components=1 && \
-          PYLON_INSTALLER="$(find /tmp/pylon -maxdepth 2 -name 'pylon*.sh' | head -n 1)" && \
-          if [ -z "${PYLON_INSTALLER}" ]; then \
-            echo "Could not find a pylon installer shell script inside ${PYLON_PACKAGE_BASENAME}." >&2; \
+          PYLON_INSTALLER="$(find /tmp/pylon -maxdepth 2 -type f \( -name 'install*.sh' -o -name 'setup*.sh' \) | head -n 1)" && \
+          if [ -n "${PYLON_INSTALLER}" ]; then \
+            chmod +x "${PYLON_INSTALLER}" && \
+            "${PYLON_INSTALLER}" --accept-eula --default; \
+          elif [ -f /tmp/pylon/include/pylon/PylonIncludes.h ] && find /tmp/pylon -maxdepth 3 -type f -name 'libpylonbase.so*' | grep -q .; then \
+            mkdir -p /opt/pylon && \
+            cp -a /tmp/pylon/. /opt/pylon/; \
+          else \
+            echo "Could not find a Pylon installer or extracted SDK layout inside ${PYLON_PACKAGE_BASENAME}." >&2; \
+            echo "Top-level extracted files:" >&2; \
+            find /tmp/pylon -maxdepth 2 -type f -printf '  %P\n' >&2 | head -n 40; \
             exit 1; \
           fi && \
-          chmod +x "${PYLON_INSTALLER}" && \
-          "${PYLON_INSTALLER}" --accept-eula --default && \
+          test -f /opt/pylon/include/pylon/PylonIncludes.h && \
+          find /opt/pylon -maxdepth 3 -type f -name 'libpylonbase.so*' | grep -q . && \
           rm -rf /tmp/pylon && \
           ldconfig; \
           ;; \
