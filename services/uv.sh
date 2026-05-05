@@ -133,10 +133,10 @@ case $1 in
         if [[ $2 == "yolo_cpp" ]]; then
           colcon build --packages-select cv_auto_aim_interfaces yolo_cpp --symlink-install --cmake-args -DBUILD_TESTING=OFF
         else
-          colcon build --packages-select $2 --cmake-args -DBUILD_TESTING=OFF
+          colcon build --packages-select $2 --symlink-install --cmake-args -DBUILD_TESTING=OFF
         fi
       else
-        colcon build --cmake-args -DBUILD_TESTING=OFF
+        colcon build --symlink-install --cmake-args -DBUILD_TESTING=OFF
       fi
     fi
     if (( $# > 2 )); then
@@ -153,7 +153,7 @@ case $1 in
     ;;
   # Clean ROS2 build files
   "clean"):
-    sudo rm -rf build log install
+    rm -rf build log install
     ;;
   "topic"):
     source install/setup.bash
