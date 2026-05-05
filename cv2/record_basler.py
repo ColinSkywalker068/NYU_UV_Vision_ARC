@@ -14,6 +14,7 @@ from cv_trackers import EuclideanTracker, KalmanMultiTracker
 # --- CONFIGURATION TOGGLE ---
 TRACKER_TYPE = "kalman"
 
+
 class ThreadedVideoWriter:
     def __init__(self, filename, fourcc, fps, frameSize):
         self.writer = cv2.VideoWriter(filename, fourcc, fps, frameSize)
