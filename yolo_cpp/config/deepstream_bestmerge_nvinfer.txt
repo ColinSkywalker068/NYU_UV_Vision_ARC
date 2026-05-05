@@ -2,7 +2,7 @@
 gpu-id=0
 net-scale-factor=0.0039215697906911373
 model-color-format=1
-model-engine-file=__MODEL_ENGINE_FILE__
+__MODEL_SOURCE_CONFIG__
 batch-size=1
 process-mode=1
 num-detected-classes=__NUM_CLASSES__

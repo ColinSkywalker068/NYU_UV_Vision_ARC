@@ -63,6 +63,14 @@ void replace_all(std::string & text, const std::string & needle, const std::stri
   }
 }
 
+bool path_has_extension(const std::string & path, const std::string & extension)
+{
+  if (path.size() < extension.size()) {
+    return false;
+  }
+  return std::equal(extension.rbegin(), extension.rend(), path.rbegin());
+}
+
 #if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
 /// Format a GstClockTime for diagnostics without losing GST_CLOCK_TIME_NONE.
 std::string gst_clock_to_string(GstClockTime value)
@@ -244,6 +252,10 @@ struct DeepStreamRuntime::Impl
   void materialize_config()
   {
     std::string config_text = read_text_file(config.config_template_path);
+    const auto model_source_config = path_has_extension(config.model_path, ".onnx") ?
+      ("onnx-file=" + config.model_path + "\nmodel-engine-file=" + config.model_path + ".engine") :
+      ("model-engine-file=" + config.model_path);
+    replace_all(config_text, "__MODEL_SOURCE_CONFIG__", model_source_config);
     replace_all(config_text, "__MODEL_ENGINE_FILE__", config.model_path);
     replace_all(config_text, "__NUM_CLASSES__", std::to_string(std::max(1, num_classes)));
     replace_all(config_text, "__CONF_THRESHOLD__", std::to_string(config.conf_threshold));
