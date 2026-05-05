@@ -201,7 +201,9 @@ class BaslerDriver:
                 self.nodemap.GetNode("DeviceLinkThroughputLimitMode").SetValue("Off")
             except:
                 try:
-                    self.nodemap.GetNode("DeviceLinkThroughputLimit").SetValue(380000000)
+                    self.nodemap.GetNode("DeviceLinkThroughputLimit").SetValue(
+                        380000000
+                    )
                 except:
                     pass
 
