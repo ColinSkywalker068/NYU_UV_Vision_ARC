@@ -139,8 +139,14 @@ def main(args):
         node.GetNode("ExposureTime").SetValue(723.0)  # Your verified value
         node.GetNode("Gain").SetValue(0.0)
         node.GetNode("Gamma").SetValue(0.9)
-        # Hardware Debayering attempt was causing 3x USB bandwidth throttling
-        # Reverting to camera default (Bayer) and letting pylon converter handle it
+        # Un-cap the hardware frame rate limit!
+        try:
+            node.GetNode("AcquisitionFrameRateEnable").SetValue(False)
+        except:
+            try:
+                node.GetNode("AcquisitionFrameRateEnabled").SetValue(False)
+            except:
+                pass
 
         # Hardware Color Enhancement
         try:
@@ -168,8 +174,11 @@ def main(args):
             node.GetNode("BalanceRatioSelector").SetValue("Blue")
             node.GetNode("BalanceRatio").SetValue(7.0)
 
-        # Optimize Throughput for Orin 2
-        # node.GetNode("DeviceLinkThroughputLimit").SetValue(250000000)
+        # Optimize Throughput for Orin
+        try:
+            node.GetNode("DeviceLinkThroughputLimit").SetValue(380000000)
+        except:
+            pass
 
         converter = pylon.ImageFormatConverter()
         converter.OutputPixelFormat = pylon.PixelType_BGR8packed

@@ -178,8 +178,20 @@ class BaslerDriver:
             self.camera.Open()
             self.nodemap = self.camera.GetNodeMap()
 
-            # Hardware Debayering attempt was causing 3x USB bandwidth throttling
-            # Reverting to camera default (Bayer) and letting pylon converter handle it
+            # Un-cap the hardware frame rate limit!
+            try:
+                self.nodemap.GetNode("AcquisitionFrameRateEnable").SetValue(False)
+            except:
+                try:
+                    self.nodemap.GetNode("AcquisitionFrameRateEnabled").SetValue(False)
+                except:
+                    pass
+
+            # Optimize Throughput
+            try:
+                self.nodemap.GetNode("DeviceLinkThroughputLimit").SetValue(380000000)
+            except:
+                pass
 
             try:
                 self.nodemap.GetNode("ColorAdjustmentSelector").SetValue("Red")
