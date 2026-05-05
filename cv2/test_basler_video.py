@@ -55,11 +55,11 @@ class ArmorDetector:
             area = cv2.contourArea(cnt)
             if area < min_area:
                 continue
-                
+
             x, y, w, h = cv2.boundingRect(cnt)
             if w < 2 or h < 4 or w > h * 2:
                 continue
-                
+
             rect = cv2.minAreaRect(cnt)
             (cx, cy), (w, h), angle = rect
             length, width = (w, h) if w > h else (h, w)
@@ -91,7 +91,7 @@ class ArmorDetector:
                 dist_x = l2["center"][0] - l1["center"][0]
                 if dist_x > 300:
                     break
-                    
+
                 angle_diff = abs(l1["angle"] - l2["angle"])
                 if angle_diff > self.match_max_angle_diff:
                     continue
