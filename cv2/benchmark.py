@@ -4,6 +4,9 @@ from pypylon import pylon
 import time
 import sys
 import os
+import cProfile
+import pstats
+import io
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from cv_trackers import EuclideanTracker, KalmanMultiTracker
@@ -195,6 +198,9 @@ def main(args):
     current_best_tid = None
 
     print("[RUNNING] Press 'Q' to stop. Output: [X, Y] coordinates")
+    
+    pr = cProfile.Profile()
+    pr.enable()
 
     try:
         while camera.IsGrabbing():
@@ -290,9 +296,20 @@ def main(args):
     except KeyboardInterrupt:
         print("[INFO] Terminated by user.")
     finally:
+        pr.disable()
         camera.StopGrabbing()
         camera.Close()
         cv2.destroyAllWindows()
+        
+        # Save profile
+        s = io.StringIO()
+        ps = pstats.Stats(pr, stream=s).sort_stats(pstats.SortKey.TOTTIME)
+        ps.print_stats(50)
+        
+        prof_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profile_output.txt")
+        with open(prof_path, "w") as f:
+            f.write(s.getvalue())
+        print(f"[INFO] Profiling results saved to {prof_path}")
 
 
 if __name__ == "__main__":
