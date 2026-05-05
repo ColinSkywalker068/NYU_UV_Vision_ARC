@@ -1,46 +1,46 @@
-         30996 function calls (30259 primitive calls) in 13.588 seconds
+         19047 function calls (18594 primitive calls) in 7.876 seconds
 
    Ordered by: internal time
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-      737    5.018    0.007    5.032    0.007 {built-in method pypylon._pylon.InstantCamera_RetrieveResult}
-     1474    2.840    0.002    2.840    0.002 {extractChannel}
-      737    1.542    0.002    1.542    0.002 {built-in method pypylon._pylon.PylonImage_GetBuffer}
-      736    1.161    0.002    1.161    0.002 {dilate}
-      737    0.925    0.001    0.925    0.001 {subtract}
-      737    0.760    0.001    0.760    0.001 {built-in method pypylon._pylon.ImageFormatConverter_Convert}
-      736    0.700    0.001    0.700    0.001 {findContours}
-      737    0.374    0.001    0.374    0.001 {threshold}
-      737    0.042    0.000    1.617    0.002 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:6508(GetArray)
-      736    0.034    0.000    0.741    0.001 /home/ultraviolet/CV_Detection/cv2/benchmark.py:49(get_armor_centers)
-      737    0.034    0.000    0.034    0.000 {built-in method pypylon._pylon.GrabResult_Release}
-      737    0.032    0.000    5.332    0.007 /home/ultraviolet/CV_Detection/cv2/benchmark.py:32(fast_process)
-      736    0.017    0.000    0.018    0.000 /home/ultraviolet/CV_Detection/cv2/cv_trackers.py:135(update)
-      737    0.017    0.000    0.017    0.000 {built-in method pypylon._pylon.InstantCamera_IsGrabbing}
-      737    0.014    0.000    0.014    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:2342(__setattr__)
- 1474/737    0.011    0.000    1.627    0.002 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:179(func_wrapper)
-      737    0.011    0.000    0.016    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:6440(GetImageFormat)
-      737    0.006    0.000    0.766    0.001 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:6960(Convert)
-      737    0.006    0.000    0.006    0.000 {built-in method pypylon._pylon.GrabResult_GrabSucceeded}
-      737    0.005    0.000    0.005    0.000 {built-in method pypylon._pylon.PylonImage_GetPixelType}
-      737    0.005    0.000    5.037    0.007 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:3604(RetrieveResult)
-      736    0.005    0.000    0.005    0.000 {method 'sort' of 'list' objects}
-      737    0.004    0.000    1.546    0.002 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:6414(GetBuffer)
-      737    0.004    0.000    0.021    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:3705(IsGrabbing)
-      737    0.004    0.000    0.038    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:2213(Release)
-      737    0.002    0.000    0.008    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:2415(GrabSucceeded)
-      737    0.002    0.000    0.002    0.000 {built-in method pypylon._pylon.PylonImage_GetHeight}
-      737    0.002    0.000    0.007    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:6147(GetPixelType)
-     1474    0.002    0.000    0.002    0.000 {built-in method pypylon._pylon.IsPacked}
-     1474    0.002    0.000    0.004    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:412(IsPacked)
-      736    0.002    0.000    0.002    0.000 {built-in method builtins.len}
-       25    0.002    0.000    0.002    0.000 {built-in method builtins.print}
-     1474    0.001    0.000    0.001    0.000 {built-in method builtins.isinstance}
-      737    0.001    0.000    0.003    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:6161(GetHeight)
-      737    0.001    0.000    0.001    0.000 {built-in method pypylon._pylon.PylonImage_GetWidth}
-     1472    0.001    0.000    0.001    0.000 {method 'items' of 'dict' objects}
-      737    0.001    0.000    0.002    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:6154(GetWidth)
-       24    0.000    0.000    0.000    0.000 {built-in method time.time}
+      453    2.396    0.005    2.404    0.005 {built-in method pypylon._pylon.InstantCamera_RetrieveResult}
+      905    1.728    0.002    1.728    0.002 {extractChannel}
+      453    0.947    0.002    0.947    0.002 {built-in method pypylon._pylon.PylonImage_GetBuffer}
+      452    0.872    0.002    0.872    0.002 {dilate}
+      452    0.547    0.001    0.547    0.001 {subtract}
+      453    0.539    0.001    0.539    0.001 {built-in method pypylon._pylon.ImageFormatConverter_Convert}
+      452    0.441    0.001    0.441    0.001 {findContours}
+      452    0.234    0.001    0.234    0.001 {threshold}
+      453    0.027    0.000    1.000    0.002 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:6508(GetArray)
+      453    0.021    0.000    0.021    0.000 {built-in method pypylon._pylon.GrabResult_Release}
+      452    0.020    0.000    0.464    0.001 /home/ultraviolet/CV_Detection/cv2/benchmark.py:49(get_armor_centers)
+      453    0.018    0.000    3.401    0.008 /home/ultraviolet/CV_Detection/cv2/benchmark.py:32(fast_process)
+      453    0.011    0.000    0.011    0.000 {built-in method pypylon._pylon.InstantCamera_IsGrabbing}
+      452    0.010    0.000    0.010    0.000 /home/ultraviolet/CV_Detection/cv2/cv_trackers.py:135(update)
+      453    0.008    0.000    0.008    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:2342(__setattr__)
+      453    0.008    0.000    0.011    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:6440(GetImageFormat)
+  906/453    0.007    0.000    1.007    0.002 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:179(func_wrapper)
+      453    0.005    0.000    0.005    0.000 {built-in method pypylon._pylon.PylonImage_GetPixelType}
+      453    0.004    0.000    0.544    0.001 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:6960(Convert)
+      453    0.003    0.000    2.408    0.005 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:3604(RetrieveResult)
+      453    0.003    0.000    0.014    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:3705(IsGrabbing)
+      453    0.003    0.000    0.003    0.000 {built-in method pypylon._pylon.GrabResult_GrabSucceeded}
+      453    0.003    0.000    0.950    0.002 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:6414(GetBuffer)
+      452    0.003    0.000    0.003    0.000 {method 'sort' of 'list' objects}
+      453    0.002    0.000    0.023    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:2213(Release)
+      453    0.002    0.000    0.007    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:6147(GetPixelType)
+      453    0.002    0.000    0.005    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:2415(GrabSucceeded)
+      906    0.002    0.000    0.002    0.000 {built-in method pypylon._pylon.IsPacked}
+      906    0.001    0.000    0.003    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:412(IsPacked)
+      453    0.001    0.000    0.001    0.000 {built-in method pypylon._pylon.PylonImage_GetHeight}
+      452    0.001    0.000    0.001    0.000 {built-in method builtins.len}
+       16    0.001    0.000    0.001    0.000 {built-in method builtins.print}
+      906    0.001    0.000    0.001    0.000 {built-in method builtins.isinstance}
+      453    0.001    0.000    0.002    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:6161(GetHeight)
+      904    0.001    0.000    0.001    0.000 {method 'items' of 'dict' objects}
+      453    0.001    0.000    0.001    0.000 /usr/local/lib/python3.10/dist-packages/pypylon/pylon.py:6154(GetWidth)
+      453    0.001    0.000    0.001    0.000 {built-in method pypylon._pylon.PylonImage_GetWidth}
+       15    0.000    0.000    0.000    0.000 {built-in method time.time}
         1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
 
 
