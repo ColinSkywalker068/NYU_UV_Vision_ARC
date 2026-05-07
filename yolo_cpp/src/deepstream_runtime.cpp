@@ -93,6 +93,17 @@ void release_request_pad(GstElement * element, GstPad *& pad)
   pad = nullptr;
 }
 
+void set_int_property_if_present(GstElement * element, const char * property_name, int value)
+{
+  if (
+    element == nullptr || property_name == nullptr ||
+    g_object_class_find_property(G_OBJECT_GET_CLASS(element), property_name) == nullptr)
+  {
+    return;
+  }
+  g_object_set(G_OBJECT(element), property_name, value, nullptr);
+}
+
 std::string collect_bus_diagnostics(GstBus * bus)
 {
   if (bus == nullptr) {
@@ -402,6 +413,8 @@ struct DeepStreamRuntime::Impl
     if (g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr) {
       g_object_set(G_OBJECT(source), "do-timestamp", TRUE, nullptr);
     }
+    set_int_property_if_present(infer_nvconvert, "compute-hw", 1);
+    set_int_property_if_present(infer_nvconvert, "copy-hw", 1);
 
     const std::string infer_caps_text =
       "video/x-raw(memory:NVMM),format=NV12,width=" +
