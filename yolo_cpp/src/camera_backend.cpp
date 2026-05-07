@@ -372,9 +372,12 @@ private:
   void configure_camera()
   {
     auto & node_map = camera_.GetNodeMap();
-    set_if_writable<GenApi::CBooleanPtr>(node_map, "AcquisitionFrameRateEnable", true);
-    set_if_writable<GenApi::CFloatPtr>(
-      node_map, "AcquisitionFrameRate", static_cast<double>(config_.basler_fps));
+    set_if_writable<GenApi::CBooleanPtr>(
+      node_map, "AcquisitionFrameRateEnable", !config_.basler_uncapped_fps);
+    if (!config_.basler_uncapped_fps) {
+      set_if_writable<GenApi::CFloatPtr>(
+        node_map, "AcquisitionFrameRate", static_cast<double>(config_.basler_fps));
+    }
     set_enum_if_writable(node_map, "ExposureAuto", "Off");
     set_if_writable<GenApi::CFloatPtr>(node_map, "ExposureTime", config_.basler_exposure_us);
     set_if_writable<GenApi::CFloatPtr>(node_map, "Gain", config_.basler_gain_db);
@@ -425,6 +428,7 @@ CameraConfig load_camera_config(rclcpp::Node & node)
   node.declare_parameter<double>("basler_exposure_us", config.basler_exposure_us);
   node.declare_parameter<double>("basler_gain_db", config.basler_gain_db);
   node.declare_parameter<int>("basler_fps", config.basler_fps);
+  node.declare_parameter<bool>("basler_uncapped_fps", config.basler_uncapped_fps);
   node.declare_parameter<bool>("basler_flip", config.basler_flip);
   node.declare_parameter<bool>("basler_use_full_sensor", config.basler_use_full_sensor);
   node.declare_parameter<bool>("basler_centered_roi", config.basler_centered_roi);
@@ -447,6 +451,7 @@ CameraConfig load_camera_config(rclcpp::Node & node)
   config.basler_exposure_us = node.get_parameter("basler_exposure_us").as_double();
   config.basler_gain_db = node.get_parameter("basler_gain_db").as_double();
   config.basler_fps = node.get_parameter("basler_fps").as_int();
+  config.basler_uncapped_fps = node.get_parameter("basler_uncapped_fps").as_bool();
   config.basler_flip = node.get_parameter("basler_flip").as_bool();
   config.basler_use_full_sensor = node.get_parameter("basler_use_full_sensor").as_bool();
   config.basler_centered_roi = node.get_parameter("basler_centered_roi").as_bool();

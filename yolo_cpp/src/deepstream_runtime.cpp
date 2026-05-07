@@ -72,6 +72,27 @@ bool path_has_extension(const std::string & path, const std::string & extension)
   return std::equal(extension.rbegin(), extension.rend(), path.rbegin());
 }
 
+std::string make_video_caps_text(
+  const std::string & media_type,
+  const std::string & format,
+  std::optional<int> width,
+  std::optional<int> height,
+  std::optional<int> fps)
+{
+  std::string caps = media_type;
+  if (!format.empty()) {
+    caps += ",format=" + format;
+  }
+  if (width.has_value() && height.has_value()) {
+    caps += ",width=" + std::to_string(*width);
+    caps += ",height=" + std::to_string(*height);
+  }
+  if (fps.has_value() && *fps > 0) {
+    caps += ",framerate=" + std::to_string(*fps) + "/1";
+  }
+  return caps;
+}
+
 #if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
 /// Format a GstClockTime for diagnostics without losing GST_CLOCK_TIME_NONE.
 std::string gst_clock_to_string(GstClockTime value)
@@ -163,6 +184,7 @@ struct DeepStreamRuntime::Impl
   GstElement * pipeline{nullptr};
   GstElement * source{nullptr};
   GstElement * source_caps{nullptr};
+  GstElement * source_flip{nullptr};
   GstElement * tee{nullptr};
   GstElement * infer_queue{nullptr};
   GstElement * infer_convert{nullptr};
@@ -279,6 +301,7 @@ struct DeepStreamRuntime::Impl
 
     const std::vector<std::string> required_elements = {
       config.source_element,
+      "videoflip",
       "tee",
       "queue",
       "videoconvert",
@@ -344,6 +367,7 @@ struct DeepStreamRuntime::Impl
 
     source = make_element(config.source_element.c_str(), "source");
     source_caps = make_element("capsfilter", "source_caps");
+    source_flip = make_element("videoflip", "source_flip");
     tee = make_element("tee", "tee");
     infer_queue = make_element("queue", "infer_queue");
     infer_convert = make_element("videoconvert", "infer_convert");
@@ -370,6 +394,7 @@ struct DeepStreamRuntime::Impl
       GST_BIN(pipeline),
       source,
       source_caps,
+      source_flip,
       tee,
       infer_queue,
       infer_convert,
@@ -391,11 +416,18 @@ struct DeepStreamRuntime::Impl
         nullptr);
     }
 
-    const std::string source_caps_text =
-      "video/x-raw,format=BGR,width=" +
-      std::to_string(config.source_width) +
-      ",height=" + std::to_string(config.source_height) +
-      ",framerate=" + std::to_string(config.source_fps) + "/1";
+    std::optional<int> source_width;
+    std::optional<int> source_height;
+    if (!config.source_use_full_sensor) {
+      source_width = config.source_width;
+      source_height = config.source_height;
+    }
+    std::optional<int> capped_fps;
+    if (!config.source_fps_uncapped) {
+      capped_fps = config.source_fps;
+    }
+    const std::string source_caps_text = make_video_caps_text(
+      "video/x-raw", "BGR", source_width, source_height, capped_fps);
     GstCaps * source_caps_value = gst_caps_from_string(source_caps_text.c_str());
     if (source_caps_value == nullptr) {
       throw std::runtime_error("Failed to create Basler source caps: " + source_caps_text);
@@ -405,12 +437,10 @@ struct DeepStreamRuntime::Impl
     if (g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr) {
       g_object_set(G_OBJECT(source), "do-timestamp", TRUE, nullptr);
     }
+    g_object_set(G_OBJECT(source_flip), "method", config.flip_source ? 2 : 0, nullptr);
 
-    const std::string infer_cpu_caps_text =
-      "video/x-raw,format=RGBA,width=" +
-      std::to_string(config.source_width) +
-      ",height=" + std::to_string(config.source_height) +
-      ",framerate=" + std::to_string(config.source_fps) + "/1";
+    const std::string infer_cpu_caps_text = make_video_caps_text(
+      "video/x-raw", "RGBA", source_width, source_height, capped_fps);
     GstCaps * infer_cpu_caps_value = gst_caps_from_string(infer_cpu_caps_text.c_str());
     if (infer_cpu_caps_value == nullptr) {
       throw std::runtime_error(
@@ -419,11 +449,12 @@ struct DeepStreamRuntime::Impl
     g_object_set(G_OBJECT(infer_cpu_caps), "caps", infer_cpu_caps_value, nullptr);
     gst_caps_unref(infer_cpu_caps_value);
 
-    const std::string infer_caps_text =
-      "video/x-raw(memory:NVMM),format=NV12,width=" +
-      std::to_string(config.imgsz_width) +
-      ",height=" + std::to_string(config.imgsz_height) +
-      ",framerate=" + std::to_string(config.source_fps) + "/1";
+    const std::string infer_caps_text = make_video_caps_text(
+      "video/x-raw(memory:NVMM)",
+      "NV12",
+      std::optional<int>(config.imgsz_width),
+      std::optional<int>(config.imgsz_height),
+      capped_fps);
     GstCaps * infer_caps_value = gst_caps_from_string(infer_caps_text.c_str());
     if (infer_caps_value == nullptr) {
       throw std::runtime_error("Failed to create DeepStream NVMM caps: " + infer_caps_text);
@@ -452,13 +483,12 @@ struct DeepStreamRuntime::Impl
       nullptr);
 
     if (need_color_branch) {
-      GstCaps * color_caps_value = gst_caps_new_simple(
-        "video/x-raw",
-        "format", G_TYPE_STRING, "BGR",
-        "width", G_TYPE_INT, config.source_width,
-        "height", G_TYPE_INT, config.source_height,
-        "framerate", GST_TYPE_FRACTION, config.source_fps, 1,
-        nullptr);
+      const std::string color_caps_text = make_video_caps_text(
+        "video/x-raw", "BGR", source_width, source_height, capped_fps);
+      GstCaps * color_caps_value = gst_caps_from_string(color_caps_text.c_str());
+      if (color_caps_value == nullptr) {
+        throw std::runtime_error("Failed to create DeepStream color caps: " + color_caps_text);
+      }
       g_object_set(G_OBJECT(color_caps), "caps", color_caps_value, nullptr);
       gst_caps_unref(color_caps_value);
       g_object_set(
@@ -470,7 +500,7 @@ struct DeepStreamRuntime::Impl
         nullptr);
     }
 
-    if (!gst_element_link_many(source, source_caps, tee, nullptr)) {
+    if (!gst_element_link_many(source, source_caps, source_flip, tee, nullptr)) {
       throw std::runtime_error("Failed to link DeepStream source path");
     }
     if (!gst_element_link_many(

@@ -73,6 +73,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="60",
         description="Basler frames per second",
     )
+    basler_uncapped_fps_arg = DeclareLaunchArgument(
+        "basler_uncapped_fps",
+        default_value="true",
+        description="Disable Basler frame-rate limiting and let the camera run as fast as configured exposure allows",
+    )
     basler_exposure_arg = DeclareLaunchArgument(
         "basler_exposure_us",
         default_value="5000.0",
@@ -87,6 +92,16 @@ def generate_launch_description() -> LaunchDescription:
         "basler_flip",
         default_value="true",
         description="Rotate Basler frames 180 degrees to compensate for upside-down mounting",
+    )
+    basler_use_full_sensor_arg = DeclareLaunchArgument(
+        "basler_use_full_sensor",
+        default_value="true",
+        description="Use the full Basler sensor instead of cropping the camera to the model input size",
+    )
+    basler_centered_roi_arg = DeclareLaunchArgument(
+        "basler_centered_roi",
+        default_value="true",
+        description="Center the Basler ROI when basler_use_full_sensor is false",
     )
     realsense_width_arg = DeclareLaunchArgument(
         "realsense_width",
@@ -287,11 +302,12 @@ def generate_launch_description() -> LaunchDescription:
                 "imgsz_width": LaunchConfiguration("basler_width"),
                 "imgsz_height": LaunchConfiguration("basler_height"),
                 "basler_fps": LaunchConfiguration("basler_fps"),
+                "basler_uncapped_fps": LaunchConfiguration("basler_uncapped_fps"),
                 "basler_exposure_us": LaunchConfiguration("basler_exposure_us"),
                 "basler_gain_db": LaunchConfiguration("basler_gain_db"),
                 "basler_flip": LaunchConfiguration("basler_flip"),
-                "basler_use_full_sensor": True,
-                "basler_centered_roi": True,
+                "basler_use_full_sensor": LaunchConfiguration("basler_use_full_sensor"),
+                "basler_centered_roi": LaunchConfiguration("basler_centered_roi"),
                 "realsense_width": LaunchConfiguration("realsense_width"),
                 "realsense_height": LaunchConfiguration("realsense_height"),
                 "realsense_fps": LaunchConfiguration("realsense_fps"),
@@ -421,9 +437,12 @@ def generate_launch_description() -> LaunchDescription:
             basler_width_arg,
             basler_height_arg,
             basler_fps_arg,
+            basler_uncapped_fps_arg,
             basler_exposure_arg,
             basler_gain_arg,
             basler_flip_arg,
+            basler_use_full_sensor_arg,
+            basler_centered_roi_arg,
             realsense_width_arg,
             realsense_height_arg,
             realsense_fps_arg,

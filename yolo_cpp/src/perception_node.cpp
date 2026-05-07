@@ -343,6 +343,9 @@ void PerceptionNode::initialize_deepstream_runtime()
   config.source_width = camera_config_.imgsz_width;
   config.source_height = camera_config_.imgsz_height;
   config.source_fps = camera_config_.basler_fps;
+  config.source_fps_uncapped = camera_config_.basler_uncapped_fps;
+  config.source_use_full_sensor = camera_config_.basler_use_full_sensor;
+  config.flip_source = camera_config_.basler_flip;
   config.conf_threshold = conf_;
   config.half = half_;
   config.enable_color_verification = enable_color_verification_ && !use_model_color_classes_;

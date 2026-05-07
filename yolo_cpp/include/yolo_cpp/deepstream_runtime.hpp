@@ -29,6 +29,9 @@ public:
     int source_width{640};
     int source_height{640};
     int source_fps{60};
+    bool source_fps_uncapped{true};
+    bool source_use_full_sensor{true};
+    bool flip_source{false};
     float conf_threshold{0.45F};
     bool half{true};
     bool enable_color_verification{true};
