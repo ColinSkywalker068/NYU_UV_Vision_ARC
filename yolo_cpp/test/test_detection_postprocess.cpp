@@ -42,3 +42,35 @@ TEST(DetectionPostprocessTest, AppliesLocalNmsForTwoClassObbExportWithoutEmbedde
   EXPECT_GT(detections.front().bbox_model.width, 0);
   EXPECT_GT(detections.front().bbox_model.height, 0);
 }
+
+TEST(DetectionPostprocessTest, InfersTwoClassObbShapeWhenMetadataIsMissing)
+{
+  const std::vector<int64_t> shape{1, 7, 1};
+  const std::vector<float> tensor_data{
+    100.0F,  // cx
+    100.0F,  // cy
+    40.0F,   // width
+    20.0F,   // height
+    0.10F,   // blue confidence
+    0.90F,   // red confidence
+    0.00F,   // angle
+  };
+
+  const auto detections = yolo_cpp::parse_yolo_output_tensor(
+    tensor_data.data(),
+    shape,
+    640,
+    640,
+    1,
+    0.25F,
+    true,
+    false,
+    false,
+    nullptr);
+
+  ASSERT_EQ(detections.size(), 1U);
+  EXPECT_EQ(detections.front().class_id, 1);
+  EXPECT_NEAR(detections.front().confidence, 0.90F, 1e-6F);
+  ASSERT_TRUE(detections.front().obb_angle.has_value());
+  EXPECT_NEAR(*detections.front().obb_angle, 0.0F, 1e-6F);
+}

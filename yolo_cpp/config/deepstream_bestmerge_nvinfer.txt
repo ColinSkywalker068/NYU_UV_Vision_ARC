@@ -6,6 +6,7 @@ __MODEL_SOURCE_CONFIG__
 infer-dims=3;__INPUT_HEIGHT__;__INPUT_WIDTH__
 batch-size=1
 process-mode=1
+network-type=100
 num-detected-classes=__NUM_CLASSES__
 interval=0
 gie-unique-id=1

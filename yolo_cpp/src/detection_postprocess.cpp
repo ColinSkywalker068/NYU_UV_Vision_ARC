@@ -216,6 +216,27 @@ struct ParsedCandidate
   int class_id{0};
 };
 
+int resolve_class_count_from_shape(
+  int channels,
+  int configured_num_classes,
+  bool task_obb,
+  const rclcpp::Logger * logger)
+{
+  int num_classes = std::max(1, configured_num_classes);
+  const int fixed_channels = task_obb ? 5 : 4;
+  const int inferred_num_classes = channels - fixed_channels;
+  if (configured_num_classes <= 1 && inferred_num_classes > num_classes) {
+    num_classes = inferred_num_classes;
+    if (logger != nullptr) {
+      RCLCPP_WARN(
+        *logger,
+        "Model metadata did not provide class count; inferred %d classes from YOLO output shape",
+        num_classes);
+    }
+  }
+  return num_classes;
+}
+
 /// Normalize YOLO OBB width/height/angle to OpenCV's rotated rectangle convention.
 cv::RotatedRect regularize_rbox(const ParsedCandidate & candidate, float * normalized_angle)
 {
@@ -563,7 +584,7 @@ std::vector<Detection> parse_yolo_output_tensor(
 
   const int channels = static_cast<int>(shape[1]);
   const int boxes = static_cast<int>(shape[2]);
-  const int nc = std::max(1, num_classes);
+  const int nc = resolve_class_count_from_shape(channels, num_classes, task_obb, logger);
   const int extras = channels - 4 - nc;
   if (extras < 0) {
     if (logger != nullptr) {
