@@ -93,17 +93,6 @@ void release_request_pad(GstElement * element, GstPad *& pad)
   pad = nullptr;
 }
 
-void set_int_property_if_present(GstElement * element, const char * property_name, int value)
-{
-  if (
-    element == nullptr || property_name == nullptr ||
-    g_object_class_find_property(G_OBJECT_GET_CLASS(element), property_name) == nullptr)
-  {
-    return;
-  }
-  g_object_set(G_OBJECT(element), property_name, value, nullptr);
-}
-
 std::string collect_bus_diagnostics(GstBus * bus)
 {
   if (bus == nullptr) {
@@ -177,6 +166,7 @@ struct DeepStreamRuntime::Impl
   GstElement * tee{nullptr};
   GstElement * infer_queue{nullptr};
   GstElement * infer_convert{nullptr};
+  GstElement * infer_cpu_caps{nullptr};
   GstElement * infer_nvconvert{nullptr};
   GstElement * infer_nvmm_caps{nullptr};
   GstElement * streammux{nullptr};
@@ -357,6 +347,7 @@ struct DeepStreamRuntime::Impl
     tee = make_element("tee", "tee");
     infer_queue = make_element("queue", "infer_queue");
     infer_convert = make_element("videoconvert", "infer_convert");
+    infer_cpu_caps = make_element("capsfilter", "infer_cpu_caps");
     infer_nvconvert = make_element("nvvideoconvert", "infer_nvconvert");
     infer_nvmm_caps = make_element("capsfilter", "infer_nvmm_caps");
     streammux = make_element("nvstreammux", "streammux");
@@ -382,6 +373,7 @@ struct DeepStreamRuntime::Impl
       tee,
       infer_queue,
       infer_convert,
+      infer_cpu_caps,
       infer_nvconvert,
       infer_nvmm_caps,
       streammux,
@@ -413,8 +405,19 @@ struct DeepStreamRuntime::Impl
     if (g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr) {
       g_object_set(G_OBJECT(source), "do-timestamp", TRUE, nullptr);
     }
-    set_int_property_if_present(infer_nvconvert, "compute-hw", 1);
-    set_int_property_if_present(infer_nvconvert, "copy-hw", 1);
+
+    const std::string infer_cpu_caps_text =
+      "video/x-raw,format=RGBA,width=" +
+      std::to_string(config.source_width) +
+      ",height=" + std::to_string(config.source_height) +
+      ",framerate=" + std::to_string(config.source_fps) + "/1";
+    GstCaps * infer_cpu_caps_value = gst_caps_from_string(infer_cpu_caps_text.c_str());
+    if (infer_cpu_caps_value == nullptr) {
+      throw std::runtime_error(
+              "Failed to create DeepStream CPU conversion caps: " + infer_cpu_caps_text);
+    }
+    g_object_set(G_OBJECT(infer_cpu_caps), "caps", infer_cpu_caps_value, nullptr);
+    gst_caps_unref(infer_cpu_caps_value);
 
     const std::string infer_caps_text =
       "video/x-raw(memory:NVMM),format=NV12,width=" +
@@ -471,7 +474,7 @@ struct DeepStreamRuntime::Impl
       throw std::runtime_error("Failed to link DeepStream source path");
     }
     if (!gst_element_link_many(
-        infer_queue, infer_convert, infer_nvconvert, infer_nvmm_caps, nullptr))
+        infer_queue, infer_convert, infer_cpu_caps, infer_nvconvert, infer_nvmm_caps, nullptr))
     {
       throw std::runtime_error("Failed to link DeepStream inference pre-mux path");
     }
