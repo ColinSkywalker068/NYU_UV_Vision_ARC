@@ -19,6 +19,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -90,6 +91,54 @@ void release_request_pad(GstElement * element, GstPad *& pad)
   gst_element_release_request_pad(element, pad);
   gst_object_unref(pad);
   pad = nullptr;
+}
+
+std::string collect_bus_diagnostics(GstBus * bus)
+{
+  if (bus == nullptr) {
+    return "";
+  }
+
+  std::ostringstream diagnostics;
+  for (int i = 0; i < 8; ++i) {
+    GstMessage * message = gst_bus_timed_pop_filtered(
+      bus,
+      100 * GST_MSECOND,
+      static_cast<GstMessageType>(GST_MESSAGE_ERROR | GST_MESSAGE_WARNING));
+    if (message == nullptr) {
+      break;
+    }
+
+    GstObject * source = GST_MESSAGE_SRC(message);
+    const char * source_name = source != nullptr ? GST_OBJECT_NAME(source) : nullptr;
+    GError * error = nullptr;
+    gchar * debug = nullptr;
+    if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
+      gst_message_parse_error(message, &error, &debug);
+      diagnostics << " error";
+    } else {
+      gst_message_parse_warning(message, &error, &debug);
+      diagnostics << " warning";
+    }
+    diagnostics << " from " << (source_name != nullptr ? source_name : "unknown") << ": "
+                << (error != nullptr ? error->message : "unknown");
+    if (debug != nullptr && std::strlen(debug) > 0U) {
+      diagnostics << " debug=" << debug;
+    }
+    if (i < 7) {
+      diagnostics << ';';
+    }
+
+    if (error != nullptr) {
+      g_error_free(error);
+    }
+    if (debug != nullptr) {
+      g_free(debug);
+    }
+    gst_message_unref(message);
+  }
+
+  return diagnostics.str();
 }
 #endif
 
@@ -339,14 +388,20 @@ struct DeepStreamRuntime::Impl
         nullptr);
     }
 
-    GstCaps * source_caps_value = gst_caps_new_simple(
-      "video/x-raw",
-      "width", G_TYPE_INT, config.source_width,
-      "height", G_TYPE_INT, config.source_height,
-      "framerate", GST_TYPE_FRACTION, config.source_fps, 1,
-      nullptr);
+    const std::string source_caps_text =
+      "video/x-raw,format=BGR,width=" +
+      std::to_string(config.source_width) +
+      ",height=" + std::to_string(config.source_height) +
+      ",framerate=" + std::to_string(config.source_fps) + "/1";
+    GstCaps * source_caps_value = gst_caps_from_string(source_caps_text.c_str());
+    if (source_caps_value == nullptr) {
+      throw std::runtime_error("Failed to create Basler source caps: " + source_caps_text);
+    }
     g_object_set(G_OBJECT(source_caps), "caps", source_caps_value, nullptr);
     gst_caps_unref(source_caps_value);
+    if (g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr) {
+      g_object_set(G_OBJECT(source), "do-timestamp", TRUE, nullptr);
+    }
 
     const std::string infer_caps_text =
       "video/x-raw(memory:NVMM),format=NV12,width=" +
@@ -465,7 +520,10 @@ struct DeepStreamRuntime::Impl
 
     const GstStateChangeReturn state_ret = gst_element_set_state(pipeline, GST_STATE_PLAYING);
     if (state_ret == GST_STATE_CHANGE_FAILURE) {
-      throw std::runtime_error("Failed to set DeepStream pipeline to PLAYING");
+      const std::string diagnostics = collect_bus_diagnostics(bus);
+      throw std::runtime_error(
+              "Failed to set DeepStream pipeline to PLAYING" +
+              (diagnostics.empty() ? std::string{} : (": " + diagnostics)));
     }
   }
 
