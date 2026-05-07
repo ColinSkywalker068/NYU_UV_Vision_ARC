@@ -452,7 +452,7 @@ void ArmorDetectorNode::initialize_deepstream_runtime()
   config.conf_threshold = conf_;
   config.half = half_;
   config.enable_color_verification = enable_color_verification_ && !use_model_color_classes_;
-  config.debug_publish_image_raw = debug_publish_image_raw_;
+  config.debug_publish_image_raw = debug_publish_image_raw_ || show_;
 
   fps_ = static_cast<double>(std::max(1, camera_config_.basler_fps));
   deepstream_runtime_ = std::make_unique<DeepStreamRuntime>(
