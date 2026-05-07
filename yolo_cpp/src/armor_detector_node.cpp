@@ -142,6 +142,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<int>("max_hsv_candidates", kDefaultMaxHsvCandidates);
   this->declare_parameter<std::string>("runtime_log_dir", "");
   this->declare_parameter<std::string>("vis_window_name", "Armor Detector");
+  this->declare_parameter<std::string>("preview_target_topic", "tracker/target");
   this->declare_parameter<bool>("debug_publish_image_raw", false);
   this->declare_parameter<int>("stage_log_interval", 300);
 
@@ -182,6 +183,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   max_hsv_candidates_ = this->get_parameter("max_hsv_candidates").as_int();
   runtime_log_dir_ = this->get_parameter("runtime_log_dir").as_string();
   vis_window_name_ = this->get_parameter("vis_window_name").as_string();
+  preview_target_topic_ = this->get_parameter("preview_target_topic").as_string();
   debug_publish_image_raw_ = this->get_parameter("debug_publish_image_raw").as_bool();
   stage_log_interval_ = std::max(
     1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
@@ -206,6 +208,10 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   attitude_flags_subscription_ = this->create_subscription<std_msgs::msg::Int32MultiArray>(
     "attitude_flags", 10,
     std::bind(&ArmorDetectorNode::handle_attitude_flags, this, std::placeholders::_1));
+  preview_target_subscription_ =
+    this->create_subscription<cv_auto_aim_interfaces::msg::Target>(
+    preview_target_topic_, 10,
+    std::bind(&ArmorDetectorNode::handle_preview_target, this, std::placeholders::_1));
   if (enable_3d_pose_) {
     camera_info_subscription_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
       camera_info_topic_, rclcpp::SensorDataQoS(),
@@ -314,6 +320,15 @@ void ArmorDetectorNode::handle_attitude_flags(const std_msgs::msg::Int32MultiArr
       "attitude_flags enemy_color=" + std::to_string(enemy_color) +
       " -> Targeting " + color_name + ".");
   }
+}
+
+void ArmorDetectorNode::handle_preview_target(
+  const cv_auto_aim_interfaces::msg::Target::SharedPtr msg)
+{
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  preview_has_target_ = msg->has_target;
+  preview_target_track_id_ = msg->track_id;
+  preview_target_bbox_xyxy_ = msg->bbox_xyxy;
 }
 
 void ArmorDetectorNode::handle_camera_info(const sensor_msgs::msg::CameraInfo::SharedPtr msg)
@@ -644,6 +659,40 @@ void ArmorDetectorNode::render_preview(
         color,
         1,
         cv::LINE_AA);
+    }
+
+    if (preview_has_target_) {
+      const int x1 = preview_target_bbox_xyxy_[0];
+      const int y1 = preview_target_bbox_xyxy_[1];
+      const int x2 = preview_target_bbox_xyxy_[2];
+      const int y2 = preview_target_bbox_xyxy_[3];
+      const cv::Rect image_rect(0, 0, preview.cols, preview.rows);
+      const cv::Rect target_rect =
+        cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)) & image_rect;
+      if (target_rect.width > 0 && target_rect.height > 0) {
+        const cv::Scalar target_color(0, 0, 255);
+        cv::rectangle(preview, target_rect, target_color, 4);
+        cv::circle(
+          preview,
+          cv::Point(target_rect.x + target_rect.width / 2, target_rect.y + target_rect.height / 2),
+          5,
+          target_color,
+          -1,
+          cv::LINE_AA);
+        const std::string label = preview_target_track_id_ >= 0 ?
+          "TARGET #" + std::to_string(preview_target_track_id_) :
+          "TARGET";
+        const cv::Point label_origin(target_rect.x, std::max(22, target_rect.y - 8));
+        cv::putText(
+          preview,
+          label,
+          label_origin,
+          cv::FONT_HERSHEY_SIMPLEX,
+          0.7,
+          target_color,
+          2,
+          cv::LINE_AA);
+      }
     }
 
     cv::putText(
