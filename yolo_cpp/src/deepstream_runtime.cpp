@@ -29,6 +29,7 @@
 #if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
 #include <gst/app/gstappsink.h>
 #include <gst/gst.h>
+#include <gst/gstchildproxy.h>
 #include <gst/video/video.h>
 #include <gstnvdsinfer.h>
 #include <gstnvdsmeta.h>
@@ -112,6 +113,33 @@ void release_request_pad(GstElement * element, GstPad *& pad)
   gst_element_release_request_pad(element, pad);
   gst_object_unref(pad);
   pad = nullptr;
+}
+
+bool set_child_proxy_bool_if_present(GstElement * element, const char * name, bool value)
+{
+  if (element == nullptr || name == nullptr || !GST_IS_CHILD_PROXY(element)) {
+    return false;
+  }
+
+  GObject * target = nullptr;
+  GParamSpec * pspec = nullptr;
+  if (!gst_child_proxy_lookup(GST_CHILD_PROXY(element), name, &target, &pspec)) {
+    return false;
+  }
+
+  GValue gvalue = G_VALUE_INIT;
+  g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
+  bool did_set = false;
+  if (G_VALUE_HOLDS_BOOLEAN(&gvalue)) {
+    g_value_set_boolean(&gvalue, value ? TRUE : FALSE);
+    gst_child_proxy_set_property(GST_CHILD_PROXY(element), name, &gvalue);
+    did_set = true;
+  }
+  g_value_unset(&gvalue);
+  if (target != nullptr) {
+    g_object_unref(target);
+  }
+  return did_set;
 }
 
 std::string collect_bus_diagnostics(GstBus * bus)
@@ -437,6 +465,14 @@ struct DeepStreamRuntime::Impl
     if (g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr) {
       g_object_set(G_OBJECT(source), "do-timestamp", TRUE, nullptr);
     }
+    if (
+      config.source_fps_uncapped &&
+      !set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", false))
+    {
+      RCLCPP_WARN(
+        logger,
+        "Could not disable Basler AcquisitionFrameRateEnable through pylonsrc; camera UserSet may still cap FPS");
+    }
     g_object_set(G_OBJECT(source_flip), "method", config.flip_source ? 2 : 0, nullptr);
 
     const std::string infer_cpu_caps_text = make_video_caps_text(
@@ -449,11 +485,15 @@ struct DeepStreamRuntime::Impl
     g_object_set(G_OBJECT(infer_cpu_caps), "caps", infer_cpu_caps_value, nullptr);
     gst_caps_unref(infer_cpu_caps_value);
 
+    const std::optional<int> infer_width =
+      config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_width);
+    const std::optional<int> infer_height =
+      config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_height);
     const std::string infer_caps_text = make_video_caps_text(
       "video/x-raw(memory:NVMM)",
       "NV12",
-      std::optional<int>(config.imgsz_width),
-      std::optional<int>(config.imgsz_height),
+      infer_width,
+      infer_height,
       capped_fps);
     GstCaps * infer_caps_value = gst_caps_from_string(infer_caps_text.c_str());
     if (infer_caps_value == nullptr) {
@@ -879,10 +919,27 @@ struct DeepStreamRuntime::Impl
       const auto output_shape = dims_to_shape(output_layer.inferDims);
 
       Result result{};
-      const int src_w = frame_meta->source_frame_width > 0 ?
-        static_cast<int>(frame_meta->source_frame_width) : config.source_width;
-      const int src_h = frame_meta->source_frame_height > 0 ?
-        static_cast<int>(frame_meta->source_frame_height) : config.source_height;
+      if (config.enable_color_verification || config.debug_publish_image_raw) {
+        const auto pts = frame_meta->buf_pts != GST_CLOCK_TIME_NONE ?
+          frame_meta->buf_pts : GST_BUFFER_PTS(buffer);
+        if (pts != GST_CLOCK_TIME_NONE) {
+          result.source_packet = lookup_frame(static_cast<std::uint64_t>(pts));
+        } else {
+          RCLCPP_WARN(
+            logger,
+            "DeepStream inference sample missing valid PTS; color/debug frame lookup skipped (%s)",
+            gst_clock_to_string(pts).c_str());
+        }
+      }
+
+      const int src_w = result.source_packet.has_value() && !result.source_packet->empty() ?
+        result.source_packet->width() :
+        (frame_meta->source_frame_width > 0 ?
+        static_cast<int>(frame_meta->source_frame_width) : config.source_width);
+      const int src_h = result.source_packet.has_value() && !result.source_packet->empty() ?
+        result.source_packet->height() :
+        (frame_meta->source_frame_height > 0 ?
+        static_cast<int>(frame_meta->source_frame_height) : config.source_height);
       result.batch.letterbox = make_letterbox_metadata(
         src_w, src_h, config.imgsz_width, config.imgsz_height);
       result.batch.detections = parse_yolo_output_tensor(
@@ -899,19 +956,6 @@ struct DeepStreamRuntime::Impl
       const auto parse_done = std::chrono::steady_clock::now();
       result.timings.parse_ms = std::chrono::duration<double, std::milli>(
         parse_done - parse_start).count();
-
-      if (config.enable_color_verification || config.debug_publish_image_raw) {
-        const auto pts = frame_meta->buf_pts != GST_CLOCK_TIME_NONE ?
-          frame_meta->buf_pts : GST_BUFFER_PTS(buffer);
-        if (pts != GST_CLOCK_TIME_NONE) {
-          result.source_packet = lookup_frame(static_cast<std::uint64_t>(pts));
-        } else {
-          RCLCPP_WARN(
-            logger,
-            "DeepStream inference sample missing valid PTS; color/debug frame lookup skipped (%s)",
-            gst_clock_to_string(pts).c_str());
-        }
-      }
 
       callback(std::move(result));
     }
