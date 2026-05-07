@@ -24,7 +24,7 @@ struct CameraConfig
   int imgsz_height{640};
   double basler_exposure_us{5000.0};
   double basler_gain_db{5.0};
-  int basler_fps{60};
+  int basler_fps{90};
   bool basler_uncapped_fps{true};
   bool basler_flip{false};
   bool basler_use_full_sensor{true};

@@ -450,8 +450,23 @@ struct DeepStreamRuntime::Impl
       source_width = config.source_width;
       source_height = config.source_height;
     }
+    if (g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr) {
+      g_object_set(G_OBJECT(source), "do-timestamp", TRUE, nullptr);
+    }
+    bool uncapped_fps_applied = false;
+    if (
+      config.source_fps_uncapped &&
+      set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", false))
+    {
+      uncapped_fps_applied = true;
+    } else if (config.source_fps_uncapped) {
+      RCLCPP_WARN(
+        logger,
+        "Could not disable Basler AcquisitionFrameRateEnable through pylonsrc; requesting %d FPS through caps instead",
+        config.source_fps);
+    }
     std::optional<int> capped_fps;
-    if (!config.source_fps_uncapped) {
+    if (!config.source_fps_uncapped || !uncapped_fps_applied) {
       capped_fps = config.source_fps;
     }
     const std::string source_caps_text = make_video_caps_text(
@@ -462,17 +477,6 @@ struct DeepStreamRuntime::Impl
     }
     g_object_set(G_OBJECT(source_caps), "caps", source_caps_value, nullptr);
     gst_caps_unref(source_caps_value);
-    if (g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr) {
-      g_object_set(G_OBJECT(source), "do-timestamp", TRUE, nullptr);
-    }
-    if (
-      config.source_fps_uncapped &&
-      !set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", false))
-    {
-      RCLCPP_WARN(
-        logger,
-        "Could not disable Basler AcquisitionFrameRateEnable through pylonsrc; camera UserSet may still cap FPS");
-    }
     g_object_set(G_OBJECT(source_flip), "method", config.flip_source ? 2 : 0, nullptr);
 
     const std::string infer_cpu_caps_text = make_video_caps_text(

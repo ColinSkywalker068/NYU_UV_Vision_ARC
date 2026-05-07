@@ -70,7 +70,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     basler_fps_arg = DeclareLaunchArgument(
         "basler_fps",
-        default_value="60",
+        default_value="90",
         description="Basler frames per second",
     )
     basler_uncapped_fps_arg = DeclareLaunchArgument(
