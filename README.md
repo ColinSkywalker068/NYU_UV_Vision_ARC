@@ -27,11 +27,11 @@ To easily run the detection stack, use the `uv` tool wrapper:
 3. **Run the launch files:**
    - To launch with STM configs and Basler camera (standard start):
      ```bash
-     uv run yolov8_ros stm.launch.py
+     uv run yolov8_ros stm.launch.safal.py
      ```
    - To launch with RealSense configs:
      ```bash
-     uv run yolov8_ros realsense.launch.py
+     uv run yolov8_ros stm.launch.py
      ```
 
 ---
