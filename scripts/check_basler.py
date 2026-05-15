@@ -295,11 +295,34 @@ def print_camera_nodes(camera: Any) -> None:
         print_status("INFO", name, node_readable_value(camera, name))
 
 
+def get_node(camera: Any, name: str) -> Any:
+    try:
+        return getattr(camera, name)
+    except Exception as exc:
+        raise CheckFailure(f"{name} lookup failed: {short_exception(exc)}") from exc
+
+
+def node_max_value(camera: Any, name: str) -> int | None:
+    try:
+        node = get_node(camera, name)
+        return int(node.GetMax())
+    except Exception:
+        return None
+
+
+def node_int_value(camera: Any, name: str) -> int | None:
+    try:
+        node = get_node(camera, name)
+        return int(node.GetValue())
+    except Exception:
+        return None
+
+
 def set_node(camera: Any, name: str, value: object) -> tuple[bool, str]:
     try:
-        node = getattr(camera, name)
-    except Exception:
-        return False, "missing"
+        node = get_node(camera, name)
+    except CheckFailure as exc:
+        return False, str(exc)
     try:
         if hasattr(node, "IsWritable") and not node.IsWritable():
             return False, "not writable"
@@ -312,37 +335,135 @@ def set_node(camera: Any, name: str, value: object) -> tuple[bool, str]:
     return True, str(value)
 
 
-def apply_camera_config(camera: Any, args: argparse.Namespace) -> bool:
+def probe_grab_once(pylon: Any, camera: Any, args: argparse.Namespace, label: str) -> bool:
+    try:
+        converter = pylon.ImageFormatConverter()
+        converter.OutputPixelFormat = pylon.PixelType_BGR8packed
+        converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
+        camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+        result = camera.RetrieveResult(args.timeout_ms, pylon.TimeoutHandling_Return)
+        if result is None:
+            print_status("FAIL", label, "RetrieveResult returned None")
+            return False
+        try:
+            if not result.GrabSucceeded():
+                error_code = getattr(result, "GetErrorCode", lambda: "unknown")()
+                error_text = getattr(result, "GetErrorDescription", lambda: "unknown")()
+                print_status(
+                    "FAIL",
+                    label,
+                    f"grab failed code={error_code} description={error_text}",
+                )
+                return False
+            converted = converter.Convert(result)
+            frame_bgr = converted.GetArray()
+            print_status(
+                "PASS",
+                label,
+                f"{result.GetWidth()}x{result.GetHeight()} array={frame_bgr.shape}",
+            )
+            return True
+        finally:
+            result.Release()
+    except Exception as exc:
+        print_status("FAIL", label, short_exception(exc))
+        print_exception_hints(exc)
+        return False
+    finally:
+        try:
+            if camera.IsGrabbing():
+                camera.StopGrabbing()
+        except Exception:
+            pass
+
+
+def apply_config_step(
+    pylon: Any,
+    camera: Any,
+    args: argparse.Namespace,
+    step_number: int,
+    name: str,
+    value: object,
+) -> bool:
+    print_status("STEP", f"{step_number}. set {name}", str(value))
+    ok, detail = set_node(camera, name, value)
+    print_status("PASS" if ok else "FAIL", f"{name}", detail)
+    if not ok and args.strict_config:
+        raise CheckFailure(f"GenICam step {step_number} failed: {name}: {detail}")
+    if args.grab_after_config_step:
+        grab_ok = probe_grab_once(pylon, camera, args, f"grab after {name}")
+        if not grab_ok and args.strict_config:
+            raise CheckFailure(f"grab failed after GenICam step {step_number}: {name}")
+        ok = ok and grab_ok
+    return ok
+
+
+def apply_camera_config(pylon: Any, camera: Any, args: argparse.Namespace) -> bool:
     print("\nCamera config")
     if args.config_mode == "none":
         print_status("PASS", "config mode", "none; no GenICam writes attempted")
         return True
 
+    step_number = 1
+    all_ok = True
+
+    def apply_step(name: str, value: object) -> None:
+        nonlocal all_ok, step_number
+        all_ok = (
+            apply_config_step(pylon, camera, args, step_number, name, value) and all_ok
+        )
+        step_number += 1
+
     if args.config_mode == "safe":
         fps = args.fps if args.fps is not None else 30
-        writes: list[tuple[str, object]] = [
-            ("AcquisitionFrameRateEnable", True),
-            ("AcquisitionFrameRate", float(fps)),
-        ]
-    else:
-        fps = args.fps if args.fps is not None else 90
-        exposure_us = args.exposure_us if args.exposure_us is not None else 5000.0
-        gain_db = args.gain_db if args.gain_db is not None else 5.0
-        uncapped = not args.stm_capped_fps
-        writes = [
-            ("AcquisitionFrameRateEnable", not uncapped),
-            ("ExposureAuto", "Off"),
-            ("ExposureTime", float(exposure_us)),
-            ("Gain", float(gain_db)),
-        ]
-        if not uncapped:
-            writes.insert(1, ("AcquisitionFrameRate", float(fps)))
+        apply_step("AcquisitionFrameRateEnable", True)
+        apply_step("AcquisitionFrameRate", float(fps))
+        return all_ok
 
-    all_ok = True
-    for name, value in writes:
-        ok, detail = set_node(camera, name, value)
-        all_ok = all_ok and ok
-        print_status("PASS" if ok else "WARN", f"set {name}", detail)
+    fps = args.fps if args.fps is not None else 90
+    exposure_us = args.exposure_us if args.exposure_us is not None else 5000.0
+    gain_db = args.gain_db if args.gain_db is not None else 5.0
+    uncapped = not args.stm_capped_fps
+
+    print_status(
+        "INFO",
+        "stm mirror",
+        (
+            f"uncapped={uncapped}, fps={fps}, exposure_us={exposure_us}, "
+            f"gain_db={gain_db}, crop_to_imgsz={args.crop_to_imgsz}"
+        ),
+    )
+    apply_step("AcquisitionFrameRateEnable", not uncapped)
+    if not uncapped:
+        apply_step("AcquisitionFrameRate", float(fps))
+    apply_step("ExposureAuto", "Off")
+    apply_step("ExposureTime", float(exposure_us))
+    apply_step("Gain", float(gain_db))
+
+    if args.crop_to_imgsz:
+        width_max = node_max_value(camera, "Width")
+        height_max = node_max_value(camera, "Height")
+        width_value = min(width_max or args.imgsz_width, args.imgsz_width)
+        height_value = min(height_max or args.imgsz_height, args.imgsz_height)
+        apply_step("Width", int(width_value))
+        apply_step("Height", int(height_value))
+        if args.centered_roi:
+            width_max = node_max_value(camera, "Width")
+            height_max = node_max_value(camera, "Height")
+            width_current = node_int_value(camera, "Width")
+            height_current = node_int_value(camera, "Height")
+            if None not in (width_max, height_max, width_current, height_current):
+                offset_x = max(0, (int(width_max) - int(width_current)) // 2)
+                offset_y = max(0, (int(height_max) - int(height_current)) // 2)
+                apply_step("OffsetX", offset_x)
+                apply_step("OffsetY", offset_y)
+            else:
+                all_ok = False
+                detail = "could not read Width/Height max/current values"
+                print_status("FAIL", "centered ROI offsets", detail)
+                if args.strict_config:
+                    raise CheckFailure(detail)
+
     if args.strict_config and not all_ok:
         raise CheckFailure("one or more requested GenICam writes failed")
     return all_ok
@@ -427,7 +548,7 @@ def open_and_test_camera(pylon: Any, device_info: Any, args: argparse.Namespace)
         camera.Open()
         print_status("PASS", "open", describe_device(camera.GetDeviceInfo()))
         print_camera_nodes(camera)
-        apply_camera_config(camera, args)
+        apply_camera_config(pylon, camera, args)
         grabbed = grab_frames(pylon, camera, args)
         return 0 if grabbed > 0 else 1
     except Exception as exc:
@@ -491,7 +612,42 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--strict-config",
         action="store_true",
-        help="Fail when any requested GenICam config write fails.",
+        help="Fail immediately when any requested GenICam config or step grab fails.",
+    )
+    parser.add_argument(
+        "--grab-after-config-step",
+        action="store_true",
+        help="Grab one frame after each GenICam write to isolate stream-breaking steps.",
+    )
+    parser.add_argument(
+        "--crop-to-imgsz",
+        action="store_true",
+        help="With --config-mode stm, mirror basler_use_full_sensor:=false ROI writes.",
+    )
+    parser.add_argument(
+        "--imgsz-width",
+        type=int,
+        default=640,
+        help="ROI width used with --crop-to-imgsz.",
+    )
+    parser.add_argument(
+        "--imgsz-height",
+        type=int,
+        default=640,
+        help="ROI height used with --crop-to-imgsz.",
+    )
+    parser.add_argument(
+        "--centered-roi",
+        dest="centered_roi",
+        action="store_true",
+        default=True,
+        help="Center ROI offsets when --crop-to-imgsz is used.",
+    )
+    parser.add_argument(
+        "--no-centered-roi",
+        dest="centered_roi",
+        action="store_false",
+        help="Leave ROI offsets unchanged when --crop-to-imgsz is used.",
     )
     parser.add_argument(
         "--save-frame",
