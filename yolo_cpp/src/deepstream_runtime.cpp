@@ -284,6 +284,11 @@ struct DeepStreamRuntime::Impl
   bool task_obb{true};
   bool end2end{false};
   std::optional<bool> export_includes_nms;
+  std::size_t throughput_sample_count{0U};
+  std::chrono::steady_clock::time_point throughput_wall_start{};
+  std::optional<std::uint64_t> throughput_pts_start;
+  std::optional<std::uint64_t> throughput_pts_last;
+  bool logged_first_tensor{false};
 #endif
 
   ~Impl()
@@ -868,6 +873,131 @@ struct DeepStreamRuntime::Impl
     return shape;
   }
 
+  std::string format_shape(const std::vector<int64_t> & shape) const
+  {
+    std::ostringstream stream;
+    for (std::size_t i = 0; i < shape.size(); ++i) {
+      if (i > 0U) {
+        stream << 'x';
+      }
+      stream << shape[i];
+    }
+    return stream.str();
+  }
+
+  const char * infer_dtype_name(NvDsInferDataType data_type) const
+  {
+    if (data_type == FLOAT) {
+      return "FLOAT";
+    }
+    if (data_type == HALF) {
+      return "HALF";
+    }
+    return "OTHER";
+  }
+
+  std::string current_caps_string(GstElement * element, const char * pad_name) const
+  {
+    if (element == nullptr) {
+      return "unavailable";
+    }
+    GstPad * pad = gst_element_get_static_pad(element, pad_name);
+    if (pad == nullptr) {
+      return "unavailable";
+    }
+    GstCaps * caps = gst_pad_get_current_caps(pad);
+    if (caps == nullptr) {
+      caps = gst_pad_query_caps(pad, nullptr);
+    }
+    gst_object_unref(pad);
+    if (caps == nullptr) {
+      return "unavailable";
+    }
+
+    gchar * caps_text = gst_caps_to_string(caps);
+    std::string result = caps_text != nullptr ? caps_text : "unavailable";
+    if (caps_text != nullptr) {
+      g_free(caps_text);
+    }
+    gst_caps_unref(caps);
+    return result;
+  }
+
+  void maybe_log_first_tensor(
+    const NvDsFrameMeta & frame_meta,
+    const NvDsInferLayerInfo & output_layer,
+    const std::vector<int64_t> & output_shape)
+  {
+    if (logged_first_tensor) {
+      return;
+    }
+    logged_first_tensor = true;
+    RCLCPP_INFO(
+      logger,
+      "DeepStream first tensor: source_meta=%ux%u model=%dx%d output=%s dtype=%s "
+      "source_caps='%s' infer_nvmm_caps='%s' mux_caps='%s'",
+      frame_meta.source_frame_width,
+      frame_meta.source_frame_height,
+      config.imgsz_width,
+      config.imgsz_height,
+      format_shape(output_shape).c_str(),
+      infer_dtype_name(output_layer.dataType),
+      current_caps_string(source_caps, "src").c_str(),
+      current_caps_string(infer_nvmm_caps, "src").c_str(),
+      current_caps_string(streammux, "src").c_str());
+  }
+
+  void record_throughput(GstClockTime pts)
+  {
+    const auto now = std::chrono::steady_clock::now();
+    if (throughput_sample_count == 0U) {
+      throughput_wall_start = now;
+      throughput_pts_start = pts != GST_CLOCK_TIME_NONE ?
+        std::optional<std::uint64_t>(static_cast<std::uint64_t>(pts)) : std::nullopt;
+      throughput_pts_last = std::nullopt;
+    }
+
+    ++throughput_sample_count;
+    if (pts != GST_CLOCK_TIME_NONE) {
+      throughput_pts_last = static_cast<std::uint64_t>(pts);
+    }
+
+    constexpr std::size_t kThroughputLogInterval = 300U;
+    if (throughput_sample_count < kThroughputLogInterval) {
+      return;
+    }
+
+    const double wall_s = std::chrono::duration<double>(now - throughput_wall_start).count();
+    const double wall_fps = wall_s > 0.0 ?
+      static_cast<double>(throughput_sample_count) / wall_s : 0.0;
+    double pts_fps = 0.0;
+    if (
+      throughput_pts_start.has_value() && throughput_pts_last.has_value() &&
+      *throughput_pts_last > *throughput_pts_start)
+    {
+      const double pts_s = static_cast<double>(*throughput_pts_last - *throughput_pts_start) /
+        static_cast<double>(GST_SECOND);
+      if (pts_s > 0.0) {
+        pts_fps = static_cast<double>(throughput_sample_count - 1U) / pts_s;
+      }
+    }
+
+    RCLCPP_INFO(
+      logger,
+      "DeepStream throughput over %zu tensors: wall_fps=%.1f pts_fps=%.1f "
+      "source_caps='%s' infer_nvmm_caps='%s' mux_caps='%s'",
+      throughput_sample_count,
+      wall_fps,
+      pts_fps,
+      current_caps_string(source_caps, "src").c_str(),
+      current_caps_string(infer_nvmm_caps, "src").c_str(),
+      current_caps_string(streammux, "src").c_str());
+
+    throughput_sample_count = 0U;
+    throughput_pts_start = std::nullopt;
+    throughput_pts_last = std::nullopt;
+  }
+
   std::vector<float> tensor_to_float_vector(
     const NvDsInferTensorMeta * tensor_meta,
     const NvDsInferLayerInfo & layer) const
@@ -1023,11 +1153,14 @@ struct DeepStreamRuntime::Impl
       const auto & output_layer = (*tensor_meta)->output_layers_info[0];
       const auto tensor_values = tensor_to_float_vector(*tensor_meta, output_layer);
       const auto output_shape = dims_to_shape(output_layer.inferDims);
+      maybe_log_first_tensor(*frame_meta, output_layer, output_shape);
+
+      const auto pts = frame_meta->buf_pts != GST_CLOCK_TIME_NONE ?
+        frame_meta->buf_pts : GST_BUFFER_PTS(buffer);
+      record_throughput(pts);
 
       Result result{};
       if (config.enable_color_verification || config.debug_publish_image_raw) {
-        const auto pts = frame_meta->buf_pts != GST_CLOCK_TIME_NONE ?
-          frame_meta->buf_pts : GST_BUFFER_PTS(buffer);
         if (pts != GST_CLOCK_TIME_NONE) {
           result.source_packet = lookup_frame(static_cast<std::uint64_t>(pts));
         } else {
