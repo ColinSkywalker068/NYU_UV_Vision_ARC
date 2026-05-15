@@ -342,6 +342,22 @@ void print_node_snapshot(GenApi::INodeMap & node_map)
     "INFO",
     "AcquisitionFrameRate",
     node_read_value<GenApi::CFloatPtr>(node_map, "AcquisitionFrameRate"));
+  print_status(
+    "INFO",
+    "ResultingFrameRate",
+    node_read_value<GenApi::CFloatPtr>(node_map, "ResultingFrameRate"));
+  print_status(
+    "INFO",
+    "AcquisitionResultingFrameRate",
+    node_read_value<GenApi::CFloatPtr>(node_map, "AcquisitionResultingFrameRate"));
+  print_status(
+    "INFO",
+    "BslResultingAcquisitionFrameRate",
+    node_read_value<GenApi::CFloatPtr>(node_map, "BslResultingAcquisitionFrameRate"));
+  print_status(
+    "INFO",
+    "DeviceLinkThroughputLimit",
+    node_read_value<GenApi::CIntegerPtr>(node_map, "DeviceLinkThroughputLimit"));
 }
 
 template<typename NodeT, typename ValueT>
