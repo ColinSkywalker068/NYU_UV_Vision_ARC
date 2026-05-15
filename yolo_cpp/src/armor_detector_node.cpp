@@ -116,6 +116,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<bool>("allow_native_tensorrt_fallback", false);
   this->declare_parameter<bool>("half", true);
   this->declare_parameter<bool>("show", false);
+  this->declare_parameter<bool>("show_tracker_target_overlay", false);
   this->declare_parameter<double>("conf", 0.30);
   this->declare_parameter<std::string>("inference_mode", "predict");
   this->declare_parameter<bool>("enable_color_verification", true);
@@ -157,6 +158,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   imgsz_width_ = this->get_parameter("imgsz_width").as_int();
   imgsz_height_ = this->get_parameter("imgsz_height").as_int();
   show_ = this->get_parameter("show").as_bool();
+  show_tracker_target_overlay_ = this->get_parameter("show_tracker_target_overlay").as_bool();
   conf_ = static_cast<float>(this->get_parameter("conf").as_double());
   inference_mode_ = this->get_parameter("inference_mode").as_string();
   enable_color_verification_ = this->get_parameter("enable_color_verification").as_bool();
@@ -208,10 +210,12 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   attitude_flags_subscription_ = this->create_subscription<std_msgs::msg::Int32MultiArray>(
     "attitude_flags", 10,
     std::bind(&ArmorDetectorNode::handle_attitude_flags, this, std::placeholders::_1));
-  preview_target_subscription_ =
-    this->create_subscription<cv_auto_aim_interfaces::msg::Target>(
-    preview_target_topic_, 10,
-    std::bind(&ArmorDetectorNode::handle_preview_target, this, std::placeholders::_1));
+  if (show_tracker_target_overlay_) {
+    preview_target_subscription_ =
+      this->create_subscription<cv_auto_aim_interfaces::msg::Target>(
+      preview_target_topic_, 10,
+      std::bind(&ArmorDetectorNode::handle_preview_target, this, std::placeholders::_1));
+  }
   if (enable_3d_pose_) {
     camera_info_subscription_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
       camera_info_topic_, rclcpp::SensorDataQoS(),
@@ -664,7 +668,7 @@ void ArmorDetectorNode::render_preview(
         cv::LINE_AA);
     }
 
-    if (preview_has_target_) {
+    if (show_tracker_target_overlay_ && preview_has_target_) {
       const int x1 = preview_target_bbox_xyxy_[0];
       const int y1 = preview_target_bbox_xyxy_[1];
       const int x2 = preview_target_bbox_xyxy_[2];
