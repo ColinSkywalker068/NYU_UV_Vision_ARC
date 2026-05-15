@@ -134,7 +134,7 @@ void print_usage()
     << "Usage: ros2 run yolo_cpp basler_check [options]\n\n"
     << "Mirrors the C++ Basler runtime path:\n"
     << "  PylonInitialize -> Enumerate/CreateFirstDevice -> Open -> GenICam config\n"
-    << "  -> ImageFormatConverter BGR8 -> StartGrabbing(LatestImageOnly, ProvidedByInstantCamera)\n"
+    << "  -> ImageFormatConverter BGR8 -> StartGrabbing(LatestImageOnly, ProvidedByUser)\n"
     << "  -> RetrieveResult -> Convert -> optional cv::flip\n\n"
     << "Options:\n"
     << "  --mirror-stm-launch          Use stm.launch-style flip=true with current defaults\n"
@@ -406,7 +406,7 @@ bool grab_once(Pylon::CInstantCamera & camera, Pylon::CImageFormatConverter & co
     }
     camera.StartGrabbing(
       Pylon::GrabStrategy_LatestImageOnly,
-      Pylon::GrabLoop_ProvidedByInstantCamera);
+      Pylon::GrabLoop_ProvidedByUser);
 
     Pylon::CGrabResultPtr result;
     camera.RetrieveResult(config.timeout_ms, result, Pylon::TimeoutHandling_Return);
@@ -532,14 +532,14 @@ bool grab_final_frames(
 {
   print_status(
     "STEP",
-    "StartGrabbing LatestImageOnly/ProvidedByInstantCamera for final capture");
+    "StartGrabbing LatestImageOnly/ProvidedByUser for final capture");
   try {
     if (camera.IsGrabbing()) {
       camera.StopGrabbing();
     }
     camera.StartGrabbing(
       Pylon::GrabStrategy_LatestImageOnly,
-      Pylon::GrabLoop_ProvidedByInstantCamera);
+      Pylon::GrabLoop_ProvidedByUser);
     print_status("PASS", "StartGrabbing");
   } catch (...) {
     print_status("FAIL", "StartGrabbing", exception_text());

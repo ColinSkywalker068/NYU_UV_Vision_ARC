@@ -292,7 +292,7 @@ public:
     converter_.OutputPixelFormat = Pylon::PixelType_BGR8packed;
     converter_.OutputBitAlignment = Pylon::OutputBitAlignment_MsbAligned;
     camera_.StartGrabbing(
-      Pylon::GrabStrategy_LatestImageOnly, Pylon::GrabLoop_ProvidedByInstantCamera);
+      Pylon::GrabStrategy_LatestImageOnly, Pylon::GrabLoop_ProvidedByUser);
   }
 
   bool capture(FramePacket & packet) override
