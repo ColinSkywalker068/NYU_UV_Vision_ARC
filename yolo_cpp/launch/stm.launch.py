@@ -159,11 +159,6 @@ def generate_launch_description() -> LaunchDescription:
         default_value="true",
         description="Show OpenCV visualization window",
     )
-    show_preview_stride_arg = DeclareLaunchArgument(
-        "show_preview_stride",
-        default_value="3",
-        description="Render one OpenCV preview frame every N processed frames",
-    )
     show_tracker_target_overlay_arg = DeclareLaunchArgument(
         "show_tracker_target_overlay",
         default_value="false",
@@ -340,7 +335,6 @@ def generate_launch_description() -> LaunchDescription:
                 "camera_cx": LaunchConfiguration("camera_cx"),
                 "camera_cy": LaunchConfiguration("camera_cy"),
                 "show": LaunchConfiguration("show"),
-                "show_preview_stride": LaunchConfiguration("show_preview_stride"),
                 "show_tracker_target_overlay": LaunchConfiguration(
                     "show_tracker_target_overlay"
                 ),
@@ -472,7 +466,6 @@ def generate_launch_description() -> LaunchDescription:
             debug_publish_image_raw_arg,
             use_model_color_classes_arg,
             show_arg,
-            show_preview_stride_arg,
             show_tracker_target_overlay_arg,
             track_min_hits_arg,
             track_max_coast_frames_arg,

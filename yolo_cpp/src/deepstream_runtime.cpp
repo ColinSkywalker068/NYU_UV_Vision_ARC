@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -135,6 +136,44 @@ bool set_child_proxy_bool_if_present(GstElement * element, const char * name, bo
     g_value_set_boolean(&gvalue, value ? TRUE : FALSE);
     gst_child_proxy_set_property(GST_CHILD_PROXY(element), name, &gvalue);
     did_set = true;
+  }
+  g_value_unset(&gvalue);
+  if (target != nullptr) {
+    g_object_unref(target);
+  }
+  return did_set;
+}
+
+bool set_child_proxy_double_if_present(GstElement * element, const char * name, double value)
+{
+  if (element == nullptr || name == nullptr || !GST_IS_CHILD_PROXY(element)) {
+    return false;
+  }
+
+  GObject * target = nullptr;
+  GParamSpec * pspec = nullptr;
+  if (!gst_child_proxy_lookup(GST_CHILD_PROXY(element), name, &target, &pspec)) {
+    return false;
+  }
+
+  GValue gvalue = G_VALUE_INIT;
+  g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
+  bool did_set = false;
+  if (G_VALUE_HOLDS_DOUBLE(&gvalue)) {
+    g_value_set_double(&gvalue, value);
+    did_set = true;
+  } else if (G_VALUE_HOLDS_FLOAT(&gvalue)) {
+    g_value_set_float(&gvalue, static_cast<float>(value));
+    did_set = true;
+  } else if (G_VALUE_HOLDS_INT(&gvalue)) {
+    g_value_set_int(&gvalue, static_cast<int>(std::lround(value)));
+    did_set = true;
+  } else if (G_VALUE_HOLDS_UINT(&gvalue)) {
+    g_value_set_uint(&gvalue, static_cast<guint>(std::max(0, static_cast<int>(std::lround(value)))));
+    did_set = true;
+  }
+  if (did_set) {
+    gst_child_proxy_set_property(GST_CHILD_PROXY(element), name, &gvalue);
   }
   g_value_unset(&gvalue);
   if (target != nullptr) {
@@ -454,19 +493,42 @@ struct DeepStreamRuntime::Impl
     if (g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr) {
       g_object_set(G_OBJECT(source), "do-timestamp", TRUE, nullptr);
     }
+    bool uncapped_fps_applied = false;
     if (
       config.source_fps_uncapped &&
-      set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", false))
+      (set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", false) ||
+      set_child_proxy_bool_if_present(source, "AcquisitionFrameRateEnable", false)))
     {
+      uncapped_fps_applied = true;
       RCLCPP_INFO(logger, "Disabled Basler AcquisitionFrameRateEnable through pylonsrc");
     } else if (config.source_fps_uncapped) {
       RCLCPP_WARN(
         logger,
-        "Could not disable Basler AcquisitionFrameRateEnable through pylonsrc; leaving caps framerate unset for uncapped capture");
+        "Could not disable Basler AcquisitionFrameRateEnable through pylonsrc; requesting %d FPS through caps instead",
+        config.source_fps);
     }
     std::optional<int> capped_fps;
-    if (!config.source_fps_uncapped) {
+    if (!config.source_fps_uncapped || !uncapped_fps_applied) {
       capped_fps = config.source_fps;
+      const bool enable_set =
+        set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", true) ||
+        set_child_proxy_bool_if_present(source, "AcquisitionFrameRateEnable", true);
+      const bool fps_set =
+        set_child_proxy_double_if_present(
+        source, "cam::AcquisitionFrameRate", static_cast<double>(config.source_fps)) ||
+        set_child_proxy_double_if_present(
+        source, "AcquisitionFrameRate", static_cast<double>(config.source_fps)) ||
+        set_child_proxy_double_if_present(
+        source, "cam::AcquisitionFrameRateAbs", static_cast<double>(config.source_fps)) ||
+        set_child_proxy_double_if_present(
+        source, "AcquisitionFrameRateAbs", static_cast<double>(config.source_fps));
+      RCLCPP_INFO(
+        logger,
+        "Requested Basler framerate=%d through caps and pylonsrc properties "
+        "(enable_set=%s fps_set=%s)",
+        config.source_fps,
+        enable_set ? "true" : "false",
+        fps_set ? "true" : "false");
     }
     const std::string source_caps_text = make_video_caps_text(
       "video/x-raw", "BGR", source_width, source_height, capped_fps);
@@ -513,6 +575,19 @@ struct DeepStreamRuntime::Impl
       "live-source", TRUE,
       "enable-padding", TRUE,
       nullptr);
+    if (g_object_class_find_property(
+        G_OBJECT_GET_CLASS(streammux), "batched-push-timeout") != nullptr)
+    {
+      const int timeout_us = std::max(1, 1000000 / std::max(1, config.source_fps));
+      g_object_set(G_OBJECT(streammux), "batched-push-timeout", timeout_us, nullptr);
+      RCLCPP_INFO(logger, "DeepStream streammux batched-push-timeout=%d us", timeout_us);
+    }
+    RCLCPP_INFO(
+      logger,
+      "DeepStream caps: source='%s' infer_cpu='%s' infer_nvmm='%s'",
+      source_caps_text.c_str(),
+      infer_cpu_caps_text.c_str(),
+      infer_caps_text.c_str());
     g_object_set(
       G_OBJECT(nvinfer),
       "config-file-path", runtime_config_path.c_str(),

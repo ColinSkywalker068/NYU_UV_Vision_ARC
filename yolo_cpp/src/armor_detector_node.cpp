@@ -117,7 +117,6 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<bool>("allow_native_tensorrt_fallback", false);
   this->declare_parameter<bool>("half", true);
   this->declare_parameter<bool>("show", false);
-  this->declare_parameter<int>("show_preview_stride", 1);
   this->declare_parameter<bool>("show_tracker_target_overlay", false);
   this->declare_parameter<double>("conf", 0.30);
   this->declare_parameter<std::string>("inference_mode", "predict");
@@ -160,8 +159,6 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   imgsz_width_ = this->get_parameter("imgsz_width").as_int();
   imgsz_height_ = this->get_parameter("imgsz_height").as_int();
   show_ = this->get_parameter("show").as_bool();
-  show_preview_stride_ = std::max(
-    1, static_cast<int>(this->get_parameter("show_preview_stride").as_int()));
   show_tracker_target_overlay_ = this->get_parameter("show_tracker_target_overlay").as_bool();
   conf_ = static_cast<float>(this->get_parameter("conf").as_double());
   inference_mode_ = this->get_parameter("inference_mode").as_string();
@@ -541,10 +538,7 @@ void ArmorDetectorNode::process_detection_cycle(
   const auto publish_done = std::chrono::steady_clock::now();
 
   double preview_ms = 0.0;
-  if (
-    show_ && packet != nullptr && !packet->empty() &&
-    (frame_count_ % show_preview_stride_) == 0)
-  {
+  if (show_ && packet != nullptr && !packet->empty()) {
     const auto preview_start = std::chrono::steady_clock::now();
     render_preview(*packet, candidates);
     const auto preview_done = std::chrono::steady_clock::now();
