@@ -36,7 +36,9 @@ def print_status(level: str, label: str, detail: str = "") -> None:
         print(f"[{level}] {label}")
 
 
-def run_command(command: list[str], timeout_seconds: float = 3.0) -> tuple[int, str, str]:
+def run_command(
+    command: list[str], timeout_seconds: float = 3.0
+) -> tuple[int, str, str]:
     try:
         completed = subprocess.run(
             command,
@@ -152,7 +154,9 @@ def check_usb_listing() -> None:
 def check_gstreamer_pylonsrc() -> None:
     print("\nGStreamer Basler plugin")
     if shutil.which("gst-inspect-1.0") is None:
-        print_status("WARN", "gst-inspect-1.0", "not installed; skipping pylonsrc check")
+        print_status(
+            "WARN", "gst-inspect-1.0", "not installed; skipping pylonsrc check"
+        )
         return
     code, stdout, stderr = run_command(["gst-inspect-1.0", "pylonsrc"], 5.0)
     if code == 0:
@@ -173,7 +177,9 @@ def check_possible_grabbers() -> None:
     if code != 0:
         code, stdout, stderr = run_command(["ps", "aux"])
     if code != 0:
-        print_status("WARN", "process scan failed", stderr.strip() or f"exit code {code}")
+        print_status(
+            "WARN", "process scan failed", stderr.strip() or f"exit code {code}"
+        )
         return
 
     current_pid = str(os.getpid())
@@ -209,7 +215,9 @@ def load_pypylon() -> Any:
         from pypylon import pylon  # type: ignore[import-not-found]
     except Exception as exc:
         print_status("FAIL", "import pypylon", short_exception(exc))
-        print("      install or run in an environment with: python3 -m pip install pypylon")
+        print(
+            "      install or run in an environment with: python3 -m pip install pypylon"
+        )
         raise CheckFailure("pypylon import failed") from exc
 
     version = getattr(pypylon, "__version__", "unknown")
@@ -239,7 +247,9 @@ def describe_device(device_info: Any) -> str:
         ("full", safe_device_value(device_info, "GetFullName")),
         ("ip", safe_device_value(device_info, "GetIpAddress")),
     ]
-    return ", ".join(f"{name}={value}" for name, value in fields if value) or "(no info)"
+    return (
+        ", ".join(f"{name}={value}" for name, value in fields if value) or "(no info)"
+    )
 
 
 def select_device(pylon: Any, index: int, serial: str) -> Any:
@@ -260,7 +270,9 @@ def select_device(pylon: Any, index: int, serial: str) -> Any:
         raise CheckFailure(f"serial {serial!r} was not found in Pylon enumeration")
 
     if index < 0 or index >= len(devices):
-        raise CheckFailure(f"device index {index} out of range for {len(devices)} device(s)")
+        raise CheckFailure(
+            f"device index {index} out of range for {len(devices)} device(s)"
+        )
     return devices[index]
 
 
@@ -353,7 +365,11 @@ def save_frame(path: Path, frame_bgr: Any) -> None:
     try:
         import cv2  # type: ignore[import-not-found]
     except Exception as exc:
-        print_status("WARN", "save frame skipped", f"OpenCV import failed: {short_exception(exc)}")
+        print_status(
+            "WARN",
+            "save frame skipped",
+            f"OpenCV import failed: {short_exception(exc)}",
+        )
         return
     if not cv2.imwrite(str(path), frame_bgr):
         print_status("WARN", "save frame failed", str(path))
@@ -378,12 +394,16 @@ def grab_frames(pylon: Any, camera: Any, args: argparse.Namespace) -> int:
                 pylon.TimeoutHandling_Return,
             )
             if result is None:
-                print_status("WARN", f"frame {frame_index}", "RetrieveResult returned None")
+                print_status(
+                    "WARN", f"frame {frame_index}", "RetrieveResult returned None"
+                )
                 continue
             try:
                 if not result.GrabSucceeded():
                     error_code = getattr(result, "GetErrorCode", lambda: "unknown")()
-                    error_text = getattr(result, "GetErrorDescription", lambda: "unknown")()
+                    error_text = getattr(
+                        result, "GetErrorDescription", lambda: "unknown"
+                    )()
                     print_status(
                         "WARN",
                         f"frame {frame_index}",
@@ -454,10 +474,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "GenICam settings, grab frames, and close."
         )
     )
-    parser.add_argument("--index", type=int, default=0, help="Pylon device index to test.")
+    parser.add_argument(
+        "--index", type=int, default=0, help="Pylon device index to test."
+    )
     parser.add_argument("--serial", default="", help="Pylon serial number to test.")
-    parser.add_argument("--grab-count", type=int, default=3, help="Number of frames to grab.")
-    parser.add_argument("--timeout-ms", type=int, default=1000, help="Per-frame grab timeout.")
+    parser.add_argument(
+        "--grab-count", type=int, default=3, help="Number of frames to grab."
+    )
+    parser.add_argument(
+        "--timeout-ms", type=int, default=1000, help="Per-frame grab timeout."
+    )
     parser.add_argument(
         "--config-mode",
         choices=("none", "safe", "stm"),
@@ -467,7 +493,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Basler defaults."
         ),
     )
-    parser.add_argument("--fps", type=int, default=None, help="FPS for safe/stm config modes.")
+    parser.add_argument(
+        "--fps", type=int, default=None, help="FPS for safe/stm config modes."
+    )
     parser.add_argument(
         "--exposure-us",
         type=float,
