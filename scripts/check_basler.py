@@ -347,7 +347,9 @@ def set_node(camera: Any, name: str, value: object) -> tuple[bool, str]:
     return True, str(value)
 
 
-def probe_grab_once(pylon: Any, camera: Any, args: argparse.Namespace, label: str) -> bool:
+def probe_grab_once(
+    pylon: Any, camera: Any, args: argparse.Namespace, label: str
+) -> bool:
     try:
         converter = pylon.ImageFormatConverter()
         converter.OutputPixelFormat = pylon.PixelType_BGR8packed
