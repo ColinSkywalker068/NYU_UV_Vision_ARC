@@ -369,6 +369,8 @@ def probe_grab_once(pylon: Any, camera: Any, args: argparse.Namespace, label: st
                 return False
             converted = converter.Convert(result)
             frame_bgr = converted.GetArray()
+            if args.flip:
+                frame_bgr[...] = frame_bgr[::-1, ::-1]
             print_status(
                 "PASS",
                 label,
@@ -533,6 +535,8 @@ def grab_frames(pylon: Any, camera: Any, args: argparse.Namespace) -> int:
                     continue
                 converted = converter.Convert(result)
                 frame_bgr = converted.GetArray()
+                if args.flip:
+                    frame_bgr[...] = frame_bgr[::-1, ::-1]
                 grabbed += 1
                 print_status(
                     "PASS",
@@ -596,6 +600,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         )
     )
     parser.add_argument(
+        "--mirror-stm-launch",
+        action="store_true",
+        help="Shortcut for stm launch defaults: --config-mode stm --flip.",
+    )
+    parser.add_argument(
         "--index", type=int, default=0, help="Pylon device index to test."
     )
     parser.add_argument("--serial", default="", help="Pylon serial number to test.")
@@ -636,6 +645,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "With --config-mode stm, enable AcquisitionFrameRate instead of "
             "launch default uncapped FPS."
         ),
+    )
+    parser.add_argument(
+        "--flip",
+        action="store_true",
+        help="Rotate grabbed frames 180 degrees, matching stm.launch.py basler_flip default.",
     )
     parser.add_argument(
         "--strict-config",
@@ -692,6 +706,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
+    if args.mirror_stm_launch:
+        args.config_mode = "stm"
+        args.flip = True
     if args.grab_count <= 0:
         raise SystemExit("--grab-count must be positive")
     if args.timeout_ms <= 0:
