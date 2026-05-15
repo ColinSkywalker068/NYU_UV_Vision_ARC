@@ -9,7 +9,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cmath>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -339,7 +341,7 @@ public:
 
   double actual_fps() const override
   {
-    return static_cast<double>(config_.basler_fps);
+    return actual_fps_;
   }
 
   const std::string & source_id() const override
@@ -408,10 +410,45 @@ private:
         }
       }
     }
+
+    actual_fps_ = read_effective_fps(node_map).value_or(static_cast<double>(config_.basler_fps));
+  }
+
+  std::optional<double> read_float_if_readable(GenApi::INodeMap & node_map, const char * name) const
+  {
+    try {
+      GenApi::CFloatPtr node(node_map.GetNode(name));
+      if (!node || !GenApi::IsReadable(node)) {
+        return std::nullopt;
+      }
+      const double value = node->GetValue();
+      if (!std::isfinite(value) || value <= 0.0) {
+        return std::nullopt;
+      }
+      return value;
+    } catch (...) {
+      return std::nullopt;
+    }
+  }
+
+  std::optional<double> read_effective_fps(GenApi::INodeMap & node_map) const
+  {
+    for (const char * name : {
+        "BslResultingAcquisitionFrameRate",
+        "AcquisitionResultingFrameRate",
+        "ResultingFrameRate",
+        "ResultingFrameRateAbs"})
+    {
+      if (const auto value = read_float_if_readable(node_map, name)) {
+        return value;
+      }
+    }
+    return std::nullopt;
   }
 
   CameraConfig config_;
   const std::string source_id_{"basler"};
+  double actual_fps_{0.0};
   Pylon::CInstantCamera camera_;
   Pylon::CImageFormatConverter converter_;
 };

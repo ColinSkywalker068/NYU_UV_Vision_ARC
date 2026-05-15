@@ -6,6 +6,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstdint>
 #include <exception>
@@ -324,6 +325,38 @@ std::string enum_node_read_value(GenApi::INodeMap & node_map, const char * name)
   }
 }
 
+std::optional<double> read_float_if_readable(GenApi::INodeMap & node_map, const char * name)
+{
+  try {
+    GenApi::CFloatPtr node(node_map.GetNode(name));
+    if (!node || !GenApi::IsReadable(node)) {
+      return std::nullopt;
+    }
+    const double value = node->GetValue();
+    if (!std::isfinite(value) || value <= 0.0) {
+      return std::nullopt;
+    }
+    return value;
+  } catch (...) {
+    return std::nullopt;
+  }
+}
+
+std::optional<double> read_effective_fps(GenApi::INodeMap & node_map)
+{
+  for (const char * name : {
+      "BslResultingAcquisitionFrameRate",
+      "AcquisitionResultingFrameRate",
+      "ResultingFrameRate",
+      "ResultingFrameRateAbs"})
+  {
+    if (const auto value = read_float_if_readable(node_map, name)) {
+      return value;
+    }
+  }
+  return std::nullopt;
+}
+
 void print_node_snapshot(GenApi::INodeMap & node_map)
 {
   print_status("INFO", "Width", node_read_value<GenApi::CIntegerPtr>(node_map, "Width"));
@@ -358,6 +391,13 @@ void print_node_snapshot(GenApi::INodeMap & node_map)
     "INFO",
     "DeviceLinkThroughputLimit",
     node_read_value<GenApi::CIntegerPtr>(node_map, "DeviceLinkThroughputLimit"));
+  const auto effective_fps = read_effective_fps(node_map);
+  print_status(
+    "INFO",
+    "EffectiveRuntimeFps",
+    effective_fps.has_value() ?
+    to_string_any(*effective_fps) :
+    "(falling back to --fps if runtime has no resulting FPS node)");
 }
 
 template<typename NodeT, typename ValueT>
