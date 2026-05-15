@@ -9,7 +9,8 @@ from launch_ros.actions import Node
 def generate_launch_description() -> LaunchDescription:
     """Create the lightweight RealSense auto-aim launch graph."""
     default_model_path = (
-        "/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.engine"
+        "/home/ultraviolet/CV_Detection/model_test/"
+        "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine"
     )
 
     rs_width_arg = DeclareLaunchArgument(

@@ -767,11 +767,13 @@ bool PerceptionNode::run_kalman_pipeline(
 std::string PerceptionNode::resolve_default_model_path() const
 {
   const auto cwd_candidate =
-    std::filesystem::current_path() / "model_test" / "best-roboflow-nitish-obb.engine";
+    std::filesystem::current_path() / "model_test" /
+    "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
   if (std::filesystem::exists(cwd_candidate)) {
     return cwd_candidate.string();
   }
-  return "/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.engine";
+  return "/home/ultraviolet/CV_Detection/model_test/"
+         "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
 }
 
 std::string PerceptionNode::resolve_default_deepstream_config_path() const
