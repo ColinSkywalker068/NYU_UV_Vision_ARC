@@ -241,6 +241,28 @@ add_executable(aim_solver_node src/aim_solver_node_main.cpp)
 target_link_libraries(aim_solver_node yolo_cpp_components)
 ament_target_dependencies(aim_solver_node cv_auto_aim_interfaces rclcpp std_msgs)
 
+add_executable(basler_check src/basler_check.cpp)
+target_include_directories(basler_check PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  ${OpenCV_INCLUDE_DIRS}
+)
+target_link_libraries(basler_check ${OpenCV_LIBS})
+if(HAVE_PYLON)
+  target_compile_definitions(basler_check PRIVATE HAVE_PYLON=1)
+  target_include_directories(basler_check PRIVATE ${PYLON_INCLUDE_DIR})
+  target_link_libraries(basler_check
+    ${PYLON_BASE_LIBRARY}
+    ${PYLON_UTILITY_LIBRARY}
+  )
+  if(PYLON_GENAPI_LIBRARY)
+    target_link_libraries(basler_check ${PYLON_GENAPI_LIBRARY})
+  endif()
+  if(PYLON_GCBASE_LIBRARY)
+    target_link_libraries(basler_check ${PYLON_GCBASE_LIBRARY})
+  endif()
+endif()
+
 add_executable(stm32_serial_bridge
   src/seasky_protocol.cpp
   src/stm32_serial_bridge_node.cpp
@@ -259,7 +281,8 @@ install(
 
 install(
   TARGETS yolo_cpp_components camera_node yolo_modular_node perception_node
-    armor_detector_node armor_tracker_node armor_processor_node aim_solver_node stm32_serial_bridge
+    armor_detector_node armor_tracker_node armor_processor_node aim_solver_node basler_check
+    stm32_serial_bridge
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
