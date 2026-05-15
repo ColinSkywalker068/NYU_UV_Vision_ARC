@@ -15,6 +15,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -745,11 +746,39 @@ struct DeepStreamRuntime::Impl
       return packet;
     }
 
+    const auto max_delta_ns = static_cast<std::uint64_t>(std::max(
+      1000000.0,
+      std::min(5000000.0, 500000000.0 / static_cast<double>(std::max(1, config.source_fps)))));
+    auto best = frame_cache.end();
     auto lower = frame_cache.lower_bound(pts);
-    if (lower != frame_cache.end()) {
-      return lower->second;
+    const auto consider = [&](auto candidate) {
+        if (candidate == frame_cache.end()) {
+          return;
+        }
+        if (best == frame_cache.end()) {
+          best = candidate;
+          return;
+        }
+        const auto candidate_delta = candidate->first > pts ?
+          candidate->first - pts : pts - candidate->first;
+        const auto best_delta = best->first > pts ? best->first - pts : pts - best->first;
+        if (candidate_delta < best_delta) {
+          best = candidate;
+        }
+      };
+    consider(lower);
+    if (lower != frame_cache.begin()) {
+      consider(std::prev(lower));
     }
-    return frame_cache.rbegin()->second;
+    if (best != frame_cache.end()) {
+      const auto best_delta = best->first > pts ? best->first - pts : pts - best->first;
+      if (best_delta <= max_delta_ns) {
+        FramePacket packet = best->second;
+        frame_cache.erase(best);
+        return packet;
+      }
+    }
+    return std::nullopt;
   }
 
   std::vector<int64_t> dims_to_shape(const NvDsInferDims & dims) const

@@ -50,6 +50,7 @@ private:
     double parse_ms{0.0};
     double color_ms{0.0};
     double publish_ms{0.0};
+    double preview_ms{0.0};
   };
 
   struct CameraCalibration
@@ -188,6 +189,7 @@ private:
   int imgsz_width_{640};
   int imgsz_height_{640};
   int max_hsv_candidates_{3};
+  int show_preview_stride_{1};
   int stage_log_interval_{300};
   int frame_count_{0};
   int enemy_color_red_value_{0};
