@@ -160,7 +160,8 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   imgsz_width_ = this->get_parameter("imgsz_width").as_int();
   imgsz_height_ = this->get_parameter("imgsz_height").as_int();
   show_ = this->get_parameter("show").as_bool();
-  show_preview_stride_ = std::max(1, this->get_parameter("show_preview_stride").as_int());
+  show_preview_stride_ = std::max(
+    1, static_cast<int>(this->get_parameter("show_preview_stride").as_int()));
   show_tracker_target_overlay_ = this->get_parameter("show_tracker_target_overlay").as_bool();
   conf_ = static_cast<float>(this->get_parameter("conf").as_double());
   inference_mode_ = this->get_parameter("inference_mode").as_string();
