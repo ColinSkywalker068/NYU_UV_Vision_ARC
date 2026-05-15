@@ -454,20 +454,18 @@ struct DeepStreamRuntime::Impl
     if (g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr) {
       g_object_set(G_OBJECT(source), "do-timestamp", TRUE, nullptr);
     }
-    bool uncapped_fps_applied = false;
     if (
       config.source_fps_uncapped &&
       set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", false))
     {
-      uncapped_fps_applied = true;
+      RCLCPP_INFO(logger, "Disabled Basler AcquisitionFrameRateEnable through pylonsrc");
     } else if (config.source_fps_uncapped) {
       RCLCPP_WARN(
         logger,
-        "Could not disable Basler AcquisitionFrameRateEnable through pylonsrc; requesting %d FPS through caps instead",
-        config.source_fps);
+        "Could not disable Basler AcquisitionFrameRateEnable through pylonsrc; leaving caps framerate unset for uncapped capture");
     }
     std::optional<int> capped_fps;
-    if (!config.source_fps_uncapped || !uncapped_fps_applied) {
+    if (!config.source_fps_uncapped) {
       capped_fps = config.source_fps;
     }
     const std::string source_caps_text = make_video_caps_text(

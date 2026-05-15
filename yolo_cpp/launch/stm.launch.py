@@ -1,7 +1,7 @@
 """Launch the full camera-to-STM32 auto-aim stack."""
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -15,12 +15,12 @@ def generate_launch_description() -> LaunchDescription:
     )
     camera_type_arg = DeclareLaunchArgument(
         "camera_type",
-        default_value="realsense",
+        default_value="basler",
         description="Camera backend: realsense or basler",
     )
     detector_backend_arg = DeclareLaunchArgument(
         "detector_backend",
-        default_value="native_tensorrt",
+        default_value="deepstream",
         description="Detector backend: deepstream or native_tensorrt",
     )
     allow_native_fallback_arg = DeclareLaunchArgument(
@@ -156,7 +156,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     show_arg = DeclareLaunchArgument(
         "show",
-        default_value="false",
+        default_value="true",
         description="Show OpenCV visualization window",
     )
     show_preview_stride_arg = DeclareLaunchArgument(
@@ -441,6 +441,9 @@ def generate_launch_description() -> LaunchDescription:
 
     return LaunchDescription(
         [
+            SetEnvironmentVariable("GDK_DISABLE", "shm"),
+            SetEnvironmentVariable("QT_X11_NO_MITSHM", "1"),
+            SetEnvironmentVariable("NO_AT_BRIDGE", "1"),
             camera_type_arg,
             detector_backend_arg,
             allow_native_fallback_arg,
