@@ -11,12 +11,10 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -144,44 +142,6 @@ bool set_child_proxy_bool_if_present(GstElement * element, const char * name, bo
   return did_set;
 }
 
-bool set_child_proxy_double_if_present(GstElement * element, const char * name, double value)
-{
-  if (element == nullptr || name == nullptr || !GST_IS_CHILD_PROXY(element)) {
-    return false;
-  }
-
-  GObject * target = nullptr;
-  GParamSpec * pspec = nullptr;
-  if (!gst_child_proxy_lookup(GST_CHILD_PROXY(element), name, &target, &pspec)) {
-    return false;
-  }
-
-  GValue gvalue = G_VALUE_INIT;
-  g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
-  bool did_set = false;
-  if (G_VALUE_HOLDS_DOUBLE(&gvalue)) {
-    g_value_set_double(&gvalue, value);
-    did_set = true;
-  } else if (G_VALUE_HOLDS_FLOAT(&gvalue)) {
-    g_value_set_float(&gvalue, static_cast<float>(value));
-    did_set = true;
-  } else if (G_VALUE_HOLDS_INT(&gvalue)) {
-    g_value_set_int(&gvalue, static_cast<int>(std::lround(value)));
-    did_set = true;
-  } else if (G_VALUE_HOLDS_UINT(&gvalue)) {
-    g_value_set_uint(&gvalue, static_cast<guint>(std::max(0, static_cast<int>(std::lround(value)))));
-    did_set = true;
-  }
-  if (did_set) {
-    gst_child_proxy_set_property(GST_CHILD_PROXY(element), name, &gvalue);
-  }
-  g_value_unset(&gvalue);
-  if (target != nullptr) {
-    g_object_unref(target);
-  }
-  return did_set;
-}
-
 std::string collect_bus_diagnostics(GstBus * bus)
 {
   if (bus == nullptr) {
@@ -284,11 +244,6 @@ struct DeepStreamRuntime::Impl
   bool task_obb{true};
   bool end2end{false};
   std::optional<bool> export_includes_nms;
-  std::size_t throughput_sample_count{0U};
-  std::chrono::steady_clock::time_point throughput_wall_start{};
-  std::optional<std::uint64_t> throughput_pts_start;
-  std::optional<std::uint64_t> throughput_pts_last;
-  bool logged_first_tensor{false};
 #endif
 
   ~Impl()
@@ -501,11 +456,9 @@ struct DeepStreamRuntime::Impl
     bool uncapped_fps_applied = false;
     if (
       config.source_fps_uncapped &&
-      (set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", false) ||
-      set_child_proxy_bool_if_present(source, "AcquisitionFrameRateEnable", false)))
+      set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", false))
     {
       uncapped_fps_applied = true;
-      RCLCPP_INFO(logger, "Disabled Basler AcquisitionFrameRateEnable through pylonsrc");
     } else if (config.source_fps_uncapped) {
       RCLCPP_WARN(
         logger,
@@ -515,25 +468,6 @@ struct DeepStreamRuntime::Impl
     std::optional<int> capped_fps;
     if (!config.source_fps_uncapped || !uncapped_fps_applied) {
       capped_fps = config.source_fps;
-      const bool enable_set =
-        set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", true) ||
-        set_child_proxy_bool_if_present(source, "AcquisitionFrameRateEnable", true);
-      const bool fps_set =
-        set_child_proxy_double_if_present(
-        source, "cam::AcquisitionFrameRate", static_cast<double>(config.source_fps)) ||
-        set_child_proxy_double_if_present(
-        source, "AcquisitionFrameRate", static_cast<double>(config.source_fps)) ||
-        set_child_proxy_double_if_present(
-        source, "cam::AcquisitionFrameRateAbs", static_cast<double>(config.source_fps)) ||
-        set_child_proxy_double_if_present(
-        source, "AcquisitionFrameRateAbs", static_cast<double>(config.source_fps));
-      RCLCPP_INFO(
-        logger,
-        "Requested Basler framerate=%d through caps and pylonsrc properties "
-        "(enable_set=%s fps_set=%s)",
-        config.source_fps,
-        enable_set ? "true" : "false",
-        fps_set ? "true" : "false");
     }
     const std::string source_caps_text = make_video_caps_text(
       "video/x-raw", "BGR", source_width, source_height, capped_fps);
@@ -580,19 +514,6 @@ struct DeepStreamRuntime::Impl
       "live-source", TRUE,
       "enable-padding", TRUE,
       nullptr);
-    if (g_object_class_find_property(
-        G_OBJECT_GET_CLASS(streammux), "batched-push-timeout") != nullptr)
-    {
-      const int timeout_us = std::max(1, 1000000 / std::max(1, config.source_fps));
-      g_object_set(G_OBJECT(streammux), "batched-push-timeout", timeout_us, nullptr);
-      RCLCPP_INFO(logger, "DeepStream streammux batched-push-timeout=%d us", timeout_us);
-    }
-    RCLCPP_INFO(
-      logger,
-      "DeepStream caps: source='%s' infer_cpu='%s' infer_nvmm='%s'",
-      source_caps_text.c_str(),
-      infer_cpu_caps_text.c_str(),
-      infer_caps_text.c_str());
     g_object_set(
       G_OBJECT(nvinfer),
       "config-file-path", runtime_config_path.c_str(),
@@ -824,39 +745,11 @@ struct DeepStreamRuntime::Impl
       return packet;
     }
 
-    const auto max_delta_ns = static_cast<std::uint64_t>(std::max(
-      1000000.0,
-      std::min(5000000.0, 500000000.0 / static_cast<double>(std::max(1, config.source_fps)))));
-    auto best = frame_cache.end();
     auto lower = frame_cache.lower_bound(pts);
-    const auto consider = [&](auto candidate) {
-        if (candidate == frame_cache.end()) {
-          return;
-        }
-        if (best == frame_cache.end()) {
-          best = candidate;
-          return;
-        }
-        const auto candidate_delta = candidate->first > pts ?
-          candidate->first - pts : pts - candidate->first;
-        const auto best_delta = best->first > pts ? best->first - pts : pts - best->first;
-        if (candidate_delta < best_delta) {
-          best = candidate;
-        }
-      };
-    consider(lower);
-    if (lower != frame_cache.begin()) {
-      consider(std::prev(lower));
+    if (lower != frame_cache.end()) {
+      return lower->second;
     }
-    if (best != frame_cache.end()) {
-      const auto best_delta = best->first > pts ? best->first - pts : pts - best->first;
-      if (best_delta <= max_delta_ns) {
-        FramePacket packet = best->second;
-        frame_cache.erase(best);
-        return packet;
-      }
-    }
-    return std::nullopt;
+    return frame_cache.rbegin()->second;
   }
 
   std::vector<int64_t> dims_to_shape(const NvDsInferDims & dims) const
@@ -871,131 +764,6 @@ struct DeepStreamRuntime::Impl
       }
     }
     return shape;
-  }
-
-  std::string format_shape(const std::vector<int64_t> & shape) const
-  {
-    std::ostringstream stream;
-    for (std::size_t i = 0; i < shape.size(); ++i) {
-      if (i > 0U) {
-        stream << 'x';
-      }
-      stream << shape[i];
-    }
-    return stream.str();
-  }
-
-  const char * infer_dtype_name(NvDsInferDataType data_type) const
-  {
-    if (data_type == FLOAT) {
-      return "FLOAT";
-    }
-    if (data_type == HALF) {
-      return "HALF";
-    }
-    return "OTHER";
-  }
-
-  std::string current_caps_string(GstElement * element, const char * pad_name) const
-  {
-    if (element == nullptr) {
-      return "unavailable";
-    }
-    GstPad * pad = gst_element_get_static_pad(element, pad_name);
-    if (pad == nullptr) {
-      return "unavailable";
-    }
-    GstCaps * caps = gst_pad_get_current_caps(pad);
-    if (caps == nullptr) {
-      caps = gst_pad_query_caps(pad, nullptr);
-    }
-    gst_object_unref(pad);
-    if (caps == nullptr) {
-      return "unavailable";
-    }
-
-    gchar * caps_text = gst_caps_to_string(caps);
-    std::string result = caps_text != nullptr ? caps_text : "unavailable";
-    if (caps_text != nullptr) {
-      g_free(caps_text);
-    }
-    gst_caps_unref(caps);
-    return result;
-  }
-
-  void maybe_log_first_tensor(
-    const NvDsFrameMeta & frame_meta,
-    const NvDsInferLayerInfo & output_layer,
-    const std::vector<int64_t> & output_shape)
-  {
-    if (logged_first_tensor) {
-      return;
-    }
-    logged_first_tensor = true;
-    RCLCPP_INFO(
-      logger,
-      "DeepStream first tensor: source_meta=%ux%u model=%dx%d output=%s dtype=%s "
-      "source_caps='%s' infer_nvmm_caps='%s' mux_caps='%s'",
-      frame_meta.source_frame_width,
-      frame_meta.source_frame_height,
-      config.imgsz_width,
-      config.imgsz_height,
-      format_shape(output_shape).c_str(),
-      infer_dtype_name(output_layer.dataType),
-      current_caps_string(source_caps, "src").c_str(),
-      current_caps_string(infer_nvmm_caps, "src").c_str(),
-      current_caps_string(streammux, "src").c_str());
-  }
-
-  void record_throughput(GstClockTime pts)
-  {
-    const auto now = std::chrono::steady_clock::now();
-    if (throughput_sample_count == 0U) {
-      throughput_wall_start = now;
-      throughput_pts_start = pts != GST_CLOCK_TIME_NONE ?
-        std::optional<std::uint64_t>(static_cast<std::uint64_t>(pts)) : std::nullopt;
-      throughput_pts_last = std::nullopt;
-    }
-
-    ++throughput_sample_count;
-    if (pts != GST_CLOCK_TIME_NONE) {
-      throughput_pts_last = static_cast<std::uint64_t>(pts);
-    }
-
-    constexpr std::size_t kThroughputLogInterval = 300U;
-    if (throughput_sample_count < kThroughputLogInterval) {
-      return;
-    }
-
-    const double wall_s = std::chrono::duration<double>(now - throughput_wall_start).count();
-    const double wall_fps = wall_s > 0.0 ?
-      static_cast<double>(throughput_sample_count) / wall_s : 0.0;
-    double pts_fps = 0.0;
-    if (
-      throughput_pts_start.has_value() && throughput_pts_last.has_value() &&
-      *throughput_pts_last > *throughput_pts_start)
-    {
-      const double pts_s = static_cast<double>(*throughput_pts_last - *throughput_pts_start) /
-        static_cast<double>(GST_SECOND);
-      if (pts_s > 0.0) {
-        pts_fps = static_cast<double>(throughput_sample_count - 1U) / pts_s;
-      }
-    }
-
-    RCLCPP_INFO(
-      logger,
-      "DeepStream throughput over %zu tensors: wall_fps=%.1f pts_fps=%.1f "
-      "source_caps='%s' infer_nvmm_caps='%s' mux_caps='%s'",
-      throughput_sample_count,
-      wall_fps,
-      pts_fps,
-      current_caps_string(source_caps, "src").c_str(),
-      current_caps_string(infer_nvmm_caps, "src").c_str(),
-      current_caps_string(streammux, "src").c_str());
-
-    throughput_sample_count = 0U;
-    throughput_pts_start = std::nullopt;
-    throughput_pts_last = std::nullopt;
   }
 
   std::vector<float> tensor_to_float_vector(
@@ -1153,14 +921,11 @@ struct DeepStreamRuntime::Impl
       const auto & output_layer = (*tensor_meta)->output_layers_info[0];
       const auto tensor_values = tensor_to_float_vector(*tensor_meta, output_layer);
       const auto output_shape = dims_to_shape(output_layer.inferDims);
-      maybe_log_first_tensor(*frame_meta, output_layer, output_shape);
-
-      const auto pts = frame_meta->buf_pts != GST_CLOCK_TIME_NONE ?
-        frame_meta->buf_pts : GST_BUFFER_PTS(buffer);
-      record_throughput(pts);
 
       Result result{};
       if (config.enable_color_verification || config.debug_publish_image_raw) {
+        const auto pts = frame_meta->buf_pts != GST_CLOCK_TIME_NONE ?
+          frame_meta->buf_pts : GST_BUFFER_PTS(buffer);
         if (pts != GST_CLOCK_TIME_NONE) {
           result.source_packet = lookup_frame(static_cast<std::uint64_t>(pts));
         } else {

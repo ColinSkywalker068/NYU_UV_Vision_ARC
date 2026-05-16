@@ -50,7 +50,6 @@ private:
     double parse_ms{0.0};
     double color_ms{0.0};
     double publish_ms{0.0};
-    double preview_ms{0.0};
   };
 
   struct CameraCalibration
@@ -177,7 +176,6 @@ private:
   bool allow_native_tensorrt_fallback_{false};
   bool half_{true};
   bool show_{false};
-  bool show_tracker_target_overlay_{false};
   bool enable_color_verification_{true};
   bool use_model_color_classes_{true};
   bool use_robot_id_targeting_{false};

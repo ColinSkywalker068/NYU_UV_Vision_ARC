@@ -25,7 +25,6 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
-#include <vector>
 
 namespace yolo_cpp
 {
@@ -117,7 +116,6 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<bool>("allow_native_tensorrt_fallback", false);
   this->declare_parameter<bool>("half", true);
   this->declare_parameter<bool>("show", false);
-  this->declare_parameter<bool>("show_tracker_target_overlay", false);
   this->declare_parameter<double>("conf", 0.30);
   this->declare_parameter<std::string>("inference_mode", "predict");
   this->declare_parameter<bool>("enable_color_verification", true);
@@ -159,7 +157,6 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   imgsz_width_ = this->get_parameter("imgsz_width").as_int();
   imgsz_height_ = this->get_parameter("imgsz_height").as_int();
   show_ = this->get_parameter("show").as_bool();
-  show_tracker_target_overlay_ = this->get_parameter("show_tracker_target_overlay").as_bool();
   conf_ = static_cast<float>(this->get_parameter("conf").as_double());
   inference_mode_ = this->get_parameter("inference_mode").as_string();
   enable_color_verification_ = this->get_parameter("enable_color_verification").as_bool();
@@ -211,12 +208,10 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   attitude_flags_subscription_ = this->create_subscription<std_msgs::msg::Int32MultiArray>(
     "attitude_flags", 10,
     std::bind(&ArmorDetectorNode::handle_attitude_flags, this, std::placeholders::_1));
-  if (show_tracker_target_overlay_) {
-    preview_target_subscription_ =
-      this->create_subscription<cv_auto_aim_interfaces::msg::Target>(
-      preview_target_topic_, 10,
-      std::bind(&ArmorDetectorNode::handle_preview_target, this, std::placeholders::_1));
-  }
+  preview_target_subscription_ =
+    this->create_subscription<cv_auto_aim_interfaces::msg::Target>(
+    preview_target_topic_, 10,
+    std::bind(&ArmorDetectorNode::handle_preview_target, this, std::placeholders::_1));
   if (enable_3d_pose_) {
     camera_info_subscription_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
       camera_info_topic_, rclcpp::SensorDataQoS(),
@@ -274,6 +269,9 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
 ArmorDetectorNode::~ArmorDetectorNode()
 {
   timer_.reset();
+  if (show_ && !preview_failed_) {
+    cv::destroyWindow(vis_window_name_);
+  }
   detector_backend_.reset();
   deepstream_runtime_.reset();
   if (camera_backend_) {
@@ -537,13 +535,8 @@ void ArmorDetectorNode::process_detection_cycle(
   publish_armors(candidates, frame_id, stamp, image_width, image_height);
   const auto publish_done = std::chrono::steady_clock::now();
 
-  double preview_ms = 0.0;
   if (show_ && packet != nullptr && !packet->empty()) {
-    const auto preview_start = std::chrono::steady_clock::now();
     render_preview(*packet, candidates);
-    const auto preview_done = std::chrono::steady_clock::now();
-    preview_ms = std::chrono::duration<double, std::milli>(
-      preview_done - preview_start).count();
   }
 
   log_runtime_fps_once_per_second();
@@ -567,7 +560,6 @@ void ArmorDetectorNode::process_detection_cycle(
   stage_totals_.color_ms += color_ms;
   stage_totals_.publish_ms += std::chrono::duration<double, std::milli>(
     publish_done - publish_start).count();
-  stage_totals_.preview_ms += preview_ms;
 
   if (frame_count_ % stage_log_interval_ == 0) {
     log_stage_timing();
@@ -653,65 +645,18 @@ void ArmorDetectorNode::render_preview(
   }
 
   try {
-    const double preview_scale = std::min(
-      1.0,
-      std::min(
-        static_cast<double>(kPreviewMaxWidth) / std::max(1, packet.frame.cols),
-        static_cast<double>(kPreviewMaxHeight) / std::max(1, packet.frame.rows)));
-    cv::Mat preview;
-    if (preview_scale < 1.0) {
-      cv::resize(packet.frame, preview, cv::Size(), preview_scale, preview_scale, cv::INTER_AREA);
-    } else {
-      preview = packet.frame.clone();
-    }
-    const cv::Rect image_rect(0, 0, preview.cols, preview.rows);
-    const auto scale_rect = [&](const cv::Rect & rect) {
-        if (preview_scale >= 1.0) {
-          return rect;
-        }
-        const int x1 = static_cast<int>(std::floor(rect.x * preview_scale));
-        const int y1 = static_cast<int>(std::floor(rect.y * preview_scale));
-        const int x2 = static_cast<int>(std::ceil((rect.x + rect.width) * preview_scale));
-        const int y2 = static_cast<int>(std::ceil((rect.y + rect.height) * preview_scale));
-        return cv::Rect(x1, y1, std::max(0, x2 - x1), std::max(0, y2 - y1));
-      };
-    const auto scale_point = [&](const cv::Point2f & point) {
-        return cv::Point(
-          static_cast<int>(std::lround(point.x * preview_scale)),
-          static_cast<int>(std::lround(point.y * preview_scale)));
-      };
+    cv::Mat preview = packet.frame.clone();
     for (const auto & candidate : candidates) {
       const cv::Scalar color = candidate.is_enemy ?
         cv::Scalar(0, 255, 0) :
         cv::Scalar(0, 165, 255);
-      const cv::Rect bbox = scale_rect(candidate.bbox_source) & image_rect;
-      if (bbox.width <= 0 || bbox.height <= 0) {
-        continue;
-      }
-      cv::rectangle(preview, bbox, color, 2);
-      if (candidate.has_corners) {
-        std::vector<cv::Point> corners;
-        corners.reserve(candidate.corners_source.size());
-        for (const auto & corner : candidate.corners_source) {
-          const cv::Point scaled = scale_point(corner);
-          corners.emplace_back(
-            std::clamp(
-              scaled.x,
-              image_rect.x,
-              image_rect.x + image_rect.width - 1),
-            std::clamp(
-              scaled.y,
-              image_rect.y,
-              image_rect.y + image_rect.height - 1));
-        }
-        cv::polylines(preview, corners, true, cv::Scalar(255, 255, 0), 2, cv::LINE_AA);
-      }
+      cv::rectangle(preview, candidate.bbox_source, color, 2);
       const std::string label =
         std::to_string(candidate.class_id) + " " + cv::format("%.2f", candidate.confidence);
       cv::putText(
         preview,
         label,
-        cv::Point(bbox.x, std::max(16, bbox.y - 4)),
+        cv::Point(candidate.bbox_source.x, std::max(16, candidate.bbox_source.y - 4)),
         cv::FONT_HERSHEY_SIMPLEX,
         0.5,
         color,
@@ -719,13 +664,14 @@ void ArmorDetectorNode::render_preview(
         cv::LINE_AA);
     }
 
-    if (show_tracker_target_overlay_ && preview_has_target_) {
+    if (preview_has_target_) {
       const int x1 = preview_target_bbox_xyxy_[0];
       const int y1 = preview_target_bbox_xyxy_[1];
       const int x2 = preview_target_bbox_xyxy_[2];
       const int y2 = preview_target_bbox_xyxy_[3];
+      const cv::Rect image_rect(0, 0, preview.cols, preview.rows);
       const cv::Rect target_rect =
-        scale_rect(cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1))) & image_rect;
+        cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)) & image_rect;
       if (target_rect.width > 0 && target_rect.height > 0) {
         const cv::Scalar target_color(0, 0, 255);
         cv::rectangle(preview, target_rect, target_color, 4);
@@ -761,6 +707,15 @@ void ArmorDetectorNode::render_preview(
       cv::Scalar(255, 255, 255),
       2,
       cv::LINE_AA);
+
+    const double scale = std::min(
+      1.0,
+      std::min(
+        static_cast<double>(kPreviewMaxWidth) / std::max(1, preview.cols),
+        static_cast<double>(kPreviewMaxHeight) / std::max(1, preview.rows)));
+    if (scale < 1.0) {
+      cv::resize(preview, preview, cv::Size(), scale, scale, cv::INTER_AREA);
+    }
 
     cv::imshow(vis_window_name_, preview);
     cv::waitKey(1);
@@ -962,8 +917,7 @@ void ArmorDetectorNode::log_stage_timing()
   RCLCPP_INFO(
     this->get_logger(),
     "Detector timing mean over %d frames: fps=%.1f capture=%.2fms preprocess=%.2fms "
-    "upload=%.2fms inference=%.2fms download=%.2fms parse=%.2fms color=%.2fms "
-    "publish=%.2fms preview=%.2fms",
+    "upload=%.2fms inference=%.2fms download=%.2fms parse=%.2fms color=%.2fms publish=%.2fms",
     stage_log_interval_,
     avg_fps,
     stage_totals_.capture_ms / n,
@@ -973,8 +927,7 @@ void ArmorDetectorNode::log_stage_timing()
     stage_totals_.download_ms / n,
     stage_totals_.parse_ms / n,
     stage_totals_.color_ms / n,
-    stage_totals_.publish_ms / n,
-    stage_totals_.preview_ms / n);
+    stage_totals_.publish_ms / n);
   stage_totals_ = StageTotals{};
 }
 

@@ -1,7 +1,7 @@
 """Launch the full camera-to-STM32 auto-aim stack."""
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -158,11 +158,6 @@ def generate_launch_description() -> LaunchDescription:
         "show",
         default_value="true",
         description="Show OpenCV visualization window",
-    )
-    show_tracker_target_overlay_arg = DeclareLaunchArgument(
-        "show_tracker_target_overlay",
-        default_value="false",
-        description="Overlay delayed tracker target on the OpenCV visualization window",
     )
     track_min_hits_arg = DeclareLaunchArgument(
         "track_min_hits",
@@ -335,9 +330,6 @@ def generate_launch_description() -> LaunchDescription:
                 "camera_cx": LaunchConfiguration("camera_cx"),
                 "camera_cy": LaunchConfiguration("camera_cy"),
                 "show": LaunchConfiguration("show"),
-                "show_tracker_target_overlay": LaunchConfiguration(
-                    "show_tracker_target_overlay"
-                ),
                 "debug_publish_image_raw": LaunchConfiguration(
                     "debug_publish_image_raw"
                 ),
@@ -435,9 +427,6 @@ def generate_launch_description() -> LaunchDescription:
 
     return LaunchDescription(
         [
-            SetEnvironmentVariable("GDK_DISABLE", "shm"),
-            SetEnvironmentVariable("QT_X11_NO_MITSHM", "1"),
-            SetEnvironmentVariable("NO_AT_BRIDGE", "1"),
             camera_type_arg,
             detector_backend_arg,
             allow_native_fallback_arg,
@@ -466,7 +455,6 @@ def generate_launch_description() -> LaunchDescription:
             debug_publish_image_raw_arg,
             use_model_color_classes_arg,
             show_arg,
-            show_tracker_target_overlay_arg,
             track_min_hits_arg,
             track_max_coast_frames_arg,
             track_drop_frames_arg,
