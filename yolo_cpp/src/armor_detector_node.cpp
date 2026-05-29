@@ -540,6 +540,16 @@ void ArmorDetectorNode::process_detection_cycle(
     std::count_if(
       candidates.begin(), candidates.end(),
       [](const Candidate & candidate) {return candidate.is_enemy;}));
+  const auto class0_count = static_cast<std::uint64_t>(
+    std::count_if(
+      candidates.begin(), candidates.end(),
+      [](const Candidate & candidate) {return candidate.class_id == 0;}));
+  const auto class1_count = static_cast<std::uint64_t>(
+    std::count_if(
+      candidates.begin(), candidates.end(),
+      [](const Candidate & candidate) {return candidate.class_id == 1;}));
+  const auto other_class_count =
+    static_cast<std::uint64_t>(candidates.size()) - class0_count - class1_count;
   const std::string source_id = packet != nullptr && !packet->source_id.empty() ?
     packet->source_id :
     camera_config_.camera_type;
@@ -572,6 +582,9 @@ void ArmorDetectorNode::process_detection_cycle(
   stage_raw_detections_ += batch.detections.size();
   stage_candidates_ += candidates.size();
   stage_enemy_candidates_ += enemy_count;
+  stage_class0_candidates_ += class0_count;
+  stage_class1_candidates_ += class1_count;
+  stage_other_class_candidates_ += other_class_count;
   stage_totals_.capture_ms += capture_ms;
   stage_totals_.preprocess_ms += detector_timings.preprocess_ms;
   stage_totals_.upload_ms += detector_timings.upload_ms;
@@ -939,7 +952,7 @@ void ArmorDetectorNode::log_stage_timing()
     this->get_logger(),
     "Detector timing mean over %d frames: fps=%.1f capture=%.2fms preprocess=%.2fms "
     "upload=%.2fms inference=%.2fms download=%.2fms parse=%.2fms color=%.2fms publish=%.2fms "
-    "raw_det=%.2f candidates=%.2f enemy=%.2f",
+    "raw_det=%.2f candidates=%.2f enemy=%.2f class0=%.2f class1=%.2f class_other=%.2f",
     stage_log_interval_,
     avg_fps,
     stage_totals_.capture_ms / n,
@@ -952,11 +965,17 @@ void ArmorDetectorNode::log_stage_timing()
     stage_totals_.publish_ms / n,
     static_cast<double>(stage_raw_detections_) / n,
     static_cast<double>(stage_candidates_) / n,
-    static_cast<double>(stage_enemy_candidates_) / n);
+    static_cast<double>(stage_enemy_candidates_) / n,
+    static_cast<double>(stage_class0_candidates_) / n,
+    static_cast<double>(stage_class1_candidates_) / n,
+    static_cast<double>(stage_other_class_candidates_) / n);
   stage_totals_ = StageTotals{};
   stage_raw_detections_ = 0;
   stage_candidates_ = 0;
   stage_enemy_candidates_ = 0;
+  stage_class0_candidates_ = 0;
+  stage_class1_candidates_ = 0;
+  stage_other_class_candidates_ = 0;
 }
 
 }  // namespace yolo_cpp

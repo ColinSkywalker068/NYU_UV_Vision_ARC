@@ -1,7 +1,7 @@
 [property]
 gpu-id=0
 net-scale-factor=0.0039215697906911373
-model-color-format=1
+model-color-format=0
 __MODEL_SOURCE_CONFIG__
 infer-dims=3;__INPUT_HEIGHT__;__INPUT_WIDTH__
 maintain-aspect-ratio=1

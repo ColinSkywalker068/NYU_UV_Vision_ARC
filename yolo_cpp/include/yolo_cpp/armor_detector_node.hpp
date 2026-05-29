@@ -192,6 +192,9 @@ private:
   std::uint64_t stage_raw_detections_{0};
   std::uint64_t stage_candidates_{0};
   std::uint64_t stage_enemy_candidates_{0};
+  std::uint64_t stage_class0_candidates_{0};
+  std::uint64_t stage_class1_candidates_{0};
+  std::uint64_t stage_other_class_candidates_{0};
   int enemy_color_red_value_{0};
   int enemy_color_blue_value_{1};
   int preview_target_track_id_{-1};
