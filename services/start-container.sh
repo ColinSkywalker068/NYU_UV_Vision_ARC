@@ -211,9 +211,11 @@ if [ $? -eq 0 ]; then
 
 	# This file shows what Jetson board is running
 	# /proc or /sys files aren't mountable into docker
-	if ! cat /proc/device-tree/model > /tmp/nv_jetson_model 2>/dev/null; then
-		echo "Unable to write /tmp/nv_jetson_model; continuing without Jetson model bind mount" >&2
-		rm -f /tmp/nv_jetson_model 2>/dev/null || true
+	JETSON_MODEL_FILE="/tmp/cv_detection_nv_jetson_model"
+	rm -rf "$JETSON_MODEL_FILE" 2>/dev/null || true
+	if ! cat /proc/device-tree/model > "$JETSON_MODEL_FILE" 2>/dev/null; then
+		echo "Unable to write $JETSON_MODEL_FILE; continuing without Jetson model bind mount" >&2
+		rm -f "$JETSON_MODEL_FILE" 2>/dev/null || true
 	fi
 
 	if container_exists "$DOCKER_CMD" "$CONTAINER_NAME"; then
@@ -223,7 +225,7 @@ if [ $? -eq 0 ]; then
 			--volume /tmp/argus_socket:/tmp/argus_socket \
 			--volume /etc/enctune.conf:/etc/enctune.conf \
 			--volume /etc/nv_tegra_release:/etc/nv_tegra_release \
-			--volume /tmp/nv_jetson_model:/tmp/nv_jetson_model \
+			--volume "$JETSON_MODEL_FILE":/tmp/nv_jetson_model \
 			--volume /var/run/dbus:/var/run/dbus \
 			--volume /var/run/avahi-daemon/socket:/var/run/avahi-daemon/socket \
 			--volume /var/run/docker.sock:/var/run/docker.sock \

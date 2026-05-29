@@ -8,7 +8,7 @@
 <!-- PRIMARY_SOURCES: Docker/docker-compose.yml, Docker/Dockerfile.run-cv, Docker/Dockerfile.cplusplus, Docker/build_cplusplus.sh, services/uv.sh, services/start-container.sh, services/stm-stack.service, services/stm-stack.sh, services/stm-stack-entrypoint.sh, services/setup-stm-stack.sh, CPP_CONTAINER_RUNBOOK.md -->
 
 > **Status:** Current operational guide
-> **Last Updated:** 2026-05-28
+> **Last Updated:** 2026-05-29
 
 ## Quick Navigation
 
@@ -269,6 +269,14 @@ uv build yolo_cpp
 ```
 
 For Basler high-FPS bring-up on `a2A1920-160ucBAS`, keep `basler_use_full_sensor:=true` and use the default raw Bayer source caps: `basler_pixel_format:=bayer_rggb8 basler_source_width:=1920 basler_source_height:=1200 basler_uncapped_fps:=true`. The startup logs should show the requested and negotiated GStreamer caps plus the camera-reported resulting frame rate. If `basler_pixel_format:=bgr8` is used at full resolution, USB3 bandwidth can reasonably limit capture near 60 FPS; that is not evidence of a Jetson hard cap.
+
+To separate Jetson model throughput from camera ingest, run the FPS isolation harness on the Jetson:
+
+```bash
+./services/fps-benchmark.sh --mode all --duration 10 --warmup 2
+```
+
+Read the three modes as different ceilings: `inference` is synthetic-frame TensorRT throughput using the STM engine, `camera` is capture-only throughput through the active camera backend, and `deepstream` is the Basler + DeepStream result cadence.
 
 ## 9. Testing And Formatting
 

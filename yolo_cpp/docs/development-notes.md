@@ -14,6 +14,7 @@ The package is easier to work with when you keep those responsibilities separate
 - tracker runtime: [`../src/armor_tracker_node.cpp`](../src/armor_tracker_node.cpp)
 - solver runtime: [`../src/aim_solver_node.cpp`](../src/aim_solver_node.cpp)
 - combined reference path: [`../src/perception_node.cpp`](../src/perception_node.cpp)
+- FPS isolation harness: [`../src/fps_benchmark.cpp`](../src/fps_benchmark.cpp)
 - tracking tests: [`../test/test_tracking_core.cpp`](../test/test_tracking_core.cpp)
 
 ## Verification Flow
@@ -24,6 +25,16 @@ When you touch behavior in this package, a good minimum loop is:
 2. Run the launch file closest to the path you changed.
 3. Check that the expected topics are present and publishing.
 4. Revisit the tracker test if the change touched association or target persistence.
+
+## Jetson FPS Isolation
+
+Use the benchmark harness on the Jetson AGX Orin when camera FPS and model FPS need to be separated:
+
+```bash
+./services/fps-benchmark.sh --mode all --duration 10 --warmup 2
+```
+
+The harness uses the STM model path by default, or `CV_STM_MODEL_PATH` when set. `inference` mode runs the same TensorRT engine on synthetic frames without a camera, `camera` mode pulls frames through `CameraBackend` without inference, and `deepstream` mode measures the Basler + DeepStream result cadence.
 
 ## Related Repo Docs
 

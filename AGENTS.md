@@ -94,6 +94,7 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 | Competition preflight | `./services/stm-stack.sh preflight` | Checks image, package, model, DeepStream/Pylon plugins, and serial path before startup. |
 | Restart competition stack | `./services/stm-stack.sh restart` | Restarts the `cv-stm-stack` service container through systemd. |
 | Competition logs and health | `./services/stm-stack.sh logs` / `./services/stm-stack.sh health` | Follows service logs or checks expected ROS nodes and topics. |
+| Jetson FPS isolation benchmark | `./services/fps-benchmark.sh --mode all` | Measures synthetic TensorRT inference, camera capture-only, and Basler+DeepStream result FPS using STM defaults. |
 | Native build | `colcon build --packages-select cv_auto_aim_interfaces yolo_cpp --symlink-install --cmake-args -DBUILD_TESTING=OFF` | Use in an environment with ROS 2 Humble and dependencies installed. |
 | C++ tests | `colcon test --packages-select yolo_cpp` | Uses the package test targets. |
 | Pre-commit | `pre-commit run --all-files` | Runs configured repository hooks. |
@@ -125,4 +126,4 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 - [ ] The file remains under 200 lines.
 - [ ] Shared guidance appears here rather than being duplicated in `CLAUDE.md`.
 
-**Last Updated:** 2026-05-28
+**Last Updated:** 2026-05-29

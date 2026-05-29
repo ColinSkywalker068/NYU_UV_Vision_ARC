@@ -241,6 +241,10 @@ add_executable(aim_solver_node src/aim_solver_node_main.cpp)
 target_link_libraries(aim_solver_node yolo_cpp_components)
 ament_target_dependencies(aim_solver_node cv_auto_aim_interfaces rclcpp std_msgs)
 
+add_executable(fps_benchmark src/fps_benchmark.cpp)
+target_link_libraries(fps_benchmark yolo_cpp_components ${OpenCV_LIBS})
+ament_target_dependencies(fps_benchmark rclcpp)
+
 add_executable(stm32_serial_bridge
   src/seasky_protocol.cpp
   src/stm32_serial_bridge_node.cpp
@@ -259,7 +263,8 @@ install(
 
 install(
   TARGETS yolo_cpp_components camera_node yolo_modular_node perception_node
-    armor_detector_node armor_tracker_node armor_processor_node aim_solver_node stm32_serial_bridge
+    armor_detector_node armor_tracker_node armor_processor_node aim_solver_node fps_benchmark
+    stm32_serial_bridge
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
