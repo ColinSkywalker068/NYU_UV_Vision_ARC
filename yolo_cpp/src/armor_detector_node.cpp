@@ -6,6 +6,7 @@
 #include "cv_auto_aim_interfaces/msg/armor.hpp"
 
 #include <opencv2/highgui.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <sensor_msgs/image_encodings.hpp>
@@ -36,6 +37,7 @@ constexpr int kDefaultMaxHsvCandidates = 3;
 constexpr int kPreviewMaxWidth = 1280;
 constexpr int kPreviewMaxHeight = 720;
 constexpr char kVisionLogDirName[] = "vision_logs";
+constexpr char kTargetFrameDirName[] = "pictures";
 constexpr double kPi = 3.14159265358979323846;
 
 /// Return local wall-clock time formatted for human-readable runtime logs.
@@ -98,6 +100,17 @@ sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
   return msg;
 }
 
+double rect_iou_for_capture(const cv::Rect & lhs, const cv::Rect & rhs)
+{
+  const cv::Rect overlap = lhs & rhs;
+  if (overlap.empty()) {
+    return 0.0;
+  }
+  const double intersection = static_cast<double>(overlap.area());
+  const double union_area = static_cast<double>(lhs.area() + rhs.area()) - intersection;
+  return union_area > 0.0 ? intersection / union_area : 0.0;
+}
+
 }  // namespace
 
 /// Declare parameters, choose the inference runtime, and start capture processing.
@@ -144,6 +157,10 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<std::string>("vis_window_name", "Armor Detector");
   this->declare_parameter<std::string>("preview_target_topic", "tracker/target");
   this->declare_parameter<bool>("debug_publish_image_raw", false);
+  this->declare_parameter<bool>("save_target_frames", false);
+  this->declare_parameter<std::string>("target_frame_save_dir", "");
+  this->declare_parameter<int>("target_frame_save_max", 100);
+  this->declare_parameter<int>("target_frame_jpeg_quality", 85);
   this->declare_parameter<int>("stage_log_interval", 300);
 
   model_path_ = this->get_parameter("model_path").as_string();
@@ -185,6 +202,13 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   vis_window_name_ = this->get_parameter("vis_window_name").as_string();
   preview_target_topic_ = this->get_parameter("preview_target_topic").as_string();
   debug_publish_image_raw_ = this->get_parameter("debug_publish_image_raw").as_bool();
+  save_target_frames_ = this->get_parameter("save_target_frames").as_bool();
+  target_frame_save_dir_ = this->get_parameter("target_frame_save_dir").as_string();
+  target_frame_save_max_ =
+    std::max(0, static_cast<int>(this->get_parameter("target_frame_save_max").as_int()));
+  target_frame_jpeg_quality_ =
+    std::clamp(
+      static_cast<int>(this->get_parameter("target_frame_jpeg_quality").as_int()), 1, 100);
   stage_log_interval_ = std::max(
     1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
 
@@ -199,6 +223,39 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
       runtime_log_path_.c_str());
   } else {
     RCLCPP_INFO(this->get_logger(), "Runtime logs: %s", runtime_log_path_.c_str());
+  }
+  if (save_target_frames_) {
+    try {
+      target_frame_save_dir_ = resolve_target_frame_save_dir();
+      target_frame_index_path_ =
+        (std::filesystem::path(target_frame_save_dir_) /
+        ("target_frames_" + timestamp_now_compact() + ".csv")).string();
+      target_frame_index_stream_.open(target_frame_index_path_, std::ios::app);
+      if (!target_frame_index_stream_.is_open()) {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "Failed to open target frame index: %s; disabling target frame capture",
+          target_frame_index_path_.c_str());
+        save_target_frames_ = false;
+      } else {
+        target_frame_index_stream_
+          << "filename,stamp_ns,source_id,image_width,image_height,track_id,"
+          << "has_tracker_target,class_id,confidence,is_enemy,x1,y1,x2,y2,"
+          << "candidate_count,enemy_count\n";
+        RCLCPP_INFO(
+          this->get_logger(),
+          "Saving up to %d target frames as JPEG quality=%d in %s",
+          target_frame_save_max_,
+          target_frame_jpeg_quality_,
+          target_frame_save_dir_.c_str());
+      }
+    } catch (const std::exception & exc) {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "Failed to initialize target frame capture: %s",
+        exc.what());
+      save_target_frames_ = false;
+    }
   }
 
   target_class_ = (target_color_ == "red") ? RED_CLASS : BLUE_CLASS;
@@ -285,6 +342,9 @@ ArmorDetectorNode::~ArmorDetectorNode()
   }
   if (runtime_log_stream_.is_open()) {
     runtime_log_stream_.close();
+  }
+  if (target_frame_index_stream_.is_open()) {
+    target_frame_index_stream_.close();
   }
 }
 
@@ -467,7 +527,7 @@ void ArmorDetectorNode::initialize_deepstream_runtime()
   config.conf_threshold = conf_;
   config.half = half_;
   config.enable_color_verification = enable_color_verification_ && !use_model_color_classes_;
-  config.debug_publish_image_raw = debug_publish_image_raw_ || show_;
+  config.debug_publish_image_raw = debug_publish_image_raw_ || show_ || save_target_frames_;
 
   deepstream_runtime_ = std::make_unique<DeepStreamRuntime>(
     this->get_logger(),
@@ -550,6 +610,9 @@ void ArmorDetectorNode::process_detection_cycle(
       [](const Candidate & candidate) {return candidate.class_id == 1;}));
   const auto other_class_count =
     static_cast<std::uint64_t>(candidates.size()) - class0_count - class1_count;
+  if (packet != nullptr && !packet->empty()) {
+    save_target_frame_if_needed(*packet, candidates, stamp);
+  }
   const std::string source_id = packet != nullptr && !packet->source_id.empty() ?
     packet->source_id :
     camera_config_.camera_type;
@@ -762,6 +825,127 @@ void ArmorDetectorNode::render_preview(
   }
 }
 
+void ArmorDetectorNode::save_target_frame_if_needed(
+  const FramePacket & packet,
+  const std::vector<Candidate> & candidates,
+  const rclcpp::Time & stamp)
+{
+  if (
+    !save_target_frames_ || target_frame_save_max_ <= 0 ||
+    target_frame_save_count_ >= target_frame_save_max_ ||
+    !target_frame_index_stream_.is_open())
+  {
+    return;
+  }
+
+  const cv::Rect image_rect(0, 0, packet.width(), packet.height());
+  bool has_tracker_target = false;
+  int track_id = -1;
+  cv::Rect target_rect;
+  const Candidate * target_candidate = nullptr;
+
+  if (preview_has_target_) {
+    const int x1 = preview_target_bbox_xyxy_[0];
+    const int y1 = preview_target_bbox_xyxy_[1];
+    const int x2 = preview_target_bbox_xyxy_[2];
+    const int y2 = preview_target_bbox_xyxy_[3];
+    target_rect = cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)) & image_rect;
+    if (!target_rect.empty()) {
+      has_tracker_target = true;
+      track_id = preview_target_track_id_;
+      double best_iou = 0.0;
+      for (const auto & candidate : candidates) {
+        const auto clipped = candidate.bbox_source & image_rect;
+        const double iou = rect_iou_for_capture(target_rect, clipped);
+        if (iou > best_iou) {
+          best_iou = iou;
+          target_candidate = &candidate;
+        }
+      }
+      if (target_candidate != nullptr) {
+        target_rect = target_candidate->bbox_source & image_rect;
+      }
+    }
+  }
+
+  if (target_candidate == nullptr) {
+    auto best_enemy = candidates.end();
+    for (auto it = candidates.begin(); it != candidates.end(); ++it) {
+      if (!it->is_enemy) {
+        continue;
+      }
+      if (best_enemy == candidates.end() || it->confidence > best_enemy->confidence) {
+        best_enemy = it;
+      }
+    }
+    if (best_enemy != candidates.end()) {
+      target_candidate = &(*best_enemy);
+      target_rect = target_candidate->bbox_source & image_rect;
+    }
+  }
+
+  if (target_rect.empty()) {
+    return;
+  }
+
+  const int image_index = target_frame_save_count_ + 1;
+  std::ostringstream filename;
+  filename << "target_" << std::setw(6) << std::setfill('0') << image_index
+           << '_' << stamp.nanoseconds() << ".jpg";
+  const auto image_path = std::filesystem::path(target_frame_save_dir_) / filename.str();
+
+  try {
+    const std::vector<int> params{cv::IMWRITE_JPEG_QUALITY, target_frame_jpeg_quality_};
+    if (!cv::imwrite(image_path.string(), packet.frame, params)) {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "Failed to write target frame %s; disabling target frame capture",
+        image_path.string().c_str());
+      save_target_frames_ = false;
+      return;
+    }
+  } catch (const std::exception & exc) {
+    RCLCPP_WARN(
+      this->get_logger(),
+      "Failed to write target frame %s: %s; disabling target frame capture",
+      image_path.string().c_str(),
+      exc.what());
+    save_target_frames_ = false;
+    return;
+  }
+
+  ++target_frame_save_count_;
+  const auto enemy_count = std::count_if(
+    candidates.begin(), candidates.end(), [](const Candidate & candidate) {
+      return candidate.is_enemy;
+    });
+  target_frame_index_stream_
+    << filename.str() << ','
+    << stamp.nanoseconds() << ','
+    << packet.source_id << ','
+    << packet.width() << ','
+    << packet.height() << ','
+    << track_id << ','
+    << (has_tracker_target ? 1 : 0) << ','
+    << (target_candidate != nullptr ? target_candidate->class_id : -1) << ','
+    << (target_candidate != nullptr ? target_candidate->confidence : 0.0F) << ','
+    << (target_candidate != nullptr && target_candidate->is_enemy ? 1 : 0) << ','
+    << target_rect.x << ','
+    << target_rect.y << ','
+    << target_rect.x + target_rect.width << ','
+    << target_rect.y + target_rect.height << ','
+    << candidates.size() << ','
+    << enemy_count << '\n';
+  target_frame_index_stream_.flush();
+
+  if (target_frame_save_count_ == target_frame_save_max_) {
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Target frame capture reached max=%d; no more images will be saved this run",
+      target_frame_save_max_);
+  }
+}
+
 std::vector<Candidate> ArmorDetectorNode::extract_candidates(
   const DetectionBatch & batch, const FramePacket * packet, double * color_ms) const
 {
@@ -881,6 +1065,23 @@ std::string ArmorDetectorNode::resolve_runtime_log_dir() const
   const auto log_dir = std::filesystem::current_path() / kVisionLogDirName;
   std::filesystem::create_directories(log_dir);
   return log_dir.string();
+}
+
+std::string ArmorDetectorNode::resolve_target_frame_save_dir() const
+{
+  if (!target_frame_save_dir_.empty()) {
+    std::filesystem::create_directories(target_frame_save_dir_);
+    return target_frame_save_dir_;
+  }
+
+  const auto log_dir = std::filesystem::path(resolve_runtime_log_dir());
+  auto parent = log_dir.parent_path();
+  if (parent.empty()) {
+    parent = std::filesystem::current_path();
+  }
+  const auto picture_dir = parent / kTargetFrameDirName;
+  std::filesystem::create_directories(picture_dir);
+  return picture_dir.string();
 }
 
 void ArmorDetectorNode::write_runtime_log_line(const std::string & line)

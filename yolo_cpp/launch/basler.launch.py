@@ -164,6 +164,26 @@ def generate_launch_description() -> LaunchDescription:
         default_value="false",
         description="Publish debug image_raw frame from detector",
     )
+    save_target_frames_arg = DeclareLaunchArgument(
+        "save_target_frames",
+        default_value="false",
+        description="Save up to target_frame_save_max JPEG frames when a target is found",
+    )
+    target_frame_save_dir_arg = DeclareLaunchArgument(
+        "target_frame_save_dir",
+        default_value="",
+        description="Optional directory for saved target frames; default is pictures next to vision_logs",
+    )
+    target_frame_save_max_arg = DeclareLaunchArgument(
+        "target_frame_save_max",
+        default_value="100",
+        description="Maximum target-frame images saved per run",
+    )
+    target_frame_jpeg_quality_arg = DeclareLaunchArgument(
+        "target_frame_jpeg_quality",
+        default_value="85",
+        description="JPEG quality for saved target frames",
+    )
     use_model_color_classes_arg = DeclareLaunchArgument(
         "use_model_color_classes",
         default_value="true",
@@ -186,37 +206,37 @@ def generate_launch_description() -> LaunchDescription:
     )
     track_min_hits_arg = DeclareLaunchArgument(
         "track_min_hits",
-        default_value="2",
+        default_value="1",
         description="Frames required to confirm a track",
     )
     track_max_coast_frames_arg = DeclareLaunchArgument(
         "track_max_coast_frames",
-        default_value="3",
+        default_value="1",
         description="Maximum published coast frames",
     )
     track_drop_frames_arg = DeclareLaunchArgument(
         "track_drop_frames",
-        default_value="8",
+        default_value="4",
         description="Frames before dropping an unmatched track",
     )
     association_max_center_distance_ratio_arg = DeclareLaunchArgument(
         "association_max_center_distance_ratio",
-        default_value="0.20",
+        default_value="0.30",
         description="Maximum normalized center distance for matching",
     )
     association_min_iou_arg = DeclareLaunchArgument(
         "association_min_iou",
-        default_value="0.10",
+        default_value="0.0",
         description="Minimum IoU required for matching",
     )
     target_switch_min_score_delta_arg = DeclareLaunchArgument(
         "target_switch_min_score_delta",
-        default_value="0.15",
+        default_value="0.02",
         description="Confidence delta required to steal target lock",
     )
     target_lock_hysteresis_frames_arg = DeclareLaunchArgument(
         "target_lock_hysteresis_frames",
-        default_value="2",
+        default_value="0",
         description="Coast frames allowed before target lock yields",
     )
     association_max_3d_distance_arg = DeclareLaunchArgument(
@@ -361,6 +381,12 @@ def generate_launch_description() -> LaunchDescription:
                 "debug_publish_image_raw": LaunchConfiguration(
                     "debug_publish_image_raw"
                 ),
+                "save_target_frames": LaunchConfiguration("save_target_frames"),
+                "target_frame_save_dir": LaunchConfiguration("target_frame_save_dir"),
+                "target_frame_save_max": LaunchConfiguration("target_frame_save_max"),
+                "target_frame_jpeg_quality": LaunchConfiguration(
+                    "target_frame_jpeg_quality"
+                ),
                 "use_model_color_classes": LaunchConfiguration(
                     "use_model_color_classes"
                 ),
@@ -488,6 +514,10 @@ def generate_launch_description() -> LaunchDescription:
             realsense_use_max_native_fps_arg,
             inference_mode_arg,
             debug_publish_image_raw_arg,
+            save_target_frames_arg,
+            target_frame_save_dir_arg,
+            target_frame_save_max_arg,
+            target_frame_jpeg_quality_arg,
             use_model_color_classes_arg,
             enable_color_verification_arg,
             target_color_arg,

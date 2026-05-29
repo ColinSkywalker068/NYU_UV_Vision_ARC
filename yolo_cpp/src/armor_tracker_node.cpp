@@ -122,13 +122,13 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<bool>("use_robot_id_targeting", false);
   this->declare_parameter<int>("enemy_color_red_value", 0);
   this->declare_parameter<int>("enemy_color_blue_value", 1);
-  this->declare_parameter<int>("track_min_hits", 2);
-  this->declare_parameter<int>("track_max_coast_frames", 3);
-  this->declare_parameter<int>("track_drop_frames", 8);
-  this->declare_parameter<double>("association_max_center_distance_ratio", 0.20);
-  this->declare_parameter<double>("association_min_iou", 0.10);
-  this->declare_parameter<double>("target_switch_min_score_delta", 0.15);
-  this->declare_parameter<int>("target_lock_hysteresis_frames", 2);
+  this->declare_parameter<int>("track_min_hits", 1);
+  this->declare_parameter<int>("track_max_coast_frames", 1);
+  this->declare_parameter<int>("track_drop_frames", 4);
+  this->declare_parameter<double>("association_max_center_distance_ratio", 0.30);
+  this->declare_parameter<double>("association_min_iou", 0.0);
+  this->declare_parameter<double>("target_switch_min_score_delta", 0.02);
+  this->declare_parameter<int>("target_lock_hysteresis_frames", 0);
   this->declare_parameter<int>("stage_log_interval", 300);
 
   use_robot_id_targeting_ = this->get_parameter("use_robot_id_targeting").as_bool();

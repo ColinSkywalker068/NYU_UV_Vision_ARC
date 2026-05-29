@@ -39,7 +39,8 @@ The launch files expose the settings that matter most during bring-up:
 - fallback control through `allow_native_tensorrt_fallback`
 - default enemy color through `target_color` until STM or robot-id feedback overrides it
 - color filtering through `use_model_color_classes` and `enable_color_verification`; defaults trust model class colors and keep HSV disabled
-- tracker tuning such as `track_min_hits`, `track_max_coast_frames`, and `track_drop_frames`
+- target-frame capture through `save_target_frames`, `target_frame_save_max`, and `target_frame_jpeg_quality`; saved JPEGs and a CSV index go under `pictures/` next to `vision_logs/` by default
+- tracker tuning such as `track_min_hits`, `track_max_coast_frames`, and `track_drop_frames`; defaults favor fast armor-plate switching during spin
 - 3D pose through `enable_3d_pose`, `camera_info_topic`, `camera_frame_id`, and optional static `camera_fx/fy/cx/cy`
 - tracker 3D gating through `association_max_3d_distance_m`
 - processor frame selection through `processor_target_frame`
@@ -48,6 +49,8 @@ The launch files expose the settings that matter most during bring-up:
 - STM command units through `transmit_angles_in_degrees`
 
 The DeepStream template shipped with the package lives at [`config/deepstream_bestmerge_nvinfer.txt`](../config/deepstream_bestmerge_nvinfer.txt).
+
+The default tracker profile is tuned for fast rotating armor plates: `track_min_hits:=1`, `track_max_coast_frames:=1`, `track_drop_frames:=4`, `association_max_center_distance_ratio:=0.30`, `association_min_iou:=0.0`, `target_switch_min_score_delta:=0.02`, and `target_lock_hysteresis_frames:=0`. Increase the coast, lock, and score-delta values when you want steadier lock over faster switching.
 
 ## Basler High-FPS Source Formats
 

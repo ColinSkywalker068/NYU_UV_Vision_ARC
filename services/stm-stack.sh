@@ -78,6 +78,11 @@ CV_STM_LAUNCH_PROFILE=basler
 # CV_STM_ENABLE_COLOR_VERIFICATION=false
 # CV_STM_SERIAL_PORT=/dev/ttyUSB0
 # CV_STM_REQUIRE_SERIAL=true
+# Save up to 100 compressed target frames in pictures/ next to vision_logs/.
+# CV_STM_SAVE_TARGET_FRAMES=false
+# CV_STM_TARGET_FRAME_SAVE_DIR=
+# CV_STM_TARGET_FRAME_SAVE_MAX=100
+# CV_STM_TARGET_FRAME_JPEG_QUALITY=85
 # RealSense profile skips Basler/DeepStream/Pylon checks and serial by default:
 # CV_STM_LAUNCH_PROFILE=realsense
 # CV_STM_REQUIRE_SERIAL=false

@@ -113,6 +113,12 @@ private:
   /// Render the optional OpenCV preview window.
   void render_preview(const FramePacket & packet, const std::vector<Candidate> & candidates);
 
+  /// Save a bounded set of target frames for offline visual inspection and heatmaps.
+  void save_target_frame_if_needed(
+    const FramePacket & packet,
+    const std::vector<Candidate> & candidates,
+    const rclcpp::Time & stamp);
+
   /// Apply letterbox reversal, color filtering, and candidate shaping.
   std::vector<Candidate> extract_candidates(
     const DetectionBatch & batch, const FramePacket * packet, double * color_ms) const;
@@ -124,6 +130,9 @@ private:
 
   /// Resolve the directory used for runtime CSV-style logs.
   std::string resolve_runtime_log_dir() const;
+
+  /// Resolve the directory used for optional target-frame captures.
+  std::string resolve_target_frame_save_dir() const;
 
   /// Append one line to the runtime log when logging is configured.
   void write_runtime_log_line(const std::string & line);
@@ -168,6 +177,8 @@ private:
   std::string inference_mode_;
   std::string runtime_log_dir_;
   std::string runtime_log_path_;
+  std::string target_frame_save_dir_;
+  std::string target_frame_index_path_;
   std::string target_color_;
   std::string preview_target_topic_;
   std::string vis_window_name_;
@@ -180,6 +191,7 @@ private:
   bool use_model_color_classes_{true};
   bool use_robot_id_targeting_{false};
   bool debug_publish_image_raw_{false};
+  bool save_target_frames_{false};
   bool enable_3d_pose_{true};
   bool preview_failed_{false};
   bool preview_has_target_{false};
@@ -189,6 +201,9 @@ private:
   int max_hsv_candidates_{3};
   int stage_log_interval_{300};
   int frame_count_{0};
+  int target_frame_save_count_{0};
+  int target_frame_save_max_{100};
+  int target_frame_jpeg_quality_{85};
   std::uint64_t stage_raw_detections_{0};
   std::uint64_t stage_candidates_{0};
   std::uint64_t stage_enemy_candidates_{0};
@@ -219,6 +234,7 @@ private:
   std::vector<double> camera_distortion_;
   StageTotals stage_totals_;
   std::ofstream runtime_log_stream_;
+  std::ofstream target_frame_index_stream_;
 };
 
 }  // namespace yolo_cpp

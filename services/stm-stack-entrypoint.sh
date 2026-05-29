@@ -183,6 +183,10 @@ run_launch() {
   append_optional_launch_arg CV_STM_TARGET_COLOR target_color
   append_optional_launch_arg CV_STM_USE_MODEL_COLOR_CLASSES use_model_color_classes
   append_optional_launch_arg CV_STM_ENABLE_COLOR_VERIFICATION enable_color_verification
+  append_optional_launch_arg CV_STM_SAVE_TARGET_FRAMES save_target_frames
+  append_optional_launch_arg CV_STM_TARGET_FRAME_SAVE_DIR target_frame_save_dir
+  append_optional_launch_arg CV_STM_TARGET_FRAME_SAVE_MAX target_frame_save_max
+  append_optional_launch_arg CV_STM_TARGET_FRAME_JPEG_QUALITY target_frame_jpeg_quality
 
   case "$(launch_profile)" in
     basler)

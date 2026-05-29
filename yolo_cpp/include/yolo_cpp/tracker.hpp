@@ -119,14 +119,14 @@ struct TrackSnapshot
 /// Tunable association, confirmation, coasting, and target-lock parameters.
 struct TrackConfig
 {
-  int track_min_hits{2};
-  int track_max_coast_frames{3};
-  int track_drop_frames{8};
-  double association_max_center_distance_ratio{0.20};
-  double association_min_iou{0.10};
+  int track_min_hits{1};
+  int track_max_coast_frames{1};
+  int track_drop_frames{4};
+  double association_max_center_distance_ratio{0.30};
+  double association_min_iou{0.0};
   double association_max_3d_distance_m{0.35};
-  double target_switch_min_score_delta{0.15};
-  int target_lock_hysteresis_frames{2};
+  double target_switch_min_score_delta{0.02};
+  int target_lock_hysteresis_frames{0};
 };
 
 /// Tracker output for one processed frame.
