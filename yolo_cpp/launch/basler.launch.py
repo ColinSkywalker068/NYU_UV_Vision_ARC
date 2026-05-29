@@ -71,7 +71,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     basler_fps_arg = DeclareLaunchArgument(
         "basler_fps",
-        default_value="90",
+        default_value="110",
         description="Basler frames per second",
     )
     basler_uncapped_fps_arg = DeclareLaunchArgument(
@@ -96,7 +96,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     pre_mux_resize_arg = DeclareLaunchArgument(
         "pre_mux_resize",
-        default_value="false",
+        default_value="true",
         description="Resize full-FOV Basler frames before nvstreammux pads them to the model input",
     )
     pre_mux_width_arg = DeclareLaunchArgument(

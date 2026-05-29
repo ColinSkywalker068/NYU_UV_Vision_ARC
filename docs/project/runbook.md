@@ -85,9 +85,10 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `CV_STM_REQUIRE_SERIAL` | Whether preflight must fail when the serial path is absent | Defaults to `true` for `basler`, `false` for `realsense` | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_EXTRA_LAUNCH_ARGS` | Optional extra selected-profile launch arguments | Empty by default | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_BASLER_PIXEL_FORMAT` | Basler source pixel format for the DeepStream/Pylon path | `bayer_rggb8`; alternatives include `yuy2`, `bgr8`, `mono8` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
+| `CV_STM_BASLER_FPS` | Basler requested caps/frame-rate fallback | `110` for the field Basler launch; lower to `90` for a conservative no-drop cap | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_BASLER_SOURCE_WIDTH` | Basler source width for full-sensor capture | `1920` for `a2A1920-160ucBAS` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_BASLER_SOURCE_HEIGHT` | Basler source height for full-sensor capture | `1200` for `a2A1920-160ucBAS` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
-| `CV_STM_DEEPSTREAM_PRE_MUX_RESIZE` | Resize full-FOV Basler frames before `nvstreammux` padding | `false`; set `true` to resize 1920x1200 to the model-aspect box, 640x400 for the default 640x640 model | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
+| `CV_STM_DEEPSTREAM_PRE_MUX_RESIZE` | Resize full-FOV Basler frames before `nvstreammux` padding | `true`; set `false` only for A/B testing the older full-resolution path | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_DEEPSTREAM_PRE_MUX_WIDTH` / `CV_STM_DEEPSTREAM_PRE_MUX_HEIGHT` | Optional pre-mux resize bounding box | `0`; unset/zero uses the model dimensions as the resize box | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `DISPLAY` | X11 GUI forwarding | Host `DISPLAY` value | `Docker/docker-compose.yml`, `services/start-container.sh` |
 | `QT_X11_NO_MITSHM` | Qt/X11 compatibility | `1` | `Docker/docker-compose.yml` |
