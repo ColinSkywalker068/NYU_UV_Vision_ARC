@@ -37,6 +37,8 @@ The launch files expose the settings that matter most during bring-up:
 - Basler high-FPS capture through `basler_pixel_format`, `basler_source_width`, `basler_source_height`, `basler_fps`, and `basler_uncapped_fps`
 - detector backend selection through `detector_backend`
 - fallback control through `allow_native_tensorrt_fallback`
+- default enemy color through `target_color` until STM or robot-id feedback overrides it
+- color filtering through `use_model_color_classes` and `enable_color_verification`; defaults trust model class colors and keep HSV disabled
 - tracker tuning such as `track_min_hits`, `track_max_coast_frames`, and `track_drop_frames`
 - 3D pose through `enable_3d_pose`, `camera_info_topic`, `camera_frame_id`, and optional static `camera_fx/fy/cx/cy`
 - tracker 3D gating through `association_max_3d_distance_m`

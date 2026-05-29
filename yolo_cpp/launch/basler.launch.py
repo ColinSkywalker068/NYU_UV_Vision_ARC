@@ -169,6 +169,16 @@ def generate_launch_description() -> LaunchDescription:
         default_value="true",
         description="Use model class IDs directly for enemy color instead of HSV verification",
     )
+    enable_color_verification_arg = DeclareLaunchArgument(
+        "enable_color_verification",
+        default_value="false",
+        description="Enable HSV enemy-color verification when use_model_color_classes is false",
+    )
+    target_color_arg = DeclareLaunchArgument(
+        "target_color",
+        default_value="blue",
+        description="Enemy armor color used until STM or robot_id feedback overrides it: blue or red",
+    )
     show_arg = DeclareLaunchArgument(
         "show",
         default_value="true",
@@ -354,6 +364,10 @@ def generate_launch_description() -> LaunchDescription:
                 "use_model_color_classes": LaunchConfiguration(
                     "use_model_color_classes"
                 ),
+                "enable_color_verification": LaunchConfiguration(
+                    "enable_color_verification"
+                ),
+                "target_color": LaunchConfiguration("target_color"),
                 "inference_mode": LaunchConfiguration("inference_mode"),
             }
         ],
@@ -475,6 +489,8 @@ def generate_launch_description() -> LaunchDescription:
             inference_mode_arg,
             debug_publish_image_raw_arg,
             use_model_color_classes_arg,
+            enable_color_verification_arg,
+            target_color_arg,
             show_arg,
             track_min_hits_arg,
             track_max_coast_frames_arg,

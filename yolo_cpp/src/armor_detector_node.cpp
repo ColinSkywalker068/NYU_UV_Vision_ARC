@@ -118,7 +118,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<bool>("show", false);
   this->declare_parameter<double>("conf", 0.30);
   this->declare_parameter<std::string>("inference_mode", "predict");
-  this->declare_parameter<bool>("enable_color_verification", true);
+  this->declare_parameter<bool>("enable_color_verification", false);
   this->declare_parameter<bool>("use_model_color_classes", true);
   this->declare_parameter<std::string>("target_color", "blue");
   this->declare_parameter<bool>("use_robot_id_targeting", false);
@@ -202,6 +202,11 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   }
 
   target_class_ = (target_color_ == "red") ? RED_CLASS : BLUE_CLASS;
+  RCLCPP_INFO(
+    this->get_logger(),
+    "Default enemy target_color=%s class_id=%d; STM attitude_flags or robot_id can override when available",
+    target_color_.c_str(),
+    target_class_);
 
   robot_id_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
     "robot_id", 10, std::bind(&ArmorDetectorNode::id_listener_callback, this, std::placeholders::_1));

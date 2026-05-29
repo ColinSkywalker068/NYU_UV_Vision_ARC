@@ -71,6 +71,11 @@ CV_STM_IMAGE=${DEFAULT_IMAGE}
 UV_CONTAINER_NAME=cv-stm-stack
 CV_STM_LAUNCH_PROFILE=basler
 # CV_STM_MODEL_PATH=/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine
+# CV_STM_TARGET_COLOR=blue
+# Default is to trust model color classes and skip HSV verification.
+# Accept both model colors during detector bring-up by setting both false:
+# CV_STM_USE_MODEL_COLOR_CLASSES=false
+# CV_STM_ENABLE_COLOR_VERIFICATION=false
 # CV_STM_SERIAL_PORT=/dev/ttyUSB0
 # CV_STM_REQUIRE_SERIAL=true
 # RealSense profile skips Basler/DeepStream/Pylon checks and serial by default:

@@ -180,6 +180,9 @@ run_launch() {
     "debug_publish_image_raw:=${CV_STM_DEBUG_PUBLISH_IMAGE_RAW:-false}"
     "model_path:=$(model_path)"
   )
+  append_optional_launch_arg CV_STM_TARGET_COLOR target_color
+  append_optional_launch_arg CV_STM_USE_MODEL_COLOR_CLASSES use_model_color_classes
+  append_optional_launch_arg CV_STM_ENABLE_COLOR_VERIFICATION enable_color_verification
 
   case "$(launch_profile)" in
     basler)

@@ -853,38 +853,12 @@ struct DeepStreamRuntime::Impl
       nullptr);
   }
 
-  void configure_source_dimensions()
-  {
-    if (config.source_width > 0 &&
-      !set_child_proxy_double_if_present(source, "cam::Width", config.source_width))
-    {
-      RCLCPP_WARN(
-        logger,
-        "Could not set Basler cam::Width=%d through pylonsrc",
-        config.source_width);
-    }
-    if (config.source_height > 0 &&
-      !set_child_proxy_double_if_present(source, "cam::Height", config.source_height))
-    {
-      RCLCPP_WARN(
-        logger,
-        "Could not set Basler cam::Height=%d through pylonsrc",
-        config.source_height);
-    }
-  }
-
   void configure_basler_source(const SourceFormatSpec & source_format)
   {
-    if (!source_format.camera_pixel_format.empty() &&
-      !set_child_proxy_string_if_present(
-        source, "cam::PixelFormat", source_format.camera_pixel_format.c_str()))
-    {
-      RCLCPP_WARN(
-        logger,
-        "Could not set Basler cam::PixelFormat=%s through pylonsrc",
-        source_format.camera_pixel_format.c_str());
-    }
-    configure_source_dimensions();
+    RCLCPP_INFO(
+      logger,
+      "Configuring Basler source format/size/framerate through caps: %s",
+      source_format.label.c_str());
     set_child_proxy_string_if_present(source, "cam::ExposureMode", "Timed");
     if (!set_camera_enum_off("cam::ExposureAuto")) {
       RCLCPP_WARN(logger, "Could not set Basler cam::ExposureAuto=Off through pylonsrc");
@@ -1058,9 +1032,9 @@ struct DeepStreamRuntime::Impl
       uncapped_fps_applied = true;
       fps_cap_status = "disabled camera AcquisitionFrameRate limit";
     } else if (config.source_fps_uncapped) {
-      RCLCPP_WARN(
+      RCLCPP_INFO(
         logger,
-        "Could not disable Basler AcquisitionFrameRateEnable through pylonsrc; requesting %d FPS through caps instead",
+        "Basler AcquisitionFrameRateEnable is not exposed by pylonsrc; requesting %d FPS through caps",
         config.source_fps);
       fps_cap_status = "uncapped requested, falling back to caps framerate";
     }
