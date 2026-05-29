@@ -531,6 +531,10 @@ void ArmorDetectorNode::process_detection_cycle(
   const auto detected_opponent = std::find_if(
     candidates.begin(), candidates.end(),
     [](const Candidate & candidate) {return candidate.is_enemy;});
+  const auto enemy_count = static_cast<std::uint64_t>(
+    std::count_if(
+      candidates.begin(), candidates.end(),
+      [](const Candidate & candidate) {return candidate.is_enemy;}));
   const std::string source_id = packet != nullptr && !packet->source_id.empty() ?
     packet->source_id :
     camera_config_.camera_type;
@@ -560,6 +564,9 @@ void ArmorDetectorNode::process_detection_cycle(
   }
 
   ++frame_count_;
+  stage_raw_detections_ += batch.detections.size();
+  stage_candidates_ += candidates.size();
+  stage_enemy_candidates_ += enemy_count;
   stage_totals_.capture_ms += capture_ms;
   stage_totals_.preprocess_ms += detector_timings.preprocess_ms;
   stage_totals_.upload_ms += detector_timings.upload_ms;
@@ -926,7 +933,8 @@ void ArmorDetectorNode::log_stage_timing()
   RCLCPP_INFO(
     this->get_logger(),
     "Detector timing mean over %d frames: fps=%.1f capture=%.2fms preprocess=%.2fms "
-    "upload=%.2fms inference=%.2fms download=%.2fms parse=%.2fms color=%.2fms publish=%.2fms",
+    "upload=%.2fms inference=%.2fms download=%.2fms parse=%.2fms color=%.2fms publish=%.2fms "
+    "raw_det=%.2f candidates=%.2f enemy=%.2f",
     stage_log_interval_,
     avg_fps,
     stage_totals_.capture_ms / n,
@@ -936,8 +944,14 @@ void ArmorDetectorNode::log_stage_timing()
     stage_totals_.download_ms / n,
     stage_totals_.parse_ms / n,
     stage_totals_.color_ms / n,
-    stage_totals_.publish_ms / n);
+    stage_totals_.publish_ms / n,
+    static_cast<double>(stage_raw_detections_) / n,
+    static_cast<double>(stage_candidates_) / n,
+    static_cast<double>(stage_enemy_candidates_) / n);
   stage_totals_ = StageTotals{};
+  stage_raw_detections_ = 0;
+  stage_candidates_ = 0;
+  stage_enemy_candidates_ = 0;
 }
 
 }  // namespace yolo_cpp

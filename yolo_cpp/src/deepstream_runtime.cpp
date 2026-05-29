@@ -181,7 +181,23 @@ void release_request_pad(GstElement * element, GstPad *& pad)
 
 bool set_child_proxy_bool_if_present(GstElement * element, const char * name, bool value)
 {
-  if (element == nullptr || name == nullptr || !GST_IS_CHILD_PROXY(element)) {
+  if (element == nullptr || name == nullptr) {
+    return false;
+  }
+
+  if (GParamSpec * pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
+    GValue gvalue = G_VALUE_INIT;
+    g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
+    bool did_set = false;
+    if (G_VALUE_HOLDS_BOOLEAN(&gvalue)) {
+      g_value_set_boolean(&gvalue, value ? TRUE : FALSE);
+      g_object_set_property(G_OBJECT(element), name, &gvalue);
+      did_set = true;
+    }
+    g_value_unset(&gvalue);
+    return did_set;
+  }
+  if (!GST_IS_CHILD_PROXY(element)) {
     return false;
   }
 
@@ -307,7 +323,21 @@ bool set_numeric_value(GValue * gvalue, double value)
 
 bool set_child_proxy_string_if_present(GstElement * element, const char * name, const char * value)
 {
-  if (element == nullptr || name == nullptr || value == nullptr || !GST_IS_CHILD_PROXY(element)) {
+  if (element == nullptr || name == nullptr || value == nullptr) {
+    return false;
+  }
+
+  if (GParamSpec * pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
+    GValue gvalue = G_VALUE_INIT;
+    g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
+    const bool did_set = set_string_value(&gvalue, value);
+    if (did_set) {
+      g_object_set_property(G_OBJECT(element), name, &gvalue);
+    }
+    g_value_unset(&gvalue);
+    return did_set;
+  }
+  if (!GST_IS_CHILD_PROXY(element)) {
     return false;
   }
 
@@ -332,7 +362,21 @@ bool set_child_proxy_string_if_present(GstElement * element, const char * name, 
 
 bool set_child_proxy_double_if_present(GstElement * element, const char * name, double value)
 {
-  if (element == nullptr || name == nullptr || !GST_IS_CHILD_PROXY(element)) {
+  if (element == nullptr || name == nullptr) {
+    return false;
+  }
+
+  if (GParamSpec * pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
+    GValue gvalue = G_VALUE_INIT;
+    g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
+    const bool did_set = set_numeric_value(&gvalue, value);
+    if (did_set) {
+      g_object_set_property(G_OBJECT(element), name, &gvalue);
+    }
+    g_value_unset(&gvalue);
+    return did_set;
+  }
+  if (!GST_IS_CHILD_PROXY(element)) {
     return false;
   }
 
@@ -424,7 +468,19 @@ std::optional<std::string> get_string_value(const GValue * gvalue)
 
 std::optional<double> get_child_proxy_numeric_if_present(GstElement * element, const char * name)
 {
-  if (element == nullptr || name == nullptr || !GST_IS_CHILD_PROXY(element)) {
+  if (element == nullptr || name == nullptr) {
+    return std::nullopt;
+  }
+
+  if (GParamSpec * pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
+    GValue gvalue = G_VALUE_INIT;
+    g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
+    g_object_get_property(G_OBJECT(element), name, &gvalue);
+    const auto value = get_numeric_value(&gvalue);
+    g_value_unset(&gvalue);
+    return value;
+  }
+  if (!GST_IS_CHILD_PROXY(element)) {
     return std::nullopt;
   }
 
@@ -447,7 +503,19 @@ std::optional<double> get_child_proxy_numeric_if_present(GstElement * element, c
 
 std::optional<std::string> get_child_proxy_string_if_present(GstElement * element, const char * name)
 {
-  if (element == nullptr || name == nullptr || !GST_IS_CHILD_PROXY(element)) {
+  if (element == nullptr || name == nullptr) {
+    return std::nullopt;
+  }
+
+  if (GParamSpec * pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
+    GValue gvalue = G_VALUE_INIT;
+    g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
+    g_object_get_property(G_OBJECT(element), name, &gvalue);
+    const auto value = get_string_value(&gvalue);
+    g_value_unset(&gvalue);
+    return value;
+  }
+  if (!GST_IS_CHILD_PROXY(element)) {
     return std::nullopt;
   }
 
@@ -694,6 +762,13 @@ struct DeepStreamRuntime::Impl
     task_obb = metadata.task.value_or(config.task) == "obb";
     end2end = metadata.end2end;
     export_includes_nms = metadata.export_includes_nms;
+    if (metadata.class_names.empty() && task_obb && num_classes < 2) {
+      num_classes = 2;
+      RCLCPP_WARN(
+        logger,
+        "Model metadata did not expose class names from %s; assuming 2 classes for OBB armor model",
+        config.model_path.c_str());
+    }
 
     const auto source_format = resolve_source_format(config.source_pixel_format);
     std::vector<std::string> required_elements = {

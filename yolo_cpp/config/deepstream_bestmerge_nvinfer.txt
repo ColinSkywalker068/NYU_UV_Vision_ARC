@@ -4,6 +4,8 @@ net-scale-factor=0.0039215697906911373
 model-color-format=1
 __MODEL_SOURCE_CONFIG__
 infer-dims=3;__INPUT_HEIGHT__;__INPUT_WIDTH__
+maintain-aspect-ratio=1
+symmetric-padding=1
 batch-size=1
 process-mode=1
 network-type=100

@@ -189,6 +189,9 @@ private:
   int max_hsv_candidates_{3};
   int stage_log_interval_{300};
   int frame_count_{0};
+  std::uint64_t stage_raw_detections_{0};
+  std::uint64_t stage_candidates_{0};
+  std::uint64_t stage_enemy_candidates_{0};
   int enemy_color_red_value_{0};
   int enemy_color_blue_value_{1};
   int preview_target_track_id_{-1};
