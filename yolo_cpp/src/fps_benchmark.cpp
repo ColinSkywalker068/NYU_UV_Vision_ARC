@@ -862,6 +862,16 @@ int main(int argc, char ** argv)
         exit_code = 1;
         results[mode] = BenchmarkResult{mode, false, 0.0, 0U, 0.0, exc.what()};
         std::cerr << '[' << mode << "] ERROR: " << exc.what() << '\n';
+      } catch (...) {
+        exit_code = 1;
+        results[mode] = BenchmarkResult{
+          mode,
+          false,
+          0.0,
+          0U,
+          0.0,
+          "non-standard exception"};
+        std::cerr << '[' << mode << "] ERROR: non-standard exception\n";
       }
     }
 
