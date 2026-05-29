@@ -211,7 +211,10 @@ if [ $? -eq 0 ]; then
 
 	# This file shows what Jetson board is running
 	# /proc or /sys files aren't mountable into docker
-	cat /proc/device-tree/model > /tmp/nv_jetson_model
+	if ! cat /proc/device-tree/model > /tmp/nv_jetson_model 2>/dev/null; then
+		echo "Unable to write /tmp/nv_jetson_model; continuing without Jetson model bind mount" >&2
+		rm -f /tmp/nv_jetson_model 2>/dev/null || true
+	fi
 
 	if container_exists "$DOCKER_CMD" "$CONTAINER_NAME"; then
 		reuse_container "$DOCKER_CMD" "$CONTAINER_NAME" "${CMD_ARGS[@]}"
