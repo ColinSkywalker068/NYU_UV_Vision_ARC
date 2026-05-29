@@ -76,7 +76,19 @@ require_dir() {
 }
 
 require_gst_element() {
-  gst-inspect-1.0 "$1" >/dev/null 2>&1 || die "Required GStreamer element is unavailable: $1"
+  local element="$1"
+  if gst-inspect-1.0 "$element" >/dev/null 2>&1; then
+    return
+  fi
+
+  log "GStreamer element ${element} is unavailable in CV_STM_IMAGE=${CV_STM_IMAGE:-unknown}"
+  log "GST_PLUGIN_PATH=${GST_PLUGIN_PATH:-}"
+  log "GST_PLUGIN_PATH_1_0=${GST_PLUGIN_PATH_1_0:-}"
+  log "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
+  if [ "$element" = "pylonsrc" ]; then
+    log "pylonsrc is provided by the Basler Pylon GStreamer package; direct runs may work if they use a different or manually modified container"
+  fi
+  die "Required GStreamer element is unavailable: $element"
 }
 
 check_ros_package() {
@@ -166,6 +178,9 @@ run_preflight() {
 
   if [ "$(launch_profile)" = "basler" ]; then
     require_command gst-inspect-1.0
+    if [[ "${CV_STM_IMAGE:-}" != *cplusplus* ]]; then
+      log "Basler profile is using CV_STM_IMAGE=${CV_STM_IMAGE:-unknown}; the default C++ image is expected unless this custom image includes pylonsrc"
+    fi
     require_gst_element pylonsrc
     if [ ! -d /opt/pylon ]; then
       log "Pylon SDK directory /opt/pylon is not mounted; continuing because pylonsrc is available"

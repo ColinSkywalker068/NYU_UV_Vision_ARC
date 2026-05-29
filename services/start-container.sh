@@ -58,9 +58,20 @@ get_pylon_mount_arg() {
 	fi
 }
 
+is_cplusplus_context() {
+	local image_name="$1"
+	if [[ "$image_name" == *"cplusplus"* ]]; then
+		return 0
+	fi
+	if [ -n "${CV_STM_IMAGE:-}" ] || [ -n "${CV_STM_LAUNCH_PROFILE:-}" ]; then
+		return 0
+	fi
+	return 1
+}
+
 get_cplusplus_env_args() {
 	local image_name="$1"
-	if [[ "$image_name" != *"cplusplus"* ]]; then
+	if ! is_cplusplus_context "$image_name"; then
 		return
 	fi
 	local gst_plugin_path="/opt/nvidia/deepstream/deepstream-6.4/lib/gst-plugins:/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins"
@@ -71,6 +82,7 @@ get_cplusplus_env_args() {
 get_cv_stm_env_args() {
 	local env_names=(
 		CV_STM_REPO_ROOT
+		CV_STM_IMAGE
 		CV_STM_MODEL_PATH
 		CV_STM_LAUNCH_PROFILE
 		CV_STM_TARGET_COLOR
@@ -117,7 +129,7 @@ get_cv_stm_env_args() {
 
 prepare_cplusplus_command() {
 	local image_name="$1"
-	if [[ "$image_name" != *"cplusplus"* ]]; then
+	if ! is_cplusplus_context "$image_name"; then
 		return
 	fi
 	if [[ ${#CMD_ARGS[@]} -eq 0 || (${#CMD_ARGS[@]} -eq 1 && "${CMD_ARGS[0]}" == "bash") ]]; then
