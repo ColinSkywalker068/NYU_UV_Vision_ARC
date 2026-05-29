@@ -244,6 +244,20 @@ ament_target_dependencies(aim_solver_node cv_auto_aim_interfaces rclcpp std_msgs
 add_executable(fps_benchmark src/fps_benchmark.cpp)
 target_link_libraries(fps_benchmark yolo_cpp_components ${OpenCV_LIBS})
 ament_target_dependencies(fps_benchmark rclcpp)
+if(HAVE_PYLON)
+  target_compile_definitions(fps_benchmark PRIVATE HAVE_PYLON=1)
+  target_include_directories(fps_benchmark PRIVATE ${PYLON_INCLUDE_DIR})
+  target_link_libraries(fps_benchmark
+    ${PYLON_BASE_LIBRARY}
+    ${PYLON_UTILITY_LIBRARY}
+  )
+  if(PYLON_GENAPI_LIBRARY)
+    target_link_libraries(fps_benchmark ${PYLON_GENAPI_LIBRARY})
+  endif()
+  if(PYLON_GCBASE_LIBRARY)
+    target_link_libraries(fps_benchmark ${PYLON_GCBASE_LIBRARY})
+  endif()
+endif()
 
 add_executable(stm32_serial_bridge
   src/seasky_protocol.cpp

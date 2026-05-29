@@ -32,6 +32,11 @@
 #include <utility>
 #include <vector>
 
+#ifdef HAVE_PYLON
+#include <GenApi/GenApi.h>
+#include <pylon/PylonIncludes.h>
+#endif
+
 namespace
 {
 
@@ -77,6 +82,14 @@ struct BenchmarkResult
   double duration_s{0.0};
   std::string note;
 };
+
+#ifdef HAVE_PYLON
+struct PylonLifecycle
+{
+  PylonLifecycle() {Pylon::PylonInitialize();}
+  ~PylonLifecycle() {Pylon::PylonTerminate();}
+};
+#endif
 
 struct CameraReleaseGuard
 {
@@ -289,6 +302,7 @@ void print_usage(const char * program)
     << "  --mode inference               Synthetic BGR frames through NativeTensorRTBackend\n"
     << "  --mode camera                  CameraBackend capture only, no model\n"
     << "  --mode deepstream              Basler + DeepStream runtime result cadence\n\n"
+    << "  --mode basler_features         Print writable Basler GenICam feature nodes\n\n"
     << "Common options:\n"
     << "  --duration SEC                 Measured seconds per mode (default: 10)\n"
     << "  --warmup SEC                   Warmup seconds before measuring (default: 2)\n"
@@ -425,6 +439,95 @@ std::vector<std::string> split_modes(const std::string & mode)
   }
   return modes;
 }
+
+#ifdef HAVE_PYLON
+std::string access_text(GenApi::INode * node)
+{
+  if (node == nullptr || !GenApi::IsAvailable(node)) {
+    return "absent";
+  }
+  std::string access = GenApi::IsReadable(node) ? "read" : "no-read";
+  access += GenApi::IsWritable(node) ? "/write" : "/no-write";
+  return access;
+}
+
+void print_genicam_node(GenApi::INodeMap & node_map, const char * name)
+{
+  GenApi::INode * raw_node = node_map.GetNode(name);
+  std::cout << "  " << name << ": " << access_text(raw_node);
+  if (raw_node == nullptr || !GenApi::IsAvailable(raw_node) || !GenApi::IsReadable(raw_node)) {
+    std::cout << '\n';
+    return;
+  }
+
+  try {
+    if (GenApi::CEnumerationPtr node(raw_node); node) {
+      std::cout << " value=" << node->ToString();
+    } else if (GenApi::CIntegerPtr node(raw_node); node) {
+      std::cout << " value=" << node->GetValue()
+                << " min=" << node->GetMin()
+                << " max=" << node->GetMax()
+                << " inc=" << node->GetInc();
+    } else if (GenApi::CFloatPtr node(raw_node); node) {
+      std::cout << " value=" << node->GetValue()
+                << " min=" << node->GetMin()
+                << " max=" << node->GetMax();
+    } else if (GenApi::CBooleanPtr node(raw_node); node) {
+      std::cout << " value=" << (node->GetValue() ? "true" : "false");
+    } else if (GenApi::CStringPtr node(raw_node); node) {
+      std::cout << " value=" << node->GetValue();
+    }
+  } catch (const std::exception & exc) {
+    std::cout << " read_error='" << exc.what() << "'";
+  } catch (...) {
+    std::cout << " read_error='non-standard exception'";
+  }
+  std::cout << '\n';
+}
+
+bool try_set_enum(GenApi::INodeMap & node_map, const char * name, const char * value)
+{
+  GenApi::CEnumerationPtr node(node_map.GetNode(name));
+  if (!node || !GenApi::IsWritable(node)) {
+    return false;
+  }
+  GenApi::CEnumEntryPtr entry(node->GetEntryByName(value));
+  if (!entry || !GenApi::IsReadable(entry)) {
+    return false;
+  }
+  node->SetIntValue(entry->GetValue());
+  return true;
+}
+
+bool try_set_integer(GenApi::INodeMap & node_map, const char * name, int value)
+{
+  GenApi::CIntegerPtr node(node_map.GetNode(name));
+  if (!node || !GenApi::IsWritable(node)) {
+    return false;
+  }
+  const int64_t min_value = node->GetMin();
+  const int64_t max_value = node->GetMax();
+  const int64_t inc = std::max<int64_t>(1, node->GetInc());
+  int64_t clamped = std::max<int64_t>(min_value, std::min<int64_t>(max_value, value));
+  if (inc > 1) {
+    clamped = min_value + (((clamped - min_value) / inc) * inc);
+  }
+  node->SetValue(clamped);
+  return true;
+}
+
+bool try_set_binning_pair(
+  GenApi::INodeMap & node_map,
+  int binning_x,
+  int binning_y)
+{
+  const bool set_x = binning_x <= 1 ||
+    try_set_integer(node_map, "BinningHorizontal", binning_x);
+  const bool set_y = binning_y <= 1 ||
+    try_set_integer(node_map, "BinningVertical", binning_y);
+  return set_x && set_y;
+}
+#endif
 
 double elapsed_seconds(Clock::time_point start, Clock::time_point end)
 {
@@ -653,6 +756,84 @@ BenchmarkResult run_inference_mode(
   return BenchmarkResult{"inference", true, fps, samples.size(), measured_s, ""};
 }
 
+BenchmarkResult run_basler_features_mode(const Options & options)
+{
+  std::cout << "\n[basler_features] Basler GenICam feature probe\n";
+#ifndef HAVE_PYLON
+  throw std::runtime_error("Basler feature probe unavailable: build missing Pylon SDK");
+#else
+  PylonLifecycle pylon;
+  Pylon::CInstantCamera camera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
+  camera.Open();
+
+  std::cout << "[basler_features] model=" << camera.GetDeviceInfo().GetModelName()
+            << " serial=" << camera.GetDeviceInfo().GetSerialNumber() << '\n';
+  auto & node_map = camera.GetNodeMap();
+  const std::vector<const char *> nodes{
+    "BinningSelector",
+    "BinningHorizontal",
+    "BinningVertical",
+    "BinningHorizontalMode",
+    "BinningVerticalMode",
+    "DecimationHorizontal",
+    "DecimationVertical",
+    "DecimationHorizontalMode",
+    "DecimationVerticalMode",
+    "ScalingHorizontal",
+    "ScalingVertical",
+    "PixelFormat",
+    "Width",
+    "Height",
+    "OffsetX",
+    "OffsetY",
+    "SensorWidth",
+    "SensorHeight",
+    "WidthMax",
+    "HeightMax"};
+
+  std::cout << "[basler_features] current nodes:\n";
+  for (const auto * name : nodes) {
+    print_genicam_node(node_map, name);
+  }
+
+  const int requested_x = std::max(1, options.camera.basler_binning_x);
+  const int requested_y = std::max(1, options.camera.basler_binning_y);
+  if (requested_x > 1 || requested_y > 1) {
+    std::cout << "[basler_features] trying binning=" << requested_x << 'x' << requested_y
+              << '\n';
+    bool did_set = false;
+    try {
+      did_set = try_set_binning_pair(node_map, requested_x, requested_y);
+      std::cout << "  default selector: " << (did_set ? "set" : "not writable") << '\n';
+    } catch (const std::exception & exc) {
+      std::cout << "  default selector error: " << exc.what() << '\n';
+    }
+
+    for (const char * selector : {"Sensor", "Region0", "All"}) {
+      try {
+        if (!try_set_enum(node_map, "BinningSelector", selector)) {
+          std::cout << "  selector " << selector << ": unavailable\n";
+          continue;
+        }
+        const bool selector_set = try_set_binning_pair(node_map, requested_x, requested_y);
+        std::cout << "  selector " << selector << ": "
+                  << (selector_set ? "set" : "not writable") << '\n';
+      } catch (const std::exception & exc) {
+        std::cout << "  selector " << selector << " error: " << exc.what() << '\n';
+      }
+    }
+
+    std::cout << "[basler_features] after write attempts:\n";
+    for (const auto * name : nodes) {
+      print_genicam_node(node_map, name);
+    }
+  }
+
+  camera.Close();
+  return BenchmarkResult{"basler_features", true, 0.0, 0U, 0.0, ""};
+#endif
+}
+
 BenchmarkResult run_camera_mode(
   const Options & options,
   const rclcpp::Logger & logger,
@@ -878,6 +1059,8 @@ int main(int argc, char ** argv)
         } else if (mode == "deepstream") {
           results[mode] = run_deepstream_mode(options, logger, wrote_csv);
           wrote_csv = wrote_csv || !options.csv_path.empty();
+        } else if (mode == "basler_features") {
+          results[mode] = run_basler_features_mode(options);
         } else {
           throw std::invalid_argument("Unknown benchmark mode: " + mode);
         }
