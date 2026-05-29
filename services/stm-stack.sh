@@ -150,6 +150,19 @@ run_preflight() {
   return "$status"
 }
 
+run_foreground() {
+  ensure_docker
+  docker_cmd image inspect "$CV_STM_IMAGE" >/dev/null 2>&1 || die "Docker image is missing: ${CV_STM_IMAGE}"
+  docker_cmd rm -f "$UV_CONTAINER_NAME" >/dev/null 2>&1 || true
+
+  log "Running foreground stack in ${CV_STM_IMAGE}"
+  UV_CONTAINER_NAME="$UV_CONTAINER_NAME" \
+  CV_STM_IMAGE="$CV_STM_IMAGE" \
+  CV_STM_REPO_ROOT="$CV_STM_REPO_ROOT" \
+    "${SCRIPT_DIR}/start-container.sh" "$CV_STM_IMAGE" \
+      bash -lc "cd '${CV_STM_REPO_ROOT}' && exec ./services/stm-stack-entrypoint.sh run"
+}
+
 run_health() {
   ensure_docker
   if ! container_running; then
@@ -174,6 +187,7 @@ Usage: ./services/stm-stack.sh <command>
 
 Commands:
   install    Install and enable ${SERVICE_NAME}; does not start it.
+  run        Run the selected launch profile in the foreground without systemd.
   start      Start ${SERVICE_NAME}.
   stop       Stop ${SERVICE_NAME}.
   restart    Restart ${SERVICE_NAME}.
@@ -189,6 +203,7 @@ main() {
   local command="${1:-}"
   case "$command" in
     install) install_service ;;
+    run) run_foreground ;;
     start) systemctl_action start ;;
     stop) systemctl_action stop ;;
     restart) systemctl_action restart ;;
