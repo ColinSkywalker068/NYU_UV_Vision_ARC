@@ -694,6 +694,7 @@ struct DeepStreamRuntime::Impl
   GstElement * source{nullptr};
   GstElement * source_caps{nullptr};
   GstElement * source_bayer_convert{nullptr};
+  GstElement * source_bayer_caps{nullptr};
   GstElement * source_flip{nullptr};
   GstElement * tee{nullptr};
   GstElement * infer_queue{nullptr};
@@ -1379,6 +1380,9 @@ struct DeepStreamRuntime::Impl
     source = make_element(config.source_element.c_str(), "source");
     source_caps = make_element("capsfilter", "source_caps");
     source_bayer_convert = make_bayer_converter(source_format, pre_mux_resize, need_color_branch);
+    if (cuda_bayer_resizes_source) {
+      source_bayer_caps = make_element("capsfilter", "source_bayer_caps");
+    }
     tee = make_element("tee", "tee");
     infer_queue = make_element("queue", "infer_queue");
     infer_convert = make_element("videoconvert", "infer_convert");
@@ -1426,6 +1430,9 @@ struct DeepStreamRuntime::Impl
       nullptr);
     if (source_bayer_convert != nullptr) {
       gst_bin_add(GST_BIN(pipeline), source_bayer_convert);
+    }
+    if (source_bayer_caps != nullptr) {
+      gst_bin_add(GST_BIN(pipeline), source_bayer_caps);
     }
     if (source_flip != nullptr) {
       gst_bin_add(GST_BIN(pipeline), source_flip);
@@ -1532,6 +1539,15 @@ struct DeepStreamRuntime::Impl
     }
     g_object_set(G_OBJECT(infer_cpu_caps), "caps", infer_cpu_caps_value, nullptr);
     gst_caps_unref(infer_cpu_caps_value);
+    if (source_bayer_caps != nullptr) {
+      GstCaps * source_bayer_caps_value = gst_caps_from_string(requested_infer_cpu_caps.c_str());
+      if (source_bayer_caps_value == nullptr) {
+        throw std::runtime_error(
+                "Failed to create CUDA Bayer output caps: " + requested_infer_cpu_caps);
+      }
+      g_object_set(G_OBJECT(source_bayer_caps), "caps", source_bayer_caps_value, nullptr);
+      gst_caps_unref(source_bayer_caps_value);
+    }
 
     requested_infer_nvmm_caps = make_video_caps_text(
       "video/x-raw(memory:NVMM)",
@@ -1586,7 +1602,16 @@ struct DeepStreamRuntime::Impl
     }
 
     gboolean source_linked = FALSE;
-    if (source_bayer_convert != nullptr && source_flip != nullptr) {
+    if (
+      source_bayer_convert != nullptr && source_bayer_caps != nullptr &&
+      source_flip != nullptr)
+    {
+      source_linked = gst_element_link_many(
+        source, source_caps, source_bayer_convert, source_bayer_caps, source_flip, tee, nullptr);
+    } else if (source_bayer_convert != nullptr && source_bayer_caps != nullptr) {
+      source_linked = gst_element_link_many(
+        source, source_caps, source_bayer_convert, source_bayer_caps, tee, nullptr);
+    } else if (source_bayer_convert != nullptr && source_flip != nullptr) {
       source_linked = gst_element_link_many(
         source, source_caps, source_bayer_convert, source_flip, tee, nullptr);
     } else if (source_bayer_convert != nullptr) {

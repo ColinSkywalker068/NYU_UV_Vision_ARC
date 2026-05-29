@@ -100,6 +100,38 @@ GstCaps * fixed_output_caps(const GstYoloCudaBayerResize * self)
     nullptr);
 }
 
+GstCaps * bayer_sink_caps()
+{
+  return gst_caps_from_string(
+    "video/x-bayer,format=(string){rggb,bggr,grbg,gbrg},"
+    "width=(int)[2,MAX],height=(int)[2,MAX],framerate=(fraction)[0/1,2147483647/1]");
+}
+
+void copy_caps_field(GstCaps * destination, const GstCaps * source, const char * field)
+{
+  if (
+    destination == nullptr || source == nullptr || field == nullptr ||
+    gst_caps_is_empty(source) || gst_caps_is_any(source))
+  {
+    return;
+  }
+  const GstStructure * source_structure = gst_caps_get_structure(source, 0);
+  const GValue * value = gst_structure_get_value(source_structure, field);
+  if (value == nullptr) {
+    return;
+  }
+  for (guint i = 0; i < gst_caps_get_size(destination); ++i) {
+    GstStructure * destination_structure = gst_caps_get_structure(destination, i);
+    gst_structure_set_value(destination_structure, field, value);
+  }
+}
+
+void copy_timing_caps_fields(GstCaps * destination, const GstCaps * source)
+{
+  copy_caps_field(destination, source, "framerate");
+  copy_caps_field(destination, source, "pixel-aspect-ratio");
+}
+
 void gst_yolo_cuda_bayer_resize_set_property(
   GObject * object,
   guint prop_id,
@@ -156,10 +188,10 @@ GstCaps * gst_yolo_cuda_bayer_resize_transform_caps(
   GstCaps * result = nullptr;
   if (direction == GST_PAD_SINK) {
     result = fixed_output_caps(self);
+    copy_timing_caps_fields(result, caps);
   } else {
-    result = gst_caps_from_string(
-      "video/x-bayer,format=(string){rggb,bggr,grbg,gbrg},"
-      "width=(int)[2,MAX],height=(int)[2,MAX]");
+    result = bayer_sink_caps();
+    copy_timing_caps_fields(result, caps);
   }
   if (filter != nullptr) {
     GstCaps * intersection = gst_caps_intersect_full(filter, result, GST_CAPS_INTERSECT_FIRST);
@@ -179,6 +211,7 @@ GstCaps * gst_yolo_cuda_bayer_resize_fixate_caps(
   auto * self = reinterpret_cast<GstYoloCudaBayerResize *>(transform);
   if (direction == GST_PAD_SINK) {
     GstCaps * fixed = fixed_output_caps(self);
+    copy_timing_caps_fields(fixed, othercaps);
     gst_caps_unref(othercaps);
     return fixed;
   }
@@ -226,7 +259,12 @@ gboolean gst_yolo_cuda_bayer_resize_transform_size(
     *othersize = static_cast<gsize>(std::max(2, self->output_width)) *
       static_cast<gsize>(std::max(2, self->output_height)) * 4U;
   } else {
-    *othersize = size;
+    if (self->input_width <= 0 || self->input_height <= 0) {
+      *othersize = size;
+    } else {
+      *othersize = static_cast<gsize>(self->input_width) *
+        static_cast<gsize>(self->input_height);
+    }
   }
   return TRUE;
 }
@@ -340,10 +378,10 @@ void gst_yolo_cuda_bayer_resize_class_init(GstYoloCudaBayerResizeClass * klass)
     "CUDA Bayer demosaic plus resize to RGBA",
     "CV Detection");
 
-  GstCaps * sink_caps = gst_caps_from_string(
-    "video/x-bayer,format=(string){rggb,bggr,grbg,gbrg},width=(int)[2,MAX],height=(int)[2,MAX]");
+  GstCaps * sink_caps = bayer_sink_caps();
   GstCaps * src_caps = gst_caps_from_string(
-    "video/x-raw,format=(string)RGBA,width=(int)[2,MAX],height=(int)[2,MAX]");
+    "video/x-raw,format=(string)RGBA,width=(int)[2,MAX],height=(int)[2,MAX],"
+    "framerate=(fraction)[0/1,2147483647/1]");
   gst_element_class_add_pad_template(
     GST_ELEMENT_CLASS(klass),
     gst_pad_template_new("sink", GST_PAD_SINK, GST_PAD_ALWAYS, sink_caps));
