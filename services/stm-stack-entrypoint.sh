@@ -23,12 +23,32 @@ is_true() {
   esac
 }
 
+source_setup_file() {
+  local setup="$1"
+  local had_nounset=0
+  case "$-" in
+    *u*)
+      had_nounset=1
+      set +u
+      ;;
+  esac
+
+  # ROS/colcon setup files read optional variables such as COLCON_TRACE before
+  # defining them, so source them with nounset relaxed.
+  # shellcheck source=/dev/null
+  source "$setup"
+  local status=$?
+
+  if [ "$had_nounset" -eq 1 ]; then
+    set -u
+  fi
+  return "$status"
+}
+
 source_ros() {
   local setup
   for setup in /opt/ros/humble/setup.bash /opt/ros/humble/install/setup.bash; do
-    if [ -f "$setup" ]; then
-      # shellcheck source=/dev/null
-      source "$setup"
+    if [ -f "$setup" ] && source_setup_file "$setup"; then
       return
     fi
   done
@@ -40,8 +60,7 @@ source_workspace() {
   if [ ! -f "$setup" ]; then
     die "Missing ${setup}. Competition startup does not build automatically; run 'uv build yolo_cpp' before starting the service."
   fi
-  # shellcheck source=/dev/null
-  source "$setup"
+  source_setup_file "$setup" || die "Failed to source workspace setup: ${setup}"
 }
 
 require_command() {
