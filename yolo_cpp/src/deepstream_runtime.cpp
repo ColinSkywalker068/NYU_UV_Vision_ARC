@@ -739,6 +739,7 @@ struct DeepStreamRuntime::Impl
     kInferConvertSrc,
     kNvConvertSrc,
     kInferNvmmSrc,
+    kStreammuxSink,
     kStreammuxSrc,
     kNvInferSrc,
     kCount
@@ -1186,10 +1187,12 @@ struct DeepStreamRuntime::Impl
           stage_profile_totals.nvvideoconvert);
         break;
       case StageProbePoint::kStreammuxSrc:
+        break;
+      case StageProbePoint::kStreammuxSink:
         add_stage_delta(
           frame,
           StageProbePoint::kInferNvmmSrc,
-          StageProbePoint::kStreammuxSrc,
+          StageProbePoint::kStreammuxSink,
           stage_profile_totals.nvmm_to_streammux);
         break;
       case StageProbePoint::kNvInferSrc:
@@ -1228,6 +1231,18 @@ struct DeepStreamRuntime::Impl
       RCLCPP_WARN(logger, "Could not attach DeepStream stage profile probe: %s", label);
       return;
     }
+    add_stage_profile_probe_to_pad(pad, point, label);
+    gst_object_unref(pad);
+  }
+
+  void add_stage_profile_probe_to_pad(
+    GstPad * pad,
+    StageProbePoint point,
+    const char * label)
+  {
+    if (!config.profile_stages || pad == nullptr) {
+      return;
+    }
     auto context = std::make_unique<StageProbeContext>();
     context->runtime = this;
     context->point = point;
@@ -1238,7 +1253,7 @@ struct DeepStreamRuntime::Impl
       context.get(),
       nullptr);
     stage_probe_contexts.push_back(std::move(context));
-    gst_object_unref(pad);
+    (void)label;
   }
 
   void attach_stage_profile_probes()
@@ -1260,6 +1275,8 @@ struct DeepStreamRuntime::Impl
       infer_nvconvert, "src", StageProbePoint::kNvConvertSrc, "nvvideoconvert:src");
     add_stage_profile_probe(
       infer_nvmm_caps, "src", StageProbePoint::kInferNvmmSrc, "infer_nvmm_caps:src");
+    add_stage_profile_probe_to_pad(
+      streammux_sink_pad, StageProbePoint::kStreammuxSink, "nvstreammux:sink_0");
     add_stage_profile_probe(
       streammux, "src", StageProbePoint::kStreammuxSrc, "nvstreammux:src");
     add_stage_profile_probe(
