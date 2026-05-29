@@ -4,6 +4,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -425,7 +426,10 @@ def generate_launch_description() -> LaunchDescription:
                 "camera_cx": LaunchConfiguration("camera_cx"),
                 "camera_cy": LaunchConfiguration("camera_cy"),
                 "show": LaunchConfiguration("show"),
-                "preview_max_fps": LaunchConfiguration("preview_max_fps"),
+                "preview_max_fps": ParameterValue(
+                    LaunchConfiguration("preview_max_fps"),
+                    value_type=float,
+                ),
                 "debug_publish_image_raw": LaunchConfiguration(
                     "debug_publish_image_raw"
                 ),
