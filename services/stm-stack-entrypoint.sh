@@ -166,8 +166,10 @@ run_preflight() {
 
   if [ "$(launch_profile)" = "basler" ]; then
     require_command gst-inspect-1.0
-    require_dir /opt/pylon
     require_gst_element pylonsrc
+    if [ ! -d /opt/pylon ]; then
+      log "Pylon SDK directory /opt/pylon is not mounted; continuing because pylonsrc is available"
+    fi
     if is_basler_bayer_format; then
       require_gst_element bayer2rgb
     fi

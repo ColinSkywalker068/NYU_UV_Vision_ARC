@@ -357,13 +357,15 @@ Diagnosis:
 
 ```bash
 ls /opt/pylon
+gst-inspect-1.0 pylonsrc
 ```
 
 Resolution:
 
-1. Install or mount Pylon at `/opt/pylon`, or build the C++ image with `PYLON_PACKAGE` under `Docker/pylon/`.
-2. Run `uv clean`.
-3. Run `uv build yolo_cpp` so CMake rechecks Pylon.
+1. For the DeepStream Basler launch, `pylonsrc` is the runtime requirement. `/opt/pylon` is the usual SDK path and is mounted when present, but preflight can continue without it if `gst-inspect-1.0 pylonsrc` succeeds.
+2. If `pylonsrc` is missing, install or mount Pylon at `/opt/pylon`, or build the C++ image with `PYLON_PACKAGE` and `PYLON_GSTREAMER_PACKAGE` under `Docker/pylon/`.
+3. Run `uv clean`.
+4. Run `uv build yolo_cpp` so CMake rechecks Pylon.
 
 ### DeepStream Or GStreamer Plugin Is Missing
 
