@@ -1603,7 +1603,13 @@ DeepStreamRuntime::DeepStreamRuntime(
   ResultCallback callback)
 : impl_(std::make_unique<Impl>(std::move(logger), std::move(config), std::move(callback)))
 {
-  impl_->start();
+  try {
+    impl_->start();
+  } catch (...) {
+    impl_->stop();
+    impl_.reset();
+    throw;
+  }
 }
 
 DeepStreamRuntime::~DeepStreamRuntime() = default;
