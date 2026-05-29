@@ -81,6 +81,7 @@ CV_STM_LAUNCH_PROFILE=basler
 # CV_STM_ENABLE_COLOR_VERIFICATION=false
 # CV_STM_SERIAL_PORT=/dev/ttyUSB0
 # CV_STM_REQUIRE_SERIAL=true
+# CV_STM_PREVIEW_MAX_FPS=60.0
 # Save up to 100 compressed target frames in pictures/ next to vision_logs/.
 # CV_STM_SAVE_TARGET_FRAMES=false
 # CV_STM_TARGET_FRAME_SAVE_DIR=

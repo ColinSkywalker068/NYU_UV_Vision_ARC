@@ -99,6 +99,21 @@ sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
   return msg;
 }
 
+cv::Rect scale_rect_to_preview(
+  const cv::Rect & rect,
+  double scale_x,
+  double scale_y,
+  const cv::Rect & image_rect)
+{
+  const int x = static_cast<int>(std::lround(static_cast<double>(rect.x) * scale_x));
+  const int y = static_cast<int>(std::lround(static_cast<double>(rect.y) * scale_y));
+  const int width = std::max(
+    1, static_cast<int>(std::lround(static_cast<double>(rect.width) * scale_x)));
+  const int height = std::max(
+    1, static_cast<int>(std::lround(static_cast<double>(rect.height) * scale_y)));
+  return cv::Rect(x, y, width, height) & image_rect;
+}
+
 }  // namespace
 
 /// Declare parameters and start the combined legacy perception pipeline.
@@ -143,6 +158,7 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<int>("deepstream_profile_stage_interval", 300);
   this->declare_parameter<std::string>("bayer_conversion_backend", "cuda");
   this->declare_parameter<int>("stage_log_interval", 300);
+  this->declare_parameter<double>("preview_max_fps", 60.0);
 
   model_path_ = this->get_parameter("model_path").as_string();
   task_ = this->get_parameter("task").as_string();
@@ -186,6 +202,7 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   bayer_conversion_backend_ = this->get_parameter("bayer_conversion_backend").as_string();
   stage_log_interval_ = std::max(
     1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
+  preview_max_fps_ = std::max(1.0, this->get_parameter("preview_max_fps").as_double());
 
   runtime_log_path_ =
     (std::filesystem::path(resolve_runtime_log_dir()) /
@@ -375,7 +392,8 @@ void PerceptionNode::initialize_deepstream_runtime()
   config.conf_threshold = conf_;
   config.half = half_;
   config.enable_color_verification = enable_color_verification_ && !use_model_color_classes_;
-  config.debug_publish_image_raw = debug_publish_image_raw_ || show_;
+  config.debug_publish_image_raw = debug_publish_image_raw_;
+  config.preview_frame = show_;
 
   deepstream_runtime_ = std::make_unique<DeepStreamRuntime>(
     this->get_logger(),
@@ -469,7 +487,17 @@ void PerceptionNode::process_detection_cycle(
   const auto publish_done = std::chrono::steady_clock::now();
 
   if (show_ && packet != nullptr && !packet->empty()) {
-    render_preview(*packet, candidates, selected_target);
+    const auto preview_now = std::chrono::steady_clock::now();
+    const double min_interval_ms = 1000.0 / std::max(1.0, preview_max_fps_);
+    const bool should_render_preview =
+      !have_last_preview_render_time_ ||
+      std::chrono::duration<double, std::milli>(
+      preview_now - last_preview_render_time_).count() >= min_interval_ms;
+    if (should_render_preview) {
+      render_preview(*packet, candidates, selected_target, batch.letterbox);
+      last_preview_render_time_ = preview_now;
+      have_last_preview_render_time_ = true;
+    }
   }
 
   log_runtime_fps_once_per_second();
@@ -513,7 +541,8 @@ void PerceptionNode::publish_debug_image(const FramePacket & packet)
 void PerceptionNode::render_preview(
   const FramePacket & packet,
   const std::vector<Candidate> & candidates,
-  const std::optional<Candidate> & target)
+  const std::optional<Candidate> & target,
+  const LetterboxMetadata & source_geometry)
 {
   if (preview_failed_) {
     return;
@@ -521,17 +550,27 @@ void PerceptionNode::render_preview(
 
   try {
     cv::Mat preview = packet.frame.clone();
+    const int source_width = source_geometry.src_w > 0 ? source_geometry.src_w : preview.cols;
+    const int source_height = source_geometry.src_h > 0 ? source_geometry.src_h : preview.rows;
+    const double scale_x = static_cast<double>(preview.cols) / static_cast<double>(source_width);
+    const double scale_y = static_cast<double>(preview.rows) / static_cast<double>(source_height);
+    const cv::Rect image_rect(0, 0, preview.cols, preview.rows);
     for (const auto & candidate : candidates) {
       const cv::Scalar color = candidate.is_enemy ?
         cv::Scalar(0, 255, 0) :
         cv::Scalar(0, 165, 255);
-      cv::rectangle(preview, candidate.bbox_source, color, 2);
+      const cv::Rect preview_rect =
+        scale_rect_to_preview(candidate.bbox_source, scale_x, scale_y, image_rect);
+      if (preview_rect.empty()) {
+        continue;
+      }
+      cv::rectangle(preview, preview_rect, color, 2);
       const std::string label =
         std::to_string(candidate.class_id) + " " + cv::format("%.2f", candidate.confidence);
       cv::putText(
         preview,
         label,
-        cv::Point(candidate.bbox_source.x, std::max(16, candidate.bbox_source.y - 4)),
+        cv::Point(preview_rect.x, std::max(16, preview_rect.y - 4)),
         cv::FONT_HERSHEY_SIMPLEX,
         0.5,
         color,
@@ -540,7 +579,11 @@ void PerceptionNode::render_preview(
     }
 
     if (target.has_value()) {
-      cv::rectangle(preview, target->bbox_source, cv::Scalar(0, 0, 255), 3);
+      const cv::Rect target_rect =
+        scale_rect_to_preview(target->bbox_source, scale_x, scale_y, image_rect);
+      if (!target_rect.empty()) {
+        cv::rectangle(preview, target_rect, cv::Scalar(0, 0, 255), 3);
+      }
     }
 
     cv::putText(

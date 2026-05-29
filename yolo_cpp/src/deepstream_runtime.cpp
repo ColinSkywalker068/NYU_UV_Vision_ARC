@@ -886,13 +886,13 @@ struct DeepStreamRuntime::Impl
     }
 
     const auto source_format = resolve_source_format(config.source_pixel_format);
-    const bool need_color_branch =
+    const bool need_full_color_branch =
       config.enable_color_verification || config.debug_publish_image_raw;
     const bool can_try_cuda_bayer =
       source_format.needs_bayer_convert &&
       wants_cuda_bayer_backend() &&
       config.pre_mux_resize &&
-      !need_color_branch &&
+      !need_full_color_branch &&
       cuda_bayer_resize_available() &&
       register_cuda_bayer_resize_element();
     std::vector<std::string> required_elements = {
@@ -1375,11 +1375,14 @@ struct DeepStreamRuntime::Impl
     const std::optional<int> source_width = positive_dimension(config.source_width);
     const std::optional<int> source_height = positive_dimension(config.source_height);
     const auto pre_mux_resize = resolve_pre_mux_resize(config);
-    const bool need_color_branch =
+    const bool need_full_color_branch =
       config.enable_color_verification || config.debug_publish_image_raw;
+    const bool need_preview_branch = config.preview_frame && !need_full_color_branch;
+    const bool need_color_branch = need_full_color_branch || need_preview_branch;
     source = make_element(config.source_element.c_str(), "source");
     source_caps = make_element("capsfilter", "source_caps");
-    source_bayer_convert = make_bayer_converter(source_format, pre_mux_resize, need_color_branch);
+    source_bayer_convert = make_bayer_converter(
+      source_format, pre_mux_resize, need_full_color_branch);
     if (cuda_bayer_resizes_source) {
       source_bayer_caps = make_element("capsfilter", "source_bayer_caps");
     }
@@ -1398,7 +1401,7 @@ struct DeepStreamRuntime::Impl
     const bool nvconvert_flip_supported =
       g_object_class_find_property(G_OBJECT_GET_CLASS(infer_nvconvert), "flip-method") != nullptr;
     const bool use_infer_nvconvert_flip =
-      config.flip_source && !cuda_bayer_resizes_source && !need_color_branch &&
+      config.flip_source && !cuda_bayer_resizes_source && !need_full_color_branch &&
       nvconvert_flip_supported;
     const bool use_source_flip =
       config.flip_source && !cuda_bayer_resizes_source && !use_infer_nvconvert_flip;
@@ -1512,7 +1515,7 @@ struct DeepStreamRuntime::Impl
         logger,
         "Moving Basler 180-degree flip to nvvideoconvert after inference-branch conversion");
     } else if (
-      config.flip_source && !cuda_bayer_resizes_source && !need_color_branch &&
+      config.flip_source && !cuda_bayer_resizes_source && !need_full_color_branch &&
       !nvconvert_flip_supported)
     {
       RCLCPP_WARN(
@@ -1584,8 +1587,12 @@ struct DeepStreamRuntime::Impl
 
     if (need_color_branch) {
       configure_low_latency_queue(color_queue);
+      const std::optional<int> color_width =
+        (need_preview_branch && cuda_bayer_resizes_source) ? infer_width : processing_width;
+      const std::optional<int> color_height =
+        (need_preview_branch && cuda_bayer_resizes_source) ? infer_height : processing_height;
       requested_color_caps = make_video_caps_text(
-        "video/x-raw", "BGR", processing_width, processing_height, capped_fps);
+        "video/x-raw", "BGR", color_width, color_height, capped_fps);
       GstCaps * color_caps_value = gst_caps_from_string(requested_color_caps.c_str());
       if (color_caps_value == nullptr) {
         throw std::runtime_error("Failed to create DeepStream color caps: " + requested_color_caps);
@@ -2016,7 +2023,10 @@ struct DeepStreamRuntime::Impl
       const auto output_shape = dims_to_shape(output_layer.inferDims);
 
       Result result{};
-      if (config.enable_color_verification || config.debug_publish_image_raw) {
+      if (
+        config.enable_color_verification || config.debug_publish_image_raw ||
+        config.preview_frame)
+      {
         const auto pts = frame_meta->buf_pts != GST_CLOCK_TIME_NONE ?
           frame_meta->buf_pts : GST_BUFFER_PTS(buffer);
         if (pts != GST_CLOCK_TIME_NONE) {
@@ -2031,16 +2041,18 @@ struct DeepStreamRuntime::Impl
 
       const bool have_source_packet =
         result.source_packet.has_value() && !result.source_packet->empty();
+      const bool source_packet_matches_source_geometry =
+        have_source_packet && !cuda_bayer_resizes_source;
       const int frame_meta_source_width = frame_meta->source_frame_width > 0 ?
         static_cast<int>(frame_meta->source_frame_width) :
         config.source_width;
       const int frame_meta_source_height = frame_meta->source_frame_height > 0 ?
         static_cast<int>(frame_meta->source_frame_height) :
         config.source_height;
-      const int src_w = have_source_packet ?
+      const int src_w = source_packet_matches_source_geometry ?
         result.source_packet->width() :
         (config.pre_mux_resize ? config.source_width : frame_meta_source_width);
-      const int src_h = have_source_packet ?
+      const int src_h = source_packet_matches_source_geometry ?
         result.source_packet->height() :
         (config.pre_mux_resize ? config.source_height : frame_meta_source_height);
       result.batch.letterbox = make_letterbox_metadata(

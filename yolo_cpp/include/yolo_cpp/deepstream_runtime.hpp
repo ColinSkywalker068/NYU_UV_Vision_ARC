@@ -45,6 +45,7 @@ public:
     bool half{true};
     bool enable_color_verification{true};
     bool debug_publish_image_raw{false};
+    bool preview_frame{false};
     std::string source_element{"pylonsrc"};
     std::string source_id{"basler"};
   };

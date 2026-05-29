@@ -43,6 +43,7 @@ The launch files expose the settings that matter most during bring-up:
 - default enemy color through `target_color` until STM or robot-id feedback overrides it
 - color filtering through `use_model_color_classes` and `enable_color_verification`; defaults trust model class colors and keep HSV disabled
 - target-frame capture through `save_target_frames`, `target_frame_save_max`, and `target_frame_jpeg_quality`; saved JPEGs and a CSV index go under `pictures/` next to `vision_logs/` by default
+- OpenCV preview through `show` and `preview_max_fps`; plain preview uses the downscaled DeepStream frame so it can stay on the CUDA Bayer path
 - tracker tuning such as `track_min_hits`, `track_max_coast_frames`, and `track_drop_frames`; defaults favor fast armor-plate switching during spin
 - 3D pose through `enable_3d_pose`, `camera_info_topic`, `camera_frame_id`, and optional static `camera_fx/fy/cx/cy`
 - tracker 3D gating through `association_max_3d_distance_m`
@@ -57,7 +58,7 @@ The default tracker profile is tuned for fast rotating armor plates: `track_min_
 
 ## Basler High-FPS Source Formats
 
-The Basler + DeepStream path defaults to `basler_pixel_format:=bayer_rggb8` with `basler_source_width:=1920` and `basler_source_height:=1200` for the `a2A1920-160ucBAS` full-resolution high-FPS case. This keeps USB traffic at raw 8-bit Bayer instead of full-resolution BGR. Keep `basler_use_full_sensor:=true` to preserve the full FOV. Enable `pre_mux_resize:=true` to resize that full-FOV frame before `nvstreammux`; with the default 640x640 model box, 1920x1200 becomes 640x400 and `nvstreammux` pads it to the model input. The default `bayer_conversion_backend:=cuda` uses the in-process CUDA Bayer resize element when the build includes CUDA and no full-resolution color/debug branch is active; otherwise the runtime logs a warning and falls back to `bayer2rgb`.
+The Basler + DeepStream path defaults to `basler_pixel_format:=bayer_rggb8` with `basler_source_width:=1920` and `basler_source_height:=1200` for the `a2A1920-160ucBAS` full-resolution high-FPS case. This keeps USB traffic at raw 8-bit Bayer instead of full-resolution BGR. Keep `basler_use_full_sensor:=true` to preserve the full FOV. Enable `pre_mux_resize:=true` to resize that full-FOV frame before `nvstreammux`; with the default 640x640 model box, 1920x1200 becomes 640x400 and `nvstreammux` pads it to the model input. The default `bayer_conversion_backend:=cuda` uses the in-process CUDA Bayer resize element when the build includes CUDA and no full-resolution color/debug branch is active. `show:=true` uses a cheap downscaled preview branch; HSV verification, raw image publishing, and target-frame saving still request full-resolution BGR and can force the CPU `bayer2rgb` path.
 
 On the observed `a2A1920-160ucBAS` / serial `41923000` setup, direct Pylon probing reported `Binning*`, `Decimation*`, and `Scaling*` GenICam nodes as absent, so binning is not a supported runtime knob for this camera environment. `Width` and `Height` are still writable, but they are ROI/crop controls and should not be used when full FOV is required.
 

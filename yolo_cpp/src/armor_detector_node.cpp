@@ -111,6 +111,21 @@ double rect_iou_for_capture(const cv::Rect & lhs, const cv::Rect & rhs)
   return union_area > 0.0 ? intersection / union_area : 0.0;
 }
 
+cv::Rect scale_rect_to_preview(
+  const cv::Rect & rect,
+  double scale_x,
+  double scale_y,
+  const cv::Rect & image_rect)
+{
+  const int x = static_cast<int>(std::lround(static_cast<double>(rect.x) * scale_x));
+  const int y = static_cast<int>(std::lround(static_cast<double>(rect.y) * scale_y));
+  const int width = std::max(
+    1, static_cast<int>(std::lround(static_cast<double>(rect.width) * scale_x)));
+  const int height = std::max(
+    1, static_cast<int>(std::lround(static_cast<double>(rect.height) * scale_y)));
+  return cv::Rect(x, y, width, height) & image_rect;
+}
+
 }  // namespace
 
 /// Declare parameters, choose the inference runtime, and start capture processing.
@@ -168,6 +183,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<int>("target_frame_save_max", 100);
   this->declare_parameter<int>("target_frame_jpeg_quality", 85);
   this->declare_parameter<int>("stage_log_interval", 300);
+  this->declare_parameter<double>("preview_max_fps", 60.0);
 
   model_path_ = this->get_parameter("model_path").as_string();
   task_ = this->get_parameter("task").as_string();
@@ -224,6 +240,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
       static_cast<int>(this->get_parameter("target_frame_jpeg_quality").as_int()), 1, 100);
   stage_log_interval_ = std::max(
     1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
+  preview_max_fps_ = std::max(1.0, this->get_parameter("preview_max_fps").as_double());
 
   runtime_log_path_ =
     (std::filesystem::path(resolve_runtime_log_dir()) /
@@ -546,7 +563,8 @@ void ArmorDetectorNode::initialize_deepstream_runtime()
   config.conf_threshold = conf_;
   config.half = half_;
   config.enable_color_verification = enable_color_verification_ && !use_model_color_classes_;
-  config.debug_publish_image_raw = debug_publish_image_raw_ || show_ || save_target_frames_;
+  config.debug_publish_image_raw = debug_publish_image_raw_ || save_target_frames_;
+  config.preview_frame = show_;
 
   deepstream_runtime_ = std::make_unique<DeepStreamRuntime>(
     this->get_logger(),
@@ -646,7 +664,17 @@ void ArmorDetectorNode::process_detection_cycle(
   const auto publish_done = std::chrono::steady_clock::now();
 
   if (show_ && packet != nullptr && !packet->empty()) {
-    render_preview(*packet, candidates);
+    const auto now = std::chrono::steady_clock::now();
+    const double min_interval_ms = 1000.0 / std::max(1.0, preview_max_fps_);
+    const bool should_render_preview =
+      !have_last_preview_render_time_ ||
+      std::chrono::duration<double, std::milli>(now - last_preview_render_time_).count() >=
+      min_interval_ms;
+    if (should_render_preview) {
+      render_preview(*packet, candidates, batch.letterbox);
+      last_preview_render_time_ = now;
+      have_last_preview_render_time_ = true;
+    }
   }
 
   log_runtime_fps_once_per_second();
@@ -754,7 +782,9 @@ void ArmorDetectorNode::publish_debug_image(const FramePacket & packet, const rc
 }
 
 void ArmorDetectorNode::render_preview(
-  const FramePacket & packet, const std::vector<Candidate> & candidates)
+  const FramePacket & packet,
+  const std::vector<Candidate> & candidates,
+  const LetterboxMetadata & source_geometry)
 {
   if (preview_failed_) {
     return;
@@ -762,17 +792,27 @@ void ArmorDetectorNode::render_preview(
 
   try {
     cv::Mat preview = packet.frame.clone();
+    const int source_width = source_geometry.src_w > 0 ? source_geometry.src_w : preview.cols;
+    const int source_height = source_geometry.src_h > 0 ? source_geometry.src_h : preview.rows;
+    const double scale_x = static_cast<double>(preview.cols) / static_cast<double>(source_width);
+    const double scale_y = static_cast<double>(preview.rows) / static_cast<double>(source_height);
+    const cv::Rect image_rect(0, 0, preview.cols, preview.rows);
     for (const auto & candidate : candidates) {
       const cv::Scalar color = candidate.is_enemy ?
         cv::Scalar(0, 255, 0) :
         cv::Scalar(0, 165, 255);
-      cv::rectangle(preview, candidate.bbox_source, color, 2);
+      const cv::Rect preview_rect =
+        scale_rect_to_preview(candidate.bbox_source, scale_x, scale_y, image_rect);
+      if (preview_rect.empty()) {
+        continue;
+      }
+      cv::rectangle(preview, preview_rect, color, 2);
       const std::string label =
         std::to_string(candidate.class_id) + " " + cv::format("%.2f", candidate.confidence);
       cv::putText(
         preview,
         label,
-        cv::Point(candidate.bbox_source.x, std::max(16, candidate.bbox_source.y - 4)),
+        cv::Point(preview_rect.x, std::max(16, preview_rect.y - 4)),
         cv::FONT_HERSHEY_SIMPLEX,
         0.5,
         color,
@@ -785,9 +825,11 @@ void ArmorDetectorNode::render_preview(
       const int y1 = preview_target_bbox_xyxy_[1];
       const int x2 = preview_target_bbox_xyxy_[2];
       const int y2 = preview_target_bbox_xyxy_[3];
-      const cv::Rect image_rect(0, 0, preview.cols, preview.rows);
-      const cv::Rect target_rect =
-        cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)) & image_rect;
+      const cv::Rect target_rect = scale_rect_to_preview(
+        cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)),
+        scale_x,
+        scale_y,
+        image_rect);
       if (target_rect.width > 0 && target_rect.height > 0) {
         const cv::Scalar target_color(0, 0, 255);
         cv::rectangle(preview, target_rect, target_color, 4);

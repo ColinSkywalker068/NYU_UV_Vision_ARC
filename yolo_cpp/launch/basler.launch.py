@@ -234,6 +234,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="true",
         description="Show OpenCV visualization window",
     )
+    preview_max_fps_arg = DeclareLaunchArgument(
+        "preview_max_fps",
+        default_value="60.0",
+        description="Maximum OpenCV preview render FPS when show is enabled",
+    )
     track_min_hits_arg = DeclareLaunchArgument(
         "track_min_hits",
         default_value="1",
@@ -420,6 +425,7 @@ def generate_launch_description() -> LaunchDescription:
                 "camera_cx": LaunchConfiguration("camera_cx"),
                 "camera_cy": LaunchConfiguration("camera_cy"),
                 "show": LaunchConfiguration("show"),
+                "preview_max_fps": LaunchConfiguration("preview_max_fps"),
                 "debug_publish_image_raw": LaunchConfiguration(
                     "debug_publish_image_raw"
                 ),
@@ -570,6 +576,7 @@ def generate_launch_description() -> LaunchDescription:
             enable_color_verification_arg,
             target_color_arg,
             show_arg,
+            preview_max_fps_arg,
             track_min_hits_arg,
             track_max_coast_frames_arg,
             track_drop_frames_arg,

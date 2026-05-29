@@ -242,6 +242,7 @@ run_launch() {
   append_optional_launch_arg CV_STM_TARGET_FRAME_SAVE_DIR target_frame_save_dir
   append_optional_launch_arg CV_STM_TARGET_FRAME_SAVE_MAX target_frame_save_max
   append_optional_launch_arg CV_STM_TARGET_FRAME_JPEG_QUALITY target_frame_jpeg_quality
+  append_optional_launch_arg CV_STM_PREVIEW_MAX_FPS preview_max_fps
 
   case "$(launch_profile)" in
     basler)

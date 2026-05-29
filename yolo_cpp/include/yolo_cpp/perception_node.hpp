@@ -81,7 +81,8 @@ private:
   void render_preview(
     const FramePacket & packet,
     const std::vector<Candidate> & candidates,
-    const std::optional<Candidate> & target);
+    const std::optional<Candidate> & target,
+    const LetterboxMetadata & source_geometry);
   /// Convert model detections into filtered source-image candidates.
   std::vector<Candidate> extract_candidates(
     const DetectionBatch & batch, const FramePacket * packet, double * color_ms) const;
@@ -152,6 +153,8 @@ private:
   bool have_last_stage_log_wall_time_{false};
   std::chrono::steady_clock::time_point last_runtime_fps_log_time_{};
   bool have_last_runtime_fps_log_time_{false};
+  std::chrono::steady_clock::time_point last_preview_render_time_{};
+  bool have_last_preview_render_time_{false};
   std::mutex state_mutex_;
 
   CameraConfig camera_config_;
@@ -188,6 +191,7 @@ private:
   int max_hsv_candidates_{3};
   int max_coast_frames_{3};
   int stage_log_interval_{300};
+  double preview_max_fps_{60.0};
   int frame_count_{0};
   int enemy_color_red_value_{0};
   int enemy_color_blue_value_{1};
