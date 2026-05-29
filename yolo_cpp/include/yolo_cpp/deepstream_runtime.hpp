@@ -39,7 +39,7 @@ public:
     int pre_mux_height{0};
     bool profile_stages{false};
     int profile_stage_interval{300};
-    std::string bayer_conversion_backend{"cpu"};
+    std::string bayer_conversion_backend{"cuda"};
     bool flip_source{false};
     float conf_threshold{0.45F};
     bool half{true};

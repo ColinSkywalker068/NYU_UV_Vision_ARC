@@ -119,6 +119,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="300",
         description="Frames between DeepStream stage-profile log summaries",
     )
+    bayer_conversion_backend_arg = DeclareLaunchArgument(
+        "bayer_conversion_backend",
+        default_value="cuda",
+        description="Bayer conversion backend for DeepStream: cuda/gpu or cpu/bayer2rgb",
+    )
     basler_exposure_arg = DeclareLaunchArgument(
         "basler_exposure_us",
         default_value="5000.0",
@@ -386,6 +391,9 @@ def generate_launch_description() -> LaunchDescription:
                 "deepstream_profile_stage_interval": LaunchConfiguration(
                     "deepstream_profile_stage_interval"
                 ),
+                "bayer_conversion_backend": LaunchConfiguration(
+                    "bayer_conversion_backend"
+                ),
                 "basler_exposure_us": LaunchConfiguration("basler_exposure_us"),
                 "basler_gain_db": LaunchConfiguration("basler_gain_db"),
                 "basler_flip": LaunchConfiguration("basler_flip"),
@@ -539,6 +547,7 @@ def generate_launch_description() -> LaunchDescription:
             pre_mux_height_arg,
             deepstream_profile_stages_arg,
             deepstream_profile_stage_interval_arg,
+            bayer_conversion_backend_arg,
             basler_exposure_arg,
             basler_gain_arg,
             basler_flip_arg,

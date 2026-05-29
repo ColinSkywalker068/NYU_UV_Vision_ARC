@@ -6,7 +6,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
+  add_compile_options(
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall>
+    $<$<COMPILE_LANGUAGE:CXX>:-Wextra>
+    $<$<COMPILE_LANGUAGE:CXX>:-Wpedantic>
+  )
 endif()
 
 set(PYLON_SEARCH_ROOTS /opt/pylon)
@@ -30,7 +34,12 @@ find_package(OpenCV REQUIRED)
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
-  pkg_check_modules(GSTREAMER QUIET gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0)
+  pkg_check_modules(
+    GSTREAMER QUIET
+    gstreamer-1.0
+    gstreamer-app-1.0
+    gstreamer-base-1.0
+    gstreamer-video-1.0)
   if(GSTREAMER_FOUND)
     set(HAVE_GSTREAMER TRUE)
   endif()
@@ -56,6 +65,20 @@ find_library(TENSORRT_LIBRARY NAMES nvinfer PATHS /usr/lib /usr/lib/x86_64-linux
 find_library(CUDART_LIBRARY NAMES cudart PATHS /usr/local/cuda/lib64 /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu)
 if(TENSORRT_INCLUDE_DIR AND CUDART_INCLUDE_DIR AND TENSORRT_LIBRARY AND CUDART_LIBRARY)
   set(HAVE_TENSORRT TRUE)
+endif()
+
+include(CheckLanguage)
+if(HAVE_GSTREAMER AND CUDART_INCLUDE_DIR AND CUDART_LIBRARY)
+  check_language(CUDA)
+  if(CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    set(HAVE_YOLO_CUDA_BAYER_RESIZE TRUE)
+    message(STATUS "CUDA compiler found. CUDA Bayer resize backend enabled.")
+  else()
+    message(WARNING "CUDA compiler not found. CUDA Bayer resize backend will fall back to CPU Bayer conversion.")
+  endif()
 endif()
 
 find_path(DEEPSTREAM_INCLUDE_DIR nvdsmeta.h
@@ -100,7 +123,7 @@ else()
     "Set PYLON_ROOT or mount/install /opt/pylon before building if you need camera_type=basler.")
 endif()
 
-add_library(yolo_cpp_components SHARED
+set(YOLO_CPP_COMPONENT_SOURCES
   src/utils.cpp
   src/pnp_solver.cpp
   src/tracker.cpp
@@ -109,6 +132,7 @@ add_library(yolo_cpp_components SHARED
   src/detector_backend.cpp
   src/deepstream_detector.cpp
   src/deepstream_runtime.cpp
+  src/gst_cuda_bayer_resize.cpp
   src/armor_detector_node.cpp
   src/armor_tracker_node.cpp
   src/armor_processor_node.cpp
@@ -116,6 +140,13 @@ add_library(yolo_cpp_components SHARED
   src/camera_node.cpp
   src/yolo_node.cpp
   src/perception_node.cpp
+)
+if(HAVE_YOLO_CUDA_BAYER_RESIZE)
+  list(APPEND YOLO_CPP_COMPONENT_SOURCES src/cuda_bayer_resize.cu)
+endif()
+
+add_library(yolo_cpp_components SHARED
+  ${YOLO_CPP_COMPONENT_SOURCES}
 )
 
 target_include_directories(yolo_cpp_components PUBLIC
@@ -126,9 +157,18 @@ target_include_directories(yolo_cpp_components PUBLIC
 if(HAVE_GSTREAMER)
   target_include_directories(yolo_cpp_components PRIVATE ${GSTREAMER_INCLUDE_DIRS})
   target_link_directories(yolo_cpp_components PRIVATE ${GSTREAMER_LIBRARY_DIRS})
-  target_compile_options(yolo_cpp_components PRIVATE ${GSTREAMER_CFLAGS_OTHER})
+  foreach(GSTREAMER_CFLAG ${GSTREAMER_CFLAGS_OTHER})
+    target_compile_options(
+      yolo_cpp_components PRIVATE
+      $<$<COMPILE_LANGUAGE:CXX>:${GSTREAMER_CFLAG}>)
+  endforeach()
   target_compile_definitions(yolo_cpp_components PRIVATE HAVE_GSTREAMER=1)
   target_link_libraries(yolo_cpp_components ${GSTREAMER_LIBRARIES})
+endif()
+if(HAVE_YOLO_CUDA_BAYER_RESIZE)
+  target_compile_definitions(yolo_cpp_components PRIVATE HAVE_YOLO_CUDA_BAYER_RESIZE=1)
+  target_include_directories(yolo_cpp_components PRIVATE ${CUDART_INCLUDE_DIR})
+  target_link_libraries(yolo_cpp_components ${CUDART_LIBRARY})
 endif()
 if(HAVE_DEEPSTREAM)
   target_compile_definitions(yolo_cpp_components PRIVATE HAVE_DEEPSTREAM=1)

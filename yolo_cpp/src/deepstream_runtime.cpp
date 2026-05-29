@@ -4,6 +4,7 @@
 #include "yolo_cpp/deepstream_runtime.hpp"
 
 #include "yolo_cpp/detection_postprocess.hpp"
+#include "yolo_cpp/gst_cuda_bayer_resize.hpp"
 #include "yolo_cpp/utils.hpp"
 
 #include <rclcpp/logging.hpp>
@@ -731,6 +732,8 @@ struct DeepStreamRuntime::Impl
   std::string requested_infer_nvmm_caps;
   std::string requested_color_caps;
   std::string fps_cap_status{"unknown"};
+  std::string actual_bayer_conversion_backend{"none"};
+  bool cuda_bayer_resizes_source{false};
   enum class StageProbePoint : std::size_t
   {
     kSourceCaps = 0,
@@ -843,6 +846,19 @@ struct DeepStreamRuntime::Impl
   }
 
 #if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
+  bool wants_cuda_bayer_backend() const
+  {
+    const auto backend = normalize_format_token(config.bayer_conversion_backend);
+    return backend == "cuda" || backend == "gpu" || backend == "cudabayerresize" ||
+           backend == "yolocudabayerresize";
+  }
+
+  bool wants_cpu_bayer_backend() const
+  {
+    const auto backend = normalize_format_token(config.bayer_conversion_backend);
+    return backend == "cpu" || backend == "bayer2rgb";
+  }
+
   /// Verify GStreamer/DeepStream elements and read model metadata needed for parsing.
   void validate_runtime()
   {
@@ -869,6 +885,15 @@ struct DeepStreamRuntime::Impl
     }
 
     const auto source_format = resolve_source_format(config.source_pixel_format);
+    const bool need_color_branch =
+      config.enable_color_verification || config.debug_publish_image_raw;
+    const bool can_try_cuda_bayer =
+      source_format.needs_bayer_convert &&
+      wants_cuda_bayer_backend() &&
+      config.pre_mux_resize &&
+      !need_color_branch &&
+      cuda_bayer_resize_available() &&
+      register_cuda_bayer_resize_element();
     std::vector<std::string> required_elements = {
       config.source_element,
       "videoflip",
@@ -880,7 +905,7 @@ struct DeepStreamRuntime::Impl
       "nvinfer",
       "appsink",
     };
-    if (source_format.needs_bayer_convert) {
+    if (source_format.needs_bayer_convert && !can_try_cuda_bayer) {
       required_elements.push_back("bayer2rgb");
     }
     for (const auto & element_name : required_elements) {
@@ -931,20 +956,69 @@ struct DeepStreamRuntime::Impl
     return element;
   }
 
-  GstElement * make_bayer_converter(const SourceFormatSpec & source_format)
+  GstElement * make_bayer_converter(
+    const SourceFormatSpec & source_format,
+    const std::optional<std::pair<int, int>> & pre_mux_resize,
+    bool need_color_branch)
   {
+    actual_bayer_conversion_backend = "none";
+    cuda_bayer_resizes_source = false;
     if (!source_format.needs_bayer_convert) {
       return nullptr;
     }
 
     const auto backend = normalize_format_token(config.bayer_conversion_backend);
-    if (backend == "cpu" || backend == "bayer2rgb") {
+    if (wants_cuda_bayer_backend()) {
+      if (need_color_branch) {
+        RCLCPP_WARN(
+          logger,
+          "CUDA Bayer resize backend requested, but full-resolution color/debug output is enabled; "
+          "falling back to bayer2rgb");
+      } else if (!pre_mux_resize.has_value()) {
+        RCLCPP_WARN(
+          logger,
+          "CUDA Bayer resize backend requested without pre_mux_resize; falling back to bayer2rgb");
+      } else if (!cuda_bayer_resize_available()) {
+        RCLCPP_WARN(
+          logger,
+          "CUDA Bayer resize backend was not compiled into this build; falling back to bayer2rgb");
+      } else if (!register_cuda_bayer_resize_element()) {
+        RCLCPP_WARN(
+          logger,
+          "Failed to register CUDA Bayer resize GStreamer element; falling back to bayer2rgb");
+      } else {
+        GstElement * element = make_element("yolocudabayerresize", "source_bayer_convert");
+        g_object_set(
+          G_OBJECT(element),
+          "output-width", pre_mux_resize->first,
+          "output-height", pre_mux_resize->second,
+          "flip-method", config.flip_source ? 2 : 0,
+          nullptr);
+        actual_bayer_conversion_backend = "cuda";
+        cuda_bayer_resizes_source = true;
+        RCLCPP_INFO(
+          logger,
+          "Using CUDA Bayer resize backend: %dx%d Bayer -> %dx%d RGBA%s",
+          config.source_width,
+          config.source_height,
+          pre_mux_resize->first,
+          pre_mux_resize->second,
+          config.flip_source ? " with 180-degree flip" : "");
+        return element;
+      }
+    } else if (!wants_cpu_bayer_backend()) {
+      throw std::runtime_error(
+              "Unsupported Bayer conversion backend '" + config.bayer_conversion_backend +
+              "'. Use cuda/gpu or cpu/bayer2rgb.");
+    }
+
+    if (backend == "cpu" || backend == "bayer2rgb" || wants_cuda_bayer_backend()) {
+      actual_bayer_conversion_backend = "cpu";
       return make_element("bayer2rgb", "source_bayer_convert");
     }
 
-    throw std::runtime_error(
-            "Unsupported Bayer conversion backend '" + config.bayer_conversion_backend +
-            "'. Only cpu/bayer2rgb is implemented in this graph today.");
+    actual_bayer_conversion_backend = "cpu";
+    return make_element("bayer2rgb", "source_bayer_convert");
   }
 
   bool set_camera_enum_off(const char * name)
@@ -1037,7 +1111,7 @@ struct DeepStreamRuntime::Impl
     RCLCPP_INFO(
       logger,
       "DeepStream Basler source %s: %dx%d pixel_format=%s @ %.2f FPS "
-      "(full_sensor=%s, pre_mux_resize=%s, fps_cap=%s)",
+      "(full_sensor=%s, pre_mux_resize=%s, bayer_backend=%s, fps_cap=%s)",
       fps.has_value() ? "reported" : "fallback",
       config.source_width,
       config.source_height,
@@ -1045,6 +1119,7 @@ struct DeepStreamRuntime::Impl
       source_actual_fps,
       config.source_use_full_sensor ? "true" : "false",
       config.pre_mux_resize ? "true" : "false",
+      actual_bayer_conversion_backend.c_str(),
       fps_cap_status.c_str());
     RCLCPP_INFO(
       logger,
@@ -1265,7 +1340,8 @@ struct DeepStreamRuntime::Impl
       source_caps, "src", StageProbePoint::kSourceCaps, "source_caps:src");
     if (source_bayer_convert != nullptr) {
       add_stage_profile_probe(
-        source_bayer_convert, "src", StageProbePoint::kBayerConvert, "bayer2rgb:src");
+        source_bayer_convert, "src", StageProbePoint::kBayerConvert,
+        "source_bayer_convert:src");
     }
     add_stage_profile_probe(
       infer_convert, "sink", StageProbePoint::kInferConvertSink, "videoconvert:sink");
@@ -1295,9 +1371,14 @@ struct DeepStreamRuntime::Impl
     }
 
     const auto source_format = resolve_source_format(config.source_pixel_format);
+    const std::optional<int> source_width = positive_dimension(config.source_width);
+    const std::optional<int> source_height = positive_dimension(config.source_height);
+    const auto pre_mux_resize = resolve_pre_mux_resize(config);
+    const bool need_color_branch =
+      config.enable_color_verification || config.debug_publish_image_raw;
     source = make_element(config.source_element.c_str(), "source");
     source_caps = make_element("capsfilter", "source_caps");
-    source_bayer_convert = make_bayer_converter(source_format);
+    source_bayer_convert = make_bayer_converter(source_format, pre_mux_resize, need_color_branch);
     tee = make_element("tee", "tee");
     infer_queue = make_element("queue", "infer_queue");
     infer_convert = make_element("videoconvert", "infer_convert");
@@ -1310,14 +1391,13 @@ struct DeepStreamRuntime::Impl
     infer_sink_elem = make_element("appsink", "infer_sink");
     infer_sink = GST_APP_SINK(infer_sink_elem);
 
-    const bool need_color_branch =
-      config.enable_color_verification || config.debug_publish_image_raw;
     const bool nvconvert_flip_supported =
       g_object_class_find_property(G_OBJECT_GET_CLASS(infer_nvconvert), "flip-method") != nullptr;
     const bool use_infer_nvconvert_flip =
-      config.flip_source && !need_color_branch && nvconvert_flip_supported;
+      config.flip_source && !cuda_bayer_resizes_source && !need_color_branch &&
+      nvconvert_flip_supported;
     const bool use_source_flip =
-      config.flip_source && !use_infer_nvconvert_flip;
+      config.flip_source && !cuda_bayer_resizes_source && !use_infer_nvconvert_flip;
     if (use_source_flip) {
       source_flip = make_element("videoflip", "source_flip");
     }
@@ -1360,13 +1440,10 @@ struct DeepStreamRuntime::Impl
         nullptr);
     }
 
-    const std::optional<int> source_width = positive_dimension(config.source_width);
-    const std::optional<int> source_height = positive_dimension(config.source_height);
     const std::optional<int> processing_width =
       config.source_use_full_sensor ? std::nullopt : source_width;
     const std::optional<int> processing_height =
       config.source_use_full_sensor ? std::nullopt : source_height;
-    const auto pre_mux_resize = resolve_pre_mux_resize(config);
 
     if (g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr) {
       g_object_set(G_OBJECT(source), "do-timestamp", TRUE, nullptr);
@@ -1427,14 +1504,27 @@ struct DeepStreamRuntime::Impl
       RCLCPP_INFO(
         logger,
         "Moving Basler 180-degree flip to nvvideoconvert after inference-branch conversion");
-    } else if (config.flip_source && !need_color_branch && !nvconvert_flip_supported) {
+    } else if (
+      config.flip_source && !cuda_bayer_resizes_source && !need_color_branch &&
+      !nvconvert_flip_supported)
+    {
       RCLCPP_WARN(
         logger,
         "nvvideoconvert does not expose flip-method; keeping full-resolution videoflip");
     }
 
+    const std::optional<int> infer_width = pre_mux_resize.has_value() ?
+      std::optional<int>(pre_mux_resize->first) :
+      (config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_width));
+    const std::optional<int> infer_height = pre_mux_resize.has_value() ?
+      std::optional<int>(pre_mux_resize->second) :
+      (config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_height));
+    const std::optional<int> infer_cpu_width =
+      cuda_bayer_resizes_source ? infer_width : processing_width;
+    const std::optional<int> infer_cpu_height =
+      cuda_bayer_resizes_source ? infer_height : processing_height;
     requested_infer_cpu_caps = make_video_caps_text(
-      "video/x-raw", "RGBA", processing_width, processing_height, capped_fps);
+      "video/x-raw", "RGBA", infer_cpu_width, infer_cpu_height, capped_fps);
     GstCaps * infer_cpu_caps_value = gst_caps_from_string(requested_infer_cpu_caps.c_str());
     if (infer_cpu_caps_value == nullptr) {
       throw std::runtime_error(
@@ -1443,12 +1533,6 @@ struct DeepStreamRuntime::Impl
     g_object_set(G_OBJECT(infer_cpu_caps), "caps", infer_cpu_caps_value, nullptr);
     gst_caps_unref(infer_cpu_caps_value);
 
-    const std::optional<int> infer_width = pre_mux_resize.has_value() ?
-      std::optional<int>(pre_mux_resize->first) :
-      (config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_width));
-    const std::optional<int> infer_height = pre_mux_resize.has_value() ?
-      std::optional<int>(pre_mux_resize->second) :
-      (config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_height));
     requested_infer_nvmm_caps = make_video_caps_text(
       "video/x-raw(memory:NVMM)",
       "NV12",

@@ -36,6 +36,7 @@ The launch files expose the settings that matter most during bring-up:
 - camera selection such as `camera_type`, RealSense `rs_*` launch args, and Basler `basler_*` launch args
 - Basler high-FPS capture through `basler_pixel_format`, `basler_source_width`, `basler_source_height`, `basler_fps`, and `basler_uncapped_fps`
 - DeepStream full-FOV resize through `pre_mux_resize`, `pre_mux_width`, and `pre_mux_height`
+- DeepStream Bayer conversion through `bayer_conversion_backend`; `cuda` is the default and falls back to `cpu`/`bayer2rgb` when unavailable
 - DeepStream conversion profiling through `deepstream_profile_stages` and `deepstream_profile_stage_interval`
 - detector backend selection through `detector_backend`
 - fallback control through `allow_native_tensorrt_fallback`
@@ -56,13 +57,13 @@ The default tracker profile is tuned for fast rotating armor plates: `track_min_
 
 ## Basler High-FPS Source Formats
 
-The Basler + DeepStream path defaults to `basler_pixel_format:=bayer_rggb8` with `basler_source_width:=1920` and `basler_source_height:=1200` for the `a2A1920-160ucBAS` full-resolution high-FPS case. This keeps USB traffic at raw 8-bit Bayer instead of full-resolution BGR. Keep `basler_use_full_sensor:=true` to preserve the full FOV. Enable `pre_mux_resize:=true` to resize that full-FOV frame before `nvstreammux`; with the default 640x640 model box, 1920x1200 becomes 640x400 and `nvstreammux` pads it to the model input.
+The Basler + DeepStream path defaults to `basler_pixel_format:=bayer_rggb8` with `basler_source_width:=1920` and `basler_source_height:=1200` for the `a2A1920-160ucBAS` full-resolution high-FPS case. This keeps USB traffic at raw 8-bit Bayer instead of full-resolution BGR. Keep `basler_use_full_sensor:=true` to preserve the full FOV. Enable `pre_mux_resize:=true` to resize that full-FOV frame before `nvstreammux`; with the default 640x640 model box, 1920x1200 becomes 640x400 and `nvstreammux` pads it to the model input. The default `bayer_conversion_backend:=cuda` uses the in-process CUDA Bayer resize element when the build includes CUDA and no full-resolution color/debug branch is active; otherwise the runtime logs a warning and falls back to `bayer2rgb`.
 
 On the observed `a2A1920-160ucBAS` / serial `41923000` setup, direct Pylon probing reported `Binning*`, `Decimation*`, and `Scaling*` GenICam nodes as absent, so binning is not a supported runtime knob for this camera environment. `Width` and `Height` are still writable, but they are ROI/crop controls and should not be used when full FOV is required.
 
 Useful source-format choices:
 
-- `bayer_rggb8`: max-FPS color capture path; the GStreamer graph inserts `bayer2rgb` before inference/debug conversion.
+- `bayer_rggb8`: max-FPS color capture path; the GStreamer graph uses CUDA Bayer resize when available or `bayer2rgb` as the CPU fallback.
 - `yuy2`: compatibility fallback when Bayer conversion is unavailable or the camera UserSet favors YUYV.
 - `bgr8`: simple/debug path; full-resolution BGR can be bandwidth-limited near 60 FPS on USB3.
 - `mono8`: raw grayscale path for camera-only throughput tests when color is not needed.

@@ -62,6 +62,7 @@ struct Options
   int pre_mux_height{0};
   bool deepstream_profile_stages{false};
   int deepstream_profile_stage_interval{300};
+  std::string bayer_conversion_backend{"cuda"};
 
   yolo_cpp::CameraConfig camera;
 };
@@ -225,6 +226,9 @@ Options default_options_from_env()
   if (const auto value = getenv_int("CV_STM_DEEPSTREAM_PROFILE_STAGE_INTERVAL")) {
     options.deepstream_profile_stage_interval = *value;
   }
+  if (const auto value = getenv_string("CV_STM_DEEPSTREAM_BAYER_CONVERSION_BACKEND")) {
+    options.bayer_conversion_backend = *value;
+  }
 
   if (const auto value = getenv_int("CV_STM_BASLER_FPS")) {
     options.camera.basler_fps = *value;
@@ -315,9 +319,10 @@ void print_usage(const char * program)
     << "  --pre-mux-height N             Optional pre-mux resize bounding height (default: model height)\n\n"
     << "  --deepstream-profile-stages BOOL       Log per-stage GStreamer timing (default: false)\n"
     << "  --deepstream-profile-stage-interval N  Frames between profile logs (default: 300)\n\n"
+    << "  --bayer-conversion-backend VALUE       cuda/gpu or cpu/bayer2rgb (default: cuda)\n\n"
     << "Camera options mirror STM env defaults:\n"
     << "  --camera-type basler|realsense\n"
-    << "  --basler-fps N                 Requested cap/fallback FPS (default: 90)\n"
+    << "  --basler-fps N                 Requested cap/fallback FPS (default: 110)\n"
     << "  --basler-uncapped-fps BOOL     Disable Basler FPS limit (default: true)\n"
     << "  --basler-pixel-format VALUE    bayer_rggb8, yuy2, mono8, bgr8, rgb8\n"
     << "  --basler-source-width N        Full-sensor width (default: 1920)\n"
@@ -373,6 +378,8 @@ Options parse_args(int argc, char ** argv)
       options.deepstream_profile_stages = parse_bool_value(require_arg_value(argc, argv, i));
     } else if (arg == "--deepstream-profile-stage-interval") {
       options.deepstream_profile_stage_interval = std::stoi(require_arg_value(argc, argv, i));
+    } else if (arg == "--bayer-conversion-backend") {
+      options.bayer_conversion_backend = require_arg_value(argc, argv, i);
     } else if (arg == "--camera-type") {
       options.camera.camera_type = require_arg_value(argc, argv, i);
     } else if (arg == "--basler-fps") {
@@ -614,6 +621,7 @@ void print_header(const Options & options)
     << " pre_mux_box=" << options.pre_mux_width << 'x' << options.pre_mux_height
     << " deepstream_profile_stages="
     << (options.deepstream_profile_stages ? "true" : "false")
+    << " bayer_conversion_backend=" << options.bayer_conversion_backend
     << '\n';
 }
 
@@ -748,6 +756,7 @@ yolo_cpp::DeepStreamRuntime::Config make_deepstream_config(const Options & optio
   config.pre_mux_height = options.pre_mux_height;
   config.profile_stages = options.deepstream_profile_stages;
   config.profile_stage_interval = options.deepstream_profile_stage_interval;
+  config.bayer_conversion_backend = options.bayer_conversion_backend;
   config.flip_source = options.camera.basler_flip;
   config.conf_threshold = options.conf_threshold;
   config.half = options.half;

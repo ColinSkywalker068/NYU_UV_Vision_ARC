@@ -195,7 +195,17 @@ run_preflight() {
       log "Pylon SDK directory /opt/pylon is not mounted; continuing because pylonsrc is available"
     fi
     if is_basler_bayer_format; then
-      require_gst_element bayer2rgb
+      local bayer_backend="${CV_STM_DEEPSTREAM_BAYER_CONVERSION_BACKEND:-cuda}"
+      case "${bayer_backend,,}" in
+        cuda|gpu|cudabayerresize|yolocudabayerresize)
+          if ! gst-inspect-1.0 bayer2rgb >/dev/null 2>&1; then
+            log "bayer2rgb is unavailable; CUDA Bayer backend must be compiled into yolo_cpp for this run"
+          fi
+          ;;
+        *)
+          require_gst_element bayer2rgb
+          ;;
+      esac
     fi
   fi
 
@@ -254,6 +264,7 @@ run_launch() {
       append_optional_launch_arg CV_STM_DEEPSTREAM_PRE_MUX_HEIGHT pre_mux_height
       append_optional_launch_arg CV_STM_DEEPSTREAM_PROFILE_STAGES deepstream_profile_stages
       append_optional_launch_arg CV_STM_DEEPSTREAM_PROFILE_STAGE_INTERVAL deepstream_profile_stage_interval
+      append_optional_launch_arg CV_STM_DEEPSTREAM_BAYER_CONVERSION_BACKEND bayer_conversion_backend
       append_optional_launch_arg CV_STM_BASLER_USE_FULL_SENSOR basler_use_full_sensor
       append_optional_launch_arg CV_STM_BASLER_FLIP basler_flip
       ;;

@@ -184,6 +184,7 @@ private:
   std::string vis_window_name_;
   std::string camera_frame_id_;
   std::string camera_info_topic_;
+  std::string bayer_conversion_backend_;
   bool allow_native_tensorrt_fallback_{false};
   bool half_{true};
   bool show_{false};

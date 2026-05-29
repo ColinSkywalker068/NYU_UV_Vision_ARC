@@ -165,6 +165,7 @@ private:
   std::string runtime_log_path_;
   std::string target_color_;
   std::string vis_window_name_;
+  std::string bayer_conversion_backend_;
   bool allow_native_tensorrt_fallback_{false};
   bool half_{true};
   bool show_{false};

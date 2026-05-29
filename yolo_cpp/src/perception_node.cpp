@@ -141,6 +141,7 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<int>("pre_mux_height", 0);
   this->declare_parameter<bool>("deepstream_profile_stages", false);
   this->declare_parameter<int>("deepstream_profile_stage_interval", 300);
+  this->declare_parameter<std::string>("bayer_conversion_backend", "cuda");
   this->declare_parameter<int>("stage_log_interval", 300);
 
   model_path_ = this->get_parameter("model_path").as_string();
@@ -182,6 +183,7 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   deepstream_profile_stages_ = this->get_parameter("deepstream_profile_stages").as_bool();
   deepstream_profile_stage_interval_ = std::max(
     1, static_cast<int>(this->get_parameter("deepstream_profile_stage_interval").as_int()));
+  bayer_conversion_backend_ = this->get_parameter("bayer_conversion_backend").as_string();
   stage_log_interval_ = std::max(
     1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
 
@@ -368,6 +370,7 @@ void PerceptionNode::initialize_deepstream_runtime()
   config.pre_mux_height = pre_mux_height_;
   config.profile_stages = deepstream_profile_stages_;
   config.profile_stage_interval = deepstream_profile_stage_interval_;
+  config.bayer_conversion_backend = bayer_conversion_backend_;
   config.flip_source = camera_config_.basler_flip;
   config.conf_threshold = conf_;
   config.half = half_;
