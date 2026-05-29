@@ -68,6 +68,9 @@ write_default_env_file() {
 # Optional overrides for stm-stack.service and services/stm-stack.sh.
 # Keep startup prebuilt and deterministic; build explicitly with 'uv build yolo_cpp'.
 CV_STM_IMAGE=${DEFAULT_IMAGE}
+# For Basler service startup, prefer a Pylon-enabled local image created with:
+#   UPDATE_STM_ENV=1 ./Docker/bake_cplusplus_pylon_image.sh
+# CV_STM_IMAGE=cv-detection-cplusplus-pylon:local
 UV_CONTAINER_NAME=cv-stm-stack
 CV_STM_LAUNCH_PROFILE=basler
 # CV_STM_MODEL_PATH=/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine

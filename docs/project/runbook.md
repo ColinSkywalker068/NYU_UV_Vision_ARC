@@ -69,7 +69,7 @@ No `.env.example` file exists in the current repository. The operational variabl
 | Variable | Required For | Default Or Example | Source |
 |----------|--------------|--------------------|--------|
 | `CV_BASE_IMAGE` | Docker Compose build base image override | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` | `Docker/docker-compose.yml` |
-| `CV_STM_IMAGE` | Competition STM service Docker image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` | `services/stm-stack.service`, `services/stm-stack.sh` |
+| `CV_STM_IMAGE` | Competition STM service Docker image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus`; use `cv-detection-cplusplus-pylon:local` after baking Pylon locally | `services/stm-stack.service`, `services/stm-stack.sh`, `Docker/bake_cplusplus_pylon_image.sh` |
 | `CV_STM_REPO_ROOT` | Repository path inside the service container | `/home/ultraviolet/CV_Detection` | `services/stm-stack.service`, `services/stm-stack-entrypoint.sh` |
 | `CV_STM_LAUNCH_PROFILE` | Service launch profile | `basler`; set `realsense` for RealSense + native TensorRT bring-up | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_TARGET_COLOR` | Default enemy color before STM or robot-id feedback arrives | `blue`; set `red` when testing red armor without STM feedback | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
@@ -241,6 +241,17 @@ Stop the service:
 
 Basler support is compiled only when Pylon is visible during `colcon build`. The C++ Dockerfile supports build-time packages copied under `Docker/pylon/`.
 
+If an existing `uv docker` C++ container can load `pylonsrc` but the clean service image cannot, bake the working Pylon install into a stable local service image:
+
+```bash
+cd Docker
+UPDATE_STM_ENV=1 ./bake_cplusplus_pylon_image.sh
+cd ..
+CV_STM_REQUIRE_SERIAL=false ./services/stm-stack.sh preflight
+```
+
+This creates `cv-detection-cplusplus-pylon:local`, verifies `gst-inspect-1.0 pylonsrc`, and writes `CV_STM_IMAGE=cv-detection-cplusplus-pylon:local` to `/etc/cv-detection/stm-stack.env`.
+
 Build the C++ DeepStream image with the default tags:
 
 ```bash
@@ -248,7 +259,7 @@ cd Docker
 ./build_cplusplus.sh
 ```
 
-To build with a local Pylon SDK archive, copy the real archive under `Docker/pylon/` and set `PYLON_PACKAGE` to that copied path before invoking `Docker/build_cplusplus.sh`. The repository declares the build argument, but does not include a Pylon package file.
+To build with official Basler package archives, copy the SDK and GStreamer package archives under `Docker/pylon/`, then set `PYLON_PACKAGE` and `PYLON_GSTREAMER_PACKAGE` before invoking `Docker/build_cplusplus.sh`. The repository declares the build arguments, but does not include Basler package files.
 
 After adding or mounting Pylon, force a clean ROS workspace rebuild so CMake re-detects the SDK:
 

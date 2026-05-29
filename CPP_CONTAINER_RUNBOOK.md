@@ -26,13 +26,28 @@ The step that usually goes wrong is **not** the ROS build itself. The issue is t
 enabled when the Pylon SDK is already visible at `colcon build` time. Right now there are two supported ways
 to make that happen:
 
-1. Install Pylon into the image during `docker build` using a local Basler package, usually `tar.gz`.
-2. Mount or install Pylon into `/opt/pylon` inside the running container **before** running `colcon build`.
+1. Bake the known-good `uv docker` Pylon install into a stable local image.
+2. Install Pylon into the image during `docker build` using local Basler packages.
+3. Mount or install Pylon into `/opt/pylon` inside the running container **before** running `colcon build`.
 
 If neither of those happened, `colcon build` still succeeds, but `yolo_cpp` prints a warning during CMake
 configure and compiles with the Basler backend disabled.
 
-### Option A: install a local `tar.gz` into the image
+### Option A: bake the working `uv docker` Pylon install
+
+Use this when `uv docker` can run `gst-inspect-1.0 pylonsrc`, but a fresh service/preflight container cannot:
+
+```bash
+cd /home/ultraviolet/CV_Detection/Docker
+UPDATE_STM_ENV=1 ./bake_cplusplus_pylon_image.sh
+cd ..
+CV_STM_REQUIRE_SERIAL=false ./services/stm-stack.sh preflight
+```
+
+This creates `cv-detection-cplusplus-pylon:local`, verifies `pylonsrc`, and writes that image to
+`/etc/cv-detection/stm-stack.env`.
+
+### Option B: install local Basler packages into the image
 
 Put the Basler package somewhere under the Docker build context, for example:
 
@@ -48,17 +63,20 @@ cd Docker
 ./build_cplusplus.sh nyuultraviolet/cv-dockerfile \
   jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra \
   jp60-pytorch21-humble-tensorrt-cplusplus \
-  pylon/your-package-name.tar.gz
+  pylon/your-sdk-package-name.tar.gz \
+  pylon/your-gst-plugin-pylon-package-name.deb
 ```
 
 You can also pass the same path via environment variable:
 
 ```bash
 cd Docker
-PYLON_PACKAGE=pylon/your-package-name.tar.gz ./build_cplusplus.sh
+PYLON_PACKAGE=pylon/your-sdk-package-name.tar.gz \
+PYLON_GSTREAMER_PACKAGE=pylon/your-gst-plugin-pylon-package-name.deb \
+./build_cplusplus.sh
 ```
 
-### Option B: install the `tar.gz` manually inside a running container
+### Option C: install the `tar.gz` manually inside a running container
 
 Start the container, make the `.deb` visible inside it, then install it before `colcon build`.
 

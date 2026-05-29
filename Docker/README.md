@@ -100,3 +100,16 @@ Compose now defaults to the C++ image. To override manually:
 ```bash
 CV_BASE_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus docker compose up --build
 ```
+
+## Basler Pylon C++ Image
+
+If `uv docker` can load `pylonsrc` but the clean service image cannot, bake the working container's Pylon install into a stable local image:
+
+```bash
+cd Docker
+UPDATE_STM_ENV=1 ./bake_cplusplus_pylon_image.sh
+```
+
+That creates `cv-detection-cplusplus-pylon:local`, verifies `gst-inspect-1.0 pylonsrc`, and updates `/etc/cv-detection/stm-stack.env` when `UPDATE_STM_ENV=1`.
+
+For the fully reproducible vendor-package path, copy the Basler SDK and GStreamer package archives under `Docker/pylon/`, then build with `PYLON_PACKAGE` and `PYLON_GSTREAMER_PACKAGE` set before running `./build_cplusplus.sh`.

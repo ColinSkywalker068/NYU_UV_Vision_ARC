@@ -87,6 +87,15 @@ require_gst_element() {
   log "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
   if [ "$element" = "pylonsrc" ]; then
     log "pylonsrc is provided by the Basler Pylon GStreamer package; direct runs may work if they use a different or manually modified container"
+    log "Searching for candidate Pylon GStreamer plugin files"
+    find /opt/pylon /usr/lib /usr/local/lib -type f \
+      \( -iname '*pylon*.so' -o -iname 'libgst*.so' \) 2>/dev/null |
+      grep -Ei 'gst.*pylon|pylon.*gst|pylon' |
+      head -20 |
+      sed 's/^/[stm-stack] candidate: /' || true
+    log "Installed Pylon-related Debian packages"
+    dpkg-query -W -f='${binary:Package} ${Version}\n' '*pylon*' 2>/dev/null |
+      sed 's/^/[stm-stack] package: /' || true
   fi
   die "Required GStreamer element is unavailable: $element"
 }

@@ -83,7 +83,7 @@ No CI deploy job for the robot host is declared in the repository.
 | GPU stack | `Docker/Dockerfile.cplusplus` | C++ DeepStream image installs DeepStream 6.4, CUDA-adjacent runtime libraries, TensorRT-dependent detector support, and GStreamer plugins. |
 | Camera and USB devices | `Docker/docker-compose.yml`, `services/start-container.sh` | Compose mounts `/dev/video0`, `/dev/bus/usb`, `/tmp/argus_socket`, and `/dev`; the script discovers `/dev/video0` through `/dev/video9` on Jetson. |
 | STM32 serial | `yolo_cpp/launch/basler.launch.py`, `yolo_cpp/src/stm32_serial_bridge_node.cpp` | Basler field stack defaults to `/dev/ttyUSB0` at `115200` baud; the RealSense service profile does not require serial by default. |
-| Basler Pylon SDK | `Docker/Dockerfile.cplusplus`, `Docker/build_cplusplus.sh`, `services/start-container.sh` | Optional Basler support expects `/opt/pylon` or build args `PYLON_PACKAGE` and `PYLON_GSTREAMER_PACKAGE` under `Docker/pylon/`. |
+| Basler Pylon SDK | `Docker/Dockerfile.cplusplus`, `Docker/build_cplusplus.sh`, `Docker/bake_cplusplus_pylon_image.sh`, `services/start-container.sh` | Basler service support expects `pylonsrc`; either bake a known-good `uv docker` Pylon install into `cv-detection-cplusplus-pylon:local`, mount `/opt/pylon`, or build with `PYLON_PACKAGE` and `PYLON_GSTREAMER_PACKAGE` under `Docker/pylon/`. |
 | Display access | `Docker/docker-compose.yml`, `services/start-container.sh` | GUI/debug display paths use `DISPLAY`, `/tmp/.X11-unix`, `/tmp/.docker.xauth`, and `XAUTHORITY`. |
 | Repository location | `services/stm-stack.service`, `Docker/Dockerfile.run-cv` | Runtime commands assume `/home/ultraviolet/CV_Detection`. |
 
