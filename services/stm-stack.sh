@@ -69,10 +69,20 @@ write_default_env_file() {
 # Keep startup prebuilt and deterministic; build explicitly with 'uv build yolo_cpp'.
 CV_STM_IMAGE=${DEFAULT_IMAGE}
 UV_CONTAINER_NAME=cv-stm-stack
+CV_STM_LAUNCH_PROFILE=basler
 # CV_STM_MODEL_PATH=/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine
 # CV_STM_SERIAL_PORT=/dev/ttyUSB0
 # CV_STM_REQUIRE_SERIAL=true
+# RealSense profile skips Basler/DeepStream/Pylon checks and serial by default:
+# CV_STM_LAUNCH_PROFILE=realsense
+# CV_STM_REQUIRE_SERIAL=false
+# CV_STM_BASLER_PIXEL_FORMAT=bayer_rggb8
+# CV_STM_BASLER_SOURCE_WIDTH=1920
+# CV_STM_BASLER_SOURCE_HEIGHT=1200
 # CV_STM_EXTRA_LAUNCH_ARGS="basler_exposure_us:=5000.0 basler_gain_db:=5.0"
+# CV_STM_REALSENSE_WIDTH=640
+# CV_STM_REALSENSE_HEIGHT=480
+# CV_STM_REALSENSE_FPS=60
 EOF
   run_sudo install -m 0644 "$tmp" "$ENV_FILE"
   rm -f "$tmp"
@@ -156,8 +166,8 @@ Commands:
   restart    Restart ${SERVICE_NAME}.
   status     Show systemd status.
   logs       Follow systemd logs.
-  preflight  Validate image, ROS package, model, plugins, camera SDK, and serial path.
-  health     Check live ROS nodes and topics inside ${UV_CONTAINER_NAME}.
+  preflight  Validate image, ROS package, model, and selected profile prerequisites.
+  health     Check selected-profile ROS nodes and topics inside ${UV_CONTAINER_NAME}.
   shell      Open a shell inside ${UV_CONTAINER_NAME}.
 EOF
 }

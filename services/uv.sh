@@ -87,9 +87,10 @@ case $1 in
     # Validate number of parameters
     if (( $# < 2 )); then
       echo "Usage: uv run <package> <node or launch file> <ros args>"
-      echo "Example 1: uv run yolo_cpp stm.launch.py"
-      echo "Example 2: uv run teleop keyboard"
-      echo "Example 2: uv run uv_utils CCC --ros-args -p kp_wheels:=0.3"
+      echo "Example 1: uv run yolo_cpp basler.launch.py"
+      echo "Example 2: uv run yolo_cpp realsense.launch.py"
+      echo "Example 3: uv run teleop keyboard"
+      echo "Example 4: uv run uv_utils CCC --ros-args -p kp_wheels:=0.3"
       exit 1
     fi
     # Run setup script

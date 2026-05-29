@@ -26,6 +26,9 @@ struct CameraConfig
   double basler_gain_db{5.0};
   int basler_fps{90};
   bool basler_uncapped_fps{true};
+  std::string basler_pixel_format{"bayer_rggb8"};
+  int basler_source_width{1920};
+  int basler_source_height{1200};
   bool basler_flip{false};
   bool basler_use_full_sensor{true};
   bool basler_centered_roi{true};

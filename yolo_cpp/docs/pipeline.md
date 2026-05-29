@@ -42,7 +42,7 @@ These topics are the handoff between perception and downstream control.
 
 ## STM Bridge
 
-In the full stack launched by `stm.launch.py`, the STM bridge sits at the edge of the pipeline. It handles serial transport to the controller and also listens for feedback such as enemy color, bullet speed, and gimbal attitude.
+In the full Basler field stack launched by `basler.launch.py`, the STM bridge sits at the edge of the pipeline. It handles serial transport to the controller and also listens for feedback such as enemy color, bullet speed, and gimbal attitude. `stm.launch.py` is only a compatibility alias for that launch file.
 
 STM attitude feedback on `attitude_data` is treated as radians inside ROS. With `solver_output_mode:=absolute`, `AimSolverNode` adds the STM yaw/pitch feedback to the solved offsets before publishing `bounding_box_angles`. The serial bridge then converts those radians to degrees by default with `transmit_angles_in_degrees:=true` before packing the STM TX frame.
 

@@ -138,9 +138,9 @@ flowchart LR
 
 ## 6. Runtime View
 
-### 6.1 Full STM Launch
+### 6.1 Basler Field Launch
 
-`stm.launch.py` is the full camera-to-controller launch path. It exposes camera backend, detector backend, model path, serial port, tracking thresholds, 3D solving, and STM bridge settings.
+`basler.launch.py` is the full Basler + DeepStream camera-to-controller launch path. It exposes Basler source format, model path, serial port, tracking thresholds, 3D solving, and STM bridge settings. `stm.launch.py` remains as a compatibility alias for existing scripts.
 
 ```mermaid
 sequenceDiagram
@@ -164,7 +164,7 @@ sequenceDiagram
 
 ### 6.2 RealSense-Only Launch
 
-`realsense.launch.py` starts detector, tracker, processor, and solver without the serial bridge. It is the lighter runtime for camera and solver bring-up.
+`realsense.launch.py` starts RealSense capture, native TensorRT detection, tracker, processor, and solver without the serial bridge. It is the lighter runtime for camera and solver bring-up.
 
 ### 6.3 Zero-Copy Experiment
 

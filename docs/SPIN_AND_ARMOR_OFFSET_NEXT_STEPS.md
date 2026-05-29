@@ -128,7 +128,7 @@ Implementation notes:
 Files likely to change:
 - [`yolo_cpp/include/yolo_cpp/armor_processor_node.hpp`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/include/yolo_cpp/armor_processor_node.hpp)
 - [`yolo_cpp/src/armor_processor_node.cpp`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/src/armor_processor_node.cpp)
-- [`yolo_cpp/launch/stm.launch.py`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/launch/stm.launch.py)
+- [`yolo_cpp/launch/basler.launch.py`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/launch/basler.launch.py)
 - [`yolo_cpp/launch/realsense.launch.py`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/launch/realsense.launch.py)
 
 Exit criteria:

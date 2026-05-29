@@ -25,14 +25,15 @@ To easily run the detection stack, use the `uv` tool wrapper:
    uv build
    ```
 3. **Run the launch files:**
-   - To launch with STM configs and Basler camera (standard start):
+   - To launch the Basler + DeepStream + STM32 field stack:
      ```bash
-     uv run yolo_cpp stm.launch.py
+     uv run yolo_cpp basler.launch.py
      ```
-   - To launch with RealSense configs:
+   - To launch the RealSense + native TensorRT bring-up stack:
      ```bash
      uv run yolo_cpp realsense.launch.py
      ```
+   - `stm.launch.py` remains as a compatibility alias for `basler.launch.py`.
 
 ---
 

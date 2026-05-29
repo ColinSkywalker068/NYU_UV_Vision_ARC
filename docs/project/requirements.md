@@ -5,7 +5,7 @@
 <!-- DOC_ROLE: canonical -->
 <!-- READ_WHEN: Read when changing runtime behavior, launch defaults, message contracts, or operator-facing workflows. -->
 <!-- SKIP_WHEN: Skip when you only need architecture rationale, build commands, or infrastructure inventory. -->
-<!-- PRIMARY_SOURCES: README.md, yolo_cpp/docs/overview.md, yolo_cpp/docs/pipeline.md, yolo_cpp/docs/interfaces.md, yolo_cpp/launch/stm.launch.py, yolo_cpp/launch/realsense.launch.py -->
+<!-- PRIMARY_SOURCES: README.md, yolo_cpp/docs/overview.md, yolo_cpp/docs/pipeline.md, yolo_cpp/docs/interfaces.md, yolo_cpp/launch/basler.launch.py, yolo_cpp/launch/realsense.launch.py -->
 
 ## Quick Navigation
 
@@ -30,8 +30,8 @@
 
 | ID | Priority | Requirement | Current Evidence |
 |----|----------|-------------|------------------|
-| FR-CAM-001 | Must | The runtime shall acquire frames from RealSense or Basler camera backends through the shared C++ camera backend. | [camera_backend.hpp](../../yolo_cpp/include/yolo_cpp/camera_backend.hpp), [stm.launch.py](../../yolo_cpp/launch/stm.launch.py), [realsense.launch.py](../../yolo_cpp/launch/realsense.launch.py) |
-| FR-CAM-002 | Should | Camera launch parameters shall expose frame size, frame rate, exposure, and backend-specific options. | [stm.launch.py](../../yolo_cpp/launch/stm.launch.py), [realsense.launch.py](../../yolo_cpp/launch/realsense.launch.py) |
+| FR-CAM-001 | Must | The runtime shall acquire frames from RealSense or Basler camera backends through the shared C++ camera backend. | [camera_backend.hpp](../../yolo_cpp/include/yolo_cpp/camera_backend.hpp), [basler.launch.py](../../yolo_cpp/launch/basler.launch.py), [realsense.launch.py](../../yolo_cpp/launch/realsense.launch.py) |
+| FR-CAM-002 | Should | Camera launch parameters shall expose frame size, frame rate, exposure, and backend-specific options. | [basler.launch.py](../../yolo_cpp/launch/basler.launch.py), [realsense.launch.py](../../yolo_cpp/launch/realsense.launch.py) |
 | FR-DET-001 | Must | The detector shall publish armor candidates as `cv_auto_aim_interfaces/msg/Armors` on `detector/armors`. | [pipeline.md](../../yolo_cpp/docs/pipeline.md), [Armors.msg](../../cv_auto_aim_interfaces/msg/Armors.msg) |
 | FR-DET-002 | Must | Armor candidates shall include image-space boxes, confidence, class, enemy-color status, optional OBB angle, optional corners, and optional camera-frame pose. | [Armor.msg](../../cv_auto_aim_interfaces/msg/Armor.msg) |
 | FR-DET-003 | Should | The detector shall support native TensorRT and DeepStream-backed inference paths where the runtime dependencies are available. | [CMakeLists.txt](../../yolo_cpp/CMakeLists.txt), [deepstream_detector.hpp](../../yolo_cpp/include/yolo_cpp/deepstream_detector.hpp), [detector_backend.hpp](../../yolo_cpp/include/yolo_cpp/detector_backend.hpp) |
@@ -42,7 +42,7 @@
 | FR-PROC-002 | Should | The processor shall publish spin observer and visualization outputs for tuning. | [nodes.md](../../yolo_cpp/docs/nodes.md), [SpinInfo.msg](../../cv_auto_aim_interfaces/msg/SpinInfo.msg) |
 | FR-SOL-001 | Must | The solver shall convert the selected target into yaw, pitch, fire recommendation, legacy controller topics, and `AimSolution`. | [AimSolution.msg](../../cv_auto_aim_interfaces/msg/AimSolution.msg), [aim_solver_node.hpp](../../yolo_cpp/include/yolo_cpp/aim_solver_node.hpp) |
 | FR-SOL-002 | Should | The solver shall support 3D pose and velocity solving with 2D FOV fallback. | [pipeline.md](../../yolo_cpp/docs/pipeline.md), [realsense.launch.py](../../yolo_cpp/launch/realsense.launch.py) |
-| FR-STM-001 | Must | The full stack shall bridge controller-facing output to STM32 serial transport and ingest attitude, flags, color, or speed feedback. | [stm32_serial_bridge_node.hpp](../../yolo_cpp/include/yolo_cpp/stm32_serial_bridge_node.hpp), [stm.launch.py](../../yolo_cpp/launch/stm.launch.py) |
+| FR-STM-001 | Must | The full Basler field stack shall bridge controller-facing output to STM32 serial transport and ingest attitude, flags, color, or speed feedback. | [stm32_serial_bridge_node.hpp](../../yolo_cpp/include/yolo_cpp/stm32_serial_bridge_node.hpp), [basler.launch.py](../../yolo_cpp/launch/basler.launch.py) |
 | FR-OPS-001 | Must | Operators shall be able to enter the container, build the active stack, and launch the full runtime through `uv` commands. | [README.md](../../README.md), [uv.sh](../../services/uv.sh), [runbook.md](runbook.md) |
 | FR-DOC-001 | Should | Runtime behavior and interfaces shall remain documented in package-level docs under `yolo_cpp/docs/`. | [yolo_cpp/docs](../../yolo_cpp/docs/overview.md) |
 

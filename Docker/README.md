@@ -11,10 +11,10 @@ Then run:
 ```bash
 uv docker
 uv build yolo_cpp
-uv run yolo_cpp stm.launch.py
+uv run yolo_cpp basler.launch.py
 ```
 
-This runs the active `yolo_cpp` stack using the package launch files.
+This runs the active Basler field stack using the package launch files. `stm.launch.py` remains as a compatibility alias for older commands.
 
 ## Manual Run (ROS 2 Node)
 

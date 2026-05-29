@@ -37,7 +37,7 @@ The repository has three primary runtime paths:
 
 | Path | Use When | Command Surface |
 |------|----------|-----------------|
-| `uv` wrapper with `services/start-container.sh` | Day-to-day robot and development use, especially when the host does not have ROS 2 sourced locally | `uv docker`, `uv build`, `uv run yolo_cpp stm.launch.py` |
+| `uv` wrapper with `services/start-container.sh` | Day-to-day robot and development use, especially when the host does not have ROS 2 sourced locally | `uv docker`, `uv build`, `uv run yolo_cpp basler.launch.py` |
 | Competition STM service | Headless robot startup, match restarts, SSH diagnostics, and service logs | `./services/stm-stack.sh preflight`, `./services/stm-stack.sh restart`, `./services/stm-stack.sh health` |
 | Docker Compose service | One-command RealSense stack startup from the `Docker/` directory | `docker compose -f Docker/docker-compose.yml up --build` |
 
@@ -58,7 +58,7 @@ The repository has three primary runtime paths:
 | NVIDIA runtime on robot host | `Docker/docker-compose.yml`, `services/start-container.sh` | Required for Jetson GPU production paths. |
 | ROS 2 Humble environment | `services/uv.sh`, `Docker/Dockerfile.run-cv` | Usually provided by the selected Docker image. |
 | Host camera and USB devices | `Docker/docker-compose.yml`, `services/start-container.sh` | RealSense and Basler access require host device mounts. |
-| STM32 serial device | `yolo_cpp/launch/stm.launch.py` | Full stack defaults to `/dev/ttyUSB0` at `115200` baud. |
+| STM32 serial device | `yolo_cpp/launch/basler.launch.py` | Basler field stack defaults to `/dev/ttyUSB0` at `115200` baud. |
 | Optional Basler Pylon SDK | `Docker/Dockerfile.cplusplus`, `CPP_CONTAINER_RUNBOOK.md` | Basler backend is enabled only when Pylon is visible at build time. |
 | Optional X11 display access | `Docker/docker-compose.yml`, `services/start-container.sh` | Needed when enabling OpenCV/GUI display output. |
 
@@ -71,10 +71,15 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `CV_BASE_IMAGE` | Docker Compose build base image override | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` | `Docker/docker-compose.yml` |
 | `CV_STM_IMAGE` | Competition STM service Docker image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` | `services/stm-stack.service`, `services/stm-stack.sh` |
 | `CV_STM_REPO_ROOT` | Repository path inside the service container | `/home/ultraviolet/CV_Detection` | `services/stm-stack.service`, `services/stm-stack-entrypoint.sh` |
+| `CV_STM_LAUNCH_PROFILE` | Service launch profile | `basler`; set `realsense` for RealSense + native TensorRT bring-up | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_CAMERA_TYPE` | Lower-level camera backend override for the Basler-profile launch only | Usually unset; prefer `CV_STM_LAUNCH_PROFILE` | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_MODEL_PATH` | Competition model or engine path | `model_test/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine` under the robot repo | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_SERIAL_PORT` | STM32 serial device for competition startup | `/dev/ttyUSB0` | `services/stm-stack-entrypoint.sh` |
-| `CV_STM_REQUIRE_SERIAL` | Whether preflight must fail when the serial path is absent | `true` | `services/stm-stack-entrypoint.sh` |
-| `CV_STM_EXTRA_LAUNCH_ARGS` | Optional extra `stm.launch.py` launch arguments | Empty by default | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_REQUIRE_SERIAL` | Whether preflight must fail when the serial path is absent | Defaults to `true` for `basler`, `false` for `realsense` | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_EXTRA_LAUNCH_ARGS` | Optional extra selected-profile launch arguments | Empty by default | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_BASLER_PIXEL_FORMAT` | Basler source pixel format for the DeepStream/Pylon path | `bayer_rggb8`; alternatives include `yuy2`, `bgr8`, `mono8` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
+| `CV_STM_BASLER_SOURCE_WIDTH` | Basler source width for full-sensor capture | `1920` for `a2A1920-160ucBAS` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
+| `CV_STM_BASLER_SOURCE_HEIGHT` | Basler source height for full-sensor capture | `1200` for `a2A1920-160ucBAS` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `DISPLAY` | X11 GUI forwarding | Host `DISPLAY` value | `Docker/docker-compose.yml`, `services/start-container.sh` |
 | `QT_X11_NO_MITSHM` | Qt/X11 compatibility | `1` | `Docker/docker-compose.yml` |
 | `V4L2_DEVICES` | Camera device forwarding | Auto-assembled `/dev/video0` through `/dev/video9` flags on Jetson | `Docker/docker-compose.yml`, `services/start-container.sh` |
@@ -137,10 +142,10 @@ colcon build --packages-select cv_auto_aim_interfaces yolo_cpp --symlink-install
 
 ### 5.4 Launch Runtime Stacks
 
-Full camera-to-STM32 stack:
+Basler camera-to-STM32 field stack:
 
 ```bash
-uv run yolo_cpp stm.launch.py show:=false
+uv run yolo_cpp basler.launch.py show:=false
 ```
 
 RealSense-only detector, tracker, processor, and solver stack:
@@ -173,7 +178,7 @@ docker compose -f Docker/docker-compose.yml down
 
 ## 7. Robot Systemd Deployment
 
-The declared boot service is `services/stm-stack.service`. It runs from `/home/ultraviolet/CV_Detection`, requires `docker.service`, removes the previous `cv-stm-stack` container, and launches the full Basler + DeepStream + STM32 `stm.launch.py` stack through `services/stm-stack-entrypoint.sh`.
+The declared boot service is `services/stm-stack.service`. It runs from `/home/ultraviolet/CV_Detection`, requires `docker.service`, removes the previous `cv-stm-stack` container, and launches the selected `CV_STM_LAUNCH_PROFILE` through `services/stm-stack-entrypoint.sh`. The default profile is the full Basler + DeepStream + STM32 `basler.launch.py` stack; `CV_STM_LAUNCH_PROFILE=realsense` launches the RealSense + native TensorRT bring-up stack without requiring serial by default.
 
 The service uses the C++ image `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` and reads optional overrides from `/etc/cv-detection/stm-stack.env`. Startup is intentionally prebuilt: it fails when `install/setup.bash` is missing instead of running `uv build` during match bring-up.
 
@@ -244,6 +249,8 @@ After adding or mounting Pylon, force a clean ROS workspace rebuild so CMake re-
 uv clean
 uv build yolo_cpp
 ```
+
+For Basler high-FPS bring-up on `a2A1920-160ucBAS`, keep `basler_use_full_sensor:=true` and use the default raw Bayer source caps: `basler_pixel_format:=bayer_rggb8 basler_source_width:=1920 basler_source_height:=1200 basler_uncapped_fps:=true`. The startup logs should show the requested and negotiated GStreamer caps plus the camera-reported resulting frame rate. If `basler_pixel_format:=bgr8` is used at full resolution, USB3 bandwidth can reasonably limit capture near 60 FPS; that is not evidence of a Jetson hard cap.
 
 ## 9. Testing And Formatting
 
@@ -377,7 +384,7 @@ ros2 node list
 
 Resolution:
 
-1. Confirm the STM32 is attached as `/dev/ttyUSB0`, or launch `stm.launch.py` with a different `serial_port:=` value.
+1. Confirm the STM32 is attached as `/dev/ttyUSB0`, or launch `basler.launch.py` with a different `serial_port:=` value.
 2. Confirm the full stack, not the RealSense-only stack, is running.
 3. Check `./services/stm-stack.sh logs` when running through systemd.
 
@@ -427,8 +434,8 @@ Resolution:
 | Runtime | Depends On | Declared Source |
 |---------|------------|-----------------|
 | `cv-container` Compose service | Docker Engine, NVIDIA runtime, host network, `/dev/video0`, `/dev/bus/usb`, `/tmp/argus_socket`, `/dev`, `/home/ultraviolet` | `Docker/docker-compose.yml` |
-| `stm-stack.service` | `docker.service`, `/home/ultraviolet/CV_Detection`, `services/start-container.sh`, `services/stm-stack-entrypoint.sh`, C++ DeepStream image, STM32 serial device for TX | `services/stm-stack.service` |
-| `yolo_cpp` full stack | `cv_auto_aim_interfaces`, model engine at `model_test/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine`, camera device, optional `/dev/ttyUSB0` | `yolo_cpp/launch/stm.launch.py` |
+| `stm-stack.service` | `docker.service`, `/home/ultraviolet/CV_Detection`, `services/start-container.sh`, `services/stm-stack-entrypoint.sh`, C++ DeepStream image, STM32 serial device for Basler TX | `services/stm-stack.service` |
+| `yolo_cpp` Basler field stack | `cv_auto_aim_interfaces`, model engine at `model_test/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine`, Basler camera device, optional `/dev/ttyUSB0` | `yolo_cpp/launch/basler.launch.py` |
 | C++ DeepStream/Basler image | DeepStream 6.4, GStreamer plugins, optional Pylon packages under `Docker/pylon/` | `Docker/Dockerfile.cplusplus`, `Docker/build_cplusplus.sh` |
 
 ## 14. Port Mapping

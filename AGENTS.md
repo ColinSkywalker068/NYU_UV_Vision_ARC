@@ -86,8 +86,9 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 | Enter container | `uv docker` | Selects or starts the C++ container image through `services/uv.sh`. |
 | Build all ROS packages | `uv build` | Runs `colcon build --symlink-install --cmake-args -DBUILD_TESTING=OFF` in a ROS workspace. |
 | Build active stack | `uv build yolo_cpp` | Builds `cv_auto_aim_interfaces` and `yolo_cpp` together. |
-| Launch full stack | `uv run yolo_cpp stm.launch.py` | Detector, tracker, processor, solver, and STM bridge. |
+| Launch Basler field stack | `uv run yolo_cpp basler.launch.py` | Basler, DeepStream, detector, tracker, processor, solver, and STM bridge. |
 | Launch RealSense stack | `uv run yolo_cpp realsense.launch.py` | Detector, tracker, processor, and solver without serial bridge. |
+| Launch compatibility alias | `uv run yolo_cpp stm.launch.py` | Deprecated alias that forwards to `basler.launch.py`. |
 | Launch zero-copy experiment | `uv run yolo_cpp zerocopy.launch.py` | Component-container path for the combined perception node. |
 | Install competition service | `./services/stm-stack.sh install` | Installs and enables the headless STM systemd service without starting it. |
 | Competition preflight | `./services/stm-stack.sh preflight` | Checks image, package, model, DeepStream/Pylon plugins, and serial path before startup. |
@@ -103,7 +104,7 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 |------|------|
 | `yolo_cpp/include/yolo_cpp/` | C++ public headers for nodes, backends, tracking, solving, and protocol helpers. |
 | `yolo_cpp/src/` | Active ROS 2 C++ runtime implementations. |
-| `yolo_cpp/launch/` | `stm.launch.py`, `realsense.launch.py`, and `zerocopy.launch.py`. |
+| `yolo_cpp/launch/` | `basler.launch.py`, compatibility alias `stm.launch.py`, `realsense.launch.py`, and `zerocopy.launch.py`. |
 | `yolo_cpp/config/` | DeepStream and detector configuration assets. |
 | `yolo_cpp/test/` | Focused C++ tests for tracking and detection postprocess behavior. |
 | `cv_auto_aim_interfaces/msg/` | Custom ROS 2 messages for detections, tracks, targets, spin state, and aim solutions. |

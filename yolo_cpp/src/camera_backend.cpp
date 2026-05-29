@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -269,6 +270,49 @@ private:
 #endif
 
 #ifdef HAVE_PYLON
+std::string normalize_basler_pixel_format(std::string value)
+{
+  value.erase(
+    std::remove_if(value.begin(), value.end(), [](unsigned char ch) {
+      return std::isspace(ch) != 0 || ch == '-' || ch == '_';
+    }),
+    value.end());
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::tolower(ch));
+  });
+  return value;
+}
+
+std::string genicam_pixel_format_for_config(const std::string & value)
+{
+  const auto normalized = normalize_basler_pixel_format(value);
+  if (normalized == "bayerrggb8" || normalized == "rggb" || normalized == "bayerrg8") {
+    return "BayerRG8";
+  }
+  if (normalized == "bayerbggr8" || normalized == "bggr" || normalized == "bayerbg8") {
+    return "BayerBG8";
+  }
+  if (normalized == "bayergrbg8" || normalized == "grbg" || normalized == "bayergr8") {
+    return "BayerGR8";
+  }
+  if (normalized == "bayergbrg8" || normalized == "gbrg" || normalized == "bayergb8") {
+    return "BayerGB8";
+  }
+  if (normalized == "mono8" || normalized == "gray8" || normalized == "grey8") {
+    return "Mono8";
+  }
+  if (normalized == "yuy2" || normalized == "yuyv" || normalized == "yuv422") {
+    return "YUV422Packed";
+  }
+  if (normalized == "bgr" || normalized == "bgr8") {
+    return "BGR8";
+  }
+  if (normalized == "rgb" || normalized == "rgb8") {
+    return "RGB8";
+  }
+  return value;
+}
+
 /// Basler Pylon backend that owns SDK initialization and BGR conversion.
 class BaslerBackend final : public CameraBackend
 {
@@ -395,9 +439,33 @@ private:
     return read_float_if_readable(node_map, "ResultingFrameRateAbs");
   }
 
+  int64_t clamp_integer_node_value(const GenApi::CIntegerPtr & node, int requested) const
+  {
+    const int64_t min_value = node->GetMin();
+    const int64_t max_value = node->GetMax();
+    int64_t value = requested > 0 ? static_cast<int64_t>(requested) : max_value;
+    value = std::max(min_value, std::min(max_value, value));
+    const int64_t increment = std::max<int64_t>(1, node->GetInc());
+    if (increment > 1) {
+      value = min_value + (((value - min_value) / increment) * increment);
+    }
+    return std::max(min_value, std::min(max_value, value));
+  }
+
+  void set_integer_node_if_writable(
+    GenApi::INodeMap & node_map, const char * name, int requested) const
+  {
+    GenApi::CIntegerPtr node(node_map.GetNode(name));
+    if (node && GenApi::IsWritable(node)) {
+      node->SetValue(clamp_integer_node_value(node, requested));
+    }
+  }
+
   void configure_camera()
   {
     auto & node_map = camera_.GetNodeMap();
+    const auto pixel_format = genicam_pixel_format_for_config(config_.basler_pixel_format);
+    set_enum_if_writable(node_map, "PixelFormat", pixel_format.c_str());
     set_if_writable<GenApi::CBooleanPtr>(
       node_map, "AcquisitionFrameRateEnable", !config_.basler_uncapped_fps);
     if (!config_.basler_uncapped_fps) {
@@ -411,20 +479,21 @@ private:
     set_enum_if_writable(node_map, "GainSelector", "All");
     set_if_writable<GenApi::CFloatPtr>(node_map, "Gain", config_.basler_gain_db);
 
-    if (!config_.basler_use_full_sensor) {
+    const int requested_width = config_.basler_use_full_sensor ?
+      config_.basler_source_width :
+      config_.imgsz_width;
+    const int requested_height = config_.basler_use_full_sensor ?
+      config_.basler_source_height :
+      config_.imgsz_height;
+    set_integer_node_if_writable(node_map, "Width", requested_width);
+    set_integer_node_if_writable(node_map, "Height", requested_height);
+
+    if (!config_.basler_use_full_sensor && config_.basler_centered_roi) {
       GenApi::CIntegerPtr width_node(node_map.GetNode("Width"));
       GenApi::CIntegerPtr height_node(node_map.GetNode("Height"));
       GenApi::CIntegerPtr offset_x(node_map.GetNode("OffsetX"));
       GenApi::CIntegerPtr offset_y(node_map.GetNode("OffsetY"));
-      if (width_node && GenApi::IsWritable(width_node)) {
-        width_node->SetValue(
-          std::min(width_node->GetMax(), static_cast<int64_t>(config_.imgsz_width)));
-      }
-      if (height_node && GenApi::IsWritable(height_node)) {
-        height_node->SetValue(
-          std::min(height_node->GetMax(), static_cast<int64_t>(config_.imgsz_height)));
-      }
-      if (config_.basler_centered_roi && offset_x && offset_y && width_node && height_node) {
+      if (offset_x && offset_y && width_node && height_node) {
         const int64_t centered_x =
           std::max<int64_t>(0, (width_node->GetMax() - width_node->GetValue()) / 2);
         const int64_t centered_y =
@@ -459,6 +528,9 @@ CameraConfig load_camera_config(rclcpp::Node & node)
   node.declare_parameter<double>("basler_gain_db", config.basler_gain_db);
   node.declare_parameter<int>("basler_fps", config.basler_fps);
   node.declare_parameter<bool>("basler_uncapped_fps", config.basler_uncapped_fps);
+  node.declare_parameter<std::string>("basler_pixel_format", config.basler_pixel_format);
+  node.declare_parameter<int>("basler_source_width", config.basler_source_width);
+  node.declare_parameter<int>("basler_source_height", config.basler_source_height);
   node.declare_parameter<bool>("basler_flip", config.basler_flip);
   node.declare_parameter<bool>("basler_use_full_sensor", config.basler_use_full_sensor);
   node.declare_parameter<bool>("basler_centered_roi", config.basler_centered_roi);
@@ -482,6 +554,9 @@ CameraConfig load_camera_config(rclcpp::Node & node)
   config.basler_gain_db = node.get_parameter("basler_gain_db").as_double();
   config.basler_fps = node.get_parameter("basler_fps").as_int();
   config.basler_uncapped_fps = node.get_parameter("basler_uncapped_fps").as_bool();
+  config.basler_pixel_format = node.get_parameter("basler_pixel_format").as_string();
+  config.basler_source_width = node.get_parameter("basler_source_width").as_int();
+  config.basler_source_height = node.get_parameter("basler_source_height").as_int();
   config.basler_flip = node.get_parameter("basler_flip").as_bool();
   config.basler_use_full_sensor = node.get_parameter("basler_use_full_sensor").as_bool();
   config.basler_centered_roi = node.get_parameter("basler_centered_roi").as_bool();

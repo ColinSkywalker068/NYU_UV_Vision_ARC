@@ -35,6 +35,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="false",
         description="Use non-blocking RealSense poll_for_frames() instead of wait_for_frames()",
     )
+    rs_use_max_native_fps_arg = DeclareLaunchArgument(
+        "rs_use_max_native_fps",
+        default_value="true",
+        description="Use the best native RealSense FPS for the requested resolution",
+    )
     model_path_arg = DeclareLaunchArgument(
         "model_path",
         default_value=default_model_path,
@@ -174,12 +179,17 @@ def generate_launch_description() -> LaunchDescription:
         parameters=[
             {
                 "camera_type": "realsense",
+                "detector_backend": "native_tensorrt",
+                "allow_native_tensorrt_fallback": False,
                 "realsense_width": LaunchConfiguration("rs_width"),
                 "realsense_height": LaunchConfiguration("rs_height"),
                 "realsense_fps": LaunchConfiguration("rs_fps"),
                 "realsense_exposure": LaunchConfiguration("rs_exposure"),
                 "realsense_auto_exposure": LaunchConfiguration("rs_auto_exposure"),
                 "realsense_use_poll": LaunchConfiguration("rs_use_poll"),
+                "realsense_use_max_native_fps": LaunchConfiguration(
+                    "rs_use_max_native_fps"
+                ),
                 "model_path": LaunchConfiguration("model_path"),
                 "task": LaunchConfiguration("task"),
                 "conf": LaunchConfiguration("conf"),
@@ -277,6 +287,7 @@ def generate_launch_description() -> LaunchDescription:
             rs_exposure_arg,
             rs_auto_exposure_arg,
             rs_use_poll_arg,
+            rs_use_max_native_fps_arg,
             model_path_arg,
             task_arg,
             conf_arg,

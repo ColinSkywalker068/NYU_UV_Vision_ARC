@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -92,6 +93,69 @@ std::string make_video_caps_text(
     caps += ",framerate=" + std::to_string(*fps) + "/1";
   }
   return caps;
+}
+
+std::optional<int> positive_dimension(int value)
+{
+  if (value > 0) {
+    return value;
+  }
+  return std::nullopt;
+}
+
+std::string normalize_format_token(std::string value)
+{
+  value.erase(
+    std::remove_if(value.begin(), value.end(), [](unsigned char ch) {
+      return std::isspace(ch) != 0 || ch == '-' || ch == '_';
+    }),
+    value.end());
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::tolower(ch));
+  });
+  return value;
+}
+
+struct SourceFormatSpec
+{
+  std::string label;
+  std::string media_type;
+  std::string caps_format;
+  std::string camera_pixel_format;
+  bool needs_bayer_convert{false};
+};
+
+SourceFormatSpec resolve_source_format(const std::string & value)
+{
+  const auto normalized = normalize_format_token(value);
+  if (normalized == "bayerrggb8" || normalized == "rggb" || normalized == "bayerrg8") {
+    return {"bayer_rggb8", "video/x-bayer", "rggb", "BayerRG8", true};
+  }
+  if (normalized == "bayerbggr8" || normalized == "bggr" || normalized == "bayerbg8") {
+    return {"bayer_bggr8", "video/x-bayer", "bggr", "BayerBG8", true};
+  }
+  if (normalized == "bayergrbg8" || normalized == "grbg" || normalized == "bayergr8") {
+    return {"bayer_grbg8", "video/x-bayer", "grbg", "BayerGR8", true};
+  }
+  if (normalized == "bayergbrg8" || normalized == "gbrg" || normalized == "bayergb8") {
+    return {"bayer_gbrg8", "video/x-bayer", "gbrg", "BayerGB8", true};
+  }
+  if (normalized == "mono8" || normalized == "gray8" || normalized == "grey8") {
+    return {"mono8", "video/x-raw", "GRAY8", "Mono8", false};
+  }
+  if (normalized == "yuy2" || normalized == "yuyv" || normalized == "yuv422") {
+    return {"yuy2", "video/x-raw", "YUY2", "YUV422Packed", false};
+  }
+  if (normalized == "bgr" || normalized == "bgr8") {
+    return {"bgr8", "video/x-raw", "BGR", "BGR8", false};
+  }
+  if (normalized == "rgb" || normalized == "rgb8") {
+    return {"rgb8", "video/x-raw", "RGB", "RGB8", false};
+  }
+
+  throw std::runtime_error(
+          "Unsupported Basler source pixel format '" + value +
+          "'. Use bayer_rggb8, bayer_bggr8, bayer_grbg8, bayer_gbrg8, mono8, yuy2, bgr8, or rgb8.");
 }
 
 #if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
@@ -320,6 +384,44 @@ std::optional<double> get_numeric_value(const GValue * gvalue)
   return std::nullopt;
 }
 
+std::optional<std::string> get_string_value(const GValue * gvalue)
+{
+  if (G_VALUE_HOLDS_STRING(gvalue)) {
+    const char * value = g_value_get_string(gvalue);
+    if (value != nullptr && std::strlen(value) > 0U) {
+      return std::string(value);
+    }
+    return std::nullopt;
+  }
+  if (G_VALUE_HOLDS_ENUM(gvalue)) {
+    GEnumClass * enum_class = G_ENUM_CLASS(g_type_class_ref(G_VALUE_TYPE(gvalue)));
+    if (enum_class != nullptr) {
+      GEnumValue * enum_value = g_enum_get_value(enum_class, g_value_get_enum(gvalue));
+      std::optional<std::string> result;
+      if (enum_value != nullptr) {
+        result = enum_value->value_nick != nullptr ?
+          std::string(enum_value->value_nick) :
+          std::string(enum_value->value_name);
+      }
+      g_type_class_unref(enum_class);
+      if (result.has_value() && !result->empty()) {
+        return result;
+      }
+    }
+  }
+
+  gchar * serialized = gst_value_serialize(gvalue);
+  if (serialized == nullptr) {
+    return std::nullopt;
+  }
+  std::string result(serialized);
+  g_free(serialized);
+  if (result.empty()) {
+    return std::nullopt;
+  }
+  return result;
+}
+
 std::optional<double> get_child_proxy_numeric_if_present(GstElement * element, const char * name)
 {
   if (element == nullptr || name == nullptr || !GST_IS_CHILD_PROXY(element)) {
@@ -341,6 +443,64 @@ std::optional<double> get_child_proxy_numeric_if_present(GstElement * element, c
     g_object_unref(target);
   }
   return value;
+}
+
+std::optional<std::string> get_child_proxy_string_if_present(GstElement * element, const char * name)
+{
+  if (element == nullptr || name == nullptr || !GST_IS_CHILD_PROXY(element)) {
+    return std::nullopt;
+  }
+
+  GObject * target = nullptr;
+  GParamSpec * pspec = nullptr;
+  if (!gst_child_proxy_lookup(GST_CHILD_PROXY(element), name, &target, &pspec)) {
+    return std::nullopt;
+  }
+
+  GValue gvalue = G_VALUE_INIT;
+  g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
+  gst_child_proxy_get_property(GST_CHILD_PROXY(element), name, &gvalue);
+  const auto value = get_string_value(&gvalue);
+  g_value_unset(&gvalue);
+  if (target != nullptr) {
+    g_object_unref(target);
+  }
+  return value;
+}
+
+std::string caps_to_string(GstCaps * caps)
+{
+  if (caps == nullptr) {
+    return "none";
+  }
+  gchar * text = gst_caps_to_string(caps);
+  if (text == nullptr) {
+    return "unknown";
+  }
+  std::string result(text);
+  g_free(text);
+  return result;
+}
+
+std::string current_caps_for_pad(GstElement * element, const char * pad_name)
+{
+  if (element == nullptr || pad_name == nullptr) {
+    return "none";
+  }
+  GstPad * pad = gst_element_get_static_pad(element, pad_name);
+  if (pad == nullptr) {
+    return "none";
+  }
+  GstCaps * caps = gst_pad_get_current_caps(pad);
+  if (caps == nullptr) {
+    caps = gst_pad_query_caps(pad, nullptr);
+  }
+  const std::string result = caps_to_string(caps);
+  if (caps != nullptr) {
+    gst_caps_unref(caps);
+  }
+  gst_object_unref(pad);
+  return result;
 }
 
 std::string collect_bus_diagnostics(GstBus * bus)
@@ -413,6 +573,7 @@ struct DeepStreamRuntime::Impl
   GstElement * pipeline{nullptr};
   GstElement * source{nullptr};
   GstElement * source_caps{nullptr};
+  GstElement * source_bayer_convert{nullptr};
   GstElement * source_flip{nullptr};
   GstElement * tee{nullptr};
   GstElement * infer_queue{nullptr};
@@ -446,6 +607,11 @@ struct DeepStreamRuntime::Impl
   bool end2end{false};
   std::optional<bool> export_includes_nms;
   double source_actual_fps{0.0};
+  std::string requested_source_caps;
+  std::string requested_infer_cpu_caps;
+  std::string requested_infer_nvmm_caps;
+  std::string requested_color_caps;
+  std::string fps_cap_status{"unknown"};
 #endif
 
   ~Impl()
@@ -529,7 +695,8 @@ struct DeepStreamRuntime::Impl
     end2end = metadata.end2end;
     export_includes_nms = metadata.export_includes_nms;
 
-    const std::vector<std::string> required_elements = {
+    const auto source_format = resolve_source_format(config.source_pixel_format);
+    std::vector<std::string> required_elements = {
       config.source_element,
       "videoflip",
       "tee",
@@ -540,6 +707,9 @@ struct DeepStreamRuntime::Impl
       "nvinfer",
       "appsink",
     };
+    if (source_format.needs_bayer_convert) {
+      required_elements.push_back("bayer2rgb");
+    }
     for (const auto & element_name : required_elements) {
       GstElementFactory * factory = gst_element_factory_find(element_name.c_str());
       if (factory == nullptr) {
@@ -594,8 +764,52 @@ struct DeepStreamRuntime::Impl
            set_child_proxy_double_if_present(source, name, 0.0);
   }
 
-  void configure_basler_source()
+  void configure_low_latency_queue(GstElement * queue)
   {
+    if (queue == nullptr) {
+      return;
+    }
+    g_object_set(
+      G_OBJECT(queue),
+      "max-size-buffers", 1,
+      "max-size-bytes", 0,
+      "max-size-time", 0,
+      "leaky", 2,
+      nullptr);
+  }
+
+  void configure_source_dimensions()
+  {
+    if (config.source_width > 0 &&
+      !set_child_proxy_double_if_present(source, "cam::Width", config.source_width))
+    {
+      RCLCPP_WARN(
+        logger,
+        "Could not set Basler cam::Width=%d through pylonsrc",
+        config.source_width);
+    }
+    if (config.source_height > 0 &&
+      !set_child_proxy_double_if_present(source, "cam::Height", config.source_height))
+    {
+      RCLCPP_WARN(
+        logger,
+        "Could not set Basler cam::Height=%d through pylonsrc",
+        config.source_height);
+    }
+  }
+
+  void configure_basler_source(const SourceFormatSpec & source_format)
+  {
+    if (!source_format.camera_pixel_format.empty() &&
+      !set_child_proxy_string_if_present(
+        source, "cam::PixelFormat", source_format.camera_pixel_format.c_str()))
+    {
+      RCLCPP_WARN(
+        logger,
+        "Could not set Basler cam::PixelFormat=%s through pylonsrc",
+        source_format.camera_pixel_format.c_str());
+    }
+    configure_source_dimensions();
     set_child_proxy_string_if_present(source, "cam::ExposureMode", "Timed");
     if (!set_camera_enum_off("cam::ExposureAuto")) {
       RCLCPP_WARN(logger, "Could not set Basler cam::ExposureAuto=Off through pylonsrc");
@@ -646,6 +860,7 @@ struct DeepStreamRuntime::Impl
   {
     const auto fps = read_source_actual_fps();
     source_actual_fps = fps.value_or(static_cast<double>(std::max(1, config.source_fps)));
+    const auto pixel_format = get_child_proxy_string_if_present(source, "cam::PixelFormat");
 
     const auto width = get_child_proxy_numeric_if_present(source, "cam::Width");
     const auto height = get_child_proxy_numeric_if_present(source, "cam::Height");
@@ -658,12 +873,27 @@ struct DeepStreamRuntime::Impl
 
     RCLCPP_INFO(
       logger,
-      "DeepStream Basler source %s: %dx%d @ %.2f FPS (full_sensor=%s)",
+      "DeepStream Basler source %s: %dx%d pixel_format=%s @ %.2f FPS (full_sensor=%s, fps_cap=%s)",
       fps.has_value() ? "reported" : "fallback",
       config.source_width,
       config.source_height,
+      pixel_format.value_or("unknown").c_str(),
       source_actual_fps,
-      config.source_use_full_sensor ? "true" : "false");
+      config.source_use_full_sensor ? "true" : "false",
+      fps_cap_status.c_str());
+    RCLCPP_INFO(
+      logger,
+      "DeepStream Basler caps requested: source='%s' infer_cpu='%s' infer_nvmm='%s' color='%s'",
+      requested_source_caps.c_str(),
+      requested_infer_cpu_caps.c_str(),
+      requested_infer_nvmm_caps.c_str(),
+      requested_color_caps.empty() ? "disabled" : requested_color_caps.c_str());
+    RCLCPP_INFO(
+      logger,
+      "DeepStream Basler caps negotiated: source='%s' infer_nvmm='%s' color='%s'",
+      current_caps_for_pad(source_caps, "src").c_str(),
+      current_caps_for_pad(infer_nvmm_caps, "src").c_str(),
+      color_caps != nullptr ? current_caps_for_pad(color_caps, "src").c_str() : "disabled");
   }
 
   void build_pipeline()
@@ -673,8 +903,12 @@ struct DeepStreamRuntime::Impl
       throw std::runtime_error("Failed to create DeepStream pipeline");
     }
 
+    const auto source_format = resolve_source_format(config.source_pixel_format);
     source = make_element(config.source_element.c_str(), "source");
     source_caps = make_element("capsfilter", "source_caps");
+    if (source_format.needs_bayer_convert) {
+      source_bayer_convert = make_element("bayer2rgb", "source_bayer_convert");
+    }
     source_flip = make_element("videoflip", "source_flip");
     tee = make_element("tee", "tee");
     infer_queue = make_element("queue", "infer_queue");
@@ -714,6 +948,9 @@ struct DeepStreamRuntime::Impl
       infer_post_queue,
       infer_sink_elem,
       nullptr);
+    if (source_bayer_convert != nullptr) {
+      gst_bin_add(GST_BIN(pipeline), source_bayer_convert);
+    }
     if (need_color_branch) {
       gst_bin_add_many(
         GST_BIN(pipeline),
@@ -724,18 +961,19 @@ struct DeepStreamRuntime::Impl
         nullptr);
     }
 
-    // Full-sensor mode must not constrain the source caps; queried dimensions are metadata only.
-    std::optional<int> source_width;
-    std::optional<int> source_height;
-    if (!config.source_use_full_sensor) {
-      source_width = config.source_width;
-      source_height = config.source_height;
-    }
+    const std::optional<int> source_width = positive_dimension(config.source_width);
+    const std::optional<int> source_height = positive_dimension(config.source_height);
+    const std::optional<int> processing_width =
+      config.source_use_full_sensor ? std::nullopt : source_width;
+    const std::optional<int> processing_height =
+      config.source_use_full_sensor ? std::nullopt : source_height;
 
     if (g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr) {
       g_object_set(G_OBJECT(source), "do-timestamp", TRUE, nullptr);
     }
-    configure_basler_source();
+    configure_basler_source(source_format);
+    configure_low_latency_queue(infer_queue);
+    configure_low_latency_queue(infer_post_queue);
 
     bool uncapped_fps_applied = false;
     if (
@@ -743,11 +981,13 @@ struct DeepStreamRuntime::Impl
       set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", false))
     {
       uncapped_fps_applied = true;
+      fps_cap_status = "disabled camera AcquisitionFrameRate limit";
     } else if (config.source_fps_uncapped) {
       RCLCPP_WARN(
         logger,
         "Could not disable Basler AcquisitionFrameRateEnable through pylonsrc; requesting %d FPS through caps instead",
         config.source_fps);
+      fps_cap_status = "uncapped requested, falling back to caps framerate";
     }
 
     std::optional<int> capped_fps;
@@ -762,25 +1002,31 @@ struct DeepStreamRuntime::Impl
           config.source_fps);
       }
       capped_fps = config.source_fps;
+      fps_cap_status = "camera AcquisitionFrameRate cap requested";
     } else if (!uncapped_fps_applied) {
       capped_fps = config.source_fps;
+      fps_cap_status = "caps framerate fallback";
     }
-    const std::string source_caps_text = make_video_caps_text(
-      "video/x-raw", "BGR", source_width, source_height, capped_fps);
-    GstCaps * source_caps_value = gst_caps_from_string(source_caps_text.c_str());
+    requested_source_caps = make_video_caps_text(
+      source_format.media_type,
+      source_format.caps_format,
+      source_width,
+      source_height,
+      capped_fps);
+    GstCaps * source_caps_value = gst_caps_from_string(requested_source_caps.c_str());
     if (source_caps_value == nullptr) {
-      throw std::runtime_error("Failed to create Basler source caps: " + source_caps_text);
+      throw std::runtime_error("Failed to create Basler source caps: " + requested_source_caps);
     }
     g_object_set(G_OBJECT(source_caps), "caps", source_caps_value, nullptr);
     gst_caps_unref(source_caps_value);
     g_object_set(G_OBJECT(source_flip), "method", config.flip_source ? 2 : 0, nullptr);
 
-    const std::string infer_cpu_caps_text = make_video_caps_text(
-      "video/x-raw", "RGBA", source_width, source_height, capped_fps);
-    GstCaps * infer_cpu_caps_value = gst_caps_from_string(infer_cpu_caps_text.c_str());
+    requested_infer_cpu_caps = make_video_caps_text(
+      "video/x-raw", "RGBA", processing_width, processing_height, capped_fps);
+    GstCaps * infer_cpu_caps_value = gst_caps_from_string(requested_infer_cpu_caps.c_str());
     if (infer_cpu_caps_value == nullptr) {
       throw std::runtime_error(
-              "Failed to create DeepStream CPU conversion caps: " + infer_cpu_caps_text);
+              "Failed to create DeepStream CPU conversion caps: " + requested_infer_cpu_caps);
     }
     g_object_set(G_OBJECT(infer_cpu_caps), "caps", infer_cpu_caps_value, nullptr);
     gst_caps_unref(infer_cpu_caps_value);
@@ -789,15 +1035,15 @@ struct DeepStreamRuntime::Impl
       config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_width);
     const std::optional<int> infer_height =
       config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_height);
-    const std::string infer_caps_text = make_video_caps_text(
+    requested_infer_nvmm_caps = make_video_caps_text(
       "video/x-raw(memory:NVMM)",
       "NV12",
       infer_width,
       infer_height,
       capped_fps);
-    GstCaps * infer_caps_value = gst_caps_from_string(infer_caps_text.c_str());
+    GstCaps * infer_caps_value = gst_caps_from_string(requested_infer_nvmm_caps.c_str());
     if (infer_caps_value == nullptr) {
-      throw std::runtime_error("Failed to create DeepStream NVMM caps: " + infer_caps_text);
+      throw std::runtime_error("Failed to create DeepStream NVMM caps: " + requested_infer_nvmm_caps);
     }
     g_object_set(G_OBJECT(infer_nvmm_caps), "caps", infer_caps_value, nullptr);
     gst_caps_unref(infer_caps_value);
@@ -823,11 +1069,12 @@ struct DeepStreamRuntime::Impl
       nullptr);
 
     if (need_color_branch) {
-      const std::string color_caps_text = make_video_caps_text(
-        "video/x-raw", "BGR", source_width, source_height, capped_fps);
-      GstCaps * color_caps_value = gst_caps_from_string(color_caps_text.c_str());
+      configure_low_latency_queue(color_queue);
+      requested_color_caps = make_video_caps_text(
+        "video/x-raw", "BGR", processing_width, processing_height, capped_fps);
+      GstCaps * color_caps_value = gst_caps_from_string(requested_color_caps.c_str());
       if (color_caps_value == nullptr) {
-        throw std::runtime_error("Failed to create DeepStream color caps: " + color_caps_text);
+        throw std::runtime_error("Failed to create DeepStream color caps: " + requested_color_caps);
       }
       g_object_set(G_OBJECT(color_caps), "caps", color_caps_value, nullptr);
       gst_caps_unref(color_caps_value);
@@ -840,8 +1087,14 @@ struct DeepStreamRuntime::Impl
         nullptr);
     }
 
-    if (!gst_element_link_many(source, source_caps, source_flip, tee, nullptr)) {
-      throw std::runtime_error("Failed to link DeepStream source path");
+    const gboolean source_linked = source_bayer_convert != nullptr ?
+      gst_element_link_many(source, source_caps, source_bayer_convert, source_flip, tee, nullptr) :
+      gst_element_link_many(source, source_caps, source_flip, tee, nullptr);
+    if (!source_linked) {
+      throw std::runtime_error(
+              source_bayer_convert != nullptr ?
+              "Failed to link DeepStream Bayer source path" :
+              "Failed to link DeepStream source path");
     }
     if (!gst_element_link_many(
         infer_queue, infer_convert, infer_cpu_caps, infer_nvconvert, infer_nvmm_caps, nullptr))

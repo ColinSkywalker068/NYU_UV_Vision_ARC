@@ -340,13 +340,18 @@ void PerceptionNode::initialize_deepstream_runtime()
   config.task = task_;
   config.imgsz_width = imgsz_width_;
   config.imgsz_height = imgsz_height_;
-  config.source_width = camera_config_.imgsz_width;
-  config.source_height = camera_config_.imgsz_height;
+  config.source_width = camera_config_.basler_use_full_sensor ?
+    camera_config_.basler_source_width :
+    camera_config_.imgsz_width;
+  config.source_height = camera_config_.basler_use_full_sensor ?
+    camera_config_.basler_source_height :
+    camera_config_.imgsz_height;
   config.source_fps = camera_config_.basler_fps;
   config.source_exposure_us = camera_config_.basler_exposure_us;
   config.source_gain_db = camera_config_.basler_gain_db;
   config.source_fps_uncapped = camera_config_.basler_uncapped_fps;
   config.source_use_full_sensor = camera_config_.basler_use_full_sensor;
+  config.source_pixel_format = camera_config_.basler_pixel_format;
   config.flip_source = camera_config_.basler_flip;
   config.conf_threshold = conf_;
   config.half = half_;

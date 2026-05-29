@@ -22,7 +22,7 @@ Goal:
 - Prove new 2D path is stable before adding 3D complexity.
 
 Packages / files to exercise:
-- [`yolo_cpp/launch/stm.launch.py`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/launch/stm.launch.py)
+- [`yolo_cpp/launch/basler.launch.py`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/launch/basler.launch.py)
 - [`yolo_cpp/launch/realsense.launch.py`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/launch/realsense.launch.py)
 - [`yolo_cpp/src/armor_detector_node.cpp`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/src/armor_detector_node.cpp)
 - [`yolo_cpp/src/armor_tracker_node.cpp`](/Users/Kushal/NYU/CV_Detection/yolo_cpp/src/armor_tracker_node.cpp)
@@ -35,7 +35,7 @@ Checklist:
   - `tracker/tracked_armors` publishes stable IDs.
   - `tracker/target` holds target lock across nearby frames.
   - `bounding_box_angles` stays zero when no target exists.
-- Launch `stm.launch.py` and verify:
+- Launch `basler.launch.py` and verify:
   - STM bridge still transmits using `override` and `bounding_box_angles`.
   - `attitude_flags` still updates target color behavior.
   - no-target path yields `override=false` and zero angles.

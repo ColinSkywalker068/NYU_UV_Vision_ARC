@@ -68,7 +68,7 @@
 | 35 | Project | Describe `model_test/` as model and engine assets, not source code. |
 | 36 | Commands | Prefer `uv docker` for container entry in repo-facing docs. |
 | 37 | Commands | Prefer `uv build yolo_cpp` for active stack builds. |
-| 38 | Commands | Prefer `uv run yolo_cpp stm.launch.py` for full stack launch guidance. |
+| 38 | Commands | Prefer `uv run yolo_cpp basler.launch.py` for Basler field stack launch guidance. |
 | 39 | Commands | Prefer `uv run yolo_cpp realsense.launch.py` for RealSense-focused launch guidance. |
 | 40 | Commands | Include native `colcon` commands only when ROS 2 dependencies are assumed. |
 | 41 | Verification | Match commands against `services/uv.sh` and package build files. |
@@ -177,7 +177,7 @@
 |-------------|----------|
 | Wrapper commands | Use `uv` commands when explaining the team workflow. |
 | Native commands | Include native `colcon` commands for ROS-ready environments. |
-| Launch commands | Tie launch guidance to `stm.launch.py`, `realsense.launch.py`, or `zerocopy.launch.py`. |
+| Launch commands | Tie launch guidance to `basler.launch.py`, compatibility alias `stm.launch.py`, `realsense.launch.py`, or `zerocopy.launch.py`. |
 | Test commands | Prefer package-scoped tests for narrow verification. |
 | Formatting commands | Point to pre-commit for repository-wide mechanical checks. |
 | Host context | Say whether a command runs on the host, in the container, or in a ROS-ready shell when that matters. |

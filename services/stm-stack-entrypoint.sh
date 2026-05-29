@@ -69,44 +69,98 @@ model_path() {
   printf '%s' "${CV_STM_MODEL_PATH:-${DEFAULT_MODEL_PATH}}"
 }
 
+launch_profile() {
+  printf '%s' "${CV_STM_LAUNCH_PROFILE:-basler}"
+}
+
+launch_file() {
+  case "$(launch_profile)" in
+    basler) printf '%s' "basler.launch.py" ;;
+    realsense) printf '%s' "realsense.launch.py" ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler or realsense." ;;
+  esac
+}
+
 camera_type() {
-  printf '%s' "${CV_STM_CAMERA_TYPE:-basler}"
+  if [ -n "${CV_STM_CAMERA_TYPE:-}" ]; then
+    printf '%s' "$CV_STM_CAMERA_TYPE"
+    return
+  fi
+  case "$(launch_profile)" in
+    basler) printf '%s' "basler" ;;
+    realsense) printf '%s' "realsense" ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler or realsense." ;;
+  esac
+}
+
+basler_pixel_format() {
+  printf '%s' "${CV_STM_BASLER_PIXEL_FORMAT:-bayer_rggb8}"
+}
+
+is_basler_bayer_format() {
+  case "$(basler_pixel_format)" in
+    bayer*|Bayer*|rggb|Rggb|RGGB|bggr|Bggr|BGGR|grbg|Grbg|GRBG|gbrg|Gbrg|GBRG) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 detector_backend() {
-  printf '%s' "${CV_STM_DETECTOR_BACKEND:-deepstream}"
+  if [ -n "${CV_STM_DETECTOR_BACKEND:-}" ]; then
+    printf '%s' "$CV_STM_DETECTOR_BACKEND"
+    return
+  fi
+  case "$(launch_profile)" in
+    basler) printf '%s' "deepstream" ;;
+    realsense) printf '%s' "native_tensorrt" ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler or realsense." ;;
+  esac
 }
 
 serial_port() {
   printf '%s' "${CV_STM_SERIAL_PORT:-/dev/ttyUSB0}"
 }
 
+serial_required() {
+  if [ -n "${CV_STM_REQUIRE_SERIAL:-}" ]; then
+    printf '%s' "$CV_STM_REQUIRE_SERIAL"
+    return
+  fi
+  case "$(launch_profile)" in
+    basler) printf '%s' "true" ;;
+    realsense) printf '%s' "false" ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler or realsense." ;;
+  esac
+}
+
 run_preflight() {
-  log "Running headless competition preflight"
+  log "Running $(launch_profile) preflight"
   check_ros_package
 
   require_file "$(model_path)"
 
-  if [ "$(detector_backend)" = "deepstream" ]; then
+  if [ "$(launch_profile)" = "basler" ] && [ "$(detector_backend)" = "deepstream" ]; then
     require_command gst-inspect-1.0
     require_gst_element nvstreammux
     require_gst_element nvinfer
     require_gst_element nvvideoconvert
   fi
 
-  if [ "$(camera_type)" = "basler" ]; then
+  if [ "$(launch_profile)" = "basler" ]; then
     require_command gst-inspect-1.0
     require_dir /opt/pylon
     require_gst_element pylonsrc
+    if is_basler_bayer_format; then
+      require_gst_element bayer2rgb
+    fi
   fi
 
-  if is_true "${CV_STM_REQUIRE_SERIAL:-true}"; then
+  if is_true "$(serial_required)"; then
     require_file "$(serial_port)"
   elif [ ! -e "$(serial_port)" ]; then
-    log "Serial path $(serial_port) is missing, but CV_STM_REQUIRE_SERIAL=false"
+    log "Serial path $(serial_port) is missing, but serial is not required for this profile"
   fi
 
-  log "Preflight OK: package, model, camera/inference plugins, and serial prerequisites are ready"
+  log "Preflight OK for $(launch_profile): package, model, camera/inference prerequisites, and profile-specific serial policy are ready"
 }
 
 append_optional_launch_arg() {
@@ -123,21 +177,40 @@ run_launch() {
 
   LAUNCH_ARGS=(
     "show:=${CV_STM_SHOW:-false}"
-    "camera_type:=$(camera_type)"
-    "detector_backend:=$(detector_backend)"
-    "allow_native_tensorrt_fallback:=${CV_STM_ALLOW_NATIVE_TENSORRT_FALLBACK:-false}"
     "debug_publish_image_raw:=${CV_STM_DEBUG_PUBLISH_IMAGE_RAW:-false}"
-    "serial_verbose:=${CV_STM_SERIAL_VERBOSE:-false}"
-    "serial_port:=$(serial_port)"
     "model_path:=$(model_path)"
   )
 
-  append_optional_launch_arg CV_STM_BASLER_EXPOSURE_US basler_exposure_us
-  append_optional_launch_arg CV_STM_BASLER_GAIN_DB basler_gain_db
-  append_optional_launch_arg CV_STM_BASLER_FPS basler_fps
-  append_optional_launch_arg CV_STM_BASLER_UNCAPPED_FPS basler_uncapped_fps
-  append_optional_launch_arg CV_STM_BASLER_USE_FULL_SENSOR basler_use_full_sensor
-  append_optional_launch_arg CV_STM_BASLER_FLIP basler_flip
+  case "$(launch_profile)" in
+    basler)
+      LAUNCH_ARGS+=(
+        "camera_type:=$(camera_type)"
+        "detector_backend:=$(detector_backend)"
+        "allow_native_tensorrt_fallback:=${CV_STM_ALLOW_NATIVE_TENSORRT_FALLBACK:-false}"
+        "serial_verbose:=${CV_STM_SERIAL_VERBOSE:-false}"
+        "serial_port:=$(serial_port)"
+      )
+      append_optional_launch_arg CV_STM_BASLER_EXPOSURE_US basler_exposure_us
+      append_optional_launch_arg CV_STM_BASLER_GAIN_DB basler_gain_db
+      append_optional_launch_arg CV_STM_BASLER_FPS basler_fps
+      append_optional_launch_arg CV_STM_BASLER_UNCAPPED_FPS basler_uncapped_fps
+      append_optional_launch_arg CV_STM_BASLER_PIXEL_FORMAT basler_pixel_format
+      append_optional_launch_arg CV_STM_BASLER_SOURCE_WIDTH basler_source_width
+      append_optional_launch_arg CV_STM_BASLER_SOURCE_HEIGHT basler_source_height
+      append_optional_launch_arg CV_STM_BASLER_USE_FULL_SENSOR basler_use_full_sensor
+      append_optional_launch_arg CV_STM_BASLER_FLIP basler_flip
+      ;;
+    realsense)
+      append_optional_launch_arg CV_STM_REALSENSE_WIDTH rs_width
+      append_optional_launch_arg CV_STM_REALSENSE_HEIGHT rs_height
+      append_optional_launch_arg CV_STM_REALSENSE_FPS rs_fps
+      append_optional_launch_arg CV_STM_REALSENSE_EXPOSURE rs_exposure
+      append_optional_launch_arg CV_STM_REALSENSE_AUTO_EXPOSURE rs_auto_exposure
+      append_optional_launch_arg CV_STM_REALSENSE_USE_POLL rs_use_poll
+      append_optional_launch_arg CV_STM_REALSENSE_USE_MAX_NATIVE_FPS rs_use_max_native_fps
+      ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler or realsense." ;;
+  esac
 
   if [ -n "${CV_STM_EXTRA_LAUNCH_ARGS:-}" ]; then
     local -a extra_args=()
@@ -145,8 +218,8 @@ run_launch() {
     LAUNCH_ARGS+=("${extra_args[@]}")
   fi
 
-  log "Launching yolo_cpp stm.launch.py in competition mode"
-  exec ros2 launch yolo_cpp stm.launch.py "${LAUNCH_ARGS[@]}"
+  log "Launching yolo_cpp $(launch_file) with profile $(launch_profile)"
+  exec ros2 launch yolo_cpp "$(launch_file)" "${LAUNCH_ARGS[@]}"
 }
 
 graph_has_line() {
@@ -158,10 +231,19 @@ graph_has_line() {
 check_graph_once() {
   local report="${1:-false}"
   local nodes topics missing=0
+  local -a expected_nodes=(
+    /armor_detector_node
+    /armor_tracker_node
+    /armor_processor_node
+    /aim_solver_node
+  )
+  if [ "$(launch_profile)" != "realsense" ]; then
+    expected_nodes+=(/stm32_serial_bridge_node)
+  fi
   nodes="$(ros2 node list 2>/dev/null || true)"
   topics="$(ros2 topic list 2>/dev/null || true)"
 
-  for node in /armor_detector_node /armor_tracker_node /armor_processor_node /aim_solver_node /stm32_serial_bridge_node; do
+  for node in "${expected_nodes[@]}"; do
     if ! graph_has_line "$nodes" "$node"; then
       [ "$report" = "true" ] && printf '[stm-stack] missing node: %s\n' "$node" >&2
       missing=1
@@ -185,7 +267,7 @@ run_health() {
 
   while true; do
     if check_graph_once false; then
-      log "Health OK: expected STM stack nodes and topics are present"
+      log "Health OK: expected $(launch_profile) nodes and topics are present"
       return
     fi
 
@@ -201,9 +283,11 @@ usage() {
   cat <<'EOF'
 Usage: stm-stack-entrypoint.sh [run|preflight|health]
 
-run       Validate prerequisites, then exec ros2 launch yolo_cpp stm.launch.py.
+run       Validate prerequisites, then exec the selected launch profile.
 preflight Validate package, model, plugin, camera, and serial prerequisites only.
-health    Validate the live ROS graph for the expected STM stack nodes and topics.
+health    Validate the live ROS graph for the selected profile.
+
+CV_STM_LAUNCH_PROFILE defaults to basler. Supported profiles: basler, realsense.
 EOF
 }
 
