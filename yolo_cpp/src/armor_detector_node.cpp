@@ -158,6 +158,9 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<std::string>("preview_target_topic", "tracker/target");
   this->declare_parameter<bool>("debug_publish_image_raw", false);
   this->declare_parameter<bool>("save_target_frames", false);
+  this->declare_parameter<bool>("pre_mux_resize", false);
+  this->declare_parameter<int>("pre_mux_width", 0);
+  this->declare_parameter<int>("pre_mux_height", 0);
   this->declare_parameter<std::string>("target_frame_save_dir", "");
   this->declare_parameter<int>("target_frame_save_max", 100);
   this->declare_parameter<int>("target_frame_jpeg_quality", 85);
@@ -203,6 +206,9 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   preview_target_topic_ = this->get_parameter("preview_target_topic").as_string();
   debug_publish_image_raw_ = this->get_parameter("debug_publish_image_raw").as_bool();
   save_target_frames_ = this->get_parameter("save_target_frames").as_bool();
+  pre_mux_resize_ = this->get_parameter("pre_mux_resize").as_bool();
+  pre_mux_width_ = this->get_parameter("pre_mux_width").as_int();
+  pre_mux_height_ = this->get_parameter("pre_mux_height").as_int();
   target_frame_save_dir_ = this->get_parameter("target_frame_save_dir").as_string();
   target_frame_save_max_ =
     std::max(0, static_cast<int>(this->get_parameter("target_frame_save_max").as_int()));
@@ -511,16 +517,21 @@ void ArmorDetectorNode::initialize_deepstream_runtime()
   config.task = task_;
   config.imgsz_width = imgsz_width_;
   config.imgsz_height = imgsz_height_;
-  config.source_width = basler_output_width(camera_config_);
-  config.source_height = basler_output_height(camera_config_);
+  config.source_width = camera_config_.basler_use_full_sensor ?
+    camera_config_.basler_source_width :
+    imgsz_width_;
+  config.source_height = camera_config_.basler_use_full_sensor ?
+    camera_config_.basler_source_height :
+    imgsz_height_;
   config.source_fps = camera_config_.basler_fps;
   config.source_exposure_us = camera_config_.basler_exposure_us;
   config.source_gain_db = camera_config_.basler_gain_db;
   config.source_fps_uncapped = camera_config_.basler_uncapped_fps;
   config.source_use_full_sensor = camera_config_.basler_use_full_sensor;
-  config.source_binning_x = camera_config_.basler_binning_x;
-  config.source_binning_y = camera_config_.basler_binning_y;
   config.source_pixel_format = camera_config_.basler_pixel_format;
+  config.pre_mux_resize = pre_mux_resize_;
+  config.pre_mux_width = pre_mux_width_;
+  config.pre_mux_height = pre_mux_height_;
   config.flip_source = camera_config_.basler_flip;
   config.conf_threshold = conf_;
   config.half = half_;

@@ -29,8 +29,6 @@ struct CameraConfig
   std::string basler_pixel_format{"bayer_rggb8"};
   int basler_source_width{1920};
   int basler_source_height{1200};
-  int basler_binning_x{1};
-  int basler_binning_y{1};
   bool basler_flip{false};
   bool basler_use_full_sensor{true};
   bool basler_centered_roi{true};
@@ -74,12 +72,6 @@ public:
 /// Create the configured camera backend.
 std::shared_ptr<CameraBackend> create_camera_backend(
   const CameraConfig & config, const rclcpp::Logger & logger);
-
-/// Return the Basler output width after full-sensor binning or ROI selection.
-int basler_output_width(const CameraConfig & config);
-
-/// Return the Basler output height after full-sensor binning or ROI selection.
-int basler_output_height(const CameraConfig & config);
 
 /// Load camera-related ROS parameters from a node into CameraConfig.
 CameraConfig load_camera_config(rclcpp::Node & node);

@@ -94,15 +94,20 @@ def generate_launch_description() -> LaunchDescription:
         default_value="1200",
         description="Basler source/camera height used when basler_use_full_sensor is true",
     )
-    basler_binning_x_arg = DeclareLaunchArgument(
-        "basler_binning_x",
-        default_value="1",
-        description="Basler horizontal sensor binning factor; 2 keeps full FOV at half width",
+    pre_mux_resize_arg = DeclareLaunchArgument(
+        "pre_mux_resize",
+        default_value="false",
+        description="Resize full-FOV Basler frames before nvstreammux pads them to the model input",
     )
-    basler_binning_y_arg = DeclareLaunchArgument(
-        "basler_binning_y",
-        default_value="1",
-        description="Basler vertical sensor binning factor; 2 keeps full FOV at half height",
+    pre_mux_width_arg = DeclareLaunchArgument(
+        "pre_mux_width",
+        default_value="0",
+        description="Optional pre-mux resize bounding width; 0 uses the model width",
+    )
+    pre_mux_height_arg = DeclareLaunchArgument(
+        "pre_mux_height",
+        default_value="0",
+        description="Optional pre-mux resize bounding height; 0 uses the model height",
     )
     basler_exposure_arg = DeclareLaunchArgument(
         "basler_exposure_us",
@@ -362,8 +367,9 @@ def generate_launch_description() -> LaunchDescription:
                 "basler_pixel_format": LaunchConfiguration("basler_pixel_format"),
                 "basler_source_width": LaunchConfiguration("basler_source_width"),
                 "basler_source_height": LaunchConfiguration("basler_source_height"),
-                "basler_binning_x": LaunchConfiguration("basler_binning_x"),
-                "basler_binning_y": LaunchConfiguration("basler_binning_y"),
+                "pre_mux_resize": LaunchConfiguration("pre_mux_resize"),
+                "pre_mux_width": LaunchConfiguration("pre_mux_width"),
+                "pre_mux_height": LaunchConfiguration("pre_mux_height"),
                 "basler_exposure_us": LaunchConfiguration("basler_exposure_us"),
                 "basler_gain_db": LaunchConfiguration("basler_gain_db"),
                 "basler_flip": LaunchConfiguration("basler_flip"),
@@ -512,8 +518,9 @@ def generate_launch_description() -> LaunchDescription:
             basler_pixel_format_arg,
             basler_source_width_arg,
             basler_source_height_arg,
-            basler_binning_x_arg,
-            basler_binning_y_arg,
+            pre_mux_resize_arg,
+            pre_mux_width_arg,
+            pre_mux_height_arg,
             basler_exposure_arg,
             basler_gain_arg,
             basler_flip_arg,

@@ -12,6 +12,7 @@
 #include <atomic>
 #include <chrono>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -103,11 +104,6 @@ std::optional<int> positive_dimension(int value)
   return std::nullopt;
 }
 
-int positive_or_one(int value)
-{
-  return std::max(1, value);
-}
-
 std::string normalize_format_token(std::string value)
 {
   value.erase(
@@ -119,6 +115,54 @@ std::string normalize_format_token(std::string value)
     return static_cast<char>(std::tolower(ch));
   });
   return value;
+}
+
+int even_dimension(int value)
+{
+  value = std::max(2, value);
+  if ((value % 2) != 0) {
+    --value;
+  }
+  return std::max(2, value);
+}
+
+std::optional<std::pair<int, int>> resolve_pre_mux_resize(
+  const DeepStreamRuntime::Config & config)
+{
+  if (!config.pre_mux_resize) {
+    return std::nullopt;
+  }
+
+  const int source_width = positive_dimension(config.source_width).value_or(config.imgsz_width);
+  const int source_height = positive_dimension(config.source_height).value_or(config.imgsz_height);
+  if (source_width <= 0 || source_height <= 0) {
+    return std::nullopt;
+  }
+
+  int box_width = config.pre_mux_width > 0 ? config.pre_mux_width : config.imgsz_width;
+  int box_height = config.pre_mux_height > 0 ? config.pre_mux_height : config.imgsz_height;
+  if (config.pre_mux_width > 0 && config.pre_mux_height <= 0) {
+    box_height = static_cast<int>(
+      std::lround(static_cast<double>(source_height) * box_width / source_width));
+  } else if (config.pre_mux_height > 0 && config.pre_mux_width <= 0) {
+    box_width = static_cast<int>(
+      std::lround(static_cast<double>(source_width) * box_height / source_height));
+  }
+
+  box_width = even_dimension(box_width);
+  box_height = even_dimension(box_height);
+  const double scale = std::min(
+    static_cast<double>(box_width) / source_width,
+    static_cast<double>(box_height) / source_height);
+  if (scale <= 0.0) {
+    return std::nullopt;
+  }
+
+  const int width = std::min(box_width, even_dimension(static_cast<int>(std::lround(
+    source_width * scale))));
+  const int height = std::min(box_height, even_dimension(static_cast<int>(std::lround(
+    source_height * scale))));
+  return std::make_pair(width, height);
 }
 
 struct SourceFormatSpec
@@ -865,17 +909,6 @@ struct DeepStreamRuntime::Impl
       "Configuring Basler source format/size/framerate through caps: %s",
       source_format.label.c_str());
     set_child_proxy_string_if_present(source, "cam::ExposureMode", "Timed");
-    set_child_proxy_string_if_present(source, "cam::BinningSelector", "All");
-    const bool set_binning_x = set_child_proxy_double_if_present(
-      source, "cam::BinningHorizontal", positive_or_one(config.source_binning_x));
-    const bool set_binning_y = set_child_proxy_double_if_present(
-      source, "cam::BinningVertical", positive_or_one(config.source_binning_y));
-    if (positive_or_one(config.source_binning_x) > 1 && !set_binning_x) {
-      throw std::runtime_error("Could not set Basler cam::BinningHorizontal through pylonsrc");
-    }
-    if (positive_or_one(config.source_binning_y) > 1 && !set_binning_y) {
-      throw std::runtime_error("Could not set Basler cam::BinningVertical through pylonsrc");
-    }
     if (!set_camera_enum_off("cam::ExposureAuto")) {
       RCLCPP_WARN(logger, "Could not set Basler cam::ExposureAuto=Off through pylonsrc");
     }
@@ -926,8 +959,6 @@ struct DeepStreamRuntime::Impl
     const auto fps = read_source_actual_fps();
     source_actual_fps = fps.value_or(static_cast<double>(std::max(1, config.source_fps)));
     const auto pixel_format = get_child_proxy_string_if_present(source, "cam::PixelFormat");
-    const auto binning_x = get_child_proxy_numeric_if_present(source, "cam::BinningHorizontal");
-    const auto binning_y = get_child_proxy_numeric_if_present(source, "cam::BinningVertical");
 
     const auto width = get_child_proxy_numeric_if_present(source, "cam::Width");
     const auto height = get_child_proxy_numeric_if_present(source, "cam::Height");
@@ -940,16 +971,15 @@ struct DeepStreamRuntime::Impl
 
     RCLCPP_INFO(
       logger,
-      "DeepStream Basler source %s: %dx%d pixel_format=%s binning=%dx%d @ %.2f FPS "
-      "(full_sensor=%s, fps_cap=%s)",
+      "DeepStream Basler source %s: %dx%d pixel_format=%s @ %.2f FPS "
+      "(full_sensor=%s, pre_mux_resize=%s, fps_cap=%s)",
       fps.has_value() ? "reported" : "fallback",
       config.source_width,
       config.source_height,
       pixel_format.value_or("unknown").c_str(),
-      static_cast<int>(binning_x.value_or(positive_or_one(config.source_binning_x))),
-      static_cast<int>(binning_y.value_or(positive_or_one(config.source_binning_y))),
       source_actual_fps,
       config.source_use_full_sensor ? "true" : "false",
+      config.pre_mux_resize ? "true" : "false",
       fps_cap_status.c_str());
     RCLCPP_INFO(
       logger,
@@ -1037,6 +1067,7 @@ struct DeepStreamRuntime::Impl
       config.source_use_full_sensor ? std::nullopt : source_width;
     const std::optional<int> processing_height =
       config.source_use_full_sensor ? std::nullopt : source_height;
+    const auto pre_mux_resize = resolve_pre_mux_resize(config);
 
     if (g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr) {
       g_object_set(G_OBJECT(source), "do-timestamp", TRUE, nullptr);
@@ -1101,10 +1132,12 @@ struct DeepStreamRuntime::Impl
     g_object_set(G_OBJECT(infer_cpu_caps), "caps", infer_cpu_caps_value, nullptr);
     gst_caps_unref(infer_cpu_caps_value);
 
-    const std::optional<int> infer_width =
-      config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_width);
-    const std::optional<int> infer_height =
-      config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_height);
+    const std::optional<int> infer_width = pre_mux_resize.has_value() ?
+      std::optional<int>(pre_mux_resize->first) :
+      (config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_width));
+    const std::optional<int> infer_height = pre_mux_resize.has_value() ?
+      std::optional<int>(pre_mux_resize->second) :
+      (config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_height));
     requested_infer_nvmm_caps = make_video_caps_text(
       "video/x-raw(memory:NVMM)",
       "NV12",
@@ -1566,14 +1599,20 @@ struct DeepStreamRuntime::Impl
         }
       }
 
-      const int src_w = result.source_packet.has_value() && !result.source_packet->empty() ?
+      const bool have_source_packet =
+        result.source_packet.has_value() && !result.source_packet->empty();
+      const int frame_meta_source_width = frame_meta->source_frame_width > 0 ?
+        static_cast<int>(frame_meta->source_frame_width) :
+        config.source_width;
+      const int frame_meta_source_height = frame_meta->source_frame_height > 0 ?
+        static_cast<int>(frame_meta->source_frame_height) :
+        config.source_height;
+      const int src_w = have_source_packet ?
         result.source_packet->width() :
-        (frame_meta->source_frame_width > 0 ?
-        static_cast<int>(frame_meta->source_frame_width) : config.source_width);
-      const int src_h = result.source_packet.has_value() && !result.source_packet->empty() ?
+        (config.pre_mux_resize ? config.source_width : frame_meta_source_width);
+      const int src_h = have_source_packet ?
         result.source_packet->height() :
-        (frame_meta->source_frame_height > 0 ?
-        static_cast<int>(frame_meta->source_frame_height) : config.source_height);
+        (config.pre_mux_resize ? config.source_height : frame_meta_source_height);
       result.batch.letterbox = make_letterbox_metadata(
         src_w, src_h, config.imgsz_width, config.imgsz_height);
       result.batch.detections = parse_yolo_output_tensor(

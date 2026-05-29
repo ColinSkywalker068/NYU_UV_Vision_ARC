@@ -36,11 +36,13 @@ Use the benchmark harness on the Jetson AGX Orin when camera FPS and model FPS n
 
 The harness uses the STM model path by default, or `CV_STM_MODEL_PATH` when set. `inference` mode runs the same TensorRT engine on synthetic frames without a camera, `camera` mode pulls frames through `CameraBackend` without inference, and `deepstream` mode measures the Basler + DeepStream result cadence.
 
-For full-FOV Basler downsampling tests, prefer sensor binning over ROI:
+For full-FOV Basler downsampling tests, use the DeepStream pre-mux resize switch. This keeps the camera at 1920x1200 full FOV, resizes to the model-aspect box before `nvstreammux`, then lets `nvstreammux` pad to 640x640:
 
 ```bash
-./services/fps-benchmark.sh --mode deepstream --duration 10 --warmup 2 --basler-binning 2
+./services/fps-benchmark.sh --mode deepstream --duration 10 --warmup 2 --pre-mux-resize true
 ```
+
+The observed `a2A1920-160ucBAS` / serial `41923000` GenICam node map did not expose `BinningSelector`, `BinningHorizontal`, `BinningVertical`, `BinningHorizontalMode`, `BinningVerticalMode`, `DecimationHorizontal`, `DecimationVertical`, `DecimationHorizontalMode`, `DecimationVerticalMode`, `ScalingHorizontal`, or `ScalingVertical`. It did expose writable `PixelFormat`, `Width`, `Height`, `OffsetX`, and `OffsetY`; those size controls are ROI/crop controls, not full-FOV binning.
 
 ## Related Repo Docs
 

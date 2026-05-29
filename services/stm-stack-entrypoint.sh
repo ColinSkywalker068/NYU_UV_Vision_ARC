@@ -217,15 +217,6 @@ append_optional_launch_arg() {
   fi
 }
 
-append_basler_binning_args() {
-  if [ -n "${CV_STM_BASLER_BINNING_X:-}" ] || [ -n "${CV_STM_BASLER_BINNING:-}" ]; then
-    LAUNCH_ARGS+=("basler_binning_x:=${CV_STM_BASLER_BINNING_X:-${CV_STM_BASLER_BINNING}}")
-  fi
-  if [ -n "${CV_STM_BASLER_BINNING_Y:-}" ] || [ -n "${CV_STM_BASLER_BINNING:-}" ]; then
-    LAUNCH_ARGS+=("basler_binning_y:=${CV_STM_BASLER_BINNING_Y:-${CV_STM_BASLER_BINNING}}")
-  fi
-}
-
 run_launch() {
   run_preflight
 
@@ -258,7 +249,9 @@ run_launch() {
       append_optional_launch_arg CV_STM_BASLER_PIXEL_FORMAT basler_pixel_format
       append_optional_launch_arg CV_STM_BASLER_SOURCE_WIDTH basler_source_width
       append_optional_launch_arg CV_STM_BASLER_SOURCE_HEIGHT basler_source_height
-      append_basler_binning_args
+      append_optional_launch_arg CV_STM_DEEPSTREAM_PRE_MUX_RESIZE pre_mux_resize
+      append_optional_launch_arg CV_STM_DEEPSTREAM_PRE_MUX_WIDTH pre_mux_width
+      append_optional_launch_arg CV_STM_DEEPSTREAM_PRE_MUX_HEIGHT pre_mux_height
       append_optional_launch_arg CV_STM_BASLER_USE_FULL_SENSOR basler_use_full_sensor
       append_optional_launch_arg CV_STM_BASLER_FLIP basler_flip
       ;;

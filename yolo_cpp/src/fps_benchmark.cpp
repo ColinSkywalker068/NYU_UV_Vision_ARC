@@ -32,11 +32,6 @@
 #include <utility>
 #include <vector>
 
-#ifdef HAVE_PYLON
-#include <GenApi/GenApi.h>
-#include <pylon/PylonIncludes.h>
-#endif
-
 namespace
 {
 
@@ -62,6 +57,9 @@ struct Options
   std::string model_type{"yolo"};
   bool half{true};
   float conf_threshold{0.30F};
+  bool pre_mux_resize{false};
+  int pre_mux_width{0};
+  int pre_mux_height{0};
 
   yolo_cpp::CameraConfig camera;
 };
@@ -82,14 +80,6 @@ struct BenchmarkResult
   double duration_s{0.0};
   std::string note;
 };
-
-#ifdef HAVE_PYLON
-struct PylonLifecycle
-{
-  PylonLifecycle() {Pylon::PylonInitialize();}
-  ~PylonLifecycle() {Pylon::PylonTerminate();}
-};
-#endif
 
 struct CameraReleaseGuard
 {
@@ -218,6 +208,15 @@ Options default_options_from_env()
   if (const auto conf = getenv_double("CV_FPS_BENCH_CONF")) {
     options.conf_threshold = static_cast<float>(*conf);
   }
+  if (const auto value = getenv_bool("CV_STM_DEEPSTREAM_PRE_MUX_RESIZE")) {
+    options.pre_mux_resize = *value;
+  }
+  if (const auto value = getenv_int("CV_STM_DEEPSTREAM_PRE_MUX_WIDTH")) {
+    options.pre_mux_width = *value;
+  }
+  if (const auto value = getenv_int("CV_STM_DEEPSTREAM_PRE_MUX_HEIGHT")) {
+    options.pre_mux_height = *value;
+  }
 
   if (const auto value = getenv_int("CV_STM_BASLER_FPS")) {
     options.camera.basler_fps = *value;
@@ -233,16 +232,6 @@ Options default_options_from_env()
   }
   if (const auto value = getenv_int("CV_STM_BASLER_SOURCE_HEIGHT")) {
     options.camera.basler_source_height = *value;
-  }
-  if (const auto value = getenv_int("CV_STM_BASLER_BINNING")) {
-    options.camera.basler_binning_x = *value;
-    options.camera.basler_binning_y = *value;
-  }
-  if (const auto value = getenv_int("CV_STM_BASLER_BINNING_X")) {
-    options.camera.basler_binning_x = *value;
-  }
-  if (const auto value = getenv_int("CV_STM_BASLER_BINNING_Y")) {
-    options.camera.basler_binning_y = *value;
   }
   if (const auto value = getenv_double("CV_STM_BASLER_EXPOSURE_US")) {
     options.camera.basler_exposure_us = *value;
@@ -302,7 +291,6 @@ void print_usage(const char * program)
     << "  --mode inference               Synthetic BGR frames through NativeTensorRTBackend\n"
     << "  --mode camera                  CameraBackend capture only, no model\n"
     << "  --mode deepstream              Basler + DeepStream runtime result cadence\n\n"
-    << "  --mode basler_features         Print writable Basler GenICam feature nodes\n\n"
     << "Common options:\n"
     << "  --duration SEC                 Measured seconds per mode (default: 10)\n"
     << "  --warmup SEC                   Warmup seconds before measuring (default: 2)\n"
@@ -314,6 +302,9 @@ void print_usage(const char * program)
     << "  --imgsz-height N               Model input height (default: 640)\n"
     << "  --conf FLOAT                   Confidence threshold (default: 0.30)\n"
     << "  --half BOOL                    Use FP16 network mode where supported (default: true)\n\n"
+    << "  --pre-mux-resize BOOL          Resize to model aspect box before nvstreammux\n"
+    << "  --pre-mux-width N              Optional pre-mux resize bounding width (default: model width)\n"
+    << "  --pre-mux-height N             Optional pre-mux resize bounding height (default: model height)\n\n"
     << "Camera options mirror STM env defaults:\n"
     << "  --camera-type basler|realsense\n"
     << "  --basler-fps N                 Requested cap/fallback FPS (default: 90)\n"
@@ -321,9 +312,6 @@ void print_usage(const char * program)
     << "  --basler-pixel-format VALUE    bayer_rggb8, yuy2, mono8, bgr8, rgb8\n"
     << "  --basler-source-width N        Full-sensor width (default: 1920)\n"
     << "  --basler-source-height N       Full-sensor height (default: 1200)\n"
-    << "  --basler-binning N             Full-FOV sensor binning, e.g. 2 -> 960x600\n"
-    << "  --basler-binning-x N           Horizontal binning factor (default: 1)\n"
-    << "  --basler-binning-y N           Vertical binning factor (default: 1)\n"
     << "  --basler-exposure-us FLOAT     Exposure in microseconds (default: 5000)\n"
     << "  --basler-gain-db FLOAT         Gain in dB (default: 5)\n"
     << "  --basler-use-full-sensor BOOL  Use full sensor instead of 640x640 ROI (default: true)\n"
@@ -365,6 +353,12 @@ Options parse_args(int argc, char ** argv)
       options.conf_threshold = static_cast<float>(std::stof(require_arg_value(argc, argv, i)));
     } else if (arg == "--half") {
       options.half = parse_bool_value(require_arg_value(argc, argv, i));
+    } else if (arg == "--pre-mux-resize") {
+      options.pre_mux_resize = parse_bool_value(require_arg_value(argc, argv, i));
+    } else if (arg == "--pre-mux-width") {
+      options.pre_mux_width = std::stoi(require_arg_value(argc, argv, i));
+    } else if (arg == "--pre-mux-height") {
+      options.pre_mux_height = std::stoi(require_arg_value(argc, argv, i));
     } else if (arg == "--camera-type") {
       options.camera.camera_type = require_arg_value(argc, argv, i);
     } else if (arg == "--basler-fps") {
@@ -377,14 +371,6 @@ Options parse_args(int argc, char ** argv)
       options.camera.basler_source_width = std::stoi(require_arg_value(argc, argv, i));
     } else if (arg == "--basler-source-height") {
       options.camera.basler_source_height = std::stoi(require_arg_value(argc, argv, i));
-    } else if (arg == "--basler-binning") {
-      const int binning = std::stoi(require_arg_value(argc, argv, i));
-      options.camera.basler_binning_x = binning;
-      options.camera.basler_binning_y = binning;
-    } else if (arg == "--basler-binning-x") {
-      options.camera.basler_binning_x = std::stoi(require_arg_value(argc, argv, i));
-    } else if (arg == "--basler-binning-y") {
-      options.camera.basler_binning_y = std::stoi(require_arg_value(argc, argv, i));
     } else if (arg == "--basler-exposure-us") {
       options.camera.basler_exposure_us = std::stod(require_arg_value(argc, argv, i));
     } else if (arg == "--basler-gain-db") {
@@ -415,8 +401,8 @@ Options parse_args(int argc, char ** argv)
   if (options.camera.imgsz_width <= 0 || options.camera.imgsz_height <= 0) {
     throw std::invalid_argument("--imgsz-width and --imgsz-height must be positive");
   }
-  options.camera.basler_binning_x = std::max(1, options.camera.basler_binning_x);
-  options.camera.basler_binning_y = std::max(1, options.camera.basler_binning_y);
+  options.pre_mux_width = std::max(0, options.pre_mux_width);
+  options.pre_mux_height = std::max(0, options.pre_mux_height);
   return options;
 }
 
@@ -439,95 +425,6 @@ std::vector<std::string> split_modes(const std::string & mode)
   }
   return modes;
 }
-
-#ifdef HAVE_PYLON
-std::string access_text(GenApi::INode * node)
-{
-  if (node == nullptr || !GenApi::IsAvailable(node)) {
-    return "absent";
-  }
-  std::string access = GenApi::IsReadable(node) ? "read" : "no-read";
-  access += GenApi::IsWritable(node) ? "/write" : "/no-write";
-  return access;
-}
-
-void print_genicam_node(GenApi::INodeMap & node_map, const char * name)
-{
-  GenApi::INode * raw_node = node_map.GetNode(name);
-  std::cout << "  " << name << ": " << access_text(raw_node);
-  if (raw_node == nullptr || !GenApi::IsAvailable(raw_node) || !GenApi::IsReadable(raw_node)) {
-    std::cout << '\n';
-    return;
-  }
-
-  try {
-    if (GenApi::CEnumerationPtr node(raw_node); node) {
-      std::cout << " value=" << node->ToString();
-    } else if (GenApi::CIntegerPtr node(raw_node); node) {
-      std::cout << " value=" << node->GetValue()
-                << " min=" << node->GetMin()
-                << " max=" << node->GetMax()
-                << " inc=" << node->GetInc();
-    } else if (GenApi::CFloatPtr node(raw_node); node) {
-      std::cout << " value=" << node->GetValue()
-                << " min=" << node->GetMin()
-                << " max=" << node->GetMax();
-    } else if (GenApi::CBooleanPtr node(raw_node); node) {
-      std::cout << " value=" << (node->GetValue() ? "true" : "false");
-    } else if (GenApi::CStringPtr node(raw_node); node) {
-      std::cout << " value=" << node->GetValue();
-    }
-  } catch (const std::exception & exc) {
-    std::cout << " read_error='" << exc.what() << "'";
-  } catch (...) {
-    std::cout << " read_error='non-standard exception'";
-  }
-  std::cout << '\n';
-}
-
-bool try_set_enum(GenApi::INodeMap & node_map, const char * name, const char * value)
-{
-  GenApi::CEnumerationPtr node(node_map.GetNode(name));
-  if (!node || !GenApi::IsWritable(node)) {
-    return false;
-  }
-  GenApi::CEnumEntryPtr entry(node->GetEntryByName(value));
-  if (!entry || !GenApi::IsReadable(entry)) {
-    return false;
-  }
-  node->SetIntValue(entry->GetValue());
-  return true;
-}
-
-bool try_set_integer(GenApi::INodeMap & node_map, const char * name, int value)
-{
-  GenApi::CIntegerPtr node(node_map.GetNode(name));
-  if (!node || !GenApi::IsWritable(node)) {
-    return false;
-  }
-  const int64_t min_value = node->GetMin();
-  const int64_t max_value = node->GetMax();
-  const int64_t inc = std::max<int64_t>(1, node->GetInc());
-  int64_t clamped = std::max<int64_t>(min_value, std::min<int64_t>(max_value, value));
-  if (inc > 1) {
-    clamped = min_value + (((clamped - min_value) / inc) * inc);
-  }
-  node->SetValue(clamped);
-  return true;
-}
-
-bool try_set_binning_pair(
-  GenApi::INodeMap & node_map,
-  int binning_x,
-  int binning_y)
-{
-  const bool set_x = binning_x <= 1 ||
-    try_set_integer(node_map, "BinningHorizontal", binning_x);
-  const bool set_y = binning_y <= 1 ||
-    try_set_integer(node_map, "BinningVertical", binning_y);
-  return set_x && set_y;
-}
-#endif
 
 double elapsed_seconds(Clock::time_point start, Clock::time_point end)
 {
@@ -650,7 +547,7 @@ std::pair<int, int> synthetic_frame_size(const Options & options)
     return {options.camera.realsense_width, options.camera.realsense_height};
   }
   if (options.camera.basler_use_full_sensor) {
-    return {basler_output_width(options.camera), basler_output_height(options.camera)};
+    return {options.camera.basler_source_width, options.camera.basler_source_height};
   }
   return {options.camera.imgsz_width, options.camera.imgsz_height};
 }
@@ -694,12 +591,12 @@ void print_header(const Options & options)
     << " camera=" << options.camera.camera_type
     << " basler_source=" << options.camera.basler_source_width << 'x'
     << options.camera.basler_source_height
-    << " basler_binning=" << options.camera.basler_binning_x << 'x'
-    << options.camera.basler_binning_y
     << " basler_fps=" << options.camera.basler_fps
     << " basler_uncapped=" << (options.camera.basler_uncapped_fps ? "true" : "false")
     << " basler_pixel_format=" << options.camera.basler_pixel_format
     << " basler_exposure_us=" << options.camera.basler_exposure_us
+    << " pre_mux_resize=" << (options.pre_mux_resize ? "true" : "false")
+    << " pre_mux_box=" << options.pre_mux_width << 'x' << options.pre_mux_height
     << '\n';
 }
 
@@ -754,84 +651,6 @@ BenchmarkResult run_inference_mode(
   write_csv(options.csv_path, "inference", samples, csv_append);
 
   return BenchmarkResult{"inference", true, fps, samples.size(), measured_s, ""};
-}
-
-BenchmarkResult run_basler_features_mode(const Options & options)
-{
-  std::cout << "\n[basler_features] Basler GenICam feature probe\n";
-#ifndef HAVE_PYLON
-  throw std::runtime_error("Basler feature probe unavailable: build missing Pylon SDK");
-#else
-  PylonLifecycle pylon;
-  Pylon::CInstantCamera camera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
-  camera.Open();
-
-  std::cout << "[basler_features] model=" << camera.GetDeviceInfo().GetModelName()
-            << " serial=" << camera.GetDeviceInfo().GetSerialNumber() << '\n';
-  auto & node_map = camera.GetNodeMap();
-  const std::vector<const char *> nodes{
-    "BinningSelector",
-    "BinningHorizontal",
-    "BinningVertical",
-    "BinningHorizontalMode",
-    "BinningVerticalMode",
-    "DecimationHorizontal",
-    "DecimationVertical",
-    "DecimationHorizontalMode",
-    "DecimationVerticalMode",
-    "ScalingHorizontal",
-    "ScalingVertical",
-    "PixelFormat",
-    "Width",
-    "Height",
-    "OffsetX",
-    "OffsetY",
-    "SensorWidth",
-    "SensorHeight",
-    "WidthMax",
-    "HeightMax"};
-
-  std::cout << "[basler_features] current nodes:\n";
-  for (const auto * name : nodes) {
-    print_genicam_node(node_map, name);
-  }
-
-  const int requested_x = std::max(1, options.camera.basler_binning_x);
-  const int requested_y = std::max(1, options.camera.basler_binning_y);
-  if (requested_x > 1 || requested_y > 1) {
-    std::cout << "[basler_features] trying binning=" << requested_x << 'x' << requested_y
-              << '\n';
-    bool did_set = false;
-    try {
-      did_set = try_set_binning_pair(node_map, requested_x, requested_y);
-      std::cout << "  default selector: " << (did_set ? "set" : "not writable") << '\n';
-    } catch (const std::exception & exc) {
-      std::cout << "  default selector error: " << exc.what() << '\n';
-    }
-
-    for (const char * selector : {"Sensor", "Region0", "All"}) {
-      try {
-        if (!try_set_enum(node_map, "BinningSelector", selector)) {
-          std::cout << "  selector " << selector << ": unavailable\n";
-          continue;
-        }
-        const bool selector_set = try_set_binning_pair(node_map, requested_x, requested_y);
-        std::cout << "  selector " << selector << ": "
-                  << (selector_set ? "set" : "not writable") << '\n';
-      } catch (const std::exception & exc) {
-        std::cout << "  selector " << selector << " error: " << exc.what() << '\n';
-      }
-    }
-
-    std::cout << "[basler_features] after write attempts:\n";
-    for (const auto * name : nodes) {
-      print_genicam_node(node_map, name);
-    }
-  }
-
-  camera.Close();
-  return BenchmarkResult{"basler_features", true, 0.0, 0U, 0.0, ""};
-#endif
 }
 
 BenchmarkResult run_camera_mode(
@@ -895,16 +714,21 @@ yolo_cpp::DeepStreamRuntime::Config make_deepstream_config(const Options & optio
   config.task = options.task;
   config.imgsz_width = options.camera.imgsz_width;
   config.imgsz_height = options.camera.imgsz_height;
-  config.source_width = basler_output_width(options.camera);
-  config.source_height = basler_output_height(options.camera);
+  config.source_width = options.camera.basler_use_full_sensor ?
+    options.camera.basler_source_width :
+    options.camera.imgsz_width;
+  config.source_height = options.camera.basler_use_full_sensor ?
+    options.camera.basler_source_height :
+    options.camera.imgsz_height;
   config.source_fps = options.camera.basler_fps;
   config.source_exposure_us = options.camera.basler_exposure_us;
   config.source_gain_db = options.camera.basler_gain_db;
   config.source_fps_uncapped = options.camera.basler_uncapped_fps;
   config.source_use_full_sensor = options.camera.basler_use_full_sensor;
-  config.source_binning_x = options.camera.basler_binning_x;
-  config.source_binning_y = options.camera.basler_binning_y;
   config.source_pixel_format = options.camera.basler_pixel_format;
+  config.pre_mux_resize = options.pre_mux_resize;
+  config.pre_mux_width = options.pre_mux_width;
+  config.pre_mux_height = options.pre_mux_height;
   config.flip_source = options.camera.basler_flip;
   config.conf_threshold = options.conf_threshold;
   config.half = options.half;
@@ -1059,8 +883,6 @@ int main(int argc, char ** argv)
         } else if (mode == "deepstream") {
           results[mode] = run_deepstream_mode(options, logger, wrote_csv);
           wrote_csv = wrote_csv || !options.csv_path.empty();
-        } else if (mode == "basler_features") {
-          results[mode] = run_basler_features_mode(options);
         } else {
           throw std::invalid_argument("Unknown benchmark mode: " + mode);
         }

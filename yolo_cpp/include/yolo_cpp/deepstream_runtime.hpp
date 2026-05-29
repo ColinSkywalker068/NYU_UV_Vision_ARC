@@ -33,9 +33,10 @@ public:
     double source_gain_db{5.0};
     bool source_fps_uncapped{true};
     bool source_use_full_sensor{true};
-    int source_binning_x{1};
-    int source_binning_y{1};
     std::string source_pixel_format{"bayer_rggb8"};
+    bool pre_mux_resize{false};
+    int pre_mux_width{0};
+    int pre_mux_height{0};
     bool flip_source{false};
     float conf_threshold{0.45F};
     bool half{true};
