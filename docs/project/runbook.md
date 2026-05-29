@@ -87,6 +87,7 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `CV_STM_BASLER_PIXEL_FORMAT` | Basler source pixel format for the DeepStream/Pylon path | `bayer_rggb8`; alternatives include `yuy2`, `bgr8`, `mono8` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_BASLER_SOURCE_WIDTH` | Basler source width for full-sensor capture | `1920` for `a2A1920-160ucBAS` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_BASLER_SOURCE_HEIGHT` | Basler source height for full-sensor capture | `1200` for `a2A1920-160ucBAS` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
+| `CV_STM_BASLER_BINNING` | Basler full-FOV sensor binning factor for both axes | `1`; set `2` to request 960x600 from a 1920x1200 sensor while preserving FOV | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `DISPLAY` | X11 GUI forwarding | Host `DISPLAY` value | `Docker/docker-compose.yml`, `services/start-container.sh` |
 | `QT_X11_NO_MITSHM` | Qt/X11 compatibility | `1` | `Docker/docker-compose.yml` |
 | `V4L2_DEVICES` | Camera device forwarding | Auto-assembled `/dev/video0` through `/dev/video9` flags on Jetson | `Docker/docker-compose.yml`, `services/start-container.sh` |
@@ -268,7 +269,7 @@ uv clean
 uv build yolo_cpp
 ```
 
-For Basler high-FPS bring-up on `a2A1920-160ucBAS`, keep `basler_use_full_sensor:=true` and use the default raw Bayer source caps: `basler_pixel_format:=bayer_rggb8 basler_source_width:=1920 basler_source_height:=1200 basler_uncapped_fps:=true`. The startup logs should show the requested and negotiated GStreamer caps plus the camera-reported resulting frame rate. If `basler_pixel_format:=bgr8` is used at full resolution, USB3 bandwidth can reasonably limit capture near 60 FPS; that is not evidence of a Jetson hard cap.
+For Basler high-FPS bring-up on `a2A1920-160ucBAS`, keep `basler_use_full_sensor:=true` and use the default raw Bayer source caps: `basler_pixel_format:=bayer_rggb8 basler_source_width:=1920 basler_source_height:=1200 basler_uncapped_fps:=true`. Use `basler_binning_x:=2 basler_binning_y:=2` when you need full FOV with fewer pixels before conversion and inference. The startup logs should show the requested and negotiated GStreamer caps plus the camera-reported resulting frame rate. If `basler_pixel_format:=bgr8` is used at full resolution, USB3 bandwidth can reasonably limit capture near 60 FPS; that is not evidence of a Jetson hard cap.
 
 To separate Jetson model throughput from camera ingest, run the FPS isolation harness on the Jetson:
 

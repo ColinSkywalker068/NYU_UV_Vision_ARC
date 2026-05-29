@@ -32,6 +32,11 @@ namespace yolo_cpp
 namespace
 {
 
+int positive_or_one(int value)
+{
+  return std::max(1, value);
+}
+
 /// Placeholder backend that reports missing optional SDK support at runtime.
 class UnsupportedCameraBackend : public CameraBackend
 {
@@ -452,13 +457,15 @@ private:
     return std::max(min_value, std::min(max_value, value));
   }
 
-  void set_integer_node_if_writable(
+  bool set_integer_node_if_writable(
     GenApi::INodeMap & node_map, const char * name, int requested) const
   {
     GenApi::CIntegerPtr node(node_map.GetNode(name));
     if (node && GenApi::IsWritable(node)) {
       node->SetValue(clamp_integer_node_value(node, requested));
+      return true;
     }
+    return false;
   }
 
   void configure_camera()
@@ -466,6 +473,17 @@ private:
     auto & node_map = camera_.GetNodeMap();
     const auto pixel_format = genicam_pixel_format_for_config(config_.basler_pixel_format);
     set_enum_if_writable(node_map, "PixelFormat", pixel_format.c_str());
+    set_enum_if_writable(node_map, "BinningSelector", "All");
+    const bool set_binning_x =
+      set_integer_node_if_writable(node_map, "BinningHorizontal", config_.basler_binning_x);
+    const bool set_binning_y =
+      set_integer_node_if_writable(node_map, "BinningVertical", config_.basler_binning_y);
+    if (positive_or_one(config_.basler_binning_x) > 1 && !set_binning_x) {
+      throw std::runtime_error("Basler BinningHorizontal is not writable");
+    }
+    if (positive_or_one(config_.basler_binning_y) > 1 && !set_binning_y) {
+      throw std::runtime_error("Basler BinningVertical is not writable");
+    }
     set_if_writable<GenApi::CBooleanPtr>(
       node_map, "AcquisitionFrameRateEnable", !config_.basler_uncapped_fps);
     if (!config_.basler_uncapped_fps) {
@@ -479,14 +497,8 @@ private:
     set_enum_if_writable(node_map, "GainSelector", "All");
     set_if_writable<GenApi::CFloatPtr>(node_map, "Gain", config_.basler_gain_db);
 
-    const int requested_width = config_.basler_use_full_sensor ?
-      config_.basler_source_width :
-      config_.imgsz_width;
-    const int requested_height = config_.basler_use_full_sensor ?
-      config_.basler_source_height :
-      config_.imgsz_height;
-    set_integer_node_if_writable(node_map, "Width", requested_width);
-    set_integer_node_if_writable(node_map, "Height", requested_height);
+    set_integer_node_if_writable(node_map, "Width", basler_output_width(config_));
+    set_integer_node_if_writable(node_map, "Height", basler_output_height(config_));
 
     if (!config_.basler_use_full_sensor && config_.basler_centered_roi) {
       GenApi::CIntegerPtr width_node(node_map.GetNode("Width"));
@@ -531,6 +543,8 @@ CameraConfig load_camera_config(rclcpp::Node & node)
   node.declare_parameter<std::string>("basler_pixel_format", config.basler_pixel_format);
   node.declare_parameter<int>("basler_source_width", config.basler_source_width);
   node.declare_parameter<int>("basler_source_height", config.basler_source_height);
+  node.declare_parameter<int>("basler_binning_x", config.basler_binning_x);
+  node.declare_parameter<int>("basler_binning_y", config.basler_binning_y);
   node.declare_parameter<bool>("basler_flip", config.basler_flip);
   node.declare_parameter<bool>("basler_use_full_sensor", config.basler_use_full_sensor);
   node.declare_parameter<bool>("basler_centered_roi", config.basler_centered_roi);
@@ -557,6 +571,8 @@ CameraConfig load_camera_config(rclcpp::Node & node)
   config.basler_pixel_format = node.get_parameter("basler_pixel_format").as_string();
   config.basler_source_width = node.get_parameter("basler_source_width").as_int();
   config.basler_source_height = node.get_parameter("basler_source_height").as_int();
+  config.basler_binning_x = positive_or_one(node.get_parameter("basler_binning_x").as_int());
+  config.basler_binning_y = positive_or_one(node.get_parameter("basler_binning_y").as_int());
   config.basler_flip = node.get_parameter("basler_flip").as_bool();
   config.basler_use_full_sensor = node.get_parameter("basler_use_full_sensor").as_bool();
   config.basler_centered_roi = node.get_parameter("basler_centered_roi").as_bool();
@@ -573,6 +589,22 @@ CameraConfig load_camera_config(rclcpp::Node & node)
   config.realsense_use_max_native_fps =
     node.get_parameter("realsense_use_max_native_fps").as_bool();
   return config;
+}
+
+int basler_output_width(const CameraConfig & config)
+{
+  if (!config.basler_use_full_sensor) {
+    return config.imgsz_width;
+  }
+  return std::max(1, config.basler_source_width / positive_or_one(config.basler_binning_x));
+}
+
+int basler_output_height(const CameraConfig & config)
+{
+  if (!config.basler_use_full_sensor) {
+    return config.imgsz_height;
+  }
+  return std::max(1, config.basler_source_height / positive_or_one(config.basler_binning_y));
 }
 
 std::shared_ptr<CameraBackend> create_camera_backend(

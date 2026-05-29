@@ -36,6 +36,12 @@ Use the benchmark harness on the Jetson AGX Orin when camera FPS and model FPS n
 
 The harness uses the STM model path by default, or `CV_STM_MODEL_PATH` when set. `inference` mode runs the same TensorRT engine on synthetic frames without a camera, `camera` mode pulls frames through `CameraBackend` without inference, and `deepstream` mode measures the Basler + DeepStream result cadence.
 
+For full-FOV Basler downsampling tests, prefer sensor binning over ROI:
+
+```bash
+./services/fps-benchmark.sh --mode deepstream --duration 10 --warmup 2 --basler-binning 2
+```
+
 ## Related Repo Docs
 
 - build and container workflow: [CPP_CONTAINER_RUNBOOK.md](../../CPP_CONTAINER_RUNBOOK.md)

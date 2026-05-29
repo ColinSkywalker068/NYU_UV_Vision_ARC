@@ -34,7 +34,7 @@ uv run yolo_cpp realsense.launch.py
 The launch files expose the settings that matter most during bring-up:
 
 - camera selection such as `camera_type`, RealSense `rs_*` launch args, and Basler `basler_*` launch args
-- Basler high-FPS capture through `basler_pixel_format`, `basler_source_width`, `basler_source_height`, `basler_fps`, and `basler_uncapped_fps`
+- Basler high-FPS capture through `basler_pixel_format`, `basler_source_width`, `basler_source_height`, `basler_binning_x/y`, `basler_fps`, and `basler_uncapped_fps`
 - detector backend selection through `detector_backend`
 - fallback control through `allow_native_tensorrt_fallback`
 - default enemy color through `target_color` until STM or robot-id feedback overrides it
@@ -54,7 +54,7 @@ The default tracker profile is tuned for fast rotating armor plates: `track_min_
 
 ## Basler High-FPS Source Formats
 
-The Basler + DeepStream path defaults to `basler_pixel_format:=bayer_rggb8` with `basler_source_width:=1920` and `basler_source_height:=1200` for the `a2A1920-160ucBAS` full-resolution high-FPS case. This keeps USB traffic at raw 8-bit Bayer instead of full-resolution BGR. The `basler_source_*` values control camera acquisition size; `basler_width` and `basler_height` still control the model/streammux input size.
+The Basler + DeepStream path defaults to `basler_pixel_format:=bayer_rggb8` with `basler_source_width:=1920` and `basler_source_height:=1200` for the `a2A1920-160ucBAS` full-resolution high-FPS case. This keeps USB traffic at raw 8-bit Bayer instead of full-resolution BGR. The `basler_source_*` values describe the unbinned full sensor; `basler_binning_x:=2 basler_binning_y:=2` keeps full FOV while requesting a 960x600 binned output. `basler_width` and `basler_height` still control the model/streammux input size.
 
 Useful source-format choices:
 

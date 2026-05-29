@@ -103,6 +103,11 @@ std::optional<int> positive_dimension(int value)
   return std::nullopt;
 }
 
+int positive_or_one(int value)
+{
+  return std::max(1, value);
+}
+
 std::string normalize_format_token(std::string value)
 {
   value.erase(
@@ -860,6 +865,17 @@ struct DeepStreamRuntime::Impl
       "Configuring Basler source format/size/framerate through caps: %s",
       source_format.label.c_str());
     set_child_proxy_string_if_present(source, "cam::ExposureMode", "Timed");
+    set_child_proxy_string_if_present(source, "cam::BinningSelector", "All");
+    const bool set_binning_x = set_child_proxy_double_if_present(
+      source, "cam::BinningHorizontal", positive_or_one(config.source_binning_x));
+    const bool set_binning_y = set_child_proxy_double_if_present(
+      source, "cam::BinningVertical", positive_or_one(config.source_binning_y));
+    if (positive_or_one(config.source_binning_x) > 1 && !set_binning_x) {
+      throw std::runtime_error("Could not set Basler cam::BinningHorizontal through pylonsrc");
+    }
+    if (positive_or_one(config.source_binning_y) > 1 && !set_binning_y) {
+      throw std::runtime_error("Could not set Basler cam::BinningVertical through pylonsrc");
+    }
     if (!set_camera_enum_off("cam::ExposureAuto")) {
       RCLCPP_WARN(logger, "Could not set Basler cam::ExposureAuto=Off through pylonsrc");
     }
@@ -910,6 +926,8 @@ struct DeepStreamRuntime::Impl
     const auto fps = read_source_actual_fps();
     source_actual_fps = fps.value_or(static_cast<double>(std::max(1, config.source_fps)));
     const auto pixel_format = get_child_proxy_string_if_present(source, "cam::PixelFormat");
+    const auto binning_x = get_child_proxy_numeric_if_present(source, "cam::BinningHorizontal");
+    const auto binning_y = get_child_proxy_numeric_if_present(source, "cam::BinningVertical");
 
     const auto width = get_child_proxy_numeric_if_present(source, "cam::Width");
     const auto height = get_child_proxy_numeric_if_present(source, "cam::Height");
@@ -922,11 +940,14 @@ struct DeepStreamRuntime::Impl
 
     RCLCPP_INFO(
       logger,
-      "DeepStream Basler source %s: %dx%d pixel_format=%s @ %.2f FPS (full_sensor=%s, fps_cap=%s)",
+      "DeepStream Basler source %s: %dx%d pixel_format=%s binning=%dx%d @ %.2f FPS "
+      "(full_sensor=%s, fps_cap=%s)",
       fps.has_value() ? "reported" : "fallback",
       config.source_width,
       config.source_height,
       pixel_format.value_or("unknown").c_str(),
+      static_cast<int>(binning_x.value_or(positive_or_one(config.source_binning_x))),
+      static_cast<int>(binning_y.value_or(positive_or_one(config.source_binning_y))),
       source_actual_fps,
       config.source_use_full_sensor ? "true" : "false",
       fps_cap_status.c_str());

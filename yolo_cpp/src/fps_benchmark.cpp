@@ -221,6 +221,16 @@ Options default_options_from_env()
   if (const auto value = getenv_int("CV_STM_BASLER_SOURCE_HEIGHT")) {
     options.camera.basler_source_height = *value;
   }
+  if (const auto value = getenv_int("CV_STM_BASLER_BINNING")) {
+    options.camera.basler_binning_x = *value;
+    options.camera.basler_binning_y = *value;
+  }
+  if (const auto value = getenv_int("CV_STM_BASLER_BINNING_X")) {
+    options.camera.basler_binning_x = *value;
+  }
+  if (const auto value = getenv_int("CV_STM_BASLER_BINNING_Y")) {
+    options.camera.basler_binning_y = *value;
+  }
   if (const auto value = getenv_double("CV_STM_BASLER_EXPOSURE_US")) {
     options.camera.basler_exposure_us = *value;
   }
@@ -297,6 +307,9 @@ void print_usage(const char * program)
     << "  --basler-pixel-format VALUE    bayer_rggb8, yuy2, mono8, bgr8, rgb8\n"
     << "  --basler-source-width N        Full-sensor width (default: 1920)\n"
     << "  --basler-source-height N       Full-sensor height (default: 1200)\n"
+    << "  --basler-binning N             Full-FOV sensor binning, e.g. 2 -> 960x600\n"
+    << "  --basler-binning-x N           Horizontal binning factor (default: 1)\n"
+    << "  --basler-binning-y N           Vertical binning factor (default: 1)\n"
     << "  --basler-exposure-us FLOAT     Exposure in microseconds (default: 5000)\n"
     << "  --basler-gain-db FLOAT         Gain in dB (default: 5)\n"
     << "  --basler-use-full-sensor BOOL  Use full sensor instead of 640x640 ROI (default: true)\n"
@@ -350,6 +363,14 @@ Options parse_args(int argc, char ** argv)
       options.camera.basler_source_width = std::stoi(require_arg_value(argc, argv, i));
     } else if (arg == "--basler-source-height") {
       options.camera.basler_source_height = std::stoi(require_arg_value(argc, argv, i));
+    } else if (arg == "--basler-binning") {
+      const int binning = std::stoi(require_arg_value(argc, argv, i));
+      options.camera.basler_binning_x = binning;
+      options.camera.basler_binning_y = binning;
+    } else if (arg == "--basler-binning-x") {
+      options.camera.basler_binning_x = std::stoi(require_arg_value(argc, argv, i));
+    } else if (arg == "--basler-binning-y") {
+      options.camera.basler_binning_y = std::stoi(require_arg_value(argc, argv, i));
     } else if (arg == "--basler-exposure-us") {
       options.camera.basler_exposure_us = std::stod(require_arg_value(argc, argv, i));
     } else if (arg == "--basler-gain-db") {
@@ -380,6 +401,8 @@ Options parse_args(int argc, char ** argv)
   if (options.camera.imgsz_width <= 0 || options.camera.imgsz_height <= 0) {
     throw std::invalid_argument("--imgsz-width and --imgsz-height must be positive");
   }
+  options.camera.basler_binning_x = std::max(1, options.camera.basler_binning_x);
+  options.camera.basler_binning_y = std::max(1, options.camera.basler_binning_y);
   return options;
 }
 
@@ -524,7 +547,7 @@ std::pair<int, int> synthetic_frame_size(const Options & options)
     return {options.camera.realsense_width, options.camera.realsense_height};
   }
   if (options.camera.basler_use_full_sensor) {
-    return {options.camera.basler_source_width, options.camera.basler_source_height};
+    return {basler_output_width(options.camera), basler_output_height(options.camera)};
   }
   return {options.camera.imgsz_width, options.camera.imgsz_height};
 }
@@ -568,6 +591,8 @@ void print_header(const Options & options)
     << " camera=" << options.camera.camera_type
     << " basler_source=" << options.camera.basler_source_width << 'x'
     << options.camera.basler_source_height
+    << " basler_binning=" << options.camera.basler_binning_x << 'x'
+    << options.camera.basler_binning_y
     << " basler_fps=" << options.camera.basler_fps
     << " basler_uncapped=" << (options.camera.basler_uncapped_fps ? "true" : "false")
     << " basler_pixel_format=" << options.camera.basler_pixel_format
@@ -689,17 +714,15 @@ yolo_cpp::DeepStreamRuntime::Config make_deepstream_config(const Options & optio
   config.task = options.task;
   config.imgsz_width = options.camera.imgsz_width;
   config.imgsz_height = options.camera.imgsz_height;
-  config.source_width = options.camera.basler_use_full_sensor ?
-    options.camera.basler_source_width :
-    options.camera.imgsz_width;
-  config.source_height = options.camera.basler_use_full_sensor ?
-    options.camera.basler_source_height :
-    options.camera.imgsz_height;
+  config.source_width = basler_output_width(options.camera);
+  config.source_height = basler_output_height(options.camera);
   config.source_fps = options.camera.basler_fps;
   config.source_exposure_us = options.camera.basler_exposure_us;
   config.source_gain_db = options.camera.basler_gain_db;
   config.source_fps_uncapped = options.camera.basler_uncapped_fps;
   config.source_use_full_sensor = options.camera.basler_use_full_sensor;
+  config.source_binning_x = options.camera.basler_binning_x;
+  config.source_binning_y = options.camera.basler_binning_y;
   config.source_pixel_format = options.camera.basler_pixel_format;
   config.flip_source = options.camera.basler_flip;
   config.conf_threshold = options.conf_threshold;
