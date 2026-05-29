@@ -37,6 +37,13 @@ require_command docker
 docker inspect "$SOURCE_CONTAINER" >/dev/null 2>&1 ||
   die "Source container not found: ${SOURCE_CONTAINER}"
 
+copy_from_container() {
+  local source_path="$1"
+  local dest_path="${TMP_DIR}/rootfs${source_path}"
+  mkdir -p "$(dirname "$dest_path")"
+  docker cp "${SOURCE_CONTAINER}:${source_path}" "$dest_path"
+}
+
 log "Validating source container ${SOURCE_CONTAINER}"
 docker exec "$SOURCE_CONTAINER" bash -lc 'test -d /opt/pylon' ||
   die "Source container does not have /opt/pylon"
@@ -49,6 +56,20 @@ PLUGIN_PATH="$(
 )"
 log "pylonsrc plugin path: ${PLUGIN_PATH:-unknown}"
 
+PYLON_DEPENDENCIES="$(
+  docker exec "$SOURCE_CONTAINER" bash -lc '
+    plugin="$1"
+    ldd "$plugin" |
+      awk "/=> \// {print \$3} /^\// {print \$1}" |
+      grep -Ei "/(libgstpylon|.*pylon.*)\.so" |
+      while read -r path; do
+        printf "%s\n" "$path"
+        realpath -e "$path" 2>/dev/null || true
+      done |
+      sort -u
+  ' _ "$PLUGIN_PATH"
+)"
+
 TMP_DIR="$(mktemp -d)"
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -59,12 +80,21 @@ mkdir -p "${TMP_DIR}/rootfs/opt"
 docker cp "${SOURCE_CONTAINER}:/opt/pylon" "${TMP_DIR}/rootfs/opt/"
 
 if [ -n "${PLUGIN_PATH}" ] && [[ "${PLUGIN_PATH}" != /opt/pylon/* ]]; then
-  mkdir -p "${TMP_DIR}/rootfs/$(dirname "${PLUGIN_PATH}")"
-  docker cp "${SOURCE_CONTAINER}:${PLUGIN_PATH}" "${TMP_DIR}/rootfs/${PLUGIN_PATH}"
+  copy_from_container "$PLUGIN_PATH"
+fi
+
+if [ -n "${PYLON_DEPENDENCIES}" ]; then
+  log "Copying Pylon plugin dependencies"
+  while IFS= read -r dependency; do
+    [ -n "$dependency" ] || continue
+    [[ "$dependency" == /opt/pylon/* ]] && continue
+    log "dependency: ${dependency}"
+    copy_from_container "$dependency"
+  done <<< "${PYLON_DEPENDENCIES}"
 fi
 
 cat > "${TMP_DIR}/Dockerfile" <<'EOF'
-ARG BASE_IMAGE
+ARG BASE_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus
 FROM ${BASE_IMAGE}
 
 COPY rootfs/ /
