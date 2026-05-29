@@ -1009,7 +1009,6 @@ struct DeepStreamRuntime::Impl
     if (source_format.needs_bayer_convert) {
       source_bayer_convert = make_element("bayer2rgb", "source_bayer_convert");
     }
-    source_flip = make_element("videoflip", "source_flip");
     tee = make_element("tee", "tee");
     infer_queue = make_element("queue", "infer_queue");
     infer_convert = make_element("videoconvert", "infer_convert");
@@ -1024,6 +1023,15 @@ struct DeepStreamRuntime::Impl
 
     const bool need_color_branch =
       config.enable_color_verification || config.debug_publish_image_raw;
+    const bool nvconvert_flip_supported =
+      g_object_class_find_property(G_OBJECT_GET_CLASS(infer_nvconvert), "flip-method") != nullptr;
+    const bool use_infer_nvconvert_flip =
+      config.flip_source && !need_color_branch && nvconvert_flip_supported;
+    const bool use_source_flip =
+      config.flip_source && !use_infer_nvconvert_flip;
+    if (use_source_flip) {
+      source_flip = make_element("videoflip", "source_flip");
+    }
     if (need_color_branch) {
       color_queue = make_element("queue", "color_queue");
       color_convert = make_element("videoconvert", "color_convert");
@@ -1036,7 +1044,6 @@ struct DeepStreamRuntime::Impl
       GST_BIN(pipeline),
       source,
       source_caps,
-      source_flip,
       tee,
       infer_queue,
       infer_convert,
@@ -1050,6 +1057,9 @@ struct DeepStreamRuntime::Impl
       nullptr);
     if (source_bayer_convert != nullptr) {
       gst_bin_add(GST_BIN(pipeline), source_bayer_convert);
+    }
+    if (source_flip != nullptr) {
+      gst_bin_add(GST_BIN(pipeline), source_flip);
     }
     if (need_color_branch) {
       gst_bin_add_many(
@@ -1120,7 +1130,19 @@ struct DeepStreamRuntime::Impl
     }
     g_object_set(G_OBJECT(source_caps), "caps", source_caps_value, nullptr);
     gst_caps_unref(source_caps_value);
-    g_object_set(G_OBJECT(source_flip), "method", config.flip_source ? 2 : 0, nullptr);
+    if (source_flip != nullptr) {
+      g_object_set(G_OBJECT(source_flip), "method", 2, nullptr);
+    }
+    if (use_infer_nvconvert_flip) {
+      g_object_set(G_OBJECT(infer_nvconvert), "flip-method", 2, nullptr);
+      RCLCPP_INFO(
+        logger,
+        "Moving Basler 180-degree flip to nvvideoconvert after inference-branch conversion");
+    } else if (config.flip_source && !need_color_branch && !nvconvert_flip_supported) {
+      RCLCPP_WARN(
+        logger,
+        "nvvideoconvert does not expose flip-method; keeping full-resolution videoflip");
+    }
 
     requested_infer_cpu_caps = make_video_caps_text(
       "video/x-raw", "RGBA", processing_width, processing_height, capped_fps);
@@ -1190,9 +1212,17 @@ struct DeepStreamRuntime::Impl
         nullptr);
     }
 
-    const gboolean source_linked = source_bayer_convert != nullptr ?
-      gst_element_link_many(source, source_caps, source_bayer_convert, source_flip, tee, nullptr) :
-      gst_element_link_many(source, source_caps, source_flip, tee, nullptr);
+    gboolean source_linked = FALSE;
+    if (source_bayer_convert != nullptr && source_flip != nullptr) {
+      source_linked = gst_element_link_many(
+        source, source_caps, source_bayer_convert, source_flip, tee, nullptr);
+    } else if (source_bayer_convert != nullptr) {
+      source_linked = gst_element_link_many(source, source_caps, source_bayer_convert, tee, nullptr);
+    } else if (source_flip != nullptr) {
+      source_linked = gst_element_link_many(source, source_caps, source_flip, tee, nullptr);
+    } else {
+      source_linked = gst_element_link_many(source, source_caps, tee, nullptr);
+    }
     if (!source_linked) {
       throw std::runtime_error(
               source_bayer_convert != nullptr ?
