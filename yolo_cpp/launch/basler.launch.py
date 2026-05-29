@@ -109,6 +109,16 @@ def generate_launch_description() -> LaunchDescription:
         default_value="0",
         description="Optional pre-mux resize bounding height; 0 uses the model height",
     )
+    deepstream_profile_stages_arg = DeclareLaunchArgument(
+        "deepstream_profile_stages",
+        default_value="false",
+        description="Log DeepStream per-stage pad timing for conversion bottleneck diagnosis",
+    )
+    deepstream_profile_stage_interval_arg = DeclareLaunchArgument(
+        "deepstream_profile_stage_interval",
+        default_value="300",
+        description="Frames between DeepStream stage-profile log summaries",
+    )
     basler_exposure_arg = DeclareLaunchArgument(
         "basler_exposure_us",
         default_value="5000.0",
@@ -370,6 +380,12 @@ def generate_launch_description() -> LaunchDescription:
                 "pre_mux_resize": LaunchConfiguration("pre_mux_resize"),
                 "pre_mux_width": LaunchConfiguration("pre_mux_width"),
                 "pre_mux_height": LaunchConfiguration("pre_mux_height"),
+                "deepstream_profile_stages": LaunchConfiguration(
+                    "deepstream_profile_stages"
+                ),
+                "deepstream_profile_stage_interval": LaunchConfiguration(
+                    "deepstream_profile_stage_interval"
+                ),
                 "basler_exposure_us": LaunchConfiguration("basler_exposure_us"),
                 "basler_gain_db": LaunchConfiguration("basler_gain_db"),
                 "basler_flip": LaunchConfiguration("basler_flip"),
@@ -521,6 +537,8 @@ def generate_launch_description() -> LaunchDescription:
             pre_mux_resize_arg,
             pre_mux_width_arg,
             pre_mux_height_arg,
+            deepstream_profile_stages_arg,
+            deepstream_profile_stage_interval_arg,
             basler_exposure_arg,
             basler_gain_arg,
             basler_flip_arg,

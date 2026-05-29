@@ -90,6 +90,8 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `CV_STM_BASLER_SOURCE_HEIGHT` | Basler source height for full-sensor capture | `1200` for `a2A1920-160ucBAS` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_DEEPSTREAM_PRE_MUX_RESIZE` | Resize full-FOV Basler frames before `nvstreammux` padding | `true`; set `false` only for A/B testing the older full-resolution path | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_DEEPSTREAM_PRE_MUX_WIDTH` / `CV_STM_DEEPSTREAM_PRE_MUX_HEIGHT` | Optional pre-mux resize bounding box | `0`; unset/zero uses the model dimensions as the resize box | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
+| `CV_STM_DEEPSTREAM_PROFILE_STAGES` | Log per-stage DeepStream pad timing for conversion diagnosis | `false`; set `true` during short profiling runs only | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
+| `CV_STM_DEEPSTREAM_PROFILE_STAGE_INTERVAL` | Frames between stage-profile summaries | `300` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `DISPLAY` | X11 GUI forwarding | Host `DISPLAY` value | `Docker/docker-compose.yml`, `services/start-container.sh` |
 | `QT_X11_NO_MITSHM` | Qt/X11 compatibility | `1` | `Docker/docker-compose.yml` |
 | `V4L2_DEVICES` | Camera device forwarding | Auto-assembled `/dev/video0` through `/dev/video9` flags on Jetson | `Docker/docker-compose.yml`, `services/start-container.sh` |
@@ -282,6 +284,20 @@ To separate Jetson model throughput from camera ingest, run the FPS isolation ha
 ```
 
 Read the three modes as different ceilings: `inference` is synthetic-frame TensorRT throughput using the STM engine, `camera` is capture-only throughput through the active camera backend, and `deepstream` is the Basler + DeepStream result cadence.
+
+To restart the headless STM service after a rebuild, run:
+
+```bash
+uv build
+./services/stm-stack.sh restart
+```
+
+For a short conversion-profile run, add these to the STM env file or pass them through the container environment before restarting:
+
+```bash
+CV_STM_DEEPSTREAM_PROFILE_STAGES=true
+CV_STM_DEEPSTREAM_PROFILE_STAGE_INTERVAL=300
+```
 
 ## 9. Testing And Formatting
 

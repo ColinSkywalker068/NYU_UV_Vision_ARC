@@ -9,6 +9,7 @@
 #include <rclcpp/logging.hpp>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cctype>
@@ -17,6 +18,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -729,6 +731,52 @@ struct DeepStreamRuntime::Impl
   std::string requested_infer_nvmm_caps;
   std::string requested_color_caps;
   std::string fps_cap_status{"unknown"};
+  enum class StageProbePoint : std::size_t
+  {
+    kSourceCaps = 0,
+    kBayerConvert,
+    kInferConvertSink,
+    kInferConvertSrc,
+    kNvConvertSrc,
+    kInferNvmmSrc,
+    kStreammuxSrc,
+    kNvInferSrc,
+    kCount
+  };
+
+  struct StageProbeContext
+  {
+    DeepStreamRuntime::Impl * runtime{nullptr};
+    StageProbePoint point{StageProbePoint::kSourceCaps};
+  };
+
+  struct StageProbeFrame
+  {
+    std::array<std::optional<std::chrono::steady_clock::time_point>,
+      static_cast<std::size_t>(StageProbePoint::kCount)> times;
+  };
+
+  struct StageProfileMetric
+  {
+    double total_ms{0.0};
+    std::size_t count{0};
+  };
+
+  struct StageProfileTotals
+  {
+    StageProfileMetric source_to_bayer;
+    StageProfileMetric source_or_bayer_to_queue;
+    StageProfileMetric videoconvert;
+    StageProfileMetric nvvideoconvert;
+    StageProfileMetric nvmm_to_streammux;
+    StageProfileMetric nvinfer;
+  };
+
+  std::mutex stage_profile_mutex;
+  std::map<std::uint64_t, StageProbeFrame> stage_profile_frames;
+  StageProfileTotals stage_profile_totals;
+  std::vector<std::unique_ptr<StageProbeContext>> stage_probe_contexts;
+  std::size_t stage_profile_completed_frames{0};
 #endif
 
   ~Impl()
@@ -882,6 +930,22 @@ struct DeepStreamRuntime::Impl
     return element;
   }
 
+  GstElement * make_bayer_converter(const SourceFormatSpec & source_format)
+  {
+    if (!source_format.needs_bayer_convert) {
+      return nullptr;
+    }
+
+    const auto backend = normalize_format_token(config.bayer_conversion_backend);
+    if (backend == "cpu" || backend == "bayer2rgb") {
+      return make_element("bayer2rgb", "source_bayer_convert");
+    }
+
+    throw std::runtime_error(
+            "Unsupported Bayer conversion backend '" + config.bayer_conversion_backend +
+            "'. Only cpu/bayer2rgb is implemented in this graph today.");
+  }
+
   bool set_camera_enum_off(const char * name)
   {
     return set_child_proxy_string_if_present(source, name, "Off") ||
@@ -996,6 +1060,216 @@ struct DeepStreamRuntime::Impl
       color_caps != nullptr ? current_caps_for_pad(color_caps, "src").c_str() : "disabled");
   }
 
+  static GstPadProbeReturn stage_profile_pad_probe(
+    GstPad *,
+    GstPadProbeInfo * info,
+    gpointer user_data)
+  {
+    auto * context = static_cast<StageProbeContext *>(user_data);
+    if (context == nullptr || context->runtime == nullptr || info == nullptr) {
+      return GST_PAD_PROBE_OK;
+    }
+    if ((GST_PAD_PROBE_INFO_TYPE(info) & GST_PAD_PROBE_TYPE_BUFFER) == 0) {
+      return GST_PAD_PROBE_OK;
+    }
+
+    GstBuffer * buffer = GST_PAD_PROBE_INFO_BUFFER(info);
+    if (buffer == nullptr) {
+      return GST_PAD_PROBE_OK;
+    }
+    context->runtime->record_stage_profile_point(buffer, context->point);
+    return GST_PAD_PROBE_OK;
+  }
+
+  static std::uint64_t stage_profile_key(GstBuffer * buffer)
+  {
+    const GstClockTime pts = GST_BUFFER_PTS(buffer);
+    if (pts != GST_CLOCK_TIME_NONE) {
+      return static_cast<std::uint64_t>(pts);
+    }
+    const GstClockTime dts = GST_BUFFER_DTS(buffer);
+    if (dts != GST_CLOCK_TIME_NONE) {
+      return static_cast<std::uint64_t>(dts);
+    }
+    return static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(buffer));
+  }
+
+  static void add_stage_delta(
+    const StageProbeFrame & frame,
+    StageProbePoint from,
+    StageProbePoint to,
+    StageProfileMetric & metric)
+  {
+    const auto from_index = static_cast<std::size_t>(from);
+    const auto to_index = static_cast<std::size_t>(to);
+    if (!frame.times[from_index].has_value() || !frame.times[to_index].has_value()) {
+      return;
+    }
+    metric.total_ms += std::chrono::duration<double, std::milli>(
+      *frame.times[to_index] - *frame.times[from_index]).count();
+    ++metric.count;
+  }
+
+  static std::string average_text(const StageProfileMetric & metric)
+  {
+    if (metric.count == 0U) {
+      return "n/a";
+    }
+    std::ostringstream stream;
+    stream << std::fixed << std::setprecision(3)
+           << metric.total_ms / static_cast<double>(metric.count);
+    return stream.str();
+  }
+
+  void maybe_log_stage_profile()
+  {
+    const auto interval = static_cast<std::size_t>(std::max(1, config.profile_stage_interval));
+    if (stage_profile_completed_frames == 0U || (stage_profile_completed_frames % interval) != 0U) {
+      return;
+    }
+
+    RCLCPP_INFO(
+      logger,
+      "DeepStream stage profile frames=%zu avg_ms source_to_bayer=%s "
+      "bayer_or_source_to_queue=%s videoconvert=%s nvvideoconvert=%s "
+      "nvmm_to_streammux=%s nvinfer=%s",
+      stage_profile_completed_frames,
+      average_text(stage_profile_totals.source_to_bayer).c_str(),
+      average_text(stage_profile_totals.source_or_bayer_to_queue).c_str(),
+      average_text(stage_profile_totals.videoconvert).c_str(),
+      average_text(stage_profile_totals.nvvideoconvert).c_str(),
+      average_text(stage_profile_totals.nvmm_to_streammux).c_str(),
+      average_text(stage_profile_totals.nvinfer).c_str());
+  }
+
+  void record_stage_profile_point(GstBuffer * buffer, StageProbePoint point)
+  {
+    if (!config.profile_stages) {
+      return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    const auto key = stage_profile_key(buffer);
+    std::lock_guard<std::mutex> lock(stage_profile_mutex);
+    auto & frame = stage_profile_frames[key];
+    frame.times[static_cast<std::size_t>(point)] = now;
+
+    switch (point) {
+      case StageProbePoint::kBayerConvert:
+        add_stage_delta(
+          frame,
+          StageProbePoint::kSourceCaps,
+          StageProbePoint::kBayerConvert,
+          stage_profile_totals.source_to_bayer);
+        break;
+      case StageProbePoint::kInferConvertSink:
+        add_stage_delta(
+          frame,
+          frame.times[static_cast<std::size_t>(StageProbePoint::kBayerConvert)].has_value() ?
+          StageProbePoint::kBayerConvert :
+          StageProbePoint::kSourceCaps,
+          StageProbePoint::kInferConvertSink,
+          stage_profile_totals.source_or_bayer_to_queue);
+        break;
+      case StageProbePoint::kInferConvertSrc:
+        add_stage_delta(
+          frame,
+          StageProbePoint::kInferConvertSink,
+          StageProbePoint::kInferConvertSrc,
+          stage_profile_totals.videoconvert);
+        break;
+      case StageProbePoint::kNvConvertSrc:
+        add_stage_delta(
+          frame,
+          StageProbePoint::kInferConvertSrc,
+          StageProbePoint::kNvConvertSrc,
+          stage_profile_totals.nvvideoconvert);
+        break;
+      case StageProbePoint::kStreammuxSrc:
+        add_stage_delta(
+          frame,
+          StageProbePoint::kInferNvmmSrc,
+          StageProbePoint::kStreammuxSrc,
+          stage_profile_totals.nvmm_to_streammux);
+        break;
+      case StageProbePoint::kNvInferSrc:
+        add_stage_delta(
+          frame,
+          StageProbePoint::kStreammuxSrc,
+          StageProbePoint::kNvInferSrc,
+          stage_profile_totals.nvinfer);
+        stage_profile_frames.erase(key);
+        break;
+      case StageProbePoint::kInferNvmmSrc:
+        ++stage_profile_completed_frames;
+        maybe_log_stage_profile();
+        break;
+      case StageProbePoint::kSourceCaps:
+      case StageProbePoint::kCount:
+        break;
+    }
+
+    while (stage_profile_frames.size() > 2048U) {
+      stage_profile_frames.erase(stage_profile_frames.begin());
+    }
+  }
+
+  void add_stage_profile_probe(
+    GstElement * element,
+    const char * pad_name,
+    StageProbePoint point,
+    const char * label)
+  {
+    if (!config.profile_stages || element == nullptr || pad_name == nullptr) {
+      return;
+    }
+    GstPad * pad = gst_element_get_static_pad(element, pad_name);
+    if (pad == nullptr) {
+      RCLCPP_WARN(logger, "Could not attach DeepStream stage profile probe: %s", label);
+      return;
+    }
+    auto context = std::make_unique<StageProbeContext>();
+    context->runtime = this;
+    context->point = point;
+    gst_pad_add_probe(
+      pad,
+      GST_PAD_PROBE_TYPE_BUFFER,
+      &DeepStreamRuntime::Impl::stage_profile_pad_probe,
+      context.get(),
+      nullptr);
+    stage_probe_contexts.push_back(std::move(context));
+    gst_object_unref(pad);
+  }
+
+  void attach_stage_profile_probes()
+  {
+    if (!config.profile_stages) {
+      return;
+    }
+    add_stage_profile_probe(
+      source_caps, "src", StageProbePoint::kSourceCaps, "source_caps:src");
+    if (source_bayer_convert != nullptr) {
+      add_stage_profile_probe(
+        source_bayer_convert, "src", StageProbePoint::kBayerConvert, "bayer2rgb:src");
+    }
+    add_stage_profile_probe(
+      infer_convert, "sink", StageProbePoint::kInferConvertSink, "videoconvert:sink");
+    add_stage_profile_probe(
+      infer_convert, "src", StageProbePoint::kInferConvertSrc, "videoconvert:src");
+    add_stage_profile_probe(
+      infer_nvconvert, "src", StageProbePoint::kNvConvertSrc, "nvvideoconvert:src");
+    add_stage_profile_probe(
+      infer_nvmm_caps, "src", StageProbePoint::kInferNvmmSrc, "infer_nvmm_caps:src");
+    add_stage_profile_probe(
+      streammux, "src", StageProbePoint::kStreammuxSrc, "nvstreammux:src");
+    add_stage_profile_probe(
+      nvinfer, "src", StageProbePoint::kNvInferSrc, "nvinfer:src");
+    RCLCPP_INFO(
+      logger,
+      "DeepStream stage profiling enabled; logging every %d frames",
+      std::max(1, config.profile_stage_interval));
+  }
+
   void build_pipeline()
   {
     pipeline = gst_pipeline_new("yolo-deepstream-pipeline");
@@ -1006,9 +1280,7 @@ struct DeepStreamRuntime::Impl
     const auto source_format = resolve_source_format(config.source_pixel_format);
     source = make_element(config.source_element.c_str(), "source");
     source_caps = make_element("capsfilter", "source_caps");
-    if (source_format.needs_bayer_convert) {
-      source_bayer_convert = make_element("bayer2rgb", "source_bayer_convert");
-    }
+    source_bayer_convert = make_bayer_converter(source_format);
     tee = make_element("tee", "tee");
     infer_queue = make_element("queue", "infer_queue");
     infer_convert = make_element("videoconvert", "infer_convert");
@@ -1284,6 +1556,8 @@ struct DeepStreamRuntime::Impl
       }
       gst_object_unref(color_queue_sink_pad);
     }
+
+    attach_stage_profile_probes();
 
     bus = gst_element_get_bus(pipeline);
     if (bus == nullptr) {

@@ -175,12 +175,14 @@ private:
   bool use_robot_id_targeting_{false};
   bool debug_publish_image_raw_{false};
   bool pre_mux_resize_{false};
+  bool deepstream_profile_stages_{false};
   bool preview_failed_{false};
   bool stm_color_locked_{false};
   int imgsz_width_{640};
   int imgsz_height_{640};
   int pre_mux_width_{0};
   int pre_mux_height_{0};
+  int deepstream_profile_stage_interval_{300};
   int tracker_timeout_{15};
   int max_hsv_candidates_{3};
   int max_coast_frames_{3};

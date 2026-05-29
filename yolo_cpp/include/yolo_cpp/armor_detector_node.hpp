@@ -193,6 +193,7 @@ private:
   bool debug_publish_image_raw_{false};
   bool save_target_frames_{false};
   bool pre_mux_resize_{false};
+  bool deepstream_profile_stages_{false};
   bool enable_3d_pose_{true};
   bool preview_failed_{false};
   bool preview_has_target_{false};
@@ -201,6 +202,7 @@ private:
   int imgsz_height_{640};
   int pre_mux_width_{0};
   int pre_mux_height_{0};
+  int deepstream_profile_stage_interval_{300};
   int max_hsv_candidates_{3};
   int stage_log_interval_{300};
   int frame_count_{0};

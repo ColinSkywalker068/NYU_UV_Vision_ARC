@@ -60,6 +60,8 @@ struct Options
   bool pre_mux_resize{false};
   int pre_mux_width{0};
   int pre_mux_height{0};
+  bool deepstream_profile_stages{false};
+  int deepstream_profile_stage_interval{300};
 
   yolo_cpp::CameraConfig camera;
 };
@@ -217,6 +219,12 @@ Options default_options_from_env()
   if (const auto value = getenv_int("CV_STM_DEEPSTREAM_PRE_MUX_HEIGHT")) {
     options.pre_mux_height = *value;
   }
+  if (const auto value = getenv_bool("CV_STM_DEEPSTREAM_PROFILE_STAGES")) {
+    options.deepstream_profile_stages = *value;
+  }
+  if (const auto value = getenv_int("CV_STM_DEEPSTREAM_PROFILE_STAGE_INTERVAL")) {
+    options.deepstream_profile_stage_interval = *value;
+  }
 
   if (const auto value = getenv_int("CV_STM_BASLER_FPS")) {
     options.camera.basler_fps = *value;
@@ -305,6 +313,8 @@ void print_usage(const char * program)
     << "  --pre-mux-resize BOOL          Resize to model aspect box before nvstreammux\n"
     << "  --pre-mux-width N              Optional pre-mux resize bounding width (default: model width)\n"
     << "  --pre-mux-height N             Optional pre-mux resize bounding height (default: model height)\n\n"
+    << "  --deepstream-profile-stages BOOL       Log per-stage GStreamer timing (default: false)\n"
+    << "  --deepstream-profile-stage-interval N  Frames between profile logs (default: 300)\n\n"
     << "Camera options mirror STM env defaults:\n"
     << "  --camera-type basler|realsense\n"
     << "  --basler-fps N                 Requested cap/fallback FPS (default: 90)\n"
@@ -359,6 +369,10 @@ Options parse_args(int argc, char ** argv)
       options.pre_mux_width = std::stoi(require_arg_value(argc, argv, i));
     } else if (arg == "--pre-mux-height") {
       options.pre_mux_height = std::stoi(require_arg_value(argc, argv, i));
+    } else if (arg == "--deepstream-profile-stages") {
+      options.deepstream_profile_stages = parse_bool_value(require_arg_value(argc, argv, i));
+    } else if (arg == "--deepstream-profile-stage-interval") {
+      options.deepstream_profile_stage_interval = std::stoi(require_arg_value(argc, argv, i));
     } else if (arg == "--camera-type") {
       options.camera.camera_type = require_arg_value(argc, argv, i);
     } else if (arg == "--basler-fps") {
@@ -403,6 +417,7 @@ Options parse_args(int argc, char ** argv)
   }
   options.pre_mux_width = std::max(0, options.pre_mux_width);
   options.pre_mux_height = std::max(0, options.pre_mux_height);
+  options.deepstream_profile_stage_interval = std::max(1, options.deepstream_profile_stage_interval);
   return options;
 }
 
@@ -597,6 +612,8 @@ void print_header(const Options & options)
     << " basler_exposure_us=" << options.camera.basler_exposure_us
     << " pre_mux_resize=" << (options.pre_mux_resize ? "true" : "false")
     << " pre_mux_box=" << options.pre_mux_width << 'x' << options.pre_mux_height
+    << " deepstream_profile_stages="
+    << (options.deepstream_profile_stages ? "true" : "false")
     << '\n';
 }
 
@@ -729,6 +746,8 @@ yolo_cpp::DeepStreamRuntime::Config make_deepstream_config(const Options & optio
   config.pre_mux_resize = options.pre_mux_resize;
   config.pre_mux_width = options.pre_mux_width;
   config.pre_mux_height = options.pre_mux_height;
+  config.profile_stages = options.deepstream_profile_stages;
+  config.profile_stage_interval = options.deepstream_profile_stage_interval;
   config.flip_source = options.camera.basler_flip;
   config.conf_threshold = options.conf_threshold;
   config.half = options.half;

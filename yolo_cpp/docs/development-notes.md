@@ -44,6 +44,14 @@ For full-FOV Basler downsampling tests, use the DeepStream pre-mux resize switch
 
 The observed `a2A1920-160ucBAS` / serial `41923000` GenICam node map did not expose `BinningSelector`, `BinningHorizontal`, `BinningVertical`, `BinningHorizontalMode`, `BinningVerticalMode`, `DecimationHorizontal`, `DecimationVertical`, `DecimationHorizontalMode`, `DecimationVerticalMode`, `ScalingHorizontal`, or `ScalingVertical`. It did expose writable `PixelFormat`, `Width`, `Height`, `OffsetX`, and `OffsetY`; those size controls are ROI/crop controls, not full-FOV binning.
 
+For stage timing around the remaining conversion path, enable the DeepStream pad profiler for a short run:
+
+```bash
+./services/fps-benchmark.sh --mode deepstream --duration 10 --warmup 2 --pre-mux-resize true --basler-fps 110 --deepstream-profile-stages true
+```
+
+The profile log reports average milliseconds for source-to-Bayer conversion, queue handoff, `videoconvert`, `nvvideoconvert`, streammux handoff, and `nvinfer`.
+
 ## Related Repo Docs
 
 - build and container workflow: [CPP_CONTAINER_RUNBOOK.md](../../CPP_CONTAINER_RUNBOOK.md)

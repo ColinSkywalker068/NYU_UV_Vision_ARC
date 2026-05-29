@@ -139,6 +139,8 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<bool>("pre_mux_resize", false);
   this->declare_parameter<int>("pre_mux_width", 0);
   this->declare_parameter<int>("pre_mux_height", 0);
+  this->declare_parameter<bool>("deepstream_profile_stages", false);
+  this->declare_parameter<int>("deepstream_profile_stage_interval", 300);
   this->declare_parameter<int>("stage_log_interval", 300);
 
   model_path_ = this->get_parameter("model_path").as_string();
@@ -177,6 +179,9 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   pre_mux_resize_ = this->get_parameter("pre_mux_resize").as_bool();
   pre_mux_width_ = this->get_parameter("pre_mux_width").as_int();
   pre_mux_height_ = this->get_parameter("pre_mux_height").as_int();
+  deepstream_profile_stages_ = this->get_parameter("deepstream_profile_stages").as_bool();
+  deepstream_profile_stage_interval_ = std::max(
+    1, static_cast<int>(this->get_parameter("deepstream_profile_stage_interval").as_int()));
   stage_log_interval_ = std::max(
     1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
 
@@ -361,6 +366,8 @@ void PerceptionNode::initialize_deepstream_runtime()
   config.pre_mux_resize = pre_mux_resize_;
   config.pre_mux_width = pre_mux_width_;
   config.pre_mux_height = pre_mux_height_;
+  config.profile_stages = deepstream_profile_stages_;
+  config.profile_stage_interval = deepstream_profile_stage_interval_;
   config.flip_source = camera_config_.basler_flip;
   config.conf_threshold = conf_;
   config.half = half_;

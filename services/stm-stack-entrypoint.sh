@@ -252,6 +252,8 @@ run_launch() {
       append_optional_launch_arg CV_STM_DEEPSTREAM_PRE_MUX_RESIZE pre_mux_resize
       append_optional_launch_arg CV_STM_DEEPSTREAM_PRE_MUX_WIDTH pre_mux_width
       append_optional_launch_arg CV_STM_DEEPSTREAM_PRE_MUX_HEIGHT pre_mux_height
+      append_optional_launch_arg CV_STM_DEEPSTREAM_PROFILE_STAGES deepstream_profile_stages
+      append_optional_launch_arg CV_STM_DEEPSTREAM_PROFILE_STAGE_INTERVAL deepstream_profile_stage_interval
       append_optional_launch_arg CV_STM_BASLER_USE_FULL_SENSOR basler_use_full_sensor
       append_optional_launch_arg CV_STM_BASLER_FLIP basler_flip
       ;;

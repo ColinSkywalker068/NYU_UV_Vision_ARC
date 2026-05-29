@@ -36,6 +36,7 @@ The launch files expose the settings that matter most during bring-up:
 - camera selection such as `camera_type`, RealSense `rs_*` launch args, and Basler `basler_*` launch args
 - Basler high-FPS capture through `basler_pixel_format`, `basler_source_width`, `basler_source_height`, `basler_fps`, and `basler_uncapped_fps`
 - DeepStream full-FOV resize through `pre_mux_resize`, `pre_mux_width`, and `pre_mux_height`
+- DeepStream conversion profiling through `deepstream_profile_stages` and `deepstream_profile_stage_interval`
 - detector backend selection through `detector_backend`
 - fallback control through `allow_native_tensorrt_fallback`
 - default enemy color through `target_color` until STM or robot-id feedback overrides it
