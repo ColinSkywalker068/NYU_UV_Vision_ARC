@@ -68,6 +68,35 @@ get_cplusplus_env_args() {
 	echo "--env CV_CPLUSPLUS_GST_PLUGIN_PATH=$gst_plugin_path --env CV_CPLUSPLUS_LD_LIBRARY_PATH=$ld_library_path --env GST_PLUGIN_PATH=$gst_plugin_path --env GST_PLUGIN_PATH_1_0=$gst_plugin_path --env LD_LIBRARY_PATH=$ld_library_path --env GST_REGISTRY=/tmp/gst-registry-deepstream.bin"
 }
 
+get_cv_stm_env_args() {
+	local env_names=(
+		CV_STM_REPO_ROOT
+		CV_STM_MODEL_PATH
+		CV_STM_CAMERA_TYPE
+		CV_STM_DETECTOR_BACKEND
+		CV_STM_ALLOW_NATIVE_TENSORRT_FALLBACK
+		CV_STM_DEBUG_PUBLISH_IMAGE_RAW
+		CV_STM_SERIAL_PORT
+		CV_STM_SERIAL_VERBOSE
+		CV_STM_SHOW
+		CV_STM_REQUIRE_SERIAL
+		CV_STM_EXTRA_LAUNCH_ARGS
+		CV_STM_BASLER_EXPOSURE_US
+		CV_STM_BASLER_GAIN_DB
+		CV_STM_BASLER_FPS
+		CV_STM_BASLER_UNCAPPED_FPS
+		CV_STM_BASLER_USE_FULL_SENSOR
+		CV_STM_BASLER_FLIP
+		CV_STM_HEALTH_TIMEOUT_S
+	)
+	local name
+	for name in "${env_names[@]}"; do
+		if [ -n "${!name+x}" ]; then
+			printf -- "--env %s " "$name"
+		fi
+	done
+}
+
 prepare_cplusplus_command() {
 	local image_name="$1"
 	if [[ "$image_name" != *"cplusplus"* ]]; then
@@ -148,6 +177,7 @@ if [ $? -eq 0 ]; then
 	DOCKER_CMD="${SUDO:+$SUDO }docker"
 	PYLON_MOUNT="$(get_pylon_mount_arg)"
 	CPP_ENV="$(get_cplusplus_env_args "$IMAGE_NAME")"
+	CV_STM_ENV="$(get_cv_stm_env_args)"
 
 	# This file shows what Jetson board is running
 	# /proc or /sys files aren't mountable into docker
@@ -179,6 +209,7 @@ if [ $? -eq 0 ]; then
 			$HUGGINGFACE \
 			$PYLON_MOUNT \
 			$CPP_ENV \
+			$CV_STM_ENV \
 			"$IMAGE_NAME" "${CMD_ARGS[@]}"
 	fi
 # Generic Linux (KR260, Ubuntu, etc.)
@@ -187,6 +218,7 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
 	CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
 	PYLON_MOUNT="$(get_pylon_mount_arg)"
 	CPP_ENV="$(get_cplusplus_env_args "$IMAGE_NAME")"
+	CV_STM_ENV="$(get_cv_stm_env_args)"
 	if container_exists "docker" "$CONTAINER_NAME"; then
 		reuse_container "docker" "$CONTAINER_NAME" "${CMD_ARGS[@]}"
 	else
@@ -196,6 +228,7 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
 			--volume /home:/home \
 			$PYLON_MOUNT \
 			$CPP_ENV \
+			$CV_STM_ENV \
 			"$IMAGE_NAME" "${CMD_ARGS[@]}"
 	fi
 # MacOS
@@ -203,6 +236,7 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
 	prepare_cplusplus_command "$IMAGE_NAME"
 	CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
 	CPP_ENV="$(get_cplusplus_env_args "$IMAGE_NAME")"
+	CV_STM_ENV="$(get_cv_stm_env_args)"
 	if container_exists "docker" "$CONTAINER_NAME"; then
 		reuse_container "docker" "$CONTAINER_NAME" "${CMD_ARGS[@]}"
 	else
@@ -210,17 +244,21 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
 			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
 			--env DISPLAY=host.docker.internal:0.0 \
 			$CPP_ENV \
+			$CV_STM_ENV \
 			"$IMAGE_NAME" "${CMD_ARGS[@]}"
 	fi
 # Fallback (Windows)
 else
+	CV_STM_ENV="$(get_cv_stm_env_args)"
 	if command -v winpty >/dev/null 2>&1; then
 		winpty docker run -it --name "$(get_container_name "$IMAGE_NAME")" --privileged --network host \
 			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
+			$CV_STM_ENV \
 			"$IMAGE_NAME" "${CMD_ARGS[@]}"
 	else
 		docker run -it --name "$(get_container_name "$IMAGE_NAME")" --privileged --network host \
 			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
+			$CV_STM_ENV \
 			"$IMAGE_NAME" "${CMD_ARGS[@]}"
 	fi
 fi

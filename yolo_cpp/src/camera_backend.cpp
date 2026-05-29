@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -289,6 +290,8 @@ public:
     camera_.Attach(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
     camera_.Open();
     configure_camera();
+    actual_fps_ = read_resulting_fps(camera_.GetNodeMap()).value_or(
+      static_cast<double>(config_.basler_fps));
     converter_.OutputPixelFormat = Pylon::PixelType_BGR8packed;
     converter_.OutputBitAlignment = Pylon::OutputBitAlignment_MsbAligned;
     camera_.StartGrabbing(
@@ -339,7 +342,7 @@ public:
 
   double actual_fps() const override
   {
-    return static_cast<double>(config_.basler_fps);
+    return actual_fps_;
   }
 
   const std::string & source_id() const override
@@ -369,6 +372,29 @@ private:
     }
   }
 
+  std::optional<double> read_float_if_readable(GenApi::INodeMap & node_map, const char * name) const
+  {
+    GenApi::CFloatPtr node(node_map.GetNode(name));
+    if (node && GenApi::IsReadable(node)) {
+      const double value = node->GetValue();
+      if (value > 0.0) {
+        return value;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<double> read_resulting_fps(GenApi::INodeMap & node_map) const
+  {
+    if (auto fps = read_float_if_readable(node_map, "BslResultingAcquisitionFrameRate")) {
+      return fps;
+    }
+    if (auto fps = read_float_if_readable(node_map, "ResultingFrameRate")) {
+      return fps;
+    }
+    return read_float_if_readable(node_map, "ResultingFrameRateAbs");
+  }
+
   void configure_camera()
   {
     auto & node_map = camera_.GetNodeMap();
@@ -378,8 +404,11 @@ private:
       set_if_writable<GenApi::CFloatPtr>(
         node_map, "AcquisitionFrameRate", static_cast<double>(config_.basler_fps));
     }
+    set_enum_if_writable(node_map, "ExposureMode", "Timed");
     set_enum_if_writable(node_map, "ExposureAuto", "Off");
     set_if_writable<GenApi::CFloatPtr>(node_map, "ExposureTime", config_.basler_exposure_us);
+    set_enum_if_writable(node_map, "GainAuto", "Off");
+    set_enum_if_writable(node_map, "GainSelector", "All");
     set_if_writable<GenApi::CFloatPtr>(node_map, "Gain", config_.basler_gain_db);
 
     if (!config_.basler_use_full_sensor) {
@@ -412,6 +441,7 @@ private:
 
   CameraConfig config_;
   const std::string source_id_{"basler"};
+  double actual_fps_{0.0};
   Pylon::CInstantCamera camera_;
   Pylon::CImageFormatConverter converter_;
 };

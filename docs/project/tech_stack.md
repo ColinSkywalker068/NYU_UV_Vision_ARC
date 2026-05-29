@@ -5,7 +5,7 @@
 <!-- DOC_ROLE: canonical -->
 <!-- READ_WHEN: Read when adding dependencies, changing build/runtime images, or validating environment assumptions. -->
 <!-- SKIP_WHEN: Skip when you only need architecture flow, requirements, or operator procedures. -->
-<!-- PRIMARY_SOURCES: yolo_cpp/package.xml, yolo_cpp/CMakeLists.txt, cv_auto_aim_interfaces/package.xml, Docker/Dockerfile.cplusplus, Docker/docker-compose.yml, services/uv.sh, .pre-commit-config.yaml -->
+<!-- PRIMARY_SOURCES: yolo_cpp/package.xml, yolo_cpp/CMakeLists.txt, cv_auto_aim_interfaces/package.xml, Docker/Dockerfile.cplusplus, Docker/docker-compose.yml, services/uv.sh, services/stm-stack.service, services/stm-stack.sh, .pre-commit-config.yaml -->
 
 ## Quick Navigation
 
@@ -91,6 +91,8 @@
 | [Docker/Dockerfile.cplusplus](../../Docker/Dockerfile.cplusplus) | C++ DeepStream image layer with ROS, GStreamer, DeepStream 6.4, optional Pylon, CUDA/TensorRT paths, and runtime library setup. |
 | [services/start-container.sh](../../services/start-container.sh) | Cross-host Docker launcher for Jetson, Linux, macOS, and fallback Windows paths. |
 | [services/stm-stack.service](../../services/stm-stack.service) | Systemd unit for headless full-stack launch. |
+| [services/stm-stack.sh](../../services/stm-stack.sh) | Operator CLI for installing, restarting, preflighting, logging, health-checking, and entering the competition service container. |
+| [services/stm-stack-entrypoint.sh](../../services/stm-stack-entrypoint.sh) | Container-side competition startup entrypoint that validates prebuilt ROS, model, DeepStream/Pylon, and serial prerequisites before launching. |
 
 ## CI and Quality Gates
 

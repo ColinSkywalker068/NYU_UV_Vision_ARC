@@ -449,6 +449,8 @@ void ArmorDetectorNode::initialize_deepstream_runtime()
   config.source_width = camera_config_.imgsz_width;
   config.source_height = camera_config_.imgsz_height;
   config.source_fps = camera_config_.basler_fps;
+  config.source_exposure_us = camera_config_.basler_exposure_us;
+  config.source_gain_db = camera_config_.basler_gain_db;
   config.source_fps_uncapped = camera_config_.basler_uncapped_fps;
   config.source_use_full_sensor = camera_config_.basler_use_full_sensor;
   config.flip_source = camera_config_.basler_flip;
@@ -457,13 +459,15 @@ void ArmorDetectorNode::initialize_deepstream_runtime()
   config.enable_color_verification = enable_color_verification_ && !use_model_color_classes_;
   config.debug_publish_image_raw = debug_publish_image_raw_ || show_;
 
-  fps_ = static_cast<double>(std::max(1, camera_config_.basler_fps));
   deepstream_runtime_ = std::make_unique<DeepStreamRuntime>(
     this->get_logger(),
     config,
     [this](DeepStreamRuntime::Result && result) {
       this->handle_deepstream_result(std::move(result));
     });
+  fps_ = deepstream_runtime_->source_actual_fps() > 0.0 ?
+    deepstream_runtime_->source_actual_fps() :
+    static_cast<double>(std::max(1, camera_config_.basler_fps));
 }
 
 void ArmorDetectorNode::timer_callback()

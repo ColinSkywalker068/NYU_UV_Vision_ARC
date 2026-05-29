@@ -29,6 +29,8 @@ public:
     int source_width{640};
     int source_height{640};
     int source_fps{60};
+    double source_exposure_us{5000.0};
+    double source_gain_db{5.0};
     bool source_fps_uncapped{true};
     bool source_use_full_sensor{true};
     bool flip_source{false};
@@ -61,6 +63,9 @@ public:
 
   /// Return the backend name used in logs.
   const std::string & backend_name() const;
+
+  /// Return the camera source's reported FPS when available.
+  double source_actual_fps() const;
 
 private:
   struct Impl;

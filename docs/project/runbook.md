@@ -5,10 +5,10 @@
 <!-- DOC_ROLE: canonical -->
 <!-- READ_WHEN: Read when you need setup, build, launch, deploy, restart, log inspection, recovery, or troubleshooting commands. -->
 <!-- SKIP_WHEN: Skip when you only need static infrastructure inventory, ROS 2 node architecture, or detector implementation details. -->
-<!-- PRIMARY_SOURCES: Docker/docker-compose.yml, Docker/Dockerfile.run-cv, Docker/Dockerfile.cplusplus, Docker/build_cplusplus.sh, services/uv.sh, services/start-container.sh, services/stm-stack.service, services/setup-stm-stack.sh, CPP_CONTAINER_RUNBOOK.md -->
+<!-- PRIMARY_SOURCES: Docker/docker-compose.yml, Docker/Dockerfile.run-cv, Docker/Dockerfile.cplusplus, Docker/build_cplusplus.sh, services/uv.sh, services/start-container.sh, services/stm-stack.service, services/stm-stack.sh, services/stm-stack-entrypoint.sh, services/setup-stm-stack.sh, CPP_CONTAINER_RUNBOOK.md -->
 
 > **Status:** Current operational guide
-> **Last Updated:** 2026-05-15
+> **Last Updated:** 2026-05-28
 
 ## Quick Navigation
 
@@ -27,17 +27,18 @@
 | Skip When | You need static host inventory, CI/CD inventory, or high-level architecture. |
 | Canonical | Yes |
 | Next Docs | [Infrastructure](infrastructure.md), [Setup Guide](../Setup/Setup.md) |
-| Primary Sources | `Docker/docker-compose.yml`, `Docker/Dockerfile.run-cv`, `Docker/Dockerfile.cplusplus`, `Docker/build_cplusplus.sh`, `services/uv.sh`, `services/start-container.sh`, `services/stm-stack.service`, `services/setup-stm-stack.sh`, `CPP_CONTAINER_RUNBOOK.md` |
+| Primary Sources | `Docker/docker-compose.yml`, `Docker/Dockerfile.run-cv`, `Docker/Dockerfile.cplusplus`, `Docker/build_cplusplus.sh`, `services/uv.sh`, `services/start-container.sh`, `services/stm-stack.service`, `services/stm-stack.sh`, `services/stm-stack-entrypoint.sh`, `services/setup-stm-stack.sh`, `CPP_CONTAINER_RUNBOOK.md` |
 
 ## 1. Overview
 
 CV Detection is the NYU Robomaster ROS 2 Humble vision runtime. The active C++ stack builds with `colcon` and runs the `yolo_cpp` package for camera capture, YOLO/TensorRT/DeepStream armor detection, tracking, 3D processing, ballistic aim solving, and STM32 serial output.
 
-The repository has two primary runtime paths:
+The repository has three primary runtime paths:
 
 | Path | Use When | Command Surface |
 |------|----------|-----------------|
 | `uv` wrapper with `services/start-container.sh` | Day-to-day robot and development use, especially when the host does not have ROS 2 sourced locally | `uv docker`, `uv build`, `uv run yolo_cpp stm.launch.py` |
+| Competition STM service | Headless robot startup, match restarts, SSH diagnostics, and service logs | `./services/stm-stack.sh preflight`, `./services/stm-stack.sh restart`, `./services/stm-stack.sh health` |
 | Docker Compose service | One-command RealSense stack startup from the `Docker/` directory | `docker compose -f Docker/docker-compose.yml up --build` |
 
 ## 2. Contacts
@@ -68,13 +69,19 @@ No `.env.example` file exists in the current repository. The operational variabl
 | Variable | Required For | Default Or Example | Source |
 |----------|--------------|--------------------|--------|
 | `CV_BASE_IMAGE` | Docker Compose build base image override | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` | `Docker/docker-compose.yml` |
+| `CV_STM_IMAGE` | Competition STM service Docker image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` | `services/stm-stack.service`, `services/stm-stack.sh` |
+| `CV_STM_REPO_ROOT` | Repository path inside the service container | `/home/ultraviolet/CV_Detection` | `services/stm-stack.service`, `services/stm-stack-entrypoint.sh` |
+| `CV_STM_MODEL_PATH` | Competition model or engine path | `model_test/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine` under the robot repo | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_SERIAL_PORT` | STM32 serial device for competition startup | `/dev/ttyUSB0` | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_REQUIRE_SERIAL` | Whether preflight must fail when the serial path is absent | `true` | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_EXTRA_LAUNCH_ARGS` | Optional extra `stm.launch.py` launch arguments | Empty by default | `services/stm-stack-entrypoint.sh` |
 | `DISPLAY` | X11 GUI forwarding | Host `DISPLAY` value | `Docker/docker-compose.yml`, `services/start-container.sh` |
 | `QT_X11_NO_MITSHM` | Qt/X11 compatibility | `1` | `Docker/docker-compose.yml` |
 | `V4L2_DEVICES` | Camera device forwarding | Auto-assembled `/dev/video0` through `/dev/video9` flags on Jetson | `Docker/docker-compose.yml`, `services/start-container.sh` |
 | `NUMBA_THREADING_LAYER` | Python legacy runtime compatibility | `omp` | `Docker/docker-compose.yml` |
 | `XAUTHORITY` | X11 auth inside container | `/tmp/.docker.xauth` | `Docker/docker-compose.yml`, `services/start-container.sh` |
 | `IMAGE` | `services/run-cplusplus.sh` image override | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` | `services/run-cplusplus.sh` |
-| `UV_CONTAINER_NAME` | Stable or custom Docker container name | Unset uses `uv-` plus sanitized image name | `services/start-container.sh` |
+| `UV_CONTAINER_NAME` | Stable or custom Docker container name | Competition service uses `cv-stm-stack`; otherwise unset uses `uv-` plus sanitized image name | `services/start-container.sh`, `services/stm-stack.service` |
 | `HUGGINGFACE_TOKEN` | Optional model/token pass-through | Host value when present | `services/start-container.sh` |
 | `RMW_IMPLEMENTATION` | ROS 2 middleware in Jetson container path | `rmw_fastrtps_cpp` | `services/start-container.sh` |
 | `PYLON_ROOT` | Basler Pylon install root | `/opt/pylon` | `Docker/Dockerfile.cplusplus`, `CPP_CONTAINER_RUNBOOK.md` |
@@ -166,36 +173,56 @@ docker compose -f Docker/docker-compose.yml down
 
 ## 7. Robot Systemd Deployment
 
-The declared boot service is `services/stm-stack.service`. It runs from `/home/ultraviolet/CV_Detection`, requires `docker.service`, removes the previous service container, and launches the full `stm.launch.py` stack.
+The declared boot service is `services/stm-stack.service`. It runs from `/home/ultraviolet/CV_Detection`, requires `docker.service`, removes the previous `cv-stm-stack` container, and launches the full Basler + DeepStream + STM32 `stm.launch.py` stack through `services/stm-stack-entrypoint.sh`.
 
-Install or refresh the service on the robot host:
+The service uses the C++ image `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` and reads optional overrides from `/etc/cv-detection/stm-stack.env`. Startup is intentionally prebuilt: it fails when `install/setup.bash` is missing instead of running `uv build` during match bring-up.
+
+Install or refresh the service on the robot host without starting it:
 
 ```bash
-./services/setup-stm-stack.sh
+./services/stm-stack.sh install
+```
+
+Run the competition preflight before startup:
+
+```bash
+./services/stm-stack.sh preflight
 ```
 
 Check status:
 
 ```bash
-sudo systemctl status stm-stack.service
+./services/stm-stack.sh status
 ```
 
 Restart the service:
 
 ```bash
-sudo systemctl restart stm-stack.service
+./services/stm-stack.sh restart
 ```
 
 Follow live logs:
 
 ```bash
-sudo journalctl -u stm-stack.service -f
+./services/stm-stack.sh logs
+```
+
+Check the live ROS graph after startup:
+
+```bash
+./services/stm-stack.sh health
+```
+
+Enter the running service container:
+
+```bash
+./services/stm-stack.sh shell
 ```
 
 Stop the service:
 
 ```bash
-sudo systemctl stop stm-stack.service
+./services/stm-stack.sh stop
 ```
 
 ## 8. Basler And DeepStream Builds
@@ -269,6 +296,12 @@ Check DeepStream/GStreamer plugin availability inside the C++ container:
 gst-inspect-1.0 nvstreammux
 gst-inspect-1.0 nvinfer
 gst-inspect-1.0 pylonsrc
+```
+
+Check the competition service ROS graph from the host:
+
+```bash
+./services/stm-stack.sh health
 ```
 
 ## 11. Troubleshooting
@@ -346,7 +379,7 @@ Resolution:
 
 1. Confirm the STM32 is attached as `/dev/ttyUSB0`, or launch `stm.launch.py` with a different `serial_port:=` value.
 2. Confirm the full stack, not the RealSense-only stack, is running.
-3. Check `sudo journalctl -u stm-stack.service -f` when running through systemd.
+3. Check `./services/stm-stack.sh logs` when running through systemd.
 
 The serial bridge is implemented to stay alive when the serial port cannot be opened, so a running ROS graph does not prove TX is connected.
 
@@ -383,7 +416,7 @@ Resolution:
 
 | Situation | Procedure |
 |-----------|-----------|
-| Systemd stack is unhealthy | Run `sudo systemctl restart stm-stack.service`, then follow `sudo journalctl -u stm-stack.service -f`. |
+| Systemd stack is unhealthy | Run `./services/stm-stack.sh restart`, then follow `./services/stm-stack.sh logs` and `./services/stm-stack.sh health`. |
 | Compose runtime is unhealthy | Run `docker compose -f Docker/docker-compose.yml down`, then `docker compose -f Docker/docker-compose.yml up --build`. |
 | ROS workspace overlay is stale | Run `uv clean`, `uv build yolo_cpp`, then source `install/setup.bash`. |
 | Camera was replugged | Restart the active container or systemd service so device discovery and mounts are refreshed. |
@@ -394,7 +427,7 @@ Resolution:
 | Runtime | Depends On | Declared Source |
 |---------|------------|-----------------|
 | `cv-container` Compose service | Docker Engine, NVIDIA runtime, host network, `/dev/video0`, `/dev/bus/usb`, `/tmp/argus_socket`, `/dev`, `/home/ultraviolet` | `Docker/docker-compose.yml` |
-| `stm-stack.service` | `docker.service`, `/home/ultraviolet/CV_Detection`, `services/start-container.sh`, selected Docker image, STM32 serial device for TX | `services/stm-stack.service` |
+| `stm-stack.service` | `docker.service`, `/home/ultraviolet/CV_Detection`, `services/start-container.sh`, `services/stm-stack-entrypoint.sh`, C++ DeepStream image, STM32 serial device for TX | `services/stm-stack.service` |
 | `yolo_cpp` full stack | `cv_auto_aim_interfaces`, model engine at `model_test/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine`, camera device, optional `/dev/ttyUSB0` | `yolo_cpp/launch/stm.launch.py` |
 | C++ DeepStream/Basler image | DeepStream 6.4, GStreamer plugins, optional Pylon packages under `Docker/pylon/` | `Docker/Dockerfile.cplusplus`, `Docker/build_cplusplus.sh` |
 

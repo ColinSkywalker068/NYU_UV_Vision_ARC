@@ -5,10 +5,10 @@
 <!-- DOC_ROLE: canonical -->
 <!-- READ_WHEN: Read when you need deployment topology, Docker service inventory, host device requirements, CI/CD facts, or artifact image names. -->
 <!-- SKIP_WHEN: Skip when you need operator procedures, ROS 2 architecture, node behavior, or feature-level design. -->
-<!-- PRIMARY_SOURCES: Docker/docker-compose.yml, Docker/Dockerfile.run-cv, Docker/Dockerfile.cplusplus, services/start-container.sh, services/stm-stack.service, .github/workflows/main.yml, .gitlab-ci.yml -->
+<!-- PRIMARY_SOURCES: Docker/docker-compose.yml, Docker/Dockerfile.run-cv, Docker/Dockerfile.cplusplus, services/start-container.sh, services/stm-stack.service, services/stm-stack.sh, services/stm-stack-entrypoint.sh, .github/workflows/main.yml, .gitlab-ci.yml -->
 
 > **Status:** Current repository inventory
-> **Last Updated:** 2026-05-15
+> **Last Updated:** 2026-05-28
 
 ## Quick Navigation
 
@@ -27,7 +27,7 @@
 | Skip When | You need command procedures, troubleshooting steps, ROS 2 node architecture, or detector/tracker implementation details. |
 | Canonical | Yes |
 | Next Docs | [Operations Runbook](runbook.md), [Setup Guide](../Setup/Setup.md) |
-| Primary Sources | `Docker/docker-compose.yml`, `Docker/Dockerfile.run-cv`, `Docker/Dockerfile.cplusplus`, `services/start-container.sh`, `services/stm-stack.service`, `.github/workflows/main.yml`, `.gitlab-ci.yml` |
+| Primary Sources | `Docker/docker-compose.yml`, `Docker/Dockerfile.run-cv`, `Docker/Dockerfile.cplusplus`, `services/start-container.sh`, `services/stm-stack.service`, `services/stm-stack.sh`, `services/stm-stack-entrypoint.sh`, `.github/workflows/main.yml`, `.gitlab-ci.yml` |
 
 ## 1. Server Inventory
 
@@ -51,7 +51,7 @@ No domain, DNS, reverse proxy, TLS, or public ingress configuration is declared 
 | Service | Runtime Path | Image Or Build Source | GPU | Devices And Host Access | Startup Behavior |
 |---------|--------------|-----------------------|-----|-------------------------|------------------|
 | `cv-container` | `Docker/docker-compose.yml` | Builds `Docker/Dockerfile.run-cv` with `BASE_IMAGE=${CV_BASE_IMAGE:-nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus}` | `runtime: nvidia` | `/dev/video0`, `/dev/bus/usb`, `/tmp/argus_socket`, `/dev`, X11 socket, D-Bus, Avahi, Docker socket, Jetson release files, `/home/ultraviolet` | `Docker/Dockerfile.run-cv` sources `install/setup.bash` if present, runs `uv clean`, runs `uv build`, then launches `uv run yolo_cpp realsense.launch.py show:=false`. |
-| `stm-stack.service` | `services/stm-stack.service` | Runs `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper` through `services/start-container.sh` | Uses `--runtime nvidia` on Jetson hosts | Host network, privileged mode, `/tmp/argus_socket`, `/dev`, `/dev/bus/usb`, D-Bus, Avahi, Docker socket, `/home`, optional `/opt/pylon` | Removes the previous service container, starts the full `uv run yolo_cpp stm.launch.py show:=false` stack, restarts every 5 seconds on failure. |
+| `stm-stack.service` | `services/stm-stack.service` | Runs `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` through `services/start-container.sh` and `services/stm-stack-entrypoint.sh` | Uses `--runtime nvidia` on Jetson hosts | Host network, privileged mode, `/tmp/argus_socket`, `/dev`, `/dev/bus/usb`, D-Bus, Avahi, Docker socket, `/home`, optional `/opt/pylon` | Removes the previous `cv-stm-stack` container, validates the prebuilt workspace/model/plugins/serial path, starts headless `stm.launch.py`, and restarts every 5 seconds on failure. |
 
 ## 5. Artifact Repository
 
@@ -59,7 +59,7 @@ No domain, DNS, reverse proxy, TLS, or public ingress configuration is declared 
 |----------|--------------------|--------|
 | C++ CV Docker image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` | `services/uv.sh`, `services/run-cplusplus.sh`, `Docker/docker-compose.yml`, `Docker/Dockerfile.run-cv` |
 | Python legacy RealSense wrapper image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra` | `services/uv.sh`, `Docker/Dockerfile.cplusplus`, `Docker/build_cplusplus.sh` |
-| Systemd STM stack image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper` | `services/stm-stack.service`, `services/setup-orin-nano.sh` |
+| Systemd STM stack image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` | `services/stm-stack.service`, `services/stm-stack.sh`, `services/setup-orin-nano.sh` |
 | Navigation ARM64 image | `nyuultraviolet/cv-dockerfile:nav-arm64` | `services/uv.sh`, `services/setup-orin-nano.sh` |
 
 No credentials, private registry URL, or artifact retention policy is declared in the repository.

@@ -89,6 +89,10 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 | Launch full stack | `uv run yolo_cpp stm.launch.py` | Detector, tracker, processor, solver, and STM bridge. |
 | Launch RealSense stack | `uv run yolo_cpp realsense.launch.py` | Detector, tracker, processor, and solver without serial bridge. |
 | Launch zero-copy experiment | `uv run yolo_cpp zerocopy.launch.py` | Component-container path for the combined perception node. |
+| Install competition service | `./services/stm-stack.sh install` | Installs and enables the headless STM systemd service without starting it. |
+| Competition preflight | `./services/stm-stack.sh preflight` | Checks image, package, model, DeepStream/Pylon plugins, and serial path before startup. |
+| Restart competition stack | `./services/stm-stack.sh restart` | Restarts the `cv-stm-stack` service container through systemd. |
+| Competition logs and health | `./services/stm-stack.sh logs` / `./services/stm-stack.sh health` | Follows service logs or checks expected ROS nodes and topics. |
 | Native build | `colcon build --packages-select cv_auto_aim_interfaces yolo_cpp --symlink-install --cmake-args -DBUILD_TESTING=OFF` | Use in an environment with ROS 2 Humble and dependencies installed. |
 | C++ tests | `colcon test --packages-select yolo_cpp` | Uses the package test targets. |
 | Pre-commit | `pre-commit run --all-files` | Runs configured repository hooks. |
@@ -120,4 +124,4 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 - [ ] The file remains under 200 lines.
 - [ ] Shared guidance appears here rather than being duplicated in `CLAUDE.md`.
 
-**Last Updated:** 2026-05-15
+**Last Updated:** 2026-05-28

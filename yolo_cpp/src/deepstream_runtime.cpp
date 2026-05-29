@@ -142,6 +142,207 @@ bool set_child_proxy_bool_if_present(GstElement * element, const char * name, bo
   return did_set;
 }
 
+bool string_matches_enum_value(const GEnumValue * enum_value, const char * value)
+{
+  if (enum_value == nullptr || value == nullptr) {
+    return false;
+  }
+  if (
+    g_strcmp0(enum_value->value_name, value) == 0 ||
+    g_strcmp0(enum_value->value_nick, value) == 0 ||
+    g_ascii_strcasecmp(enum_value->value_name, value) == 0 ||
+    g_ascii_strcasecmp(enum_value->value_nick, value) == 0)
+  {
+    return true;
+  }
+
+  const char * suffix = std::strrchr(enum_value->value_name, '_');
+  return suffix != nullptr && g_ascii_strcasecmp(suffix + 1, value) == 0;
+}
+
+bool set_enum_value_from_string(GValue * gvalue, const char * value)
+{
+  GEnumClass * enum_class = G_ENUM_CLASS(g_type_class_ref(G_VALUE_TYPE(gvalue)));
+  if (enum_class == nullptr) {
+    return false;
+  }
+
+  GEnumValue * enum_value = g_enum_get_value_by_name(enum_class, value);
+  if (enum_value == nullptr) {
+    enum_value = g_enum_get_value_by_nick(enum_class, value);
+  }
+  if (enum_value == nullptr) {
+    for (std::uint32_t i = 0; i < enum_class->n_values; ++i) {
+      if (string_matches_enum_value(&enum_class->values[i], value)) {
+        enum_value = &enum_class->values[i];
+        break;
+      }
+    }
+  }
+
+  const bool did_set = enum_value != nullptr;
+  if (did_set) {
+    g_value_set_enum(gvalue, enum_value->value);
+  }
+  g_type_class_unref(enum_class);
+  return did_set;
+}
+
+bool set_string_value(GValue * gvalue, const char * value)
+{
+  if (G_VALUE_HOLDS_STRING(gvalue)) {
+    g_value_set_string(gvalue, value);
+    return true;
+  }
+  if (G_VALUE_HOLDS_ENUM(gvalue)) {
+    return gst_value_deserialize(gvalue, value) || set_enum_value_from_string(gvalue, value);
+  }
+  return gst_value_deserialize(gvalue, value);
+}
+
+bool set_numeric_value(GValue * gvalue, double value)
+{
+  if (G_VALUE_HOLDS_DOUBLE(gvalue)) {
+    g_value_set_double(gvalue, value);
+    return true;
+  }
+  if (G_VALUE_HOLDS_FLOAT(gvalue)) {
+    g_value_set_float(gvalue, static_cast<float>(value));
+    return true;
+  }
+  if (G_VALUE_HOLDS_ENUM(gvalue)) {
+    g_value_set_enum(gvalue, static_cast<int>(value));
+    return true;
+  }
+  if (G_VALUE_HOLDS_INT(gvalue)) {
+    g_value_set_int(gvalue, static_cast<int>(value));
+    return true;
+  }
+  if (G_VALUE_HOLDS_UINT(gvalue)) {
+    g_value_set_uint(gvalue, static_cast<unsigned int>(std::max(0.0, value)));
+    return true;
+  }
+  if (G_VALUE_HOLDS_INT64(gvalue)) {
+    g_value_set_int64(gvalue, static_cast<gint64>(value));
+    return true;
+  }
+  if (G_VALUE_HOLDS_UINT64(gvalue)) {
+    g_value_set_uint64(gvalue, static_cast<guint64>(std::max(0.0, value)));
+    return true;
+  }
+  if (G_VALUE_HOLDS_LONG(gvalue)) {
+    g_value_set_long(gvalue, static_cast<long>(value));
+    return true;
+  }
+  if (G_VALUE_HOLDS_ULONG(gvalue)) {
+    g_value_set_ulong(gvalue, static_cast<unsigned long>(std::max(0.0, value)));
+    return true;
+  }
+  return false;
+}
+
+bool set_child_proxy_string_if_present(GstElement * element, const char * name, const char * value)
+{
+  if (element == nullptr || name == nullptr || value == nullptr || !GST_IS_CHILD_PROXY(element)) {
+    return false;
+  }
+
+  GObject * target = nullptr;
+  GParamSpec * pspec = nullptr;
+  if (!gst_child_proxy_lookup(GST_CHILD_PROXY(element), name, &target, &pspec)) {
+    return false;
+  }
+
+  GValue gvalue = G_VALUE_INIT;
+  g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
+  const bool did_set = set_string_value(&gvalue, value);
+  if (did_set) {
+    gst_child_proxy_set_property(GST_CHILD_PROXY(element), name, &gvalue);
+  }
+  g_value_unset(&gvalue);
+  if (target != nullptr) {
+    g_object_unref(target);
+  }
+  return did_set;
+}
+
+bool set_child_proxy_double_if_present(GstElement * element, const char * name, double value)
+{
+  if (element == nullptr || name == nullptr || !GST_IS_CHILD_PROXY(element)) {
+    return false;
+  }
+
+  GObject * target = nullptr;
+  GParamSpec * pspec = nullptr;
+  if (!gst_child_proxy_lookup(GST_CHILD_PROXY(element), name, &target, &pspec)) {
+    return false;
+  }
+
+  GValue gvalue = G_VALUE_INIT;
+  g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
+  const bool did_set = set_numeric_value(&gvalue, value);
+  if (did_set) {
+    gst_child_proxy_set_property(GST_CHILD_PROXY(element), name, &gvalue);
+  }
+  g_value_unset(&gvalue);
+  if (target != nullptr) {
+    g_object_unref(target);
+  }
+  return did_set;
+}
+
+std::optional<double> get_numeric_value(const GValue * gvalue)
+{
+  if (G_VALUE_HOLDS_DOUBLE(gvalue)) {
+    return g_value_get_double(gvalue);
+  }
+  if (G_VALUE_HOLDS_FLOAT(gvalue)) {
+    return static_cast<double>(g_value_get_float(gvalue));
+  }
+  if (G_VALUE_HOLDS_INT(gvalue)) {
+    return static_cast<double>(g_value_get_int(gvalue));
+  }
+  if (G_VALUE_HOLDS_UINT(gvalue)) {
+    return static_cast<double>(g_value_get_uint(gvalue));
+  }
+  if (G_VALUE_HOLDS_INT64(gvalue)) {
+    return static_cast<double>(g_value_get_int64(gvalue));
+  }
+  if (G_VALUE_HOLDS_UINT64(gvalue)) {
+    return static_cast<double>(g_value_get_uint64(gvalue));
+  }
+  if (G_VALUE_HOLDS_LONG(gvalue)) {
+    return static_cast<double>(g_value_get_long(gvalue));
+  }
+  if (G_VALUE_HOLDS_ULONG(gvalue)) {
+    return static_cast<double>(g_value_get_ulong(gvalue));
+  }
+  return std::nullopt;
+}
+
+std::optional<double> get_child_proxy_numeric_if_present(GstElement * element, const char * name)
+{
+  if (element == nullptr || name == nullptr || !GST_IS_CHILD_PROXY(element)) {
+    return std::nullopt;
+  }
+
+  GObject * target = nullptr;
+  GParamSpec * pspec = nullptr;
+  if (!gst_child_proxy_lookup(GST_CHILD_PROXY(element), name, &target, &pspec)) {
+    return std::nullopt;
+  }
+
+  GValue gvalue = G_VALUE_INIT;
+  g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
+  gst_child_proxy_get_property(GST_CHILD_PROXY(element), name, &gvalue);
+  const auto value = get_numeric_value(&gvalue);
+  g_value_unset(&gvalue);
+  if (target != nullptr) {
+    g_object_unref(target);
+  }
+  return value;
+}
+
 std::string collect_bus_diagnostics(GstBus * bus)
 {
   if (bus == nullptr) {
@@ -244,6 +445,7 @@ struct DeepStreamRuntime::Impl
   bool task_obb{true};
   bool end2end{false};
   std::optional<bool> export_includes_nms;
+  double source_actual_fps{0.0};
 #endif
 
   ~Impl()
@@ -386,6 +588,84 @@ struct DeepStreamRuntime::Impl
     return element;
   }
 
+  bool set_camera_enum_off(const char * name)
+  {
+    return set_child_proxy_string_if_present(source, name, "Off") ||
+           set_child_proxy_double_if_present(source, name, 0.0);
+  }
+
+  void configure_basler_source()
+  {
+    set_child_proxy_string_if_present(source, "cam::ExposureMode", "Timed");
+    if (!set_camera_enum_off("cam::ExposureAuto")) {
+      RCLCPP_WARN(logger, "Could not set Basler cam::ExposureAuto=Off through pylonsrc");
+    }
+    if (!set_child_proxy_double_if_present(
+        source, "cam::ExposureTime", config.source_exposure_us))
+    {
+      RCLCPP_WARN(
+        logger,
+        "Could not set Basler cam::ExposureTime=%.2f through pylonsrc",
+        config.source_exposure_us);
+    }
+
+    if (!set_camera_enum_off("cam::GainAuto")) {
+      RCLCPP_WARN(logger, "Could not set Basler cam::GainAuto=Off through pylonsrc");
+    }
+    set_child_proxy_string_if_present(source, "cam::GainSelector", "All");
+    if (!set_child_proxy_double_if_present(source, "cam::Gain", config.source_gain_db)) {
+      RCLCPP_WARN(
+        logger,
+        "Could not set Basler cam::Gain=%.2f through pylonsrc",
+        config.source_gain_db);
+    }
+  }
+
+  std::optional<double> read_source_actual_fps() const
+  {
+    if (auto fps = get_child_proxy_numeric_if_present(
+        source, "cam::BslResultingAcquisitionFrameRate");
+      fps.has_value() && *fps > 0.0)
+    {
+      return fps;
+    }
+    if (auto fps = get_child_proxy_numeric_if_present(source, "cam::ResultingFrameRate");
+      fps.has_value() && *fps > 0.0)
+    {
+      return fps;
+    }
+    if (auto fps = get_child_proxy_numeric_if_present(source, "cam::ResultingFrameRateAbs");
+      fps.has_value() && *fps > 0.0)
+    {
+      return fps;
+    }
+    return std::nullopt;
+  }
+
+  void query_source_actuals()
+  {
+    const auto fps = read_source_actual_fps();
+    source_actual_fps = fps.value_or(static_cast<double>(std::max(1, config.source_fps)));
+
+    const auto width = get_child_proxy_numeric_if_present(source, "cam::Width");
+    const auto height = get_child_proxy_numeric_if_present(source, "cam::Height");
+    if (width.has_value() && *width > 0.0) {
+      config.source_width = static_cast<int>(*width);
+    }
+    if (height.has_value() && *height > 0.0) {
+      config.source_height = static_cast<int>(*height);
+    }
+
+    RCLCPP_INFO(
+      logger,
+      "DeepStream Basler source %s: %dx%d @ %.2f FPS (full_sensor=%s)",
+      fps.has_value() ? "reported" : "fallback",
+      config.source_width,
+      config.source_height,
+      source_actual_fps,
+      config.source_use_full_sensor ? "true" : "false");
+  }
+
   void build_pipeline()
   {
     pipeline = gst_pipeline_new("yolo-deepstream-pipeline");
@@ -444,15 +724,19 @@ struct DeepStreamRuntime::Impl
         nullptr);
     }
 
+    // Full-sensor mode must not constrain the source caps; queried dimensions are metadata only.
     std::optional<int> source_width;
     std::optional<int> source_height;
     if (!config.source_use_full_sensor) {
       source_width = config.source_width;
       source_height = config.source_height;
     }
+
     if (g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr) {
       g_object_set(G_OBJECT(source), "do-timestamp", TRUE, nullptr);
     }
+    configure_basler_source();
+
     bool uncapped_fps_applied = false;
     if (
       config.source_fps_uncapped &&
@@ -465,8 +749,20 @@ struct DeepStreamRuntime::Impl
         "Could not disable Basler AcquisitionFrameRateEnable through pylonsrc; requesting %d FPS through caps instead",
         config.source_fps);
     }
+
     std::optional<int> capped_fps;
-    if (!config.source_fps_uncapped || !uncapped_fps_applied) {
+    if (!config.source_fps_uncapped) {
+      set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", true);
+      if (!set_child_proxy_double_if_present(
+          source, "cam::AcquisitionFrameRate", static_cast<double>(config.source_fps)))
+      {
+        RCLCPP_WARN(
+          logger,
+          "Could not set Basler cam::AcquisitionFrameRate=%d through pylonsrc",
+          config.source_fps);
+      }
+      capped_fps = config.source_fps;
+    } else if (!uncapped_fps_applied) {
       capped_fps = config.source_fps;
     }
     const std::string source_caps_text = make_video_caps_text(
@@ -615,6 +911,17 @@ struct DeepStreamRuntime::Impl
               "Failed to set DeepStream pipeline to PLAYING" +
               (diagnostics.empty() ? std::string{} : (": " + diagnostics)));
     }
+    if (state_ret == GST_STATE_CHANGE_ASYNC) {
+      const GstStateChangeReturn wait_ret = gst_element_get_state(
+        pipeline, nullptr, nullptr, 2 * GST_SECOND);
+      if (wait_ret == GST_STATE_CHANGE_FAILURE) {
+        const std::string diagnostics = collect_bus_diagnostics(bus);
+        throw std::runtime_error(
+                "DeepStream pipeline failed while waiting for PLAYING" +
+                (diagnostics.empty() ? std::string{} : (": " + diagnostics)));
+      }
+    }
+    query_source_actuals();
   }
 
   void start_threads()
@@ -981,6 +1288,15 @@ DeepStreamRuntime::~DeepStreamRuntime() = default;
 const std::string & DeepStreamRuntime::backend_name() const
 {
   return impl_->backend_name;
+}
+
+double DeepStreamRuntime::source_actual_fps() const
+{
+#if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
+  return impl_->source_actual_fps;
+#else
+  return 0.0;
+#endif
 }
 
 }  // namespace yolo_cpp
