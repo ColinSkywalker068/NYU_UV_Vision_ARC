@@ -35,7 +35,7 @@
 | Hardware Adapter | Detected | Camera backend supports RealSense and Basler; detector backend supports native TensorRT and DeepStream paths. | Keep adapter-specific behavior behind backend boundaries. |
 | Optional Capability Gating | Detected | CMake defines `HAVE_*` flags when optional SDKs are found. | Verify launch defaults do not assume a feature compiled out on the target host. |
 | Fallback Path | Detected | 3D pose solving can fall back to 2D target projection when pose is unavailable. | Ensure fallback behavior remains explicit and observable. |
-| Legacy Reference Path | Detected | `PerceptionNode`, `YoloNode`, `legacy/`, and `mac/` remain outside the primary split runtime. | Avoid routing new active behavior through legacy paths without a documented decision. |
+| Legacy Reference Path | Detected | `legacy/` remains outside the primary split runtime. | Avoid routing new active behavior through legacy paths without a documented decision. |
 
 ## Pattern Details
 
@@ -118,4 +118,4 @@ Use this table when auditing a pattern before a refactor.
 - [ ] Architecture doc and pattern catalog agree on runtime boundaries
 - [ ] Any formal ADR path is linked once introduced
 
-**Last Updated:** 2026-05-15
+**Last Updated:** 2026-05-30

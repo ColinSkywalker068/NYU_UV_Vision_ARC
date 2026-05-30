@@ -24,7 +24,7 @@ struct CameraConfig
   int imgsz_height{640};
   double basler_exposure_us{5000.0};
   double basler_gain_db{5.0};
-  int basler_fps{110};
+  int basler_fps{160};
   bool basler_uncapped_fps{true};
   std::string basler_pixel_format{"bayer_rggb8"};
   int basler_source_width{1920};

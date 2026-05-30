@@ -26,6 +26,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace yolo_cpp
 {
@@ -124,6 +125,71 @@ cv::Rect scale_rect_to_preview(
   const int height = std::max(
     1, static_cast<int>(std::lround(static_cast<double>(rect.height) * scale_y)));
   return cv::Rect(x, y, width, height) & image_rect;
+}
+
+cv::Point scale_point_to_preview(
+  const cv::Point2f & point,
+  double scale_x,
+  double scale_y,
+  const cv::Rect & image_rect)
+{
+  const int max_x = image_rect.x + std::max(0, image_rect.width - 1);
+  const int max_y = image_rect.y + std::max(0, image_rect.height - 1);
+  const int x = std::clamp(
+    static_cast<int>(std::lround(static_cast<double>(point.x) * scale_x)),
+    image_rect.x,
+    max_x);
+  const int y = std::clamp(
+    static_cast<int>(std::lround(static_cast<double>(point.y) * scale_y)),
+    image_rect.y,
+    max_y);
+  return cv::Point(x, y);
+}
+
+std::vector<cv::Point> scale_corners_to_preview(
+  const std::array<cv::Point2f, 4> & corners,
+  double scale_x,
+  double scale_y,
+  const cv::Rect & image_rect)
+{
+  std::vector<cv::Point> points;
+  if (image_rect.empty()) {
+    return points;
+  }
+  points.reserve(corners.size());
+  for (const auto & point : corners) {
+    points.push_back(scale_point_to_preview(point, scale_x, scale_y, image_rect));
+  }
+  return points;
+}
+
+cv::Rect draw_candidate_outline(
+  cv::Mat & preview,
+  const Candidate & candidate,
+  double scale_x,
+  double scale_y,
+  const cv::Rect & image_rect,
+  const cv::Scalar & color,
+  int thickness)
+{
+  if (candidate.has_corners) {
+    const auto points =
+      scale_corners_to_preview(candidate.corners_source, scale_x, scale_y, image_rect);
+    if (points.size() == candidate.corners_source.size()) {
+      const cv::Point * contour = points.data();
+      const int point_count = static_cast<int>(points.size());
+      cv::polylines(
+        preview, &contour, &point_count, 1, true, color, thickness, cv::LINE_AA);
+      return cv::boundingRect(points) & image_rect;
+    }
+  }
+
+  const cv::Rect preview_rect =
+    scale_rect_to_preview(candidate.bbox_source, scale_x, scale_y, image_rect);
+  if (!preview_rect.empty()) {
+    cv::rectangle(preview, preview_rect, color, thickness);
+  }
+  return preview_rect;
 }
 
 }  // namespace
@@ -802,11 +868,10 @@ void ArmorDetectorNode::render_preview(
         cv::Scalar(0, 255, 0) :
         cv::Scalar(0, 165, 255);
       const cv::Rect preview_rect =
-        scale_rect_to_preview(candidate.bbox_source, scale_x, scale_y, image_rect);
+        draw_candidate_outline(preview, candidate, scale_x, scale_y, image_rect, color, 2);
       if (preview_rect.empty()) {
         continue;
       }
-      cv::rectangle(preview, preview_rect, color, 2);
       const std::string label =
         std::to_string(candidate.class_id) + " " + cv::format("%.2f", candidate.confidence);
       cv::putText(
@@ -825,17 +890,31 @@ void ArmorDetectorNode::render_preview(
       const int y1 = preview_target_bbox_xyxy_[1];
       const int x2 = preview_target_bbox_xyxy_[2];
       const int y2 = preview_target_bbox_xyxy_[3];
-      const cv::Rect target_rect = scale_rect_to_preview(
-        cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)),
-        scale_x,
-        scale_y,
-        image_rect);
+      const cv::Rect target_source_rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1));
+      const Candidate * target_candidate = nullptr;
+      double best_iou = 0.0;
+      for (const auto & candidate : candidates) {
+        const double iou = rect_iou_for_capture(target_source_rect, candidate.bbox_source);
+        if (iou > best_iou) {
+          best_iou = iou;
+          target_candidate = &candidate;
+        }
+      }
+      const cv::Scalar target_color(0, 0, 255);
+      const cv::Rect target_rect = target_candidate != nullptr && best_iou > 0.0 ?
+        draw_candidate_outline(
+          preview, *target_candidate, scale_x, scale_y, image_rect, target_color, 4) :
+        scale_rect_to_preview(target_source_rect, scale_x, scale_y, image_rect);
       if (target_rect.width > 0 && target_rect.height > 0) {
-        const cv::Scalar target_color(0, 0, 255);
-        cv::rectangle(preview, target_rect, target_color, 4);
+        if (target_candidate == nullptr || best_iou <= 0.0) {
+          cv::rectangle(preview, target_rect, target_color, 4);
+        }
+        const cv::Point target_center = target_candidate != nullptr && best_iou > 0.0 ?
+          scale_point_to_preview(target_candidate->center_source, scale_x, scale_y, image_rect) :
+          cv::Point(target_rect.x + target_rect.width / 2, target_rect.y + target_rect.height / 2);
         cv::circle(
           preview,
-          cv::Point(target_rect.x + target_rect.width / 2, target_rect.y + target_rect.height / 2),
+          target_center,
           5,
           target_color,
           -1,
@@ -1034,7 +1113,8 @@ std::vector<Candidate> ArmorDetectorNode::extract_candidates(
     if (detection.has_corners) {
       auto & candidate = candidates.back();
       for (std::size_t i = 0; i < detection.corners_model.size(); ++i) {
-        candidate.corners_source[i] = unletterbox_point(detection.corners_model[i], batch.letterbox);
+        candidate.corners_source[i] =
+          unletterbox_point(detection.corners_model[i], batch.letterbox);
       }
     }
   }
@@ -1083,12 +1163,12 @@ std::vector<Candidate> ArmorDetectorNode::extract_candidates(
 std::string ArmorDetectorNode::resolve_default_model_path() const
 {
   const auto cwd_candidate =
-    std::filesystem::current_path() / "model_test" /
+    std::filesystem::current_path() / "yolo_cpp" / "models" /
     "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
   if (std::filesystem::exists(cwd_candidate)) {
     return cwd_candidate.string();
   }
-  return "/home/ultraviolet/CV_Detection/model_test/"
+  return "/home/ultraviolet/CV_Detection/yolo_cpp/models/"
          "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
 }
 

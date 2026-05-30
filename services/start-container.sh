@@ -157,12 +157,12 @@ run_power_script_if_needed() {
 	if ! should_run_power_script "$image_name"; then
 		return
 	fi
-	local power_script="$REPO_ROOT/power.sh"
+	local power_script="$REPO_ROOT/services/power.sh"
 	if [ ! -f "$power_script" ]; then
-		echo "power.sh not found at $power_script, skipping power setup"
+		echo "services/power.sh not found at $power_script, skipping power setup"
 		return
 	fi
-	echo "Running power.sh before starting CV RealSense container..."
+	echo "Running services/power.sh before starting CV RealSense container..."
 	bash "$power_script"
 }
 

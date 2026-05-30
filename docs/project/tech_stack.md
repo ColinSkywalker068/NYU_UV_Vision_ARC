@@ -32,7 +32,7 @@
 |-------|------------|----------------------------|------|
 | Robotics runtime | ROS 2 Humble | Docker image tags and `/opt/ros/humble` setup in [uv.sh](../../services/uv.sh) | Node runtime, launch, topics, messages |
 | Active language | C++ | C++17 in [yolo_cpp/CMakeLists.txt](../../yolo_cpp/CMakeLists.txt) | Low-latency runtime path |
-| Support language | Python | Python 3.9+ pre-commit target; legacy scripts under `legacy/` and `mac/` | Legacy, training, setup, launch files |
+| Support language | Python | Python 3.9+ pre-commit target; legacy scripts under `legacy/` | Legacy, training, setup, launch files |
 | Build system | CMake and `ament_cmake` | CMake 3.16 for `yolo_cpp`; CMake 3.8 for `cv_auto_aim_interfaces` | ROS package build |
 | Workspace tool | `colcon` | Used by [uv.sh](../../services/uv.sh) | Package build and test orchestration |
 | Interface generation | `rosidl_default_generators` | [cv_auto_aim_interfaces/package.xml](../../cv_auto_aim_interfaces/package.xml) | Custom ROS message generation |
@@ -127,4 +127,4 @@
 - [ ] Commands match `services/uv.sh`
 - [ ] Optional dependency behavior matches `HAVE_*` checks in CMake
 
-**Last Updated:** 2026-05-15
+**Last Updated:** 2026-05-30

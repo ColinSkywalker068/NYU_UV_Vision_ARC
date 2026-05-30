@@ -1,61 +1,65 @@
 [![pipeline status](https://gitlab.com/nyu-robomaster/CV_Detection/badges/main/pipeline.svg)](https://gitlab.com/nyu-robomaster/CV_Detection/-/commits/main)
+
 # CV Detection
 
-This is the NYU Robomaster's code for the Robomasters Robotics Competition.
+NYU Robomaster ROS 2 C++ auto-aim vision pipeline for camera capture, YOLO/TensorRT/DeepStream armor detection, temporal tracking, 3D target processing, ballistic aim solving, and STM32 serial output.
 
-## Table of Contents
+## Active Runtime
 
-- [C++ Pipeline Docs](./yolo_cpp/docs/overview.md)
-- [Resources to get started](./Documentation/Resources/Resources.md)
-- [Setup Pre-commit](./Documentation/Pre-commit.md)
-- [rm_auto_aim Parity Next Steps](./docs/RM_AUTO_AIM_PARITY_NEXT_STEPS.md)
+The 2026 runtime is centered on:
 
----
+- `yolo_cpp/`: C++ ROS 2 nodes, launch files, DeepStream config, tests, package docs, and active model assets.
+- `cv_auto_aim_interfaces/`: custom ROS 2 messages shared by detector, tracker, processor, solver, and STM bridge.
+- `services/`: Jetson/container helper scripts, STM stack service, preflight, health, and benchmark tools.
+- `Docker/`: active container images and Docker bring-up notes.
+- `docs/` and `yolo_cpp/docs/`: current project, architecture, runbook, and package documentation.
 
 ## Quick Start
 
-To easily run the detection stack, use the `uv` tool wrapper:
+Use the `uv` wrapper from the repo root.
 
-1. **Start the Docker container:**
-   ```bash
-   uv docker
-   ```
-2. **Build the ROS 2 packages:**
-   ```bash
-   uv build
-   ```
-3. **Run the launch files:**
-   - To launch the Basler + DeepStream + STM32 field stack:
-     ```bash
-     uv run yolo_cpp basler.launch.py
-     ```
-   - To launch the RealSense + native TensorRT bring-up stack:
-     ```bash
-     uv run yolo_cpp realsense.launch.py
-     ```
-   - `stm.launch.py` remains as a compatibility alias for `basler.launch.py`.
-
----
-
-### Runtime Documentation
-
-Current runtime roadmap is available in **[docs/RM_AUTO_AIM_PARITY_NEXT_STEPS.md](./docs/RM_AUTO_AIM_PARITY_NEXT_STEPS.md)**.
-Package pipeline docs live in **[yolo_cpp/docs/overview.md](./yolo_cpp/docs/overview.md)**.
-The older illustrated pipeline writeup now lives in **[legacy/docs/Pipeline/Pipeline.md](./legacy/docs/Pipeline/Pipeline.md)**.
-
-
-### Update yml files
-
-Incase the current yml files do not setup the conda environment, create a issue and commit a new yml file that works for that OS. Specify what was breaking in the PR.
-
-#### Linux or Mac
-
-```shell
-conda env export --no-builds | grep -v "prefix" > environment.yml
+```bash
+uv docker
+uv build yolo_cpp
 ```
 
-#### Windows
+Launch the full Basler + DeepStream + STM32 field stack:
 
-```shell
-conda env export --no-builds | findstr -v "prefix" > environment.yml
+```bash
+uv run yolo_cpp basler.launch.py
 ```
+
+Launch the RealSense bring-up stack:
+
+```bash
+uv run yolo_cpp realsense.launch.py
+```
+
+For the headless STM service:
+
+```bash
+./services/stm-stack.sh install
+./services/stm-stack.sh preflight
+./services/stm-stack.sh restart
+./services/stm-stack.sh logs
+```
+
+The default runtime engine lives at:
+
+```text
+yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine
+```
+
+## Documentation
+
+- [Documentation map](docs/README.md)
+- [C++ runtime overview](yolo_cpp/docs/overview.md)
+- [Pipeline stages](yolo_cpp/docs/pipeline.md)
+- [ROS nodes](yolo_cpp/docs/nodes.md)
+- [Launch and config](yolo_cpp/docs/launch-and-config.md)
+- [Container and bring-up runbook](CPP_CONTAINER_RUNBOOK.md)
+- [Project runbook](docs/project/runbook.md)
+
+## Legacy Archive
+
+Historical Python tooling, Mac/CoreML prototypes, old setup notes, stale model variants, and retired Docker files are archived under `legacy/`. Treat them as reference material unless a task explicitly targets legacy behavior.

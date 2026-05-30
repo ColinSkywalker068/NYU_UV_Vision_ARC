@@ -63,9 +63,9 @@
 | 30 | Content | Avoid stale dates except the maintained `Last Updated` field. |
 | 31 | Project | Identify `yolo_cpp/` as the active C++ ROS 2 runtime package. |
 | 32 | Project | Identify `cv_auto_aim_interfaces/` as the custom message package. |
-| 33 | Project | Identify `legacy/` and `mac/` as historical or prototype areas unless a task targets them. |
+| 33 | Project | Identify `legacy/` as historical or prototype material unless a task targets it. |
 | 34 | Project | Describe Docker and services as operational support, not application logic. |
-| 35 | Project | Describe `model_test/` as model and engine assets, not source code. |
+| 35 | Project | Describe `yolo_cpp/models/` as active runtime model assets and `legacy/models/` as archived model variants. |
 | 36 | Commands | Prefer `uv docker` for container entry in repo-facing docs. |
 | 37 | Commands | Prefer `uv build yolo_cpp` for active stack builds. |
 | 38 | Commands | Prefer `uv run yolo_cpp basler.launch.py` for Basler field stack launch guidance. |
@@ -169,7 +169,7 @@
 | Unit claims | Check angle and unit claims at solver and serial bridge boundaries. |
 | Launch defaults | Confirm launch behavior in `yolo_cpp/launch/` before documenting defaults. |
 | Build options | Confirm optional compile definitions in CMake before documenting backend support. |
-| Model assets | Treat `model_test/` as runtime assets, not as the training source of truth. |
+| Model assets | Treat `yolo_cpp/models/` as active runtime assets, not as the training source of truth. |
 
 ## 6. Command Documentation
 
@@ -261,8 +261,8 @@
 | Test coverage | `yolo_cpp/test/` and package test declarations |
 | Pre-commit guidance | `docs/Pre-commit.md` and repository hook configuration |
 | Roadmap claims | Planning docs under `docs/` and active implementation state |
-| Legacy claims | `legacy/`, `mac/`, and archived docs under `legacy/docs/` |
-| Model asset claims | `model_test/` and the launch or config files that reference those assets |
+| Legacy claims | `legacy/` and archived docs under `legacy/docs/` |
+| Model asset claims | `yolo_cpp/models/`, `legacy/models/`, and the launch or config files that reference those assets |
 | Camera backend claims | `yolo_cpp/src/camera_backend.cpp`, `yolo_cpp/include/yolo_cpp/camera_backend.hpp`, and launch parameters |
 | Detector backend claims | `yolo_cpp/src/detector_backend.cpp`, `yolo_cpp/src/deepstream_detector.cpp`, and CMake feature detection |
 | Solver claims | `yolo_cpp/src/aim_solver_node.cpp` and solver-facing package docs |
@@ -298,4 +298,4 @@
 - [ ] Quick Reference still contains at least 60 concrete requirements.
 - [ ] Standards references remain relevant to this repository.
 
-**Last Updated:** 2026-05-15
+**Last Updated:** 2026-05-30

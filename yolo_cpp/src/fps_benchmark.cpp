@@ -38,7 +38,7 @@ namespace
 using Clock = std::chrono::steady_clock;
 
 constexpr char kDefaultModelPath[] =
-  "/home/ultraviolet/CV_Detection/model_test/"
+  "/home/ultraviolet/CV_Detection/yolo_cpp/models/"
   "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
 
 constexpr char kDefaultDeepStreamConfigPath[] =
@@ -57,10 +57,10 @@ struct Options
   std::string model_type{"yolo"};
   bool half{true};
   float conf_threshold{0.30F};
-  bool pre_mux_resize{false};
+  bool pre_mux_resize{true};
   int pre_mux_width{0};
   int pre_mux_height{0};
-  bool deepstream_profile_stages{false};
+  bool deepstream_profile_stages{true};
   int deepstream_profile_stage_interval{300};
   std::string bayer_conversion_backend{"cuda"};
 
@@ -160,7 +160,7 @@ std::string resolve_default_model_path()
   }
 
   const auto cwd_candidate =
-    std::filesystem::current_path() / "model_test" /
+    std::filesystem::current_path() / "yolo_cpp" / "models" /
     "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
   if (std::filesystem::exists(cwd_candidate)) {
     return cwd_candidate.string();
@@ -314,15 +314,15 @@ void print_usage(const char * program)
     << "  --imgsz-height N               Model input height (default: 640)\n"
     << "  --conf FLOAT                   Confidence threshold (default: 0.30)\n"
     << "  --half BOOL                    Use FP16 network mode where supported (default: true)\n\n"
-    << "  --pre-mux-resize BOOL          Resize to model aspect box before nvstreammux\n"
+    << "  --pre-mux-resize BOOL          Resize to model aspect box before nvstreammux (default: true)\n"
     << "  --pre-mux-width N              Optional pre-mux resize bounding width (default: model width)\n"
     << "  --pre-mux-height N             Optional pre-mux resize bounding height (default: model height)\n\n"
-    << "  --deepstream-profile-stages BOOL       Log per-stage GStreamer timing (default: false)\n"
+    << "  --deepstream-profile-stages BOOL       Log per-stage GStreamer timing (default: true)\n"
     << "  --deepstream-profile-stage-interval N  Frames between profile logs (default: 300)\n\n"
     << "  --bayer-conversion-backend VALUE       cuda/gpu or cpu/bayer2rgb (default: cuda)\n\n"
     << "Camera options mirror STM env defaults:\n"
     << "  --camera-type basler|realsense\n"
-    << "  --basler-fps N                 Requested cap/fallback FPS (default: 110)\n"
+    << "  --basler-fps N                 Requested cap/fallback FPS (default: 160)\n"
     << "  --basler-uncapped-fps BOOL     Disable Basler FPS limit (default: true)\n"
     << "  --basler-pixel-format VALUE    bayer_rggb8, yuy2, mono8, bgr8, rgb8\n"
     << "  --basler-source-width N        Full-sensor width (default: 1920)\n"

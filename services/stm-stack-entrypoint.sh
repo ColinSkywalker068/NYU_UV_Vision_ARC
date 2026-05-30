@@ -2,7 +2,7 @@
 set -euo pipefail
 
 DEFAULT_REPO_ROOT="/home/ultraviolet/CV_Detection"
-DEFAULT_MODEL_PATH="/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine"
+DEFAULT_MODEL_PATH="/home/ultraviolet/CV_Detection/yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine"
 
 REPO_ROOT="${CV_STM_REPO_ROOT:-${DEFAULT_REPO_ROOT}}"
 MODE="${1:-run}"

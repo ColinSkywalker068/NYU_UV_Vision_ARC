@@ -73,7 +73,7 @@ CV_STM_IMAGE=${DEFAULT_IMAGE}
 # CV_STM_IMAGE=cv-detection-cplusplus-pylon:local
 UV_CONTAINER_NAME=cv-stm-stack
 CV_STM_LAUNCH_PROFILE=basler
-# CV_STM_MODEL_PATH=/home/ultraviolet/CV_Detection/model_test/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine
+# CV_STM_MODEL_PATH=/home/ultraviolet/CV_Detection/yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine
 # CV_STM_TARGET_COLOR=blue
 # Default is to trust model color classes and skip HSV verification.
 # Accept both model colors during detector bring-up by setting both false:
@@ -81,7 +81,7 @@ CV_STM_LAUNCH_PROFILE=basler
 # CV_STM_ENABLE_COLOR_VERIFICATION=false
 # CV_STM_SERIAL_PORT=/dev/ttyUSB0
 # CV_STM_REQUIRE_SERIAL=true
-# CV_STM_PREVIEW_MAX_FPS=60.0
+CV_STM_PREVIEW_MAX_FPS=60.0
 # Save up to 100 compressed target frames in pictures/ next to vision_logs/.
 # CV_STM_SAVE_TARGET_FRAMES=false
 # CV_STM_TARGET_FRAME_SAVE_DIR=
@@ -90,16 +90,16 @@ CV_STM_LAUNCH_PROFILE=basler
 # RealSense profile skips Basler/DeepStream/Pylon checks and serial by default:
 # CV_STM_LAUNCH_PROFILE=realsense
 # CV_STM_REQUIRE_SERIAL=false
-# CV_STM_BASLER_PIXEL_FORMAT=bayer_rggb8
-# CV_STM_BASLER_FPS=110
-# CV_STM_BASLER_SOURCE_WIDTH=1920
-# CV_STM_BASLER_SOURCE_HEIGHT=1200
-# CV_STM_DEEPSTREAM_PRE_MUX_RESIZE=true
-# CV_STM_DEEPSTREAM_PRE_MUX_WIDTH=0
-# CV_STM_DEEPSTREAM_PRE_MUX_HEIGHT=0
-# CV_STM_DEEPSTREAM_PROFILE_STAGES=false
+CV_STM_BASLER_PIXEL_FORMAT=bayer_rggb8
+CV_STM_BASLER_FPS=160
+CV_STM_BASLER_SOURCE_WIDTH=1920
+CV_STM_BASLER_SOURCE_HEIGHT=1200
+CV_STM_DEEPSTREAM_PRE_MUX_RESIZE=true
+CV_STM_DEEPSTREAM_PRE_MUX_WIDTH=0
+CV_STM_DEEPSTREAM_PRE_MUX_HEIGHT=0
+CV_STM_DEEPSTREAM_PROFILE_STAGES=true
 # CV_STM_DEEPSTREAM_PROFILE_STAGE_INTERVAL=300
-# CV_STM_DEEPSTREAM_BAYER_CONVERSION_BACKEND=cuda
+CV_STM_DEEPSTREAM_BAYER_CONVERSION_BACKEND=cuda
 # CV_STM_EXTRA_LAUNCH_ARGS="basler_exposure_us:=5000.0 basler_gain_db:=5.0"
 # CV_STM_REALSENSE_WIDTH=640
 # CV_STM_REALSENSE_HEIGHT=480

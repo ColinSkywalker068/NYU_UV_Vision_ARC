@@ -10,9 +10,12 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description() -> LaunchDescription:
     """Create the Basler field graph with detector, solver, and serial bridge."""
-    default_model_path = (
-        "/home/ultraviolet/CV_Detection/model_test/"
-        "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine"
+    default_model_path = PathJoinSubstitution(
+        [
+            FindPackageShare("yolo_cpp"),
+            "models",
+            "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine",
+        ]
     )
     camera_type_arg = DeclareLaunchArgument(
         "camera_type",
@@ -72,7 +75,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     basler_fps_arg = DeclareLaunchArgument(
         "basler_fps",
-        default_value="110",
+        default_value="160",
         description="Basler frames per second",
     )
     basler_uncapped_fps_arg = DeclareLaunchArgument(
@@ -112,7 +115,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     deepstream_profile_stages_arg = DeclareLaunchArgument(
         "deepstream_profile_stages",
-        default_value="false",
+        default_value="true",
         description="Log DeepStream per-stage pad timing for conversion bottleneck diagnosis",
     )
     deepstream_profile_stage_interval_arg = DeclareLaunchArgument(

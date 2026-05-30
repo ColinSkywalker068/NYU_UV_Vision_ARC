@@ -1,6 +1,6 @@
 # CV Detection
 
-NYU Robomaster ROS 2 C++ auto-aim vision pipeline for camera capture, YOLO/TensorRT/DeepStream armor detection, temporal tracking, 3D target processing, ballistic aim solving, and STM32 serial output. Legacy Python training and prototype tools remain under `legacy/` and `mac/`.
+NYU Robomaster ROS 2 C++ auto-aim vision pipeline for camera capture, YOLO/TensorRT/DeepStream armor detection, temporal tracking, 3D target processing, ballistic aim solving, and STM32 serial output. Legacy Python training, prototype tools, stale model variants, old setup notes, and retired Docker files remain under `legacy/`.
 
 <!-- SCOPE: Canonical machine-facing entry point with repo map, critical rules, command overview, and links to detailed documentation only. -->
 <!-- DOC_KIND: index -->
@@ -42,7 +42,7 @@ NYU Robomaster ROS 2 C++ auto-aim vision pipeline for camera capture, YOLO/Tenso
 | Category | Rule | When to Apply |
 |----------|------|---------------|
 | Scope | Treat `yolo_cpp/` and `cv_auto_aim_interfaces/` as the active ROS 2 runtime. | Runtime, build, and launch changes. |
-| Legacy | Treat `legacy/` and `mac/` as archived or prototype Python tooling unless a task explicitly targets them. | Training, migration, or historical comparisons. |
+| Legacy | Treat `legacy/` as archived or prototype material unless a task explicitly targets it. | Training, migration, or historical comparisons. |
 | Interfaces | Update `cv_auto_aim_interfaces/msg/` and downstream publishers/subscribers together. | Message field, topic, or control-contract changes. |
 | Pipeline | Preserve the detector -> tracker -> processor -> solver -> STM bridge boundary unless the task proves a cross-stage change is needed. | Behavior changes in the active stack. |
 | Hardware | Verify optional camera and inference backends at configure and launch time: RealSense, Basler Pylon, TensorRT, CUDA, DeepStream, and GStreamer are environment-dependent. | Container, Jetson, camera, or detector backend work. |
@@ -107,11 +107,14 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 | `yolo_cpp/src/` | Active ROS 2 C++ runtime implementations. |
 | `yolo_cpp/launch/` | `basler.launch.py`, compatibility alias `stm.launch.py`, `realsense.launch.py`, and `zerocopy.launch.py`. |
 | `yolo_cpp/config/` | DeepStream and detector configuration assets. |
+| `yolo_cpp/models/` | Active runtime model or TensorRT engine assets used by default launches and STM service bring-up. |
 | `yolo_cpp/test/` | Focused C++ tests for tracking and detection postprocess behavior. |
 | `cv_auto_aim_interfaces/msg/` | Custom ROS 2 messages for detections, tracks, targets, spin state, and aim solutions. |
 | `Docker/` and `services/` | Container images, compose config, and helper scripts. |
-| `model_test/` | YOLO model and TensorRT engine artifacts used by runtime experiments. |
-| `legacy/` and `mac/` | Python training, prototype, and historical utilities. |
+| `legacy/models/` | Stale or experimental model variants and archived export utilities. |
+| `legacy/prototypes/mac/` | Archived macOS/CoreML prototype tooling. |
+| `legacy/docker/` | Retired Dockerfiles, compose files, and VIAM-era container helpers. |
+| `legacy/docs/setup/`, `legacy/envs/`, `legacy/nav/`, and `legacy/scripts/` | Historical setup notes, conda environments, navigation notes, and root helper scripts. |
 
 ## Maintenance
 
@@ -126,4 +129,4 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 - [ ] The file remains under 200 lines.
 - [ ] Shared guidance appears here rather than being duplicated in `CLAUDE.md`.
 
-**Last Updated:** 2026-05-29
+**Last Updated:** 2026-05-30

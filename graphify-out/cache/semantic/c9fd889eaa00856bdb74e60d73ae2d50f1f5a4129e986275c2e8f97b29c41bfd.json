@@ -1,1 +1,0 @@
-{"nodes": [{"id": "detector_yolo_detector", "label": "YOLODetector Ultralytics YOLO RTDETR NAS backend wrapper", "file_type": "code", "source_file": "yolov8_ros/yolov8_ros/detector.py", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null}], "edges": [], "hyperedges": []}

@@ -390,12 +390,12 @@ bool YoloNode::run_kalman_pipeline(
 std::string YoloNode::resolve_default_model_path() const
 {
   const auto cwd_candidate =
-    std::filesystem::current_path() / "model_test" /
+    std::filesystem::current_path() / "yolo_cpp" / "models" /
     "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
   if (std::filesystem::exists(cwd_candidate)) {
     return cwd_candidate.string();
   }
-  return "/home/ultraviolet/CV_Detection/model_test/"
+  return "/home/ultraviolet/CV_Detection/yolo_cpp/models/"
          "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
 }
 

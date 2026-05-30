@@ -8,7 +8,7 @@
 <!-- PRIMARY_SOURCES: Docker/docker-compose.yml, Docker/Dockerfile.run-cv, Docker/Dockerfile.cplusplus, Docker/build_cplusplus.sh, services/uv.sh, services/start-container.sh, services/stm-stack.service, services/stm-stack.sh, services/stm-stack-entrypoint.sh, services/setup-stm-stack.sh, CPP_CONTAINER_RUNBOOK.md -->
 
 > **Status:** Current operational guide
-> **Last Updated:** 2026-05-29
+> **Last Updated:** 2026-05-30
 
 ## Quick Navigation
 
@@ -80,17 +80,17 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `CV_STM_TARGET_FRAME_SAVE_MAX` | Maximum target-frame images saved per run | `100` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_TARGET_FRAME_JPEG_QUALITY` | JPEG quality for optional target-frame capture | `85` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_CAMERA_TYPE` | Lower-level camera backend override for the Basler-profile launch only | Usually unset; prefer `CV_STM_LAUNCH_PROFILE` | `services/stm-stack-entrypoint.sh` |
-| `CV_STM_MODEL_PATH` | Competition model or engine path | `model_test/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine` under the robot repo | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_MODEL_PATH` | Competition model or engine path | `yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine` under the robot repo | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_SERIAL_PORT` | STM32 serial device for competition startup | `/dev/ttyUSB0` | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_REQUIRE_SERIAL` | Whether preflight must fail when the serial path is absent | Defaults to `true` for `basler`, `false` for `realsense` | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_EXTRA_LAUNCH_ARGS` | Optional extra selected-profile launch arguments | Empty by default | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_BASLER_PIXEL_FORMAT` | Basler source pixel format for the DeepStream/Pylon path | `bayer_rggb8`; alternatives include `yuy2`, `bgr8`, `mono8` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
-| `CV_STM_BASLER_FPS` | Basler requested caps/frame-rate fallback | `110` for the field Basler launch; lower to `90` for a conservative no-drop cap | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
+| `CV_STM_BASLER_FPS` | Basler requested caps/frame-rate fallback | `160` for the field Basler launch; lower to `90` for a conservative no-drop cap | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_BASLER_SOURCE_WIDTH` | Basler source width for full-sensor capture | `1920` for `a2A1920-160ucBAS` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_BASLER_SOURCE_HEIGHT` | Basler source height for full-sensor capture | `1200` for `a2A1920-160ucBAS` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_DEEPSTREAM_PRE_MUX_RESIZE` | Resize full-FOV Basler frames before `nvstreammux` padding | `true`; set `false` only for A/B testing the older full-resolution path | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_DEEPSTREAM_PRE_MUX_WIDTH` / `CV_STM_DEEPSTREAM_PRE_MUX_HEIGHT` | Optional pre-mux resize bounding box | `0`; unset/zero uses the model dimensions as the resize box | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
-| `CV_STM_DEEPSTREAM_PROFILE_STAGES` | Log per-stage DeepStream pad timing for conversion diagnosis | `false`; set `true` during short profiling runs only | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
+| `CV_STM_DEEPSTREAM_PROFILE_STAGES` | Log per-stage DeepStream pad timing for conversion diagnosis | `true` for current Basler profiling; set `false` to quiet service logs | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_DEEPSTREAM_PROFILE_STAGE_INTERVAL` | Frames between stage-profile summaries | `300` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `DISPLAY` | X11 GUI forwarding | Host `DISPLAY` value | `Docker/docker-compose.yml`, `services/start-container.sh` |
 | `QT_X11_NO_MITSHM` | Qt/X11 compatibility | `1` | `Docker/docker-compose.yml` |
@@ -273,7 +273,7 @@ uv clean
 uv build yolo_cpp
 ```
 
-For Basler high-FPS bring-up on `a2A1920-160ucBAS`, keep `basler_use_full_sensor:=true` and use the default raw Bayer source caps: `basler_pixel_format:=bayer_rggb8 basler_source_width:=1920 basler_source_height:=1200 basler_uncapped_fps:=true`. Use `pre_mux_resize:=true` or `CV_STM_DEEPSTREAM_PRE_MUX_RESIZE=true` when you need full FOV with fewer pixels entering `nvstreammux`; the default 640x640 model box resizes 1920x1200 to 640x400 before streammux padding. The default `bayer_conversion_backend:=cuda` / `CV_STM_DEEPSTREAM_BAYER_CONVERSION_BACKEND=cuda` uses the in-process CUDA Bayer resize path when the build supports it, and logs a fallback to CPU `bayer2rgb` otherwise. `show:=true` uses a downscaled preview frame and is throttled by `preview_max_fps` / `CV_STM_PREVIEW_MAX_FPS`; raw image publishing, HSV verification, and target-frame saving still need full-resolution BGR. The startup logs should show the requested and negotiated GStreamer caps plus the camera-reported resulting frame rate. If `basler_pixel_format:=bgr8` is used at full resolution, USB3 bandwidth can reasonably limit capture near 60 FPS; that is not evidence of a Jetson hard cap.
+For Basler high-FPS bring-up on `a2A1920-160ucBAS`, keep `basler_use_full_sensor:=true` and use the default raw Bayer source caps: `basler_pixel_format:=bayer_rggb8 basler_source_width:=1920 basler_source_height:=1200 basler_fps:=160 basler_uncapped_fps:=true`. Use the default `pre_mux_resize:=true` or `CV_STM_DEEPSTREAM_PRE_MUX_RESIZE=true` when you need full FOV with fewer pixels entering `nvstreammux`; the default 640x640 model box resizes 1920x1200 to 640x400 before streammux padding. The default `bayer_conversion_backend:=cuda` / `CV_STM_DEEPSTREAM_BAYER_CONVERSION_BACKEND=cuda` uses the in-process CUDA Bayer resize path when the build supports it, and logs a fallback to CPU `bayer2rgb` otherwise. `show:=true` uses a downscaled preview frame and is throttled by `preview_max_fps` / `CV_STM_PREVIEW_MAX_FPS`; raw image publishing, HSV verification, and target-frame saving still need full-resolution BGR. The startup logs should show the requested and negotiated GStreamer caps plus the camera-reported resulting frame rate. If `basler_pixel_format:=bgr8` is used at full resolution, USB3 bandwidth can reasonably limit capture near 60 FPS; that is not evidence of a Jetson hard cap.
 
 On the observed `a2A1920-160ucBAS` / serial `41923000` setup, direct Pylon probing reported `Binning*`, `Decimation*`, and `Scaling*` GenICam nodes as absent. Treat `Width` and `Height` as ROI/crop controls there, not full-FOV downsampling controls.
 
@@ -292,11 +292,10 @@ uv build
 ./services/stm-stack.sh restart
 ```
 
-For a short conversion-profile run, add these to the STM env file or pass them through the container environment before restarting:
+Stage profiling is on by default for the current Basler bring-up. To quiet the service after profiling, set:
 
 ```bash
-CV_STM_DEEPSTREAM_PROFILE_STAGES=true
-CV_STM_DEEPSTREAM_PROFILE_STAGE_INTERVAL=300
+CV_STM_DEEPSTREAM_PROFILE_STAGES=false
 ```
 
 ## 9. Testing And Formatting
@@ -484,7 +483,7 @@ Resolution:
 |---------|------------|-----------------|
 | `cv-container` Compose service | Docker Engine, NVIDIA runtime, host network, `/dev/video0`, `/dev/bus/usb`, `/tmp/argus_socket`, `/dev`, `/home/ultraviolet` | `Docker/docker-compose.yml` |
 | `stm-stack.service` | `docker.service`, `/home/ultraviolet/CV_Detection`, `services/start-container.sh`, `services/stm-stack-entrypoint.sh`, C++ DeepStream image, STM32 serial device for Basler TX | `services/stm-stack.service` |
-| `yolo_cpp` Basler field stack | `cv_auto_aim_interfaces`, model engine at `model_test/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine`, Basler camera device, optional `/dev/ttyUSB0` | `yolo_cpp/launch/basler.launch.py` |
+| `yolo_cpp` Basler field stack | `cv_auto_aim_interfaces`, model engine at `yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine`, Basler camera device, optional `/dev/ttyUSB0` | `yolo_cpp/launch/basler.launch.py` |
 | C++ DeepStream/Basler image | DeepStream 6.4, GStreamer plugins, optional Pylon packages under `Docker/pylon/` | `Docker/Dockerfile.cplusplus`, `Docker/build_cplusplus.sh` |
 
 ## 14. Port Mapping

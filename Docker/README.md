@@ -23,7 +23,7 @@ You can also run the node directly with custom parameters:
 ```bash
 uv docker
 uv build yolo_cpp
-uv run yolo_cpp yolo_modular_node --ros-args -p model_path:='/home/ultraviolet/CV_Detection/model_test/bestmerge.engine' -p task:='obb' -p show:=True
+uv run yolo_cpp yolo_modular_node --ros-args -p model_path:='/home/ultraviolet/CV_Detection/yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine' -p task:='obb' -p show:=True
 ```
 
 ## Python Standalone Run (No ROS)
