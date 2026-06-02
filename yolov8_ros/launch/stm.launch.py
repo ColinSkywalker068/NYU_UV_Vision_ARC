@@ -89,6 +89,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="false",
         description="Enable verbose serial logging",
     )
+    transmit_angles_in_degrees_arg = DeclareLaunchArgument(
+        "transmit_angles_in_degrees",
+        default_value="false",
+        description="Convert STM32 TX yaw/pitch from radians to degrees before sending",
+    )
 
     # --- Basler camera args ---
     basler_width_arg = DeclareLaunchArgument(
@@ -261,6 +266,9 @@ def generate_launch_description() -> LaunchDescription:
                 "serial_port": LaunchConfiguration("serial_port"),
                 "serial_baudrate": LaunchConfiguration("serial_baudrate"),
                 "serial_verbose": LaunchConfiguration("serial_verbose"),
+                "transmit_angles_in_degrees": LaunchConfiguration(
+                    "transmit_angles_in_degrees"
+                ),
             }
         ],
     )
@@ -277,6 +285,7 @@ def generate_launch_description() -> LaunchDescription:
             serial_port_arg,
             serial_baudrate_arg,
             serial_verbose_arg,
+            transmit_angles_in_degrees_arg,
             basler_width_arg,
             basler_height_arg,
             basler_fps_arg,

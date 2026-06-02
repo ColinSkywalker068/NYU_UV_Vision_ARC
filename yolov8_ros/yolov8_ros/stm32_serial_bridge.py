@@ -50,16 +50,18 @@ FLAG_TARGET_STATE_SHIFT: int = 2
 FLAG_TARGET_TYPE_MASK: int = 0x000F
 FLAG_TARGET_TYPE_SHIFT: int = 4
 # Flag register bit masks and shifts (RX: control board -> vision)
-FLAG_ENEMY_COLOR_MASK: int = 0x0003
+FLAG_ENEMY_COLOR_MASK: int = 0x0001
 FLAG_WORK_MODE_MASK: int = 0x0003
-FLAG_WORK_MODE_SHIFT: int = 2
+FLAG_WORK_MODE_SHIFT: int = 1
 FLAG_BULLET_SPEED_MASK: int = 0x00FF
-FLAG_BULLET_SPEED_SHIFT: int = 4
+FLAG_BULLET_SPEED_SHIFT: int = 8
 # Default values
+FIRE_MODE_NO_FIRE: int = 0
 DEFAULT_FIRE_MODE: int = 2
 DEFAULT_TARGET_TYPE: int = 0
 TARGET_STATE_NO_TARGET: int = 0
 TARGET_STATE_CONVERGING: int = 1
+TARGET_STATE_READY_TO_FIRE: int = 2
 DEFAULT_RX_POLL_PERIOD_SECONDS: float = 0.01
 DEFAULT_ATTITUDE_RATE_GAP_RESET_SECONDS: float = 0.25
 # ─── end seasky protocol constants ───
@@ -81,7 +83,9 @@ class CliOverrides:
     serial_baudrate: Optional[int]
     serial_verbose: Optional[bool]
     fire_mode: Optional[int]
+    hold_fire_mode: Optional[int]
     target_type: Optional[int]
+    transmit_angles_in_degrees: Optional[bool]
 
 
 class FileRuntimeLogSink:
@@ -209,7 +213,13 @@ def build_cli_overrides(parsed_args: argparse.Namespace) -> CliOverrides:
             else None
         ),
         fire_mode=parsed_args.fire_mode,
+        hold_fire_mode=parsed_args.hold_fire_mode,
         target_type=parsed_args.target_type,
+        transmit_angles_in_degrees=(
+            parse_boolean_flag(parsed_args.transmit_angles_in_degrees)
+            if parsed_args.transmit_angles_in_degrees is not None
+            else None
+        ),
     )
 
 
@@ -400,11 +410,18 @@ class STM32SerialBridgeNode(Node):
         self.serial_verbose: bool = bool(self.get_parameter("serial_verbose").value)
         self.runtime_log_dir: str = str(self.get_parameter("runtime_log_dir").value)
         self.declare_parameter("fire_mode", DEFAULT_FIRE_MODE)
+        self.declare_parameter("hold_fire_mode", FIRE_MODE_NO_FIRE)
         self.declare_parameter("target_type", DEFAULT_TARGET_TYPE)
+        self.declare_parameter("transmit_angles_in_degrees", False)
         self.fire_mode: int = int(self.get_parameter("fire_mode").value)
+        self.hold_fire_mode: int = int(self.get_parameter("hold_fire_mode").value)
         self.target_type: int = int(self.get_parameter("target_type").value)
+        self.transmit_angles_in_degrees: bool = bool(
+            self.get_parameter("transmit_angles_in_degrees").value
+        )
         self.target_state: int = TARGET_STATE_NO_TARGET
         self.has_target: bool = False
+        self.suggest_fire: bool = False
         self.latest_yaw: float = 0.0
         self.latest_pitch: float = 0.0
         self.declare_parameter("attitude_rate_compensation_enabled", True)
@@ -457,6 +474,7 @@ class STM32SerialBridgeNode(Node):
                 "Transmit disabled. Set transmit_enable:=true to enable TX."
             )
         self.create_subscription(Bool, "override", self.handle_override, 10)
+        self.create_subscription(Bool, "suggest_fire", self.handle_suggest_fire, 10)
         self.create_subscription(
             Float32MultiArray, "bounding_box_angles", self.handle_angles, 10
         )
@@ -470,11 +488,12 @@ class STM32SerialBridgeNode(Node):
             DEFAULT_RX_POLL_PERIOD_SECONDS, self.handle_rx_poll
         )
         self.get_logger().info(
-            "STM32 serial bridge ready. transmit_enable=%s, port=%s, baud=%d"
+            "STM32 serial bridge ready. transmit_enable=%s, port=%s, baud=%d, tx_unit=%s"
             % (
                 str(self.transmit_enable).lower(),
                 self.serial_port,
                 self.serial_baudrate,
+                "degrees" if self.transmit_angles_in_degrees else "radians",
             )
         )
         self.get_logger().info(f"Serial runtime logs: {self._runtime_log_sink.path}")
@@ -496,9 +515,11 @@ class STM32SerialBridgeNode(Node):
         timestamp = datetime.now().isoformat(timespec="milliseconds")
         self._runtime_log_sink.write_line(f"ts={timestamp} {line}")
 
-    def _log_tx_event(self, yaw: float, pitch: float, success: bool) -> None:
+    def _log_tx_event(
+        self, yaw: float, pitch: float, success: bool, fire_mode: int
+    ) -> None:
         flags_register = build_vision_flags(
-            fire_mode=self.fire_mode,
+            fire_mode=fire_mode,
             target_state=self.target_state,
             target_type=self.target_type,
         )
@@ -507,9 +528,11 @@ class STM32SerialBridgeNode(Node):
                 (
                     "kind=serial_tx",
                     f"ok={int(success)}",
+                    "angle_unit="
+                    + ("degrees" if self.transmit_angles_in_degrees else "radians"),
                     f"yaw={yaw:.6f}",
                     f"pitch={pitch:.6f}",
-                    f"fire_mode={self.fire_mode}",
+                    f"fire_mode={fire_mode}",
                     f"target_state={self.target_state}",
                     f"target_type={self.target_type}",
                     f"flags=0x{flags_register:04X}",
@@ -581,29 +604,53 @@ class STM32SerialBridgeNode(Node):
         )
         return yaw_out, pitch_out
 
+    def _update_target_state(self) -> None:
+        if not self.has_target:
+            self.target_state = TARGET_STATE_NO_TARGET
+        elif self.suggest_fire:
+            self.target_state = TARGET_STATE_READY_TO_FIRE
+        else:
+            self.target_state = TARGET_STATE_CONVERGING
+
+    def _convert_tx_units(self, yaw: float, pitch: float) -> tuple[float, float]:
+        if not self.transmit_angles_in_degrees:
+            return yaw, pitch
+        return math.degrees(yaw), math.degrees(pitch)
+
+    def _send_latest_command(self) -> None:
+        if not self.transmit_enable or self.transmitter is None:
+            return
+        out_yaw, out_pitch = self._compensate_outgoing_angles(
+            self.latest_yaw, self.latest_pitch
+        )
+        tx_yaw, tx_pitch = self._convert_tx_units(out_yaw, out_pitch)
+        fire_mode = self.fire_mode if self.has_target else self.hold_fire_mode
+        success = self.transmitter.send_vision_data(
+            pitch=tx_pitch,
+            yaw=tx_yaw,
+            fire_mode=fire_mode,
+            target_state=self.target_state,
+            target_type=self.target_type,
+        )
+        self._log_tx_event(
+            yaw=tx_yaw,
+            pitch=tx_pitch,
+            success=success,
+            fire_mode=fire_mode,
+        )
+
     def handle_override(self, msg: Bool) -> None:
         prev_has_target = self.has_target
         self.has_target = bool(msg.data)
-        self.target_state = (
-            TARGET_STATE_CONVERGING if self.has_target else TARGET_STATE_NO_TARGET
-        )
-        if (
-            self.has_target
-            and not prev_has_target
-            and self.transmit_enable
-            and self.transmitter is not None
-        ):
-            out_yaw, out_pitch = self._compensate_outgoing_angles(
-                self.latest_yaw, self.latest_pitch
-            )
-            success = self.transmitter.send_vision_data(
-                pitch=out_pitch,
-                yaw=out_yaw,
-                fire_mode=self.fire_mode,
-                target_state=self.target_state,
-                target_type=self.target_type,
-            )
-            self._log_tx_event(yaw=out_yaw, pitch=out_pitch, success=success)
+        self._update_target_state()
+        if self.has_target and not prev_has_target:
+            self._send_latest_command()
+
+    def handle_suggest_fire(self, msg: Bool) -> None:
+        self.suggest_fire = bool(msg.data)
+        self._update_target_state()
+        if self.has_target:
+            self._send_latest_command()
 
     def handle_angles(self, msg: Float32MultiArray) -> None:
         if len(msg.data) < 2:
@@ -619,15 +666,8 @@ class STM32SerialBridgeNode(Node):
         pitch: float = float(msg.data[1])
         self.latest_yaw = yaw
         self.latest_pitch = pitch
-        out_yaw, out_pitch = self._compensate_outgoing_angles(yaw, pitch)
-        success = self.transmitter.send_vision_data(
-            pitch=out_pitch,
-            yaw=out_yaw,
-            fire_mode=self.fire_mode,
-            target_state=self.target_state,
-            target_type=self.target_type,
-        )
-        self._log_tx_event(yaw=out_yaw, pitch=out_pitch, success=success)
+        self._update_target_state()
+        self._send_latest_command()
 
     def handle_rx_poll(self) -> None:
         if not self.transmit_enable:
@@ -707,10 +747,22 @@ def main(args: Optional[list[str]] = None) -> None:
         help="Vision fire mode bits [0..3] for Seasky cmd 0x0001",
     )
     parser.add_argument(
+        "--hold_fire_mode",
+        type=int,
+        default=None,
+        help="Fire mode sent when target_state is NO_TARGET",
+    )
+    parser.add_argument(
         "--target_type",
         type=int,
         default=None,
         help="Vision target type bits [0..15] for Seasky cmd 0x0001",
+    )
+    parser.add_argument(
+        "--transmit_angles_in_degrees",
+        type=str,
+        default=None,
+        help="Convert outgoing yaw/pitch from radians to degrees before TX (true/false)",
     )
     source_args: list[str] = args if args is not None else sys.argv[1:]
     parsed_args, remaining_args = parser.parse_known_args(source_args)
@@ -750,9 +802,25 @@ def main(args: Optional[list[str]] = None) -> None:
             Parameter("fire_mode", Parameter.Type.INTEGER, cli_overrides.fire_mode)
         )
 
+    if cli_overrides.hold_fire_mode is not None:
+        parameter_overrides.append(
+            Parameter(
+                "hold_fire_mode", Parameter.Type.INTEGER, cli_overrides.hold_fire_mode
+            )
+        )
+
     if cli_overrides.target_type is not None:
         parameter_overrides.append(
             Parameter("target_type", Parameter.Type.INTEGER, cli_overrides.target_type)
+        )
+
+    if cli_overrides.transmit_angles_in_degrees is not None:
+        parameter_overrides.append(
+            Parameter(
+                "transmit_angles_in_degrees",
+                Parameter.Type.BOOL,
+                cli_overrides.transmit_angles_in_degrees,
+            )
         )
 
     node = STM32SerialBridgeNode(parameter_overrides=parameter_overrides)

@@ -21,10 +21,12 @@ if str(MODULE_ROOT_PATH) not in sys.path:
 
 try:
     from yolov8_ros.stm32_serial_bridge import (
+        DEFAULT_FIRE_MODE,
         SEASKY_COMMAND_VISION_RECV,
         TARGET_STATE_CONVERGING,
         build_seasky_frame,
         build_vision_flags,
+        convert_attitude_triplet_degrees_to_radians,
         parse_attitude_flags,
         SEASKY_SOF,
         SEASKY_HEADER_SIZE_BYTES,
@@ -39,10 +41,12 @@ try:
     )
 except ModuleNotFoundError:
     from stm32_serial_bridge import (  # type: ignore
+        DEFAULT_FIRE_MODE,
         SEASKY_COMMAND_VISION_RECV,
         TARGET_STATE_CONVERGING,
         build_seasky_frame,
         build_vision_flags,
+        convert_attitude_triplet_degrees_to_radians,
         parse_attitude_flags,
         SEASKY_SOF,
         SEASKY_HEADER_SIZE_BYTES,
@@ -91,7 +95,7 @@ def generate_pitch_step_sample(elapsed_seconds: float) -> VisionTestSample:
     return VisionTestSample(
         yaw=0.0,
         pitch=pitch,
-        fire_mode=0,
+        fire_mode=DEFAULT_FIRE_MODE,
         target_state=TARGET_STATE_CONVERGING,
         target_type=0,
     )
@@ -179,6 +183,9 @@ def drain_attitude_frames(
         if len(payload) != expected:
             continue
         yaw, pitch, roll = struct.unpack("<fff", payload)
+        yaw, pitch, roll = convert_attitude_triplet_degrees_to_radians(
+            yaw, pitch, roll
+        )
         enemy_color, work_mode, bullet_speed = parse_attitude_flags(flags_register)
         rx_count[0] += 1
         LOGGER.info(
