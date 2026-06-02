@@ -107,11 +107,12 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 | `yolo_cpp/src/` | Active ROS 2 C++ runtime implementations. |
 | `yolo_cpp/launch/` | `basler.launch.py`, compatibility alias `stm.launch.py`, `realsense.launch.py`, and `zerocopy.launch.py`. |
 | `yolo_cpp/config/` | DeepStream and detector configuration assets. |
-| `yolo_cpp/models/` | Active runtime model or TensorRT engine assets used by default launches and STM service bring-up. |
+| `yolo_cpp/config/default_model_path.txt` | Robot-local fallback model path used when launch arguments and `CV_STM_MODEL_PATH` are empty. |
 | `yolo_cpp/test/` | Focused C++ tests for tracking and detection postprocess behavior. |
 | `cv_auto_aim_interfaces/msg/` | Custom ROS 2 messages for detections, tracks, targets, spin state, and aim solutions. |
 | `Docker/` and `services/` | Container images, compose config, and helper scripts. |
 | `legacy/models/` | Stale or experimental model variants and archived export utilities. |
+| `legacy/cpp/` | Archived C++ reference nodes removed from the active package build. |
 | `legacy/prototypes/mac/` | Archived macOS/CoreML prototype tooling. |
 | `legacy/docker/` | Retired Dockerfiles, compose files, and VIAM-era container helpers. |
 | `legacy/docs/setup/`, `legacy/envs/`, `legacy/nav/`, and `legacy/scripts/` | Historical setup notes, conda environments, navigation notes, and root helper scripts. |

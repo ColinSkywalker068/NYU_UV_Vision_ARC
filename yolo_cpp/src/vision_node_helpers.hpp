@@ -17,6 +17,9 @@ std::string timestamp_now_iso8601_ms();
 /// Return compact local wall-clock time suitable for log file names.
 std::string timestamp_now_compact();
 
+/// Resolve a model path from an explicit value, CV_STM_MODEL_PATH, or the robot-local default.
+std::string resolve_model_path(const std::string& explicit_model_path);
+
 /// Copy an internal BGR frame packet into a ROS Image message.
 sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
   const FramePacket& packet, const rclcpp::Time& stamp);

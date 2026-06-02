@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+option(YOLO_CPP_BUILD_MANUAL_TOOLS "Build manual hardware smoke tools" OFF)
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(
     $<$<COMPILE_LANGUAGE:CXX>:-Wall>
@@ -132,7 +134,6 @@ set(YOLO_CPP_COMPONENT_SOURCES
   src/model_metadata.cpp
   src/detection_postprocess.cpp
   src/detector_backend.cpp
-  src/deepstream_detector.cpp
   src/deepstream_runtime_helpers.cpp
   src/deepstream_runtime.cpp
   src/vision_node_helpers.cpp
@@ -141,8 +142,6 @@ set(YOLO_CPP_COMPONENT_SOURCES
   src/armor_tracker_node.cpp
   src/armor_processor_node.cpp
   src/aim_solver_node.cpp
-  src/camera_node.cpp
-  src/yolo_node.cpp
   src/perception_node.cpp
 )
 if(HAVE_YOLO_CUDA_BAYER_RESIZE)
@@ -229,18 +228,8 @@ rclcpp_components_register_nodes(yolo_cpp_components
   "yolo_cpp::ArmorTrackerNode"
   "yolo_cpp::ArmorProcessorNode"
   "yolo_cpp::AimSolverNode"
-  "yolo_cpp::CameraNode"
-  "yolo_cpp::YoloNode"
   "yolo_cpp::PerceptionNode"
 )
-
-add_executable(camera_node src/camera_node_main.cpp)
-target_link_libraries(camera_node yolo_cpp_components)
-ament_target_dependencies(camera_node rclcpp)
-
-add_executable(yolo_modular_node src/yolo_node_main.cpp)
-target_link_libraries(yolo_modular_node yolo_cpp_components)
-ament_target_dependencies(yolo_modular_node rclcpp)
 
 add_executable(perception_node src/perception_node_main.cpp)
 target_link_libraries(perception_node yolo_cpp_components)
@@ -303,14 +292,16 @@ target_include_directories(stm32_serial_bridge PUBLIC
 )
 ament_target_dependencies(stm32_serial_bridge rclcpp std_msgs)
 
-add_executable(stm32_yaw_packet_test
-  test/stm32_yaw_packet_test.cpp
-  src/seasky_protocol.cpp
-)
-target_include_directories(stm32_yaw_packet_test PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
+if(YOLO_CPP_BUILD_MANUAL_TOOLS)
+  add_executable(stm32_yaw_packet_smoke
+    tools/stm32_yaw_packet_smoke.cpp
+    src/seasky_protocol.cpp
+  )
+  target_include_directories(stm32_yaw_packet_smoke PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+  )
+endif()
 
 install(
   DIRECTORY include/
@@ -318,13 +309,20 @@ install(
 )
 
 install(
-  TARGETS yolo_cpp_components camera_node yolo_modular_node perception_node
+  TARGETS yolo_cpp_components perception_node
     armor_detector_node armor_tracker_node armor_processor_node aim_solver_node fps_benchmark
-    stm32_serial_bridge stm32_yaw_packet_test
+    stm32_serial_bridge
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
+
+if(YOLO_CPP_BUILD_MANUAL_TOOLS)
+  install(
+    TARGETS stm32_yaw_packet_smoke
+    RUNTIME DESTINATION lib/${PROJECT_NAME}
+  )
+endif()
 
 install(
   DIRECTORY launch

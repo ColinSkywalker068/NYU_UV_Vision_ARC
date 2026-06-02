@@ -44,11 +44,13 @@ For the headless STM service:
 ./services/stm-stack.sh logs
 ```
 
-The default runtime engine lives at:
+The robot-local fallback model path is configured at:
 
 ```text
-yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine
+yolo_cpp/config/default_model_path.txt
 ```
+
+Override it with `CV_STM_MODEL_PATH` or a launch `model_path:=...` argument.
 
 ## Documentation
 

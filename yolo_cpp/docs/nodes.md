@@ -2,10 +2,6 @@
 
 Related pages: [Overview](./overview.md) | [Pipeline](./pipeline.md) | [Interfaces](./interfaces.md) | [Legacy Pipeline Notes](./legacy-pipeline-notes.md) | [Launch and Config](./launch-and-config.md) | [Development Notes](./development-notes.md)
 
-## CameraNode
-
-`CameraNode` is the camera-facing publisher. It wraps the shared camera backend and emits `image_raw` so other nodes can consume frames without owning device access themselves.
-
 ## ArmorDetectorNode
 
 `ArmorDetectorNode` is the main entry into the split pipeline. It handles camera capture, detector backend setup, optional DeepStream fallback behavior, candidate extraction, optional armor-corner PnP, and publication of `detector/armors`.
@@ -36,8 +32,6 @@ STM yaw/pitch feedback from `attitude_data` is interpreted as radians. Set `outp
 
 ## PerceptionNode
 
-`PerceptionNode` is the older combined runtime path. It still matters because it preserves an end-to-end implementation in one place and is used by the zero-copy launch setup, but it is not the clearest place to start if you are trying to learn the active modular stack.
+`PerceptionNode` is the older combined runtime path. It still matters because it preserves an end-to-end implementation in one place and is used by the zero-copy launch setup, but it is an experiment/reference path rather than the active field stack.
 
-## YoloNode
-
-`YoloNode` is another older combined-style path that works directly from `image_raw`. It remains in the package as a useful reference, but the detector, tracker, and solver nodes are the cleaner representation of the current architecture.
+The old standalone `image_raw` camera publisher is archived under `legacy/cpp/yolo_cpp/`; active launches have `ArmorDetectorNode` own camera capture.

@@ -65,7 +65,7 @@
 | 32 | Project | Identify `cv_auto_aim_interfaces/` as the custom message package. |
 | 33 | Project | Identify `legacy/` as historical or prototype material unless a task targets it. |
 | 34 | Project | Describe Docker and services as operational support, not application logic. |
-| 35 | Project | Describe `yolo_cpp/models/` as active runtime model assets and `legacy/models/` as archived model variants. |
+| 35 | Project | Describe runtime model binaries as operator-provided assets selected by `CV_STM_MODEL_PATH` or `yolo_cpp/config/default_model_path.txt`; describe `legacy/models/` as archived model variants. |
 | 36 | Commands | Prefer `uv docker` for container entry in repo-facing docs. |
 | 37 | Commands | Prefer `uv build yolo_cpp` for active stack builds. |
 | 38 | Commands | Prefer `uv run yolo_cpp basler.launch.py` for Basler field stack launch guidance. |
@@ -169,7 +169,7 @@
 | Unit claims | Check angle and unit claims at solver and serial bridge boundaries. |
 | Launch defaults | Confirm launch behavior in `yolo_cpp/launch/` before documenting defaults. |
 | Build options | Confirm optional compile definitions in CMake before documenting backend support. |
-| Model assets | Treat `yolo_cpp/models/` as active runtime assets, not as the training source of truth. |
+| Model assets | Treat model binaries as robot-local/operator-provided assets, not as checked-in package assets or the training source of truth. |
 
 ## 6. Command Documentation
 
@@ -262,9 +262,9 @@
 | Pre-commit guidance | `docs/Pre-commit.md` and repository hook configuration |
 | Roadmap claims | Planning docs under `docs/` and active implementation state |
 | Legacy claims | `legacy/` and archived docs under `legacy/docs/` |
-| Model asset claims | `yolo_cpp/models/`, `legacy/models/`, and the launch or config files that reference those assets |
+| Model asset claims | `yolo_cpp/config/default_model_path.txt`, `legacy/models/`, and the launch or config files that reference model paths |
 | Camera backend claims | `yolo_cpp/src/camera_backend.cpp`, `yolo_cpp/include/yolo_cpp/camera_backend.hpp`, and launch parameters |
-| Detector backend claims | `yolo_cpp/src/detector_backend.cpp`, `yolo_cpp/src/deepstream_detector.cpp`, and CMake feature detection |
+| Detector backend claims | `yolo_cpp/src/detector_backend.cpp`, `yolo_cpp/src/deepstream_runtime.cpp`, and CMake feature detection |
 | Solver claims | `yolo_cpp/src/aim_solver_node.cpp` and solver-facing package docs |
 | Serial protocol claims | `yolo_cpp/src/stm32_serial_bridge_node.cpp`, `yolo_cpp/src/seasky_protocol.cpp`, and related headers |
 | Service claims | `services/` scripts and service unit files |

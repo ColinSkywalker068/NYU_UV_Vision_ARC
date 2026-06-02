@@ -1,4 +1,4 @@
-/// @file stm32_yaw_packet_test.cpp
+/// @file stm32_yaw_packet_smoke.cpp
 /// @brief Manual hardware smoke test that sends one yaw-only Seasky vision packet.
 
 #include "yolo_cpp/seasky_protocol.hpp"
@@ -264,7 +264,7 @@ int main(int argc, char ** argv)
     std::cout << "Done.\n";
     return 0;
   } catch (const std::exception & error) {
-    std::cerr << "stm32_yaw_packet_test: " << error.what() << "\n";
+    std::cerr << "stm32_yaw_packet_smoke: " << error.what() << "\n";
     std::cerr << "Run with --help for usage.\n";
     return 1;
   }

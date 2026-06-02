@@ -77,7 +77,7 @@ If the script fails, download DeepStream manually:
 
 3. **Verify installation:**
    ```bash
-   ./yolov8_ros/scripts/check_deepstream.sh
+   gst-inspect-1.0 nvstreammux
    ```
 
 ## Verify DeepStream is Working

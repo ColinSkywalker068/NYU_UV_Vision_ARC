@@ -16,6 +16,7 @@ The package is easier to work with when you keep those responsibilities separate
 - combined reference path: [`../src/perception_node.cpp`](../src/perception_node.cpp)
 - FPS isolation harness: [`../src/fps_benchmark.cpp`](../src/fps_benchmark.cpp)
 - tracking tests: [`../test/test_tracking_core.cpp`](../test/test_tracking_core.cpp)
+- manual STM yaw smoke tool: [`../tools/stm32_yaw_packet_smoke.cpp`](../tools/stm32_yaw_packet_smoke.cpp)
 
 ## Verification Flow
 
@@ -51,6 +52,20 @@ For stage timing around the remaining conversion path, enable the DeepStream pad
 ```
 
 The profile log reports average milliseconds for source-to-Bayer conversion, queue handoff, `videoconvert`, `nvvideoconvert`, streammux handoff, and `nvinfer`. A successful CUDA Bayer run logs `Using CUDA Bayer resize backend`; otherwise the runtime logs why it fell back to CPU `bayer2rgb`.
+
+## Manual Hardware Tools
+
+The STM yaw packet sender is a hardware smoke tool, not a package test. Build it only when needed:
+
+```bash
+colcon build --packages-select yolo_cpp --cmake-args -DYOLO_CPP_BUILD_MANUAL_TOOLS=ON
+```
+
+Then inspect its options with:
+
+```bash
+ros2 run yolo_cpp stm32_yaw_packet_smoke --help
+```
 
 ## Related Repo Docs
 

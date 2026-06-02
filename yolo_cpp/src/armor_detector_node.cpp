@@ -96,7 +96,8 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
   this->declare_parameter<int>("stage_log_interval", 300);
   this->declare_parameter<double>("preview_max_fps", 60.0);
 
-  model_path_ = this->get_parameter("model_path").as_string();
+  model_path_ =
+    vision_node_helpers::resolve_model_path(this->get_parameter("model_path").as_string());
   task_ = this->get_parameter("task").as_string();
   model_type_ = this->get_parameter("type").as_string();
   detector_backend_kind_ = this->get_parameter("detector_backend").as_string();
@@ -884,13 +885,7 @@ std::vector<Candidate> ArmorDetectorNode::extract_candidates(
 
 std::string ArmorDetectorNode::resolve_default_model_path() const
 {
-  const auto cwd_candidate = std::filesystem::current_path() / "model_test"
-                             / "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
-  if (std::filesystem::exists(cwd_candidate)) {
-    return cwd_candidate.string();
-  }
-  return "/home/ultraviolet/CV_Detection/model_test/"
-         "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
+  return vision_node_helpers::resolve_model_path("");
 }
 
 std::string ArmorDetectorNode::resolve_default_deepstream_config_path() const

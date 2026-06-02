@@ -73,7 +73,8 @@ CV_STM_IMAGE=${DEFAULT_IMAGE}
 # CV_STM_IMAGE=cv-detection-cplusplus-pylon:local
 UV_CONTAINER_NAME=cv-stm-stack
 CV_STM_LAUNCH_PROFILE=basler
-# CV_STM_MODEL_PATH=/home/ultraviolet/CV_Detection/yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine
+# Optional. When unset, yolo_cpp/config/default_model_path.txt supplies the robot-local fallback.
+# CV_STM_MODEL_PATH=/path/to/model.engine
 # CV_STM_TARGET_COLOR=blue
 # Default is to trust model color classes and skip HSV verification.
 # Accept both model colors during detector bring-up by setting both false:

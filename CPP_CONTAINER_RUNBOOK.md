@@ -2,8 +2,8 @@
 
 ## What works today
 
-- **C++ `camera_node`**: camera capture and `image_raw` publishing.
-- **C++ detector / tracker / solver**: active runtime path lives in `yolo_cpp`.
+- **C++ detector / tracker / processor / solver**: active runtime path lives in `yolo_cpp`.
+- **Camera capture**: active launches have `ArmorDetectorNode` own capture through the shared camera backend.
 
 ## 1) Start container with GUI + devices
 

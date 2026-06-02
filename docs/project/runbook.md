@@ -80,7 +80,7 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `CV_STM_TARGET_FRAME_SAVE_MAX` | Maximum target-frame images saved per run | `100` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_TARGET_FRAME_JPEG_QUALITY` | JPEG quality for optional target-frame capture | `85` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_CAMERA_TYPE` | Lower-level camera backend override for the Basler-profile launch only | Usually unset; prefer `CV_STM_LAUNCH_PROFILE` | `services/stm-stack-entrypoint.sh` |
-| `CV_STM_MODEL_PATH` | Competition model or engine path | `yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine` under the robot repo | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_MODEL_PATH` | Competition model or engine path override | Empty by default; `yolo_cpp/config/default_model_path.txt` supplies the robot-local fallback | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_SERIAL_PORT` | STM32 serial device for competition startup | `/dev/ttyUSB0` | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_REQUIRE_SERIAL` | Whether preflight must fail when the serial path is absent | Defaults to `true` for `basler`, `false` for `realsense` | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_EXTRA_LAUNCH_ARGS` | Optional extra selected-profile launch arguments | Empty by default | `services/stm-stack-entrypoint.sh` |
@@ -483,7 +483,7 @@ Resolution:
 |---------|------------|-----------------|
 | `cv-container` Compose service | Docker Engine, NVIDIA runtime, host network, `/dev/video0`, `/dev/bus/usb`, `/tmp/argus_socket`, `/dev`, `/home/ultraviolet` | `Docker/docker-compose.yml` |
 | `stm-stack.service` | `docker.service`, `/home/ultraviolet/CV_Detection`, `services/start-container.sh`, `services/stm-stack-entrypoint.sh`, C++ DeepStream image, STM32 serial device for Basler TX | `services/stm-stack.service` |
-| `yolo_cpp` Basler field stack | `cv_auto_aim_interfaces`, model engine at `yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine`, Basler camera device, optional `/dev/ttyUSB0` | `yolo_cpp/launch/basler.launch.py` |
+| `yolo_cpp` Basler field stack | `cv_auto_aim_interfaces`, model path from `CV_STM_MODEL_PATH` or `yolo_cpp/config/default_model_path.txt`, Basler camera device, optional `/dev/ttyUSB0` | `yolo_cpp/launch/basler.launch.py` |
 | C++ DeepStream/Basler image | DeepStream 6.4, GStreamer plugins, optional Pylon packages under `Docker/pylon/` | `Docker/Dockerfile.cplusplus`, `Docker/build_cplusplus.sh` |
 
 ## 14. Port Mapping

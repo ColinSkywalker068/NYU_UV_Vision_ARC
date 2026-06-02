@@ -163,7 +163,6 @@ private:
   bool allow_native_tensorrt_fallback_{false};
   bool half_{true};
   bool show_{false};
-  bool persist_tracking_{true};
   bool use_kalman_{false};
   bool enable_color_verification_{true};
   bool use_model_color_classes_{true};

@@ -4,16 +4,10 @@ from typing import Any
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import EnvironmentVariable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
-
-
-DEFAULT_MODEL_PATH = (
-    "/home/ultraviolet/CV_Detection/model_test/"
-    "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine"
-)
 
 
 def package_config_path(file_name: str) -> PathJoinSubstitution:
@@ -51,8 +45,8 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ),
         (
             "model_path",
-            DEFAULT_MODEL_PATH,
-            "Path to YOLO weights (.pt / .engine / .onnx)",
+            EnvironmentVariable("CV_STM_MODEL_PATH", default_value=""),
+            "Path to YOLO weights (.pt / .engine / .onnx); empty uses the package default resolver",
         ),
         ("serial_port", "/dev/ttyUSB0", "Serial port for STM32 connection"),
         ("serial_baudrate", "115200", "Baud rate for STM32 serial"),

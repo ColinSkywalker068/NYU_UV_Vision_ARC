@@ -59,7 +59,6 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions& options)
   this->declare_parameter<int>("tracker_timeout", 15);
   this->declare_parameter<double>("prediction_lookahead_steps", 0.5);
   this->declare_parameter<std::string>("inference_mode", "predict");
-  this->declare_parameter<bool>("persist_tracking", true);
   this->declare_parameter<bool>("use_kalman", false);
   this->declare_parameter<bool>("enable_color_verification", true);
   this->declare_parameter<bool>("use_model_color_classes", true);
@@ -83,7 +82,8 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions& options)
   this->declare_parameter<int>("stage_log_interval", 300);
   this->declare_parameter<double>("preview_max_fps", 60.0);
 
-  model_path_ = this->get_parameter("model_path").as_string();
+  model_path_ =
+    vision_node_helpers::resolve_model_path(this->get_parameter("model_path").as_string());
   task_ = this->get_parameter("task").as_string();
   model_type_ = this->get_parameter("type").as_string();
   detector_backend_kind_ = this->get_parameter("detector_backend").as_string();
@@ -98,7 +98,6 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions& options)
   lookahead_steps_ =
     static_cast<float>(this->get_parameter("prediction_lookahead_steps").as_double());
   inference_mode_ = this->get_parameter("inference_mode").as_string();
-  persist_tracking_ = this->get_parameter("persist_tracking").as_bool();
   use_kalman_ = this->get_parameter("use_kalman").as_bool();
   enable_color_verification_ = this->get_parameter("enable_color_verification").as_bool();
   use_model_color_classes_ = this->get_parameter("use_model_color_classes").as_bool();
@@ -189,11 +188,8 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions& options)
     deepstream_runtime_ != nullptr ? deepstream_runtime_->backend_name().c_str()
                                    : detector_backend_->backend_name().c_str(),
     fps_, debug_publish_image_raw_ ? "true" : "false");
-  log_runtime_note("INFO", "Initializing Modular YOLOv8 Node...");
+  log_runtime_note("INFO", "Initializing PerceptionNode reference path...");
   log_runtime_note("INFO", "Detector Initialized.");
-  (void)show_;
-  (void)persist_tracking_;
-  (void)vis_window_name_;
 }
 
 PerceptionNode::~PerceptionNode()
@@ -711,13 +707,7 @@ bool PerceptionNode::run_kalman_pipeline(
 
 std::string PerceptionNode::resolve_default_model_path() const
 {
-  const auto cwd_candidate = std::filesystem::current_path() / "model_test"
-                             / "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
-  if (std::filesystem::exists(cwd_candidate)) {
-    return cwd_candidate.string();
-  }
-  return "/home/ultraviolet/CV_Detection/model_test/"
-         "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
+  return vision_node_helpers::resolve_model_path("");
 }
 
 std::string PerceptionNode::resolve_default_deepstream_config_path() const

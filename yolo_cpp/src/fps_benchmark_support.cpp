@@ -18,14 +18,13 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "vision_node_helpers.hpp"
+
 namespace yolo_cpp::fps_benchmark
 {
 
 namespace
 {
-
-constexpr char kDefaultModelPath[] = "/home/ultraviolet/CV_Detection/model_test/"
-                                     "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
 
 constexpr char kDefaultDeepStreamConfigPath[] =
   "/home/ultraviolet/CV_Detection/yolo_cpp/config/deepstream_bestmerge_nvinfer.txt";
@@ -65,16 +64,7 @@ std::optional<double> getenv_double(const char* name)
 
 std::string resolve_default_model_path()
 {
-  if (const auto env_path = getenv_string("CV_STM_MODEL_PATH")) {
-    return *env_path;
-  }
-
-  const auto cwd_candidate = std::filesystem::current_path() / "model_test"
-                             / "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
-  if (std::filesystem::exists(cwd_candidate)) {
-    return cwd_candidate.string();
-  }
-  return kDefaultModelPath;
+  return yolo_cpp::vision_node_helpers::resolve_model_path("");
 }
 
 std::string resolve_default_deepstream_config_path()

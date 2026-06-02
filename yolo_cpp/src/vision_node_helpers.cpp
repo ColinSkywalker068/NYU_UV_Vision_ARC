@@ -8,15 +8,76 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <memory>
+#include <optional>
 #include <sensor_msgs/image_encodings.hpp>
 #include <sstream>
 
 namespace yolo_cpp::vision_node_helpers
 {
+
+namespace
+{
+
+constexpr char kModelPathEnv[] = "CV_STM_MODEL_PATH";
+constexpr char kDefaultModelPathFile[] = "default_model_path.txt";
+
+std::optional<std::string> non_empty_env(const char* name)
+{
+  const char* value = std::getenv(name);
+  if (value == nullptr || value[0] == '\0') {
+    return std::nullopt;
+  }
+  return std::string(value);
+}
+
+std::string trim_ascii(std::string value)
+{
+  const auto first = value.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos) {
+    return {};
+  }
+  const auto last = value.find_last_not_of(" \t\r\n");
+  return value.substr(first, last - first + 1);
+}
+
+std::optional<std::string> read_default_model_path_file(const std::filesystem::path& path)
+{
+  std::ifstream stream(path);
+  if (!stream) {
+    return std::nullopt;
+  }
+
+  std::string line;
+  while (std::getline(stream, line)) {
+    const auto trimmed = trim_ascii(line);
+    if (!trimmed.empty() && trimmed.front() != '#') {
+      return trimmed;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> default_model_path_from_file()
+{
+  const std::filesystem::path cwd_candidate =
+    std::filesystem::current_path() / "yolo_cpp" / "config" / kDefaultModelPathFile;
+  if (const auto path = read_default_model_path_file(cwd_candidate)) {
+    return path;
+  }
+
+  const std::filesystem::path source_candidate =
+    std::filesystem::path(__FILE__).parent_path().parent_path() / "config" / kDefaultModelPathFile;
+  return read_default_model_path_file(source_candidate);
+}
+
+}  // namespace
 
 std::string timestamp_now_iso8601_ms()
 {
@@ -52,6 +113,18 @@ std::string timestamp_now_compact()
   std::ostringstream out;
   out << std::put_time(&local_tm, "%Y%m%d_%H%M%S");
   return out.str();
+}
+
+std::string resolve_model_path(const std::string& explicit_model_path)
+{
+  const auto trimmed_explicit = trim_ascii(explicit_model_path);
+  if (!trimmed_explicit.empty()) {
+    return trimmed_explicit;
+  }
+  if (const auto env_path = non_empty_env(kModelPathEnv)) {
+    return *env_path;
+  }
+  return default_model_path_from_file().value_or(std::string{});
 }
 
 sensor_msgs::msg::Image::UniquePtr frame_to_image_message(

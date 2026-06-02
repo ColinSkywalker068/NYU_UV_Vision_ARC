@@ -2,7 +2,7 @@
 set -euo pipefail
 
 DEFAULT_REPO_ROOT="/home/ultraviolet/CV_Detection"
-DEFAULT_MODEL_PATH="/home/ultraviolet/CV_Detection/yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine"
+DEFAULT_MODEL_PATH_FILE_RELATIVE="yolo_cpp/config/default_model_path.txt"
 
 REPO_ROOT="${CV_STM_REPO_ROOT:-${DEFAULT_REPO_ROOT}}"
 MODE="${1:-run}"
@@ -106,7 +106,17 @@ check_ros_package() {
 }
 
 model_path() {
-  printf '%s' "${CV_STM_MODEL_PATH:-${DEFAULT_MODEL_PATH}}"
+  if [ -n "${CV_STM_MODEL_PATH:-}" ]; then
+    printf '%s' "${CV_STM_MODEL_PATH}"
+    return
+  fi
+
+  local default_model_path_file="${REPO_ROOT}/${DEFAULT_MODEL_PATH_FILE_RELATIVE}"
+  require_file "$default_model_path_file"
+  local resolved_model_path
+  resolved_model_path="$(awk 'NF && $1 !~ /^#/ { print; exit }' "$default_model_path_file")"
+  [ -n "$resolved_model_path" ] || die "No default model path is configured in ${default_model_path_file}"
+  printf '%s' "$resolved_model_path"
 }
 
 launch_profile() {

@@ -16,14 +16,14 @@ uv run yolo_cpp basler.launch.py
 
 This runs the active Basler field stack using the package launch files. `stm.launch.py` remains as a compatibility alias for older commands.
 
-## Manual Run (ROS 2 Node)
+## Manual Run With Custom Model
 
-You can also run the node directly with custom parameters:
+You can also launch the active stack with custom parameters:
 
 ```bash
 uv docker
 uv build yolo_cpp
-uv run yolo_cpp yolo_modular_node --ros-args -p model_path:='/home/ultraviolet/CV_Detection/yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine' -p task:='obb' -p show:=True
+uv run yolo_cpp realsense.launch.py model_path:=/path/to/model.engine show:=true
 ```
 
 ## Python Standalone Run (No ROS)

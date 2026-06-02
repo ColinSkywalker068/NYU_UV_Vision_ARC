@@ -4,14 +4,8 @@ from typing import Any
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import EnvironmentVariable, LaunchConfiguration
 from launch_ros.actions import Node
-
-
-DEFAULT_MODEL_PATH = (
-    "/home/ultraviolet/CV_Detection/model_test/"
-    "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine"
-)
 
 
 def launch_config(name: str) -> LaunchConfiguration:
@@ -39,8 +33,8 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ),
         (
             "model_path",
-            DEFAULT_MODEL_PATH,
-            "Path to YOLO weights (.pt / .engine / .onnx)",
+            EnvironmentVariable("CV_STM_MODEL_PATH", default_value=""),
+            "Path to YOLO weights (.pt / .engine / .onnx); empty uses the package default resolver",
         ),
         ("task", "obb", "YOLO task: detect, obb, segment"),
         ("conf", "0.30", "Confidence threshold"),

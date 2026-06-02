@@ -77,7 +77,7 @@ flowchart LR
 | Split runtime into ROS 2 stages | Allows detector, tracker, processor, solver, and serial concerns to evolve separately. | [pipeline.md](../../yolo_cpp/docs/pipeline.md) |
 | Keep custom message package separate | Lets runtime nodes share contracts without sharing implementation code. | [cv_auto_aim_interfaces](../../cv_auto_aim_interfaces/package.xml) |
 | Keep optional hardware SDKs behind CMake detection | Supports development on machines without every robot hardware dependency installed. | [yolo_cpp/CMakeLists.txt](../../yolo_cpp/CMakeLists.txt) |
-| Preserve combined nodes as reference paths | Useful for comparison and zero-copy experiments while the split stack remains canonical. | [nodes.md](../../yolo_cpp/docs/nodes.md), [zerocopy.launch.py](../../yolo_cpp/launch/zerocopy.launch.py) |
+| Preserve the combined perception path as a reference path | Useful for comparison and zero-copy experiments while the split stack remains canonical. | [nodes.md](../../yolo_cpp/docs/nodes.md), [zerocopy.launch.py](../../yolo_cpp/launch/zerocopy.launch.py) |
 
 ## 5. Building Block View
 
@@ -127,14 +127,13 @@ flowchart LR
 
 | Component | Responsibility | Source |
 |-----------|----------------|--------|
-| `CameraNode` and camera backend | Camera-facing frame acquisition and `image_raw` publication path. | [camera_node.hpp](../../yolo_cpp/include/yolo_cpp/camera_node.hpp), [camera_backend.hpp](../../yolo_cpp/include/yolo_cpp/camera_backend.hpp) |
+| Camera backend | Shared RealSense/Basler frame acquisition used by the active detector node. | [camera_backend.hpp](../../yolo_cpp/include/yolo_cpp/camera_backend.hpp) |
 | `ArmorDetectorNode` | Camera capture, detector backend setup, candidate extraction, optional PnP, and `detector/armors` publication. | [armor_detector_node.hpp](../../yolo_cpp/include/yolo_cpp/armor_detector_node.hpp) |
 | `ArmorTrackerNode` | Temporal tracking, target selection, and publication of tracked sets and selected target. | [armor_tracker_node.hpp](../../yolo_cpp/include/yolo_cpp/armor_tracker_node.hpp), [tracker.hpp](../../yolo_cpp/include/yolo_cpp/tracker.hpp) |
 | `ArmorProcessorNode` | Target-frame transform, smoothing, velocity, spin observer, and visualization output. | [armor_processor_node.hpp](../../yolo_cpp/include/yolo_cpp/armor_processor_node.hpp) |
 | `AimSolverNode` | 3D or 2D yaw/pitch solving, fire recommendation, and controller-facing topic output. | [aim_solver_node.hpp](../../yolo_cpp/include/yolo_cpp/aim_solver_node.hpp) |
 | `STM32SerialBridgeNode` | Serial protocol boundary to the STM32 controller. | [stm32_serial_bridge_node.hpp](../../yolo_cpp/include/yolo_cpp/stm32_serial_bridge_node.hpp), [seasky_protocol.hpp](../../yolo_cpp/include/yolo_cpp/seasky_protocol.hpp) |
 | `PerceptionNode` | Older combined runtime and zero-copy experiment target. | [perception_node.hpp](../../yolo_cpp/include/yolo_cpp/perception_node.hpp) |
-| `YoloNode` | Older combined-style image subscriber path. | [yolo_node.hpp](../../yolo_cpp/include/yolo_cpp/yolo_node.hpp) |
 
 ## 6. Runtime View
 
@@ -189,7 +188,7 @@ No formal ADR files are present in the current repository. When adding formal AD
 |----------|--------|--------|
 | Use split detector, tracker, processor, solver, and bridge nodes as the active runtime | Accepted in current code | [overview.md](../../yolo_cpp/docs/overview.md) |
 | Keep `cv_auto_aim_interfaces` as the shared message package | Accepted in current code | [cv_auto_aim_interfaces/package.xml](../../cv_auto_aim_interfaces/package.xml) |
-| Keep combined `PerceptionNode` and `YoloNode` as legacy/reference paths | Accepted in current code | [nodes.md](../../yolo_cpp/docs/nodes.md) |
+| Keep combined `PerceptionNode` as a zero-copy experiment/reference path | Accepted in current code | [nodes.md](../../yolo_cpp/docs/nodes.md), [zerocopy.launch.py](../../yolo_cpp/launch/zerocopy.launch.py) |
 | Run production-like robot stack through NVIDIA Docker images | Accepted in current ops scripts | [Docker/docker-compose.yml](../../Docker/docker-compose.yml), [services/start-container.sh](../../services/start-container.sh) |
 
 ## 9. Quality Requirements
