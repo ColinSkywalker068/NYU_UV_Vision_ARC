@@ -1,8 +1,6 @@
 /// @file model_metadata.cpp
 /// @brief Reads Ultralytics/TensorRT metadata embedded in serialized engine files.
 
-#include "yolo_cpp/detection_postprocess.hpp"
-
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -12,6 +10,8 @@
 #include <string>
 #include <unordered_map>
 
+#include "yolo_cpp/detection_postprocess.hpp"
+
 namespace yolo_cpp
 {
 
@@ -19,7 +19,7 @@ namespace
 {
 
 /// Read an engine/model file as binary data.
-std::string read_file(const std::string & path)
+std::string read_file(const std::string& path)
 {
   std::ifstream stream(path, std::ios::binary);
   if (!stream) {
@@ -31,7 +31,7 @@ std::string read_file(const std::string & path)
 }
 
 /// Extract Ultralytics-style JSON metadata prefix from an engine file.
-std::optional<std::string> extract_engine_metadata(const std::string & data)
+std::optional<std::string> extract_engine_metadata(const std::string& data)
 {
   if (data.size() < sizeof(std::uint32_t)) {
     return std::nullopt;
@@ -52,7 +52,7 @@ std::optional<std::string> extract_engine_metadata(const std::string & data)
 }
 
 /// Return the offset where serialized TensorRT plan bytes begin after metadata.
-std::size_t engine_plan_offset(const std::string & data)
+std::size_t engine_plan_offset(const std::string& data)
 {
   if (data.size() < sizeof(std::uint32_t)) {
     return 0U;
@@ -75,7 +75,7 @@ std::size_t engine_plan_offset(const std::string & data)
 
 /// Extract a simple JSON string value without pulling in a JSON dependency.
 std::optional<std::string> extract_json_string_value(
-  const std::string & json, const std::string & key)
+  const std::string& json, const std::string& key)
 {
   const std::string needle = "\"" + key + "\"";
   const auto key_pos = json.find(needle);
@@ -97,7 +97,7 @@ std::optional<std::string> extract_json_string_value(
 }
 
 /// Parse the model class-name map from lightweight metadata JSON.
-std::unordered_map<int, std::string> extract_names(const std::string & json)
+std::unordered_map<int, std::string> extract_names(const std::string& json)
 {
   std::unordered_map<int, std::string> names;
   const auto names_key = json.find("\"names\"");
@@ -156,10 +156,7 @@ std::unordered_map<int, std::string> extract_names(const std::string & json)
     const auto key_q2 = block.find('"', key_q1 + 1);
     const auto val_q1 = block.find('"', key_q2 + 1);
     const auto val_q2 = block.find('"', val_q1 + 1);
-    if (
-      key_q2 == std::string::npos || val_q1 == std::string::npos ||
-      val_q2 == std::string::npos)
-    {
+    if (key_q2 == std::string::npos || val_q1 == std::string::npos || val_q2 == std::string::npos) {
       break;
     }
 
@@ -171,7 +168,7 @@ std::unordered_map<int, std::string> extract_names(const std::string & json)
 }
 
 /// Extract a simple JSON bool value without pulling in a JSON dependency.
-std::optional<bool> extract_json_bool_value(const std::string & json, const std::string & key)
+std::optional<bool> extract_json_bool_value(const std::string& json, const std::string& key)
 {
   const std::string needle = "\"" + key + "\"";
   const auto key_pos = json.find(needle);
@@ -199,7 +196,7 @@ std::optional<bool> extract_json_bool_value(const std::string & json, const std:
 
 }  // namespace
 
-EngineMetadata read_engine_metadata_from_file(const std::string & model_path)
+EngineMetadata read_engine_metadata_from_file(const std::string& model_path)
 {
   EngineMetadata metadata{};
   const auto file_data = read_file(model_path);
@@ -217,7 +214,7 @@ EngineMetadata read_engine_metadata_from_file(const std::string & model_path)
   return metadata;
 }
 
-std::string read_engine_plan_from_file(const std::string & model_path)
+std::string read_engine_plan_from_file(const std::string& model_path)
 {
   const auto file_data = read_file(model_path);
   const std::size_t plan_offset = engine_plan_offset(file_data);

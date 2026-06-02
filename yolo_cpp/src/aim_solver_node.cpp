@@ -3,16 +3,15 @@
 
 #include "yolo_cpp/aim_solver_node.hpp"
 
-#include "yolo_cpp/utils.hpp"
-
-#include <rclcpp_components/register_node_macro.hpp>
-
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <utility>
+
+#include "yolo_cpp/utils.hpp"
 
 namespace yolo_cpp
 {
@@ -23,7 +22,7 @@ namespace
 constexpr double kPi = 3.14159265358979323846;
 
 /// Convert a fixed xyxy integer box array into an OpenCV rectangle.
-cv::Rect rect_from_xyxy(const std::array<int32_t, 4> & bbox_xyxy)
+cv::Rect rect_from_xyxy(const std::array<int32_t, 4>& bbox_xyxy)
 {
   const int x1 = bbox_xyxy[0];
   const int y1 = bbox_xyxy[1];
@@ -35,8 +34,8 @@ cv::Rect rect_from_xyxy(const std::array<int32_t, 4> & bbox_xyxy)
 }  // namespace
 
 /// Declare solver parameters and connect target, attitude, and output topics.
-AimSolverNode::AimSolverNode(const rclcpp::NodeOptions & options)
-: rclcpp::Node("aim_solver_node", options)
+AimSolverNode::AimSolverNode(const rclcpp::NodeOptions& options)
+    : rclcpp::Node("aim_solver_node", options)
 {
   this->declare_parameter<double>("hfov_degrees", 79.2);
   this->declare_parameter<double>("vfov_degrees", 63.78);
@@ -71,17 +70,15 @@ AimSolverNode::AimSolverNode(const rclcpp::NodeOptions & options)
     target_topic_, 10, std::bind(&AimSolverNode::handle_target, this, std::placeholders::_1));
   attitude_subscription_ = this->create_subscription<std_msgs::msg::Float32MultiArray>(
     "attitude_data", 10, std::bind(&AimSolverNode::handle_attitude, this, std::placeholders::_1));
-  attitude_flags_subscription_ = this->create_subscription<std_msgs::msg::Int32MultiArray>(
-    "attitude_flags", 10,
-    std::bind(&AimSolverNode::handle_attitude_flags, this, std::placeholders::_1));
-  bbox_publisher_ =
-    this->create_publisher<std_msgs::msg::Int32MultiArray>("bounding_box", 10);
+  attitude_flags_subscription_ =
+    this->create_subscription<std_msgs::msg::Int32MultiArray>("attitude_flags", 10,
+      std::bind(&AimSolverNode::handle_attitude_flags, this, std::placeholders::_1));
+  bbox_publisher_ = this->create_publisher<std_msgs::msg::Int32MultiArray>("bounding_box", 10);
   override_publisher_ = this->create_publisher<std_msgs::msg::Bool>("override", 10);
   suggest_fire_publisher_ = this->create_publisher<std_msgs::msg::Bool>("suggest_fire", 10);
   angle_publisher_ =
     this->create_publisher<std_msgs::msg::Float32MultiArray>("bounding_box_angles", 10);
-  obb_angle_publisher_ =
-    this->create_publisher<std_msgs::msg::Float32>("obb_angle", 10);
+  obb_angle_publisher_ = this->create_publisher<std_msgs::msg::Float32>("obb_angle", 10);
   aim_solution_publisher_ =
     this->create_publisher<cv_auto_aim_interfaces::msg::AimSolution>("aim_solution", 10);
 
@@ -100,11 +97,7 @@ void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::Sha
   }
 
   const auto bbox = rect_from_xyxy(msg->bbox_xyxy);
-  bbox_msg_.data = {
-    bbox.x,
-    bbox.y,
-    bbox.x + bbox.width,
-    bbox.y + bbox.height};
+  bbox_msg_.data = {bbox.x, bbox.y, bbox.x + bbox.width, bbox.y + bbox.height};
   override_msg_.data = true;
   bbox_publisher_->publish(bbox_msg_);
   override_publisher_->publish(override_msg_);
@@ -170,7 +163,7 @@ void AimSolverNode::handle_attitude_flags(const std_msgs::msg::Int32MultiArray::
 }
 
 std::pair<float, float> AimSolverNode::solve_3d_angles(
-  const cv_auto_aim_interfaces::msg::Target & target, float * flight_time, float * range) const
+  const cv_auto_aim_interfaces::msg::Target& target, float* flight_time, float* range) const
 {
   // Iterate because target lead depends on flight time, and flight time depends on led range.
   const float speed = std::max(1.0F, bullet_speed_mps_);

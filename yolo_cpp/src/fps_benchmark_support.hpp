@@ -1,11 +1,6 @@
 #ifndef YOLO_CPP_SRC_FPS_BENCHMARK_SUPPORT_HPP_
 #define YOLO_CPP_SRC_FPS_BENCHMARK_SUPPORT_HPP_
 
-#include "yolo_cpp/camera_backend.hpp"
-#include "yolo_cpp/deepstream_runtime.hpp"
-#include "yolo_cpp/detector_backend.hpp"
-#include "yolo_cpp/frame_packet.hpp"
-
 #include <chrono>
 #include <cstddef>
 #include <map>
@@ -13,6 +8,11 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "yolo_cpp/camera_backend.hpp"
+#include "yolo_cpp/deepstream_runtime.hpp"
+#include "yolo_cpp/detector_backend.hpp"
+#include "yolo_cpp/frame_packet.hpp"
 
 namespace yolo_cpp::fps_benchmark
 {
@@ -67,26 +67,23 @@ struct CameraReleaseGuard
   std::shared_ptr<yolo_cpp::CameraBackend> camera_;
 };
 
-bool parse_bool_value(const std::string & value);
-Options parse_args(int argc, char ** argv);
-std::vector<std::string> split_modes(const std::string & mode);
+bool parse_bool_value(const std::string& value);
+Options parse_args(int argc, char** argv);
+std::vector<std::string> split_modes(const std::string& mode);
 
 double elapsed_seconds(Clock::time_point start, Clock::time_point end);
 Clock::duration seconds_duration(double seconds);
 
-void print_sample_summary(const std::string & label, const std::vector<TimedSample> & samples);
-void print_detector_stage_summary(const std::vector<TimedSample> & samples);
-void write_csv(
-  const std::string & path,
-  const std::string & mode,
-  const std::vector<TimedSample> & samples,
-  bool append);
+void print_sample_summary(const std::string& label, const std::vector<TimedSample>& samples);
+void print_detector_stage_summary(const std::vector<TimedSample>& samples);
+void write_csv(const std::string& path, const std::string& mode,
+  const std::vector<TimedSample>& samples, bool append);
 
-std::pair<int, int> synthetic_frame_size(const Options & options);
-yolo_cpp::FramePacket make_inference_packet(const Options & options);
-void print_header(const Options & options);
-yolo_cpp::DeepStreamRuntime::Config make_deepstream_config(const Options & options);
-void print_decision_aid(const std::map<std::string, BenchmarkResult> & results);
+std::pair<int, int> synthetic_frame_size(const Options& options);
+yolo_cpp::FramePacket make_inference_packet(const Options& options);
+void print_header(const Options& options);
+yolo_cpp::DeepStreamRuntime::Config make_deepstream_config(const Options& options);
+void print_decision_aid(const std::map<std::string, BenchmarkResult>& results);
 
 }  // namespace yolo_cpp::fps_benchmark
 

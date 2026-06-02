@@ -1,13 +1,11 @@
 #ifndef YOLO_CPP__PERCEPTION_NODE_HPP_
 #define YOLO_CPP__PERCEPTION_NODE_HPP_
 
-#include "yolo_cpp/camera_backend.hpp"
-#include "yolo_cpp/deepstream_runtime.hpp"
-#include "yolo_cpp/detector_backend.hpp"
-#include "yolo_cpp/tracker.hpp"
-#include "yolo_cpp/utils.hpp"
-#include "yolo_cpp/visibility_control.hpp"
-
+#include <chrono>
+#include <fstream>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/bool.hpp>
@@ -15,13 +13,14 @@
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/int32_multi_array.hpp>
-
-#include <map>
-#include <memory>
-#include <mutex>
 #include <string>
-#include <chrono>
-#include <fstream>
+
+#include "yolo_cpp/camera_backend.hpp"
+#include "yolo_cpp/deepstream_runtime.hpp"
+#include "yolo_cpp/detector_backend.hpp"
+#include "yolo_cpp/tracker.hpp"
+#include "yolo_cpp/utils.hpp"
+#include "yolo_cpp/visibility_control.hpp"
 
 namespace yolo_cpp
 {
@@ -31,7 +30,7 @@ class YOLO_CPP_PUBLIC PerceptionNode : public rclcpp::Node
 {
 public:
   /// Create the combined perception pipeline.
-  explicit PerceptionNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+  explicit PerceptionNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
 
   /// Release camera, detector/runtime, preview, and log resources.
   ~PerceptionNode() override;
@@ -69,42 +68,35 @@ private:
   void initialize_deepstream_runtime();
 
   /// Run candidate extraction, tracking, target selection, and publishing.
-  void process_detection_cycle(
-    const DetectionBatch & batch,
-    const FramePacket * packet,
-    const DetectorStageTimings & detector_timings,
-    double capture_ms);
+  void process_detection_cycle(const DetectionBatch& batch, const FramePacket* packet,
+    const DetectorStageTimings& detector_timings, double capture_ms);
   /// Publish the current frame for debugging.
-  void publish_debug_image(const FramePacket & packet);
+  void publish_debug_image(const FramePacket& packet);
 
   /// Render optional OpenCV preview overlays.
-  void render_preview(
-    const FramePacket & packet,
-    const std::vector<Candidate> & candidates,
-    const std::optional<Candidate> & target,
-    const LetterboxMetadata & source_geometry);
+  void render_preview(const FramePacket& packet, const std::vector<Candidate>& candidates,
+    const std::optional<Candidate>& target, const LetterboxMetadata& source_geometry);
   /// Convert model detections into filtered source-image candidates.
   std::vector<Candidate> extract_candidates(
-    const DetectionBatch & batch, const FramePacket * packet, double * color_ms) const;
+    const DetectionBatch& batch, const FramePacket* packet, double* color_ms) const;
   /// Sort candidates by target preference.
   std::vector<Candidate> rank_candidates(std::vector<Candidate> candidates) const;
 
   /// Select the best candidate for the legacy 2D path.
-  std::optional<Candidate> select_target(const std::vector<Candidate> & candidates) const;
+  std::optional<Candidate> select_target(const std::vector<Candidate>& candidates) const;
 
   /// Publish 2D target messages for a selected candidate.
-  void publish_target(const Candidate & target, const LetterboxMetadata & lb);
+  void publish_target(const Candidate& target, const LetterboxMetadata& lb);
 
   /// Publish an explicit no-target state.
   void publish_no_target(int src_w, int src_h);
 
   /// Publish a Kalman-projected target when tracking is enabled.
-  bool publish_kalman_target(
-    double xf, double yf, double width, double height, const LetterboxMetadata & lb,
-    const std::optional<float> & obb_angle);
+  bool publish_kalman_target(double xf, double yf, double width, double height,
+    const LetterboxMetadata& lb, const std::optional<float>& obb_angle);
   /// Update legacy per-class Kalman trackers and publish the selected track.
   bool run_kalman_pipeline(
-    const std::vector<Candidate> & candidates, double dt, const LetterboxMetadata & lb);
+    const std::vector<Candidate>& candidates, double dt, const LetterboxMetadata& lb);
   /// Resolve the default model path from package/runtime conventions.
   std::string resolve_default_model_path() const;
 
@@ -115,17 +107,16 @@ private:
   std::string resolve_runtime_log_dir() const;
 
   /// Append one runtime log line.
-  void write_runtime_log_line(const std::string & line);
+  void write_runtime_log_line(const std::string& line);
 
   /// Write a structured runtime note.
-  void log_runtime_note(const std::string & level, const std::string & message);
+  void log_runtime_note(const std::string& level, const std::string& message);
 
   /// Emit runtime FPS periodically.
   void log_runtime_fps_once_per_second();
 
   /// Log candidate targeting/color state for offline tuning.
-  void log_runtime_opponent_event(
-    const Candidate & target, bool color_pass, double latency_ms);
+  void log_runtime_opponent_event(const Candidate& target, bool color_pass, double latency_ms);
   /// Periodically log accumulated stage timings.
   void log_stage_timing();
 

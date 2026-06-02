@@ -3,14 +3,14 @@
 
 #include "yolo_cpp/armor_processor_node.hpp"
 
-#include <geometry_msgs/msg/point_stamped.hpp>
-#include <rclcpp_components/register_node_macro.hpp>
 #include <tf2/exceptions.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <geometry_msgs/msg/point_stamped.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 namespace yolo_cpp
 {
@@ -21,7 +21,7 @@ namespace
 constexpr double kPi = 3.14159265358979323846;
 
 /// Compute Euclidean range for a point in meters.
-double point_range(const geometry_msgs::msg::Point & point)
+double point_range(const geometry_msgs::msg::Point& point)
 {
   return std::sqrt((point.x * point.x) + (point.y * point.y) + (point.z * point.z));
 }
@@ -41,8 +41,8 @@ double normalize_angle(double value)
 }  // namespace
 
 /// Declare processor/filter parameters and create TF, target, debug, and marker interfaces.
-ArmorProcessorNode::ArmorProcessorNode(const rclcpp::NodeOptions & options)
-: rclcpp::Node("armor_processor_node", options)
+ArmorProcessorNode::ArmorProcessorNode(const rclcpp::NodeOptions& options)
+    : rclcpp::Node("armor_processor_node", options)
 {
   this->declare_parameter<std::string>("target_frame", target_frame_);
   this->declare_parameter<int>("processor_lost_threshold", processor_lost_threshold_);
@@ -79,9 +79,7 @@ ArmorProcessorNode::ArmorProcessorNode(const rclcpp::NodeOptions & options)
 
   spin_.last_jump_time = this->get_clock()->now();
   RCLCPP_INFO(
-    this->get_logger(),
-    "Initialized ArmorProcessorNode target_frame=%s",
-    target_frame_.c_str());
+    this->get_logger(), "Initialized ArmorProcessorNode target_frame=%s", target_frame_.c_str());
 }
 
 void ArmorProcessorNode::handle_tracks(
@@ -93,9 +91,9 @@ void ArmorProcessorNode::handle_tracks(
     stamp = this->get_clock()->now();
   }
 
-  const cv_auto_aim_interfaces::msg::TrackedArmor * selected = nullptr;
+  const cv_auto_aim_interfaces::msg::TrackedArmor* selected = nullptr;
   if (msg->selected_track_id >= 0) {
-    for (const auto & track : msg->tracks) {
+    for (const auto& track : msg->tracks) {
       if (track.track_id == msg->selected_track_id) {
         selected = &track;
         break;
@@ -108,9 +106,8 @@ void ArmorProcessorNode::handle_tracks(
   target.header.frame_id = target_frame_;
   target.source_id = msg->source_id;
   target.track_id = selected != nullptr ? selected->track_id : -1;
-  target.state = selected != nullptr ?
-    selected->state :
-    cv_auto_aim_interfaces::msg::Target::DETECTING;
+  target.state =
+    selected != nullptr ? selected->state : cv_auto_aim_interfaces::msg::Target::DETECTING;
   target.suggest_fire = false;
 
   bool valid_measurement = false;
@@ -125,17 +122,18 @@ void ArmorProcessorNode::handle_tracks(
     predict_without_measurement(stamp);
   }
 
-  const bool stable_track = selected != nullptr &&
-    (selected->state == cv_auto_aim_interfaces::msg::TrackedArmor::TRACKING ||
-    selected->state == cv_auto_aim_interfaces::msg::TrackedArmor::COASTING);
+  const bool stable_track =
+    selected != nullptr
+    && (selected->state == cv_auto_aim_interfaces::msg::TrackedArmor::TRACKING
+        || selected->state == cv_auto_aim_interfaces::msg::TrackedArmor::COASTING);
   const bool can_publish_filtered =
     filter_.initialized && filter_.lost_frames <= processor_lost_threshold_;
 
   target.has_target = stable_track;
   target.tracking = target.has_target;
   target.suggest_fire = target.has_target;
-  target.is_coasting = selected != nullptr &&
-    selected->state == cv_auto_aim_interfaces::msg::TrackedArmor::COASTING;
+  target.is_coasting =
+    selected != nullptr && selected->state == cv_auto_aim_interfaces::msg::TrackedArmor::COASTING;
 
   if (selected != nullptr) {
     target.bbox_xyxy = selected->armor.bbox_xyxy;
@@ -169,9 +167,8 @@ void ArmorProcessorNode::handle_tracks(
   publish_markers(target);
 }
 
-bool ArmorProcessorNode::transform_point(
-  const std_msgs::msg::Header & header, const geometry_msgs::msg::Point & point,
-  geometry_msgs::msg::Point & transformed)
+bool ArmorProcessorNode::transform_point(const std_msgs::msg::Header& header,
+  const geometry_msgs::msg::Point& point, geometry_msgs::msg::Point& transformed)
 {
   geometry_msgs::msg::PointStamped source;
   source.header = header;
@@ -179,7 +176,7 @@ bool ArmorProcessorNode::transform_point(
   try {
     transformed = tf2_buffer_->transform(source, target_frame_).point;
     return true;
-  } catch (const tf2::TransformException & exc) {
+  } catch (const tf2::TransformException& exc) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), 1000, "Target transform unavailable: %s", exc.what());
     return false;
@@ -187,7 +184,7 @@ bool ArmorProcessorNode::transform_point(
 }
 
 void ArmorProcessorNode::update_filter(
-  int track_id, const rclcpp::Time & stamp, const geometry_msgs::msg::Point & measurement)
+  int track_id, const rclcpp::Time& stamp, const geometry_msgs::msg::Point& measurement)
 {
   double dt = filter_.initialized ? (stamp - filter_.stamp).seconds() : 1.0 / 60.0;
   if (dt <= 0.0) {
@@ -226,7 +223,7 @@ void ArmorProcessorNode::update_filter(
   filter_.lost_frames = 0;
 }
 
-void ArmorProcessorNode::predict_without_measurement(const rclcpp::Time & stamp)
+void ArmorProcessorNode::predict_without_measurement(const rclcpp::Time& stamp)
 {
   if (!filter_.initialized) {
     return;
@@ -242,7 +239,7 @@ void ArmorProcessorNode::predict_without_measurement(const rclcpp::Time & stamp)
   ++filter_.lost_frames;
 }
 
-void ArmorProcessorNode::apply_spin_observer(cv_auto_aim_interfaces::msg::Target & target)
+void ArmorProcessorNode::apply_spin_observer(cv_auto_aim_interfaces::msg::Target& target)
 {
   // Detect armor jumps by comparing target yaw over time; jumps gate firing while still allowing
   // close-range following when configured.
@@ -302,7 +299,7 @@ void ArmorProcessorNode::apply_spin_observer(cv_auto_aim_interfaces::msg::Target
   spin_info_publisher_->publish(info);
 }
 
-void ArmorProcessorNode::publish_markers(const cv_auto_aim_interfaces::msg::Target & target)
+void ArmorProcessorNode::publish_markers(const cv_auto_aim_interfaces::msg::Target& target)
 {
   visualization_msgs::msg::Marker position;
   visualization_msgs::msg::Marker velocity;

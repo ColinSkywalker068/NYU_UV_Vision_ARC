@@ -1,17 +1,16 @@
 #ifndef YOLO_CPP__DETECTOR_BACKEND_HPP_
 #define YOLO_CPP__DETECTOR_BACKEND_HPP_
 
-#include "yolo_cpp/frame_packet.hpp"
-#include "yolo_cpp/utils.hpp"
-
-#include <rclcpp/logger.hpp>
-
 #include <array>
 #include <memory>
 #include <optional>
+#include <rclcpp/logger.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "yolo_cpp/frame_packet.hpp"
+#include "yolo_cpp/utils.hpp"
 
 namespace yolo_cpp
 {
@@ -66,12 +65,11 @@ public:
   ///
   /// Returns:
   ///   Detection batch in model coordinates with letterbox metadata.
-  virtual DetectionBatch infer(
-    const FramePacket & packet, const rclcpp::Logger & logger,
-    DetectorStageTimings * timings = nullptr) = 0;
+  virtual DetectionBatch infer(const FramePacket& packet, const rclcpp::Logger& logger,
+    DetectorStageTimings* timings = nullptr) = 0;
 
   /// Return a stable backend name for logs and debug output.
-  virtual const std::string & backend_name() const = 0;
+  virtual const std::string& backend_name() const = 0;
 };
 
 /// TensorRT detector backend that loads a serialized YOLO engine directly.
@@ -79,20 +77,18 @@ class NativeTensorRTBackend final : public DetectorBackend
 {
 public:
   /// Configure a native TensorRT backend.
-  NativeTensorRTBackend(
-    std::string model_path, std::string task, std::string model_type, bool half,
+  NativeTensorRTBackend(std::string model_path, std::string task, std::string model_type, bool half,
     float conf_threshold);
   ~NativeTensorRTBackend() override;
 
-  DetectionBatch infer(
-    const FramePacket & packet, const rclcpp::Logger & logger,
-    DetectorStageTimings * timings = nullptr) override;
-  const std::string & backend_name() const override;
+  DetectionBatch infer(const FramePacket& packet, const rclcpp::Logger& logger,
+    DetectorStageTimings* timings = nullptr) override;
+  const std::string& backend_name() const override;
 
 private:
   struct Impl;
 
-  void ensure_initialized(const rclcpp::Logger & logger);
+  void ensure_initialized(const rclcpp::Logger& logger);
 
   std::string model_path_;
   std::string task_;
@@ -115,14 +111,12 @@ class DeepStreamBackend final : public DetectorBackend
 {
 public:
   /// Configure a DeepStream-backed detector.
-  DeepStreamBackend(
-    std::string model_path, std::string task, std::string model_type, bool half,
+  DeepStreamBackend(std::string model_path, std::string task, std::string model_type, bool half,
     float conf_threshold);
 
-  DetectionBatch infer(
-    const FramePacket & packet, const rclcpp::Logger & logger,
-    DetectorStageTimings * timings = nullptr) override;
-  const std::string & backend_name() const override;
+  DetectionBatch infer(const FramePacket& packet, const rclcpp::Logger& logger,
+    DetectorStageTimings* timings = nullptr) override;
+  const std::string& backend_name() const override;
 
 private:
   NativeTensorRTBackend fallback_;
@@ -131,9 +125,9 @@ private:
 };
 
 /// Create a detector backend from a launch/configured backend kind.
-std::unique_ptr<DetectorBackend> create_detector_backend(
-  const std::string & backend_kind, const std::string & model_path, const std::string & task,
-  const std::string & model_type, bool half, float conf_threshold);
+std::unique_ptr<DetectorBackend> create_detector_backend(const std::string& backend_kind,
+  const std::string& model_path, const std::string& task, const std::string& model_type, bool half,
+  float conf_threshold);
 
 }  // namespace yolo_cpp
 

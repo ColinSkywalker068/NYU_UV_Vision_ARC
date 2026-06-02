@@ -37,7 +37,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "true",
             "Use the best native RealSense FPS for the requested resolution",
         ),
-        ("model_path", DEFAULT_MODEL_PATH, "Path to YOLO weights (.pt / .engine / .onnx)"),
+        (
+            "model_path",
+            DEFAULT_MODEL_PATH,
+            "Path to YOLO weights (.pt / .engine / .onnx)",
+        ),
         ("task", "obb", "YOLO task: detect, obb, segment"),
         ("conf", "0.30", "Confidence threshold"),
         (
@@ -56,7 +60,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Enemy armor color used until robot_id feedback overrides it: blue or red",
         ),
         ("show", "false", "OpenCV debug window"),
-        ("debug_publish_image_raw", "false", "Publish debug image_raw frame from detector"),
+        (
+            "debug_publish_image_raw",
+            "false",
+            "Publish debug image_raw frame from detector",
+        ),
         (
             "save_target_frames",
             "false",
@@ -85,7 +93,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "0.02",
             "Confidence delta required to steal target lock",
         ),
-        ("target_lock_hysteresis_frames", "0", "Coast frames allowed before target lock yields"),
+        (
+            "target_lock_hysteresis_frames",
+            "0",
+            "Coast frames allowed before target lock yields",
+        ),
         (
             "association_max_3d_distance_m",
             "0.35",
@@ -96,11 +108,31 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "true",
             "Publish zero yaw/pitch when there is no selected target",
         ),
-        ("enable_3d_pose", "true", "Enable armor corner PnP pose solving in the detector"),
-        ("camera_frame_id", "camera_optical_frame", "Frame id attached to detector PnP poses"),
-        ("camera_info_topic", "camera_info", "CameraInfo topic used for calibrated PnP intrinsics"),
-        ("camera_fx", "0.0", "Optional static camera fx; FOV fallback is used when unset"),
-        ("camera_fy", "0.0", "Optional static camera fy; FOV fallback is used when unset"),
+        (
+            "enable_3d_pose",
+            "true",
+            "Enable armor corner PnP pose solving in the detector",
+        ),
+        (
+            "camera_frame_id",
+            "camera_optical_frame",
+            "Frame id attached to detector PnP poses",
+        ),
+        (
+            "camera_info_topic",
+            "camera_info",
+            "CameraInfo topic used for calibrated PnP intrinsics",
+        ),
+        (
+            "camera_fx",
+            "0.0",
+            "Optional static camera fx; FOV fallback is used when unset",
+        ),
+        (
+            "camera_fy",
+            "0.0",
+            "Optional static camera fy; FOV fallback is used when unset",
+        ),
         ("camera_cx", "0.0", "Optional static camera cx"),
         ("camera_cy", "0.0", "Optional static camera cy"),
         (
@@ -189,8 +221,12 @@ def make_tracker_node() -> Node:
                     "association_max_center_distance_ratio"
                 ),
                 "association_min_iou": launch_config("association_min_iou"),
-                "target_switch_min_score_delta": launch_config("target_switch_min_score_delta"),
-                "target_lock_hysteresis_frames": launch_config("target_lock_hysteresis_frames"),
+                "target_switch_min_score_delta": launch_config(
+                    "target_switch_min_score_delta"
+                ),
+                "target_lock_hysteresis_frames": launch_config(
+                    "target_lock_hysteresis_frames"
+                ),
                 "association_max_3d_distance_m": launch_config(
                     "association_max_3d_distance_m"
                 ),

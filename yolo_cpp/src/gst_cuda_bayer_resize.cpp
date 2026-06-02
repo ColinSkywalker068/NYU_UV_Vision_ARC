@@ -6,14 +6,14 @@
 #endif
 
 #if defined(HAVE_GSTREAMER) && defined(HAVE_YOLO_CUDA_BAYER_RESIZE)
-#include "cuda_bayer_resize.hpp"
-
 #include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
 #include <mutex>
 #include <string>
+
+#include "cuda_bayer_resize.hpp"
 #endif
 
 namespace yolo_cpp
@@ -23,7 +23,7 @@ namespace yolo_cpp
 namespace
 {
 
-constexpr const char * kElementName = "yolocudabayerresize";
+constexpr const char* kElementName = "yolocudabayerresize";
 
 enum BayerPattern
 {
@@ -43,7 +43,7 @@ struct _GstYoloCudaBayerResize
   gint input_height;
   gint output_stride;
   BayerPattern pattern;
-  void * cuda_context;
+  void* cuda_context;
 };
 
 struct _GstYoloCudaBayerResizeClass
@@ -64,7 +64,7 @@ enum
   kPropFlipMethod,
 };
 
-BayerPattern pattern_from_caps(const gchar * format)
+BayerPattern pattern_from_caps(const gchar* format)
 {
   if (format == nullptr) {
     return kRggb;
@@ -82,63 +82,49 @@ BayerPattern pattern_from_caps(const gchar * format)
   return kRggb;
 }
 
-GstCaps * fixed_output_caps(const GstYoloCudaBayerResize * self)
+GstCaps* fixed_output_caps(const GstYoloCudaBayerResize* self)
 {
   const gint width = std::max(2, self->output_width);
   const gint height = std::max(2, self->output_height);
-  return gst_caps_new_simple(
-    "video/x-raw",
-    "format",
-    G_TYPE_STRING,
-    "RGBA",
-    "width",
-    G_TYPE_INT,
-    width,
-    "height",
-    G_TYPE_INT,
-    height,
-    nullptr);
+  return gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "RGBA", "width", G_TYPE_INT,
+    width, "height", G_TYPE_INT, height, nullptr);
 }
 
-GstCaps * bayer_sink_caps()
+GstCaps* bayer_sink_caps()
 {
   return gst_caps_from_string(
     "video/x-bayer,format=(string){rggb,bggr,grbg,gbrg},"
     "width=(int)[2,MAX],height=(int)[2,MAX],framerate=(fraction)[0/1,2147483647/1]");
 }
 
-void copy_caps_field(GstCaps * destination, const GstCaps * source, const char * field)
+void copy_caps_field(GstCaps* destination, const GstCaps* source, const char* field)
 {
-  if (
-    destination == nullptr || source == nullptr || field == nullptr ||
-    gst_caps_is_empty(source) || gst_caps_is_any(source))
+  if (destination == nullptr || source == nullptr || field == nullptr || gst_caps_is_empty(source)
+      || gst_caps_is_any(source))
   {
     return;
   }
-  const GstStructure * source_structure = gst_caps_get_structure(source, 0);
-  const GValue * value = gst_structure_get_value(source_structure, field);
+  const GstStructure* source_structure = gst_caps_get_structure(source, 0);
+  const GValue* value = gst_structure_get_value(source_structure, field);
   if (value == nullptr) {
     return;
   }
   for (guint i = 0; i < gst_caps_get_size(destination); ++i) {
-    GstStructure * destination_structure = gst_caps_get_structure(destination, i);
+    GstStructure* destination_structure = gst_caps_get_structure(destination, i);
     gst_structure_set_value(destination_structure, field, value);
   }
 }
 
-void copy_timing_caps_fields(GstCaps * destination, const GstCaps * source)
+void copy_timing_caps_fields(GstCaps* destination, const GstCaps* source)
 {
   copy_caps_field(destination, source, "framerate");
   copy_caps_field(destination, source, "pixel-aspect-ratio");
 }
 
 void gst_yolo_cuda_bayer_resize_set_property(
-  GObject * object,
-  guint prop_id,
-  const GValue * value,
-  GParamSpec * pspec)
+  GObject* object, guint prop_id, const GValue* value, GParamSpec* pspec)
 {
-  auto * self = reinterpret_cast<GstYoloCudaBayerResize *>(object);
+  auto* self = reinterpret_cast<GstYoloCudaBayerResize*>(object);
   switch (prop_id) {
     case kPropOutputWidth:
       self->output_width = g_value_get_int(value);
@@ -156,12 +142,9 @@ void gst_yolo_cuda_bayer_resize_set_property(
 }
 
 void gst_yolo_cuda_bayer_resize_get_property(
-  GObject * object,
-  guint prop_id,
-  GValue * value,
-  GParamSpec * pspec)
+  GObject* object, guint prop_id, GValue* value, GParamSpec* pspec)
 {
-  auto * self = reinterpret_cast<GstYoloCudaBayerResize *>(object);
+  auto* self = reinterpret_cast<GstYoloCudaBayerResize*>(object);
   switch (prop_id) {
     case kPropOutputWidth:
       g_value_set_int(value, self->output_width);
@@ -178,14 +161,11 @@ void gst_yolo_cuda_bayer_resize_get_property(
   }
 }
 
-GstCaps * gst_yolo_cuda_bayer_resize_transform_caps(
-  GstBaseTransform * transform,
-  GstPadDirection direction,
-  GstCaps * caps,
-  GstCaps * filter)
+GstCaps* gst_yolo_cuda_bayer_resize_transform_caps(
+  GstBaseTransform* transform, GstPadDirection direction, GstCaps* caps, GstCaps* filter)
 {
-  auto * self = reinterpret_cast<GstYoloCudaBayerResize *>(transform);
-  GstCaps * result = nullptr;
+  auto* self = reinterpret_cast<GstYoloCudaBayerResize*>(transform);
+  GstCaps* result = nullptr;
   if (direction == GST_PAD_SINK) {
     result = fixed_output_caps(self);
     copy_timing_caps_fields(result, caps);
@@ -194,7 +174,7 @@ GstCaps * gst_yolo_cuda_bayer_resize_transform_caps(
     copy_timing_caps_fields(result, caps);
   }
   if (filter != nullptr) {
-    GstCaps * intersection = gst_caps_intersect_full(filter, result, GST_CAPS_INTERSECT_FIRST);
+    GstCaps* intersection = gst_caps_intersect_full(filter, result, GST_CAPS_INTERSECT_FIRST);
     gst_caps_unref(result);
     result = intersection;
   }
@@ -202,15 +182,12 @@ GstCaps * gst_yolo_cuda_bayer_resize_transform_caps(
   return result;
 }
 
-GstCaps * gst_yolo_cuda_bayer_resize_fixate_caps(
-  GstBaseTransform * transform,
-  GstPadDirection direction,
-  GstCaps *,
-  GstCaps * othercaps)
+GstCaps* gst_yolo_cuda_bayer_resize_fixate_caps(
+  GstBaseTransform* transform, GstPadDirection direction, GstCaps*, GstCaps* othercaps)
 {
-  auto * self = reinterpret_cast<GstYoloCudaBayerResize *>(transform);
+  auto* self = reinterpret_cast<GstYoloCudaBayerResize*>(transform);
   if (direction == GST_PAD_SINK) {
-    GstCaps * fixed = fixed_output_caps(self);
+    GstCaps* fixed = fixed_output_caps(self);
     copy_timing_caps_fields(fixed, othercaps);
     gst_caps_unref(othercaps);
     return fixed;
@@ -219,25 +196,21 @@ GstCaps * gst_yolo_cuda_bayer_resize_fixate_caps(
 }
 
 gboolean gst_yolo_cuda_bayer_resize_set_caps(
-  GstBaseTransform * transform,
-  GstCaps * incaps,
-  GstCaps * outcaps)
+  GstBaseTransform* transform, GstCaps* incaps, GstCaps* outcaps)
 {
-  auto * self = reinterpret_cast<GstYoloCudaBayerResize *>(transform);
-  GstStructure * in_structure = gst_caps_get_structure(incaps, 0);
-  GstStructure * out_structure = gst_caps_get_structure(outcaps, 0);
-  const gchar * format = gst_structure_get_string(in_structure, "format");
+  auto* self = reinterpret_cast<GstYoloCudaBayerResize*>(transform);
+  GstStructure* in_structure = gst_caps_get_structure(incaps, 0);
+  GstStructure* out_structure = gst_caps_get_structure(outcaps, 0);
+  const gchar* format = gst_structure_get_string(in_structure, "format");
   self->pattern = pattern_from_caps(format);
-  if (
-    !gst_structure_get_int(in_structure, "width", &self->input_width) ||
-    !gst_structure_get_int(in_structure, "height", &self->input_height))
+  if (!gst_structure_get_int(in_structure, "width", &self->input_width)
+      || !gst_structure_get_int(in_structure, "height", &self->input_height))
   {
     GST_ERROR_OBJECT(self, "Input caps missing width/height");
     return FALSE;
   }
-  if (
-    !gst_structure_get_int(out_structure, "width", &self->output_width) ||
-    !gst_structure_get_int(out_structure, "height", &self->output_height))
+  if (!gst_structure_get_int(out_structure, "width", &self->output_width)
+      || !gst_structure_get_int(out_structure, "height", &self->output_height))
   {
     GST_ERROR_OBJECT(self, "Output caps missing width/height");
     return FALSE;
@@ -246,42 +219,33 @@ gboolean gst_yolo_cuda_bayer_resize_set_caps(
   return TRUE;
 }
 
-gboolean gst_yolo_cuda_bayer_resize_transform_size(
-  GstBaseTransform * transform,
-  GstPadDirection direction,
-  GstCaps *,
-  gsize size,
-  GstCaps *,
-  gsize * othersize)
+gboolean gst_yolo_cuda_bayer_resize_transform_size(GstBaseTransform* transform,
+  GstPadDirection direction, GstCaps*, gsize size, GstCaps*, gsize* othersize)
 {
-  auto * self = reinterpret_cast<GstYoloCudaBayerResize *>(transform);
+  auto* self = reinterpret_cast<GstYoloCudaBayerResize*>(transform);
   if (direction == GST_PAD_SINK) {
-    *othersize = static_cast<gsize>(std::max(2, self->output_width)) *
-      static_cast<gsize>(std::max(2, self->output_height)) * 4U;
+    *othersize = static_cast<gsize>(std::max(2, self->output_width))
+                 * static_cast<gsize>(std::max(2, self->output_height)) * 4U;
   } else {
     if (self->input_width <= 0 || self->input_height <= 0) {
       *othersize = size;
     } else {
-      *othersize = static_cast<gsize>(self->input_width) *
-        static_cast<gsize>(self->input_height);
+      *othersize = static_cast<gsize>(self->input_width) * static_cast<gsize>(self->input_height);
     }
   }
   return TRUE;
 }
 
 GstFlowReturn gst_yolo_cuda_bayer_resize_transform(
-  GstBaseTransform * transform,
-  GstBuffer * inbuf,
-  GstBuffer * outbuf)
+  GstBaseTransform* transform, GstBuffer* inbuf, GstBuffer* outbuf)
 {
-  auto * self = reinterpret_cast<GstYoloCudaBayerResize *>(transform);
+  auto* self = reinterpret_cast<GstYoloCudaBayerResize*>(transform);
   if (self->cuda_context == nullptr) {
     self->cuda_context = yolo_cuda_bayer_resize_create();
   }
   if (self->cuda_context == nullptr) {
-    GST_ELEMENT_ERROR(
-      GST_ELEMENT(self), RESOURCE, FAILED, ("Failed to create CUDA Bayer resize context"),
-      (nullptr));
+    GST_ELEMENT_ERROR(GST_ELEMENT(self), RESOURCE, FAILED,
+      ("Failed to create CUDA Bayer resize context"), (nullptr));
     return GST_FLOW_ERROR;
   }
 
@@ -300,43 +264,29 @@ GstFlowReturn gst_yolo_cuda_bayer_resize_transform(
   }
 
   std::array<char, 256> error_message{};
-  const int input_stride = std::max(
-    self->input_width,
-    self->input_height > 0 ?
-    static_cast<int>(in_map.size / static_cast<gsize>(self->input_height)) :
-    self->input_width);
-  const int output_stride = std::max(
-    self->output_stride,
-    self->output_height > 0 ?
-    static_cast<int>(out_map.size / static_cast<gsize>(self->output_height)) :
-    self->output_stride);
-  const bool ok = yolo_cuda_bayer_resize_rgba(
-    self->cuda_context,
-    in_map.data,
-    self->input_width,
-    self->input_height,
-    input_stride,
-    out_map.data,
-    self->output_width,
-    self->output_height,
-    output_stride,
-    static_cast<int>(self->pattern),
-    self->flip_method,
-    error_message.data(),
+  const int input_stride = std::max(self->input_width,
+    self->input_height > 0 ? static_cast<int>(in_map.size / static_cast<gsize>(self->input_height))
+                           : self->input_width);
+  const int output_stride = std::max(self->output_stride,
+    self->output_height > 0
+      ? static_cast<int>(out_map.size / static_cast<gsize>(self->output_height))
+      : self->output_stride);
+  const bool ok = yolo_cuda_bayer_resize_rgba(self->cuda_context, in_map.data, self->input_width,
+    self->input_height, input_stride, out_map.data, self->output_width, self->output_height,
+    output_stride, static_cast<int>(self->pattern), self->flip_method, error_message.data(),
     error_message.size());
   gst_buffer_unmap(outbuf, &out_map);
   gst_buffer_unmap(inbuf, &in_map);
   if (!ok) {
-    GST_ELEMENT_ERROR(
-      GST_ELEMENT(self), RESOURCE, FAILED, ("%s", error_message.data()), (nullptr));
+    GST_ELEMENT_ERROR(GST_ELEMENT(self), RESOURCE, FAILED, ("%s", error_message.data()), (nullptr));
     return GST_FLOW_ERROR;
   }
   return GST_FLOW_OK;
 }
 
-void gst_yolo_cuda_bayer_resize_finalize(GObject * object)
+void gst_yolo_cuda_bayer_resize_finalize(GObject* object)
 {
-  auto * self = reinterpret_cast<GstYoloCudaBayerResize *>(object);
+  auto* self = reinterpret_cast<GstYoloCudaBayerResize*>(object);
   if (self->cuda_context != nullptr) {
     yolo_cuda_bayer_resize_destroy(self->cuda_context);
     self->cuda_context = nullptr;
@@ -344,50 +294,35 @@ void gst_yolo_cuda_bayer_resize_finalize(GObject * object)
   G_OBJECT_CLASS(gst_yolo_cuda_bayer_resize_parent_class)->finalize(object);
 }
 
-void gst_yolo_cuda_bayer_resize_class_init(GstYoloCudaBayerResizeClass * klass)
+void gst_yolo_cuda_bayer_resize_class_init(GstYoloCudaBayerResizeClass* klass)
 {
-  auto * gobject_class = G_OBJECT_CLASS(klass);
-  auto * transform_class = GST_BASE_TRANSFORM_CLASS(klass);
+  auto* gobject_class = G_OBJECT_CLASS(klass);
+  auto* transform_class = GST_BASE_TRANSFORM_CLASS(klass);
   gobject_class->set_property = gst_yolo_cuda_bayer_resize_set_property;
   gobject_class->get_property = gst_yolo_cuda_bayer_resize_get_property;
   gobject_class->finalize = gst_yolo_cuda_bayer_resize_finalize;
 
-  g_object_class_install_property(
-    gobject_class,
-    kPropOutputWidth,
-    g_param_spec_int(
-      "output-width", "Output width", "RGBA output width", 2, G_MAXINT, 640,
+  g_object_class_install_property(gobject_class, kPropOutputWidth,
+    g_param_spec_int("output-width", "Output width", "RGBA output width", 2, G_MAXINT, 640,
       static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
-  g_object_class_install_property(
-    gobject_class,
-    kPropOutputHeight,
-    g_param_spec_int(
-      "output-height", "Output height", "RGBA output height", 2, G_MAXINT, 400,
+  g_object_class_install_property(gobject_class, kPropOutputHeight,
+    g_param_spec_int("output-height", "Output height", "RGBA output height", 2, G_MAXINT, 400,
       static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
-  g_object_class_install_property(
-    gobject_class,
-    kPropFlipMethod,
-    g_param_spec_int(
-      "flip-method", "Flip method", "0 for none, 2 for 180-degree rotation", 0, 2, 0,
+  g_object_class_install_property(gobject_class, kPropFlipMethod,
+    g_param_spec_int("flip-method", "Flip method", "0 for none, 2 for 180-degree rotation", 0, 2, 0,
       static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
-  gst_element_class_set_static_metadata(
-    GST_ELEMENT_CLASS(klass),
-    "YOLO CUDA Bayer resize",
-    "Filter/Converter/Video",
-    "CUDA Bayer demosaic plus resize to RGBA",
-    "CV Detection");
+  gst_element_class_set_static_metadata(GST_ELEMENT_CLASS(klass), "YOLO CUDA Bayer resize",
+    "Filter/Converter/Video", "CUDA Bayer demosaic plus resize to RGBA", "CV Detection");
 
-  GstCaps * sink_caps = bayer_sink_caps();
-  GstCaps * src_caps = gst_caps_from_string(
-    "video/x-raw,format=(string)RGBA,width=(int)[2,MAX],height=(int)[2,MAX],"
-    "framerate=(fraction)[0/1,2147483647/1]");
-  gst_element_class_add_pad_template(
-    GST_ELEMENT_CLASS(klass),
+  GstCaps* sink_caps = bayer_sink_caps();
+  GstCaps* src_caps =
+    gst_caps_from_string("video/x-raw,format=(string)RGBA,width=(int)[2,MAX],height=(int)[2,MAX],"
+                         "framerate=(fraction)[0/1,2147483647/1]");
+  gst_element_class_add_pad_template(GST_ELEMENT_CLASS(klass),
     gst_pad_template_new("sink", GST_PAD_SINK, GST_PAD_ALWAYS, sink_caps));
   gst_element_class_add_pad_template(
-    GST_ELEMENT_CLASS(klass),
-    gst_pad_template_new("src", GST_PAD_SRC, GST_PAD_ALWAYS, src_caps));
+    GST_ELEMENT_CLASS(klass), gst_pad_template_new("src", GST_PAD_SRC, GST_PAD_ALWAYS, src_caps));
 
   transform_class->transform_caps = gst_yolo_cuda_bayer_resize_transform_caps;
   transform_class->fixate_caps = gst_yolo_cuda_bayer_resize_fixate_caps;
@@ -396,7 +331,7 @@ void gst_yolo_cuda_bayer_resize_class_init(GstYoloCudaBayerResizeClass * klass)
   transform_class->transform = gst_yolo_cuda_bayer_resize_transform;
 }
 
-void gst_yolo_cuda_bayer_resize_init(GstYoloCudaBayerResize * self)
+void gst_yolo_cuda_bayer_resize_init(GstYoloCudaBayerResize* self)
 {
   self->output_width = 640;
   self->output_height = 400;
@@ -424,10 +359,7 @@ bool register_cuda_bayer_resize_element()
 {
   std::call_once(g_register_once, []() {
     g_registered = gst_element_register(
-      nullptr,
-      kElementName,
-      GST_RANK_NONE,
-      gst_yolo_cuda_bayer_resize_get_type());
+      nullptr, kElementName, GST_RANK_NONE, gst_yolo_cuda_bayer_resize_get_type());
   });
   return g_registered;
 }

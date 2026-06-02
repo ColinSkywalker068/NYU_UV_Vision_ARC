@@ -3,15 +3,14 @@
 
 #include "yolo_cpp/yolo_node.hpp"
 
-#include <opencv2/imgproc.hpp>
-#include <rclcpp_components/register_node_macro.hpp>
-#include <sensor_msgs/image_encodings.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <functional>
+#include <opencv2/imgproc.hpp>
 #include <optional>
+#include <rclcpp_components/register_node_macro.hpp>
+#include <sensor_msgs/image_encodings.hpp>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,9 +28,8 @@ constexpr double kPi = 3.14159265358979323846;
 }  // namespace
 
 /// Declare legacy YOLO parameters and subscribe to image_raw.
-YoloNode::YoloNode(const rclcpp::NodeOptions & options)
-: rclcpp::Node("yolo_modular_node", options),
-  detector_("", "", "", true, 0.25F)
+YoloNode::YoloNode(const rclcpp::NodeOptions& options)
+    : rclcpp::Node("yolo_modular_node", options), detector_("", "", "", true, 0.25F)
 {
   const std::string default_model = resolve_default_model_path();
 
@@ -78,10 +76,8 @@ YoloNode::YoloNode(const rclcpp::NodeOptions & options)
   use_robot_id_targeting_ = this->get_parameter("use_robot_id_targeting").as_bool();
   max_hsv_candidates_ = this->get_parameter("max_hsv_candidates").as_int();
   max_coast_frames_ = this->get_parameter("max_coast_frames").as_int();
-  hfov_rad_ = static_cast<float>(
-    this->get_parameter("hfov_degrees").as_double() * kPi / 180.0);
-  vfov_rad_ = static_cast<float>(
-    this->get_parameter("vfov_degrees").as_double() * kPi / 180.0);
+  hfov_rad_ = static_cast<float>(this->get_parameter("hfov_degrees").as_double() * kPi / 180.0);
+  vfov_rad_ = static_cast<float>(this->get_parameter("vfov_degrees").as_double() * kPi / 180.0);
   vis_window_name_ = this->get_parameter("vis_window_name").as_string();
 
   target_class_ = (target_color_ == "red") ? RED_CLASS : BLUE_CLASS;
@@ -92,21 +88,15 @@ YoloNode::YoloNode(const rclcpp::NodeOptions & options)
     "image_raw", image_qos, std::bind(&YoloNode::image_callback, this, std::placeholders::_1));
   robot_id_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
     "robot_id", 10, std::bind(&YoloNode::id_listener_callback, this, std::placeholders::_1));
-  bbox_publisher_ =
-    this->create_publisher<std_msgs::msg::Int32MultiArray>("bounding_box", 10);
-  override_publisher_ =
-    this->create_publisher<std_msgs::msg::Bool>("override", 10);
+  bbox_publisher_ = this->create_publisher<std_msgs::msg::Int32MultiArray>("bounding_box", 10);
+  override_publisher_ = this->create_publisher<std_msgs::msg::Bool>("override", 10);
   angle_publisher_ =
     this->create_publisher<std_msgs::msg::Float32MultiArray>("bounding_box_angles", 10);
-  obb_angle_publisher_ =
-    this->create_publisher<std_msgs::msg::Float32>("obb_angle", 10);
+  obb_angle_publisher_ = this->create_publisher<std_msgs::msg::Float32>("obb_angle", 10);
 
-  RCLCPP_INFO(
-    this->get_logger(),
+  RCLCPP_INFO(this->get_logger(),
     "Initialized C++ YOLO node with backend=%s, inference_mode=%s, use_kalman=%s",
-    detector_.backend_name().c_str(),
-    inference_mode_.c_str(),
-    use_kalman_ ? "true" : "false");
+    detector_.backend_name().c_str(), inference_mode_.c_str(), use_kalman_ ? "true" : "false");
 }
 
 void YoloNode::id_listener_callback(const std_msgs::msg::Int32::SharedPtr msg)
@@ -159,39 +149,34 @@ void YoloNode::image_callback(sensor_msgs::msg::Image::ConstSharedPtr msg)
     if (!published) {
       publish_no_target(lb.src_w > 0 ? lb.src_w : frame.cols, lb.src_h > 0 ? lb.src_h : frame.rows);
     }
-  } catch (const std::exception & exc) {
+  } catch (const std::exception& exc) {
     RCLCPP_ERROR(this->get_logger(), "Error in image_callback: %s", exc.what());
   }
 }
 
-cv::Mat YoloNode::decode_frame(const sensor_msgs::msg::Image & msg)
+cv::Mat YoloNode::decode_frame(const sensor_msgs::msg::Image& msg)
 {
   // The legacy node only accepts BGR8 because the detector wrapper expects OpenCV BGR input.
   if (msg.encoding != sensor_msgs::image_encodings::BGR8) {
     RCLCPP_WARN(
-      this->get_logger(), "Unsupported image encoding '%s'; expected bgr8",
-      msg.encoding.c_str());
+      this->get_logger(), "Unsupported image encoding '%s'; expected bgr8", msg.encoding.c_str());
     return {};
   }
   if (msg.data.empty()) {
     return {};
   }
-  return cv::Mat(
-    static_cast<int>(msg.height),
-    static_cast<int>(msg.width),
-    CV_8UC3,
-    const_cast<unsigned char *>(msg.data.data()),
-    static_cast<std::size_t>(msg.step));
+  return cv::Mat(static_cast<int>(msg.height), static_cast<int>(msg.width), CV_8UC3,
+    const_cast<unsigned char*>(msg.data.data()), static_cast<std::size_t>(msg.step));
 }
 
 std::vector<Candidate> YoloNode::extract_candidates(
-  const std::vector<Detection> & detections, const LetterboxResult & lb) const
+  const std::vector<Detection>& detections, const LetterboxResult& lb) const
 {
   std::vector<Candidate> candidates;
   candidates.reserve(detections.size());
 
   for (std::size_t i = 0; i < detections.size(); ++i) {
-    const auto & detection = detections[i];
+    const auto& detection = detections[i];
     auto track_id = detection.track_id;
     if (use_kalman_ && !track_id.has_value()) {
       if (!candidates.empty()) {
@@ -204,32 +189,22 @@ std::vector<Candidate> YoloNode::extract_candidates(
       static_cast<float>(source_rect.x) + static_cast<float>(source_rect.width) / 2.0F,
       static_cast<float>(source_rect.y) + static_cast<float>(source_rect.height) / 2.0F);
 
-    candidates.push_back(Candidate{
-      detection.bbox_model,
-      source_rect,
-      center_source,
-      detection.confidence,
-      detection.class_id,
-      track_id,
-      true,
-      detection.obb_angle});
+    candidates.push_back(Candidate{detection.bbox_model, source_rect, center_source,
+      detection.confidence, detection.class_id, track_id, true, detection.obb_angle});
   }
 
   if (use_model_color_classes_) {
-    for (auto & candidate : candidates) {
+    for (auto& candidate : candidates) {
       candidate.is_enemy = class_id_matches_target_color(candidate.class_id, target_class_);
     }
   } else if (enable_color_verification_ && !candidates.empty()) {
-    std::sort(
-      candidates.begin(), candidates.end(),
-      [](const Candidate & lhs, const Candidate & rhs) {
-        return lhs.confidence > rhs.confidence;
-      });
+    std::sort(candidates.begin(), candidates.end(),
+      [](const Candidate& lhs, const Candidate& rhs) { return lhs.confidence > rhs.confidence; });
     const int candidate_count = static_cast<int>(candidates.size());
     const auto check_count =
       static_cast<std::size_t>(std::min<int>(max_hsv_candidates_, candidate_count));
     for (std::size_t i = 0; i < candidates.size(); ++i) {
-      auto & candidate = candidates[i];
+      auto& candidate = candidates[i];
       if (i >= check_count) {
         candidate.is_enemy = false;
         continue;
@@ -251,8 +226,7 @@ std::vector<Candidate> YoloNode::extract_candidates(
 std::vector<Candidate> YoloNode::rank_candidates(std::vector<Candidate> candidates) const
 {
   std::sort(
-    candidates.begin(), candidates.end(),
-    [this](const Candidate & lhs, const Candidate & rhs) {
+    candidates.begin(), candidates.end(), [this](const Candidate& lhs, const Candidate& rhs) {
       const double lhs_dist = std::hypot(
         static_cast<double>(lhs.center_source.x) - static_cast<double>(imgsz_width_) / 2.0,
         static_cast<double>(lhs.center_source.y) - static_cast<double>(imgsz_height_) / 2.0);
@@ -270,9 +244,9 @@ std::vector<Candidate> YoloNode::rank_candidates(std::vector<Candidate> candidat
   return candidates;
 }
 
-std::optional<Candidate> YoloNode::select_target(const std::vector<Candidate> & candidates) const
+std::optional<Candidate> YoloNode::select_target(const std::vector<Candidate>& candidates) const
 {
-  for (const auto & candidate : candidates) {
+  for (const auto& candidate : candidates) {
     if (candidate.is_enemy) {
       return candidate;
     }
@@ -280,11 +254,9 @@ std::optional<Candidate> YoloNode::select_target(const std::vector<Candidate> & 
   return std::nullopt;
 }
 
-void YoloNode::publish_target(const Candidate & target, const LetterboxResult & lb)
+void YoloNode::publish_target(const Candidate& target, const LetterboxResult& lb)
 {
-  bbox_msg_.data = {
-    target.bbox_source.x,
-    target.bbox_source.y,
+  bbox_msg_.data = {target.bbox_source.x, target.bbox_source.y,
     target.bbox_source.x + target.bbox_source.width,
     target.bbox_source.y + target.bbox_source.height};
   override_msg_.data = true;
@@ -315,9 +287,8 @@ void YoloNode::publish_no_target(int src_w, int src_h)
   obb_angle_publisher_->publish(obb_angle_msg_);
 }
 
-bool YoloNode::publish_kalman_target(
-  double xf, double yf, double width, double height, const LetterboxResult & lb,
-  const std::optional<float> & obb_angle)
+bool YoloNode::publish_kalman_target(double xf, double yf, double width, double height,
+  const LetterboxResult& lb, const std::optional<float>& obb_angle)
 {
   const int bx1 = std::max(0, std::min(static_cast<int>(xf - width / 2.0), imgsz_width_ - 1));
   const int by1 = std::max(0, std::min(static_cast<int>(yf - height / 2.0), imgsz_height_ - 1));
@@ -336,20 +307,20 @@ bool YoloNode::publish_kalman_target(
 }
 
 bool YoloNode::run_kalman_pipeline(
-  const std::vector<Candidate> & candidates, double dt, const LetterboxResult & lb)
+  const std::vector<Candidate>& candidates, double dt, const LetterboxResult& lb)
 {
   std::vector<int> current_ids;
 
-  for (const auto & candidate : candidates) {
+  for (const auto& candidate : candidates) {
     if (!candidate.is_enemy || !candidate.track_id.has_value()) {
       continue;
     }
     const int track_id = *candidate.track_id;
     current_ids.push_back(track_id);
-    const double cx = static_cast<double>(candidate.bbox_model.x) +
-      static_cast<double>(candidate.bbox_model.width) / 2.0;
-    const double cy = static_cast<double>(candidate.bbox_model.y) +
-      static_cast<double>(candidate.bbox_model.height) / 2.0;
+    const double cx = static_cast<double>(candidate.bbox_model.x)
+                      + static_cast<double>(candidate.bbox_model.width) / 2.0;
+    const double cy = static_cast<double>(candidate.bbox_model.y)
+                      + static_cast<double>(candidate.bbox_model.height) / 2.0;
     const double width = candidate.bbox_model.width;
     const double height = candidate.bbox_model.height;
 
@@ -368,7 +339,7 @@ bool YoloNode::run_kalman_pipeline(
 
   bool published = false;
   std::vector<int> to_remove;
-  for (auto & [track_id, wrapper] : active_trackers_) {
+  for (auto& [track_id, wrapper] : active_trackers_) {
     if (std::find(current_ids.begin(), current_ids.end(), track_id) == current_ids.end()) {
       ++wrapper.lost_frames;
     }
@@ -377,7 +348,7 @@ bool YoloNode::run_kalman_pipeline(
       continue;
     }
     if (!published && wrapper.lost_frames <= max_coast_frames_) {
-      const auto & state = wrapper.tracker.state();
+      const auto& state = wrapper.tracker.state();
       const double t_look = static_cast<double>(lookahead_steps_) * dt;
       const double xf = state[0] + (state[2] * t_look) + (0.5 * state[4] * t_look * t_look);
       const double yf = state[1] + (state[3] * t_look) + (0.5 * state[5] * t_look * t_look);
@@ -394,9 +365,8 @@ bool YoloNode::run_kalman_pipeline(
 
 std::string YoloNode::resolve_default_model_path() const
 {
-  const auto cwd_candidate =
-    std::filesystem::current_path() / "model_test" /
-    "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
+  const auto cwd_candidate = std::filesystem::current_path() / "model_test"
+                             / "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
   if (std::filesystem::exists(cwd_candidate)) {
     return cwd_candidate.string();
   }

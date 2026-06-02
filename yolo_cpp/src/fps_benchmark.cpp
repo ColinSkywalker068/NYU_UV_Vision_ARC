@@ -1,10 +1,6 @@
 /// @file fps_benchmark.cpp
 /// @brief Standalone throughput harness for isolating camera, TensorRT, and DeepStream FPS limits.
 
-#include "fps_benchmark_support.hpp"
-
-#include <rclcpp/rclcpp.hpp>
-
 #include <atomic>
 #include <chrono>
 #include <iomanip>
@@ -12,10 +8,13 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <rclcpp/rclcpp.hpp>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
+
+#include "fps_benchmark_support.hpp"
 
 namespace
 {
@@ -38,18 +37,11 @@ using yolo_cpp::fps_benchmark::TimedSample;
 using yolo_cpp::fps_benchmark::write_csv;
 
 BenchmarkResult run_inference_mode(
-  const Options & options,
-  const rclcpp::Logger & logger,
-  bool csv_append)
+  const Options& options, const rclcpp::Logger& logger, bool csv_append)
 {
   std::cout << "\n[inference] Native TensorRT synthetic-frame benchmark\n";
-  auto backend = yolo_cpp::create_detector_backend(
-    "native_tensorrt",
-    options.model_path,
-    options.task,
-    options.model_type,
-    options.half,
-    options.conf_threshold);
+  auto backend = yolo_cpp::create_detector_backend("native_tensorrt", options.model_path,
+    options.task, options.model_type, options.half, options.conf_threshold);
   auto packet = make_inference_packet(options);
   yolo_cpp::DetectorStageTimings init_timings{};
   (void)backend->infer(packet, logger, &init_timings);
@@ -70,19 +62,16 @@ BenchmarkResult run_inference_mode(
     const auto frame_start = Clock::now();
     const auto batch = backend->infer(packet, logger, &timings);
     const auto frame_done = Clock::now();
-    samples.push_back(TimedSample{
-      std::chrono::duration<double, std::milli>(frame_done - frame_start).count(),
-      timings,
-      batch.detections.size()});
+    samples.push_back(
+      TimedSample{std::chrono::duration<double, std::milli>(frame_done - frame_start).count(),
+        timings, batch.detections.size()});
   }
   const auto done = Clock::now();
   const double measured_s = elapsed_seconds(start, done);
   const double fps = samples.empty() ? 0.0 : static_cast<double>(samples.size()) / measured_s;
 
-  std::cout << std::fixed << std::setprecision(2)
-            << "[inference] frames=" << samples.size()
-            << " measured_s=" << measured_s
-            << " fps=" << fps << '\n';
+  std::cout << std::fixed << std::setprecision(2) << "[inference] frames=" << samples.size()
+            << " measured_s=" << measured_s << " fps=" << fps << '\n';
   print_sample_summary("total", samples);
   print_detector_stage_summary(samples);
   write_csv(options.csv_path, "inference", samples, csv_append);
@@ -91,9 +80,7 @@ BenchmarkResult run_inference_mode(
 }
 
 BenchmarkResult run_camera_mode(
-  const Options & options,
-  const rclcpp::Logger & logger,
-  bool csv_append)
+  const Options& options, const rclcpp::Logger& logger, bool csv_append)
 {
   std::cout << "\n[camera] Camera capture-only benchmark\n";
   auto camera = yolo_cpp::create_camera_backend(options.camera, logger);
@@ -122,21 +109,16 @@ BenchmarkResult run_camera_mode(
       first_height = packet.height();
     }
     samples.push_back(TimedSample{
-      std::chrono::duration<double, std::milli>(frame_done - frame_start).count(),
-      {},
-      0U});
+      std::chrono::duration<double, std::milli>(frame_done - frame_start).count(), {}, 0U});
   }
   const auto done = Clock::now();
   const double measured_s = elapsed_seconds(start, done);
   const double fps = samples.empty() ? 0.0 : static_cast<double>(samples.size()) / measured_s;
 
-  std::cout << std::fixed << std::setprecision(2)
-            << "[camera] frames=" << samples.size()
-            << " measured_s=" << measured_s
-            << " fps=" << fps
-            << " camera_reported_fps=" << camera->actual_fps()
-            << " frame=" << first_width << 'x' << first_height
-            << " source=" << camera->source_id() << '\n';
+  std::cout << std::fixed << std::setprecision(2) << "[camera] frames=" << samples.size()
+            << " measured_s=" << measured_s << " fps=" << fps
+            << " camera_reported_fps=" << camera->actual_fps() << " frame=" << first_width << 'x'
+            << first_height << " source=" << camera->source_id() << '\n';
   print_sample_summary("capture", samples);
   write_csv(options.csv_path, "camera", samples, csv_append);
 
@@ -144,9 +126,7 @@ BenchmarkResult run_camera_mode(
 }
 
 BenchmarkResult run_deepstream_mode(
-  const Options & options,
-  const rclcpp::Logger & logger,
-  bool csv_append)
+  const Options& options, const rclcpp::Logger& logger, bool csv_append)
 {
   if (options.camera.camera_type != "basler") {
     throw std::runtime_error("DeepStream benchmark mode requires --camera-type basler");
@@ -163,9 +143,7 @@ BenchmarkResult run_deepstream_mode(
   std::size_t warmup_frames = 0;
 
   auto runtime = std::make_unique<yolo_cpp::DeepStreamRuntime>(
-    logger,
-    make_deepstream_config(options),
-    [&](yolo_cpp::DeepStreamRuntime::Result && result) {
+    logger, make_deepstream_config(options), [&](yolo_cpp::DeepStreamRuntime::Result&& result) {
       if (!timing_ready.load(std::memory_order_acquire)) {
         return;
       }
@@ -199,11 +177,9 @@ BenchmarkResult run_deepstream_mode(
 
   const double measured_s = options.duration_s;
   const double fps = samples.empty() ? 0.0 : static_cast<double>(samples.size()) / measured_s;
-  std::cout << std::fixed << std::setprecision(2)
-            << "[deepstream] warmup_frames=" << warmup_frames
-            << " frames=" << samples.size()
-            << " measured_s=" << measured_s
-            << " fps=" << fps << '\n';
+  std::cout << std::fixed << std::setprecision(2) << "[deepstream] warmup_frames=" << warmup_frames
+            << " frames=" << samples.size() << " measured_s=" << measured_s << " fps=" << fps
+            << '\n';
   if (samples.size() > 1U) {
     std::vector<TimedSample> interval_samples(samples.begin() + 1, samples.end());
     print_sample_summary("callback_interval", interval_samples);
@@ -216,7 +192,7 @@ BenchmarkResult run_deepstream_mode(
 
 }  // namespace
 
-int main(int argc, char ** argv)
+int main(int argc, char** argv)
 {
   rclcpp::init(argc, argv);
   const auto logger = rclcpp::get_logger("fps_benchmark");
@@ -228,7 +204,7 @@ int main(int argc, char ** argv)
 
     std::map<std::string, BenchmarkResult> results;
     bool wrote_csv = false;
-    for (const auto & mode : split_modes(options.mode)) {
+    for (const auto& mode : split_modes(options.mode)) {
       try {
         if (mode == "inference") {
           results[mode] = run_inference_mode(options, logger, wrote_csv);
@@ -242,20 +218,19 @@ int main(int argc, char ** argv)
         } else {
           throw std::invalid_argument("Unknown benchmark mode: " + mode);
         }
-      } catch (const std::exception & exc) {
+      } catch (const std::exception& exc) {
         exit_code = 1;
         results[mode] = BenchmarkResult{mode, false, 0.0, 0U, 0.0, exc.what()};
         std::cerr << '[' << mode << "] ERROR: " << exc.what() << '\n';
       } catch (...) {
         exit_code = 1;
-        results[mode] =
-          BenchmarkResult{mode, false, 0.0, 0U, 0.0, "non-standard exception"};
+        results[mode] = BenchmarkResult{mode, false, 0.0, 0U, 0.0, "non-standard exception"};
         std::cerr << '[' << mode << "] ERROR: non-standard exception\n";
       }
     }
 
     print_decision_aid(results);
-  } catch (const std::exception & exc) {
+  } catch (const std::exception& exc) {
     std::cerr << "[fps_benchmark] ERROR: " << exc.what() << '\n';
     exit_code = 2;
   }

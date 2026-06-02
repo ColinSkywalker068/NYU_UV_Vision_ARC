@@ -3,8 +3,6 @@
 
 #include "vision_node_helpers.hpp"
 
-#include <sensor_msgs/image_encodings.hpp>
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -14,6 +12,7 @@
 #include <ctime>
 #include <iomanip>
 #include <memory>
+#include <sensor_msgs/image_encodings.hpp>
 #include <sstream>
 
 namespace yolo_cpp::vision_node_helpers
@@ -34,8 +33,8 @@ std::string timestamp_now_iso8601_ms()
 #endif
 
   std::ostringstream out;
-  out << std::put_time(&local_tm, "%Y-%m-%dT%H:%M:%S") << '.' << std::setw(3)
-      << std::setfill('0') << milliseconds;
+  out << std::put_time(&local_tm, "%Y-%m-%dT%H:%M:%S") << '.' << std::setw(3) << std::setfill('0')
+      << milliseconds;
   return out.str();
 }
 
@@ -56,7 +55,7 @@ std::string timestamp_now_compact()
 }
 
 sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
-  const FramePacket & packet, const rclcpp::Time & stamp)
+  const FramePacket& packet, const rclcpp::Time& stamp)
 {
   if (packet.empty()) {
     return nullptr;
@@ -77,7 +76,7 @@ sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
   return msg;
 }
 
-double rect_iou(const cv::Rect & lhs, const cv::Rect & rhs)
+double rect_iou(const cv::Rect& lhs, const cv::Rect& rhs)
 {
   const cv::Rect overlap = lhs & rhs;
   if (overlap.empty()) {
@@ -90,10 +89,7 @@ double rect_iou(const cv::Rect & lhs, const cv::Rect & rhs)
 }
 
 cv::Rect scale_rect_to_preview(
-  const cv::Rect & rect,
-  double scale_x,
-  double scale_y,
-  const cv::Rect & image_rect)
+  const cv::Rect& rect, double scale_x, double scale_y, const cv::Rect& image_rect)
 {
   const int x = static_cast<int>(std::lround(static_cast<double>(rect.x) * scale_x));
   const int y = static_cast<int>(std::lround(static_cast<double>(rect.y) * scale_y));

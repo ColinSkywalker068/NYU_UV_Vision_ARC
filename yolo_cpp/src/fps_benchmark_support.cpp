@@ -3,9 +3,6 @@
 
 #include "fps_benchmark_support.hpp"
 
-#include <opencv2/core.hpp>
-#include <opencv2/imgcodecs.hpp>
-
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -15,6 +12,8 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -25,23 +24,22 @@ namespace yolo_cpp::fps_benchmark
 namespace
 {
 
-constexpr char kDefaultModelPath[] =
-  "/home/ultraviolet/CV_Detection/model_test/"
-  "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
+constexpr char kDefaultModelPath[] = "/home/ultraviolet/CV_Detection/model_test/"
+                                     "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
 
 constexpr char kDefaultDeepStreamConfigPath[] =
   "/home/ultraviolet/CV_Detection/yolo_cpp/config/deepstream_bestmerge_nvinfer.txt";
 
-std::optional<std::string> getenv_string(const char * name)
+std::optional<std::string> getenv_string(const char* name)
 {
-  const char * value = std::getenv(name);
+  const char* value = std::getenv(name);
   if (value == nullptr || value[0] == '\0') {
     return std::nullopt;
   }
   return std::string(value);
 }
 
-std::optional<bool> getenv_bool(const char * name)
+std::optional<bool> getenv_bool(const char* name)
 {
   if (const auto value = getenv_string(name)) {
     return parse_bool_value(*value);
@@ -49,7 +47,7 @@ std::optional<bool> getenv_bool(const char * name)
   return std::nullopt;
 }
 
-std::optional<int> getenv_int(const char * name)
+std::optional<int> getenv_int(const char* name)
 {
   if (const auto value = getenv_string(name)) {
     return std::stoi(*value);
@@ -57,7 +55,7 @@ std::optional<int> getenv_int(const char * name)
   return std::nullopt;
 }
 
-std::optional<double> getenv_double(const char * name)
+std::optional<double> getenv_double(const char* name)
 {
   if (const auto value = getenv_string(name)) {
     return std::stod(*value);
@@ -71,9 +69,8 @@ std::string resolve_default_model_path()
     return *env_path;
   }
 
-  const auto cwd_candidate =
-    std::filesystem::current_path() / "model_test" /
-    "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
+  const auto cwd_candidate = std::filesystem::current_path() / "model_test"
+                             / "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
   if (std::filesystem::exists(cwd_candidate)) {
     return cwd_candidate.string();
   }
@@ -83,8 +80,7 @@ std::string resolve_default_model_path()
 std::string resolve_default_deepstream_config_path()
 {
   const auto cwd_candidate =
-    std::filesystem::current_path() / "yolo_cpp" / "config" /
-    "deepstream_bestmerge_nvinfer.txt";
+    std::filesystem::current_path() / "yolo_cpp" / "config" / "deepstream_bestmerge_nvinfer.txt";
   if (std::filesystem::exists(cwd_candidate)) {
     return cwd_candidate.string();
   }
@@ -198,7 +194,7 @@ Options default_options_from_env()
   return options;
 }
 
-std::string require_arg_value(int argc, char ** argv, int & index)
+std::string require_arg_value(int argc, char** argv, int& index)
 {
   if (index + 1 >= argc) {
     throw std::invalid_argument("Missing value for " + std::string(argv[index]));
@@ -207,7 +203,7 @@ std::string require_arg_value(int argc, char ** argv, int & index)
   return argv[index];
 }
 
-void print_usage(const char * program)
+void print_usage(const char* program)
 {
   std::cout
     << "Usage: " << program << " [options]\n\n"
@@ -265,7 +261,7 @@ double percentile(std::vector<double> values, double p)
   return values[lower] + ((values[upper] - values[lower]) * fraction);
 }
 
-double average(const std::vector<double> & values)
+double average(const std::vector<double>& values)
 {
   if (values.empty()) {
     return 0.0;
@@ -278,11 +274,11 @@ double average(const std::vector<double> & values)
   return total / static_cast<double>(values.size());
 }
 
-std::vector<double> total_times(const std::vector<TimedSample> & samples)
+std::vector<double> total_times(const std::vector<TimedSample>& samples)
 {
   std::vector<double> values;
   values.reserve(samples.size());
-  for (const auto & sample : samples) {
+  for (const auto& sample : samples) {
     values.push_back(sample.total_ms);
   }
   return values;
@@ -291,7 +287,7 @@ std::vector<double> total_times(const std::vector<TimedSample> & samples)
 }  // namespace
 
 CameraReleaseGuard::CameraReleaseGuard(std::shared_ptr<yolo_cpp::CameraBackend> camera)
-: camera_(std::move(camera))
+    : camera_(std::move(camera))
 {
 }
 
@@ -302,28 +298,21 @@ CameraReleaseGuard::~CameraReleaseGuard()
   }
 }
 
-bool parse_bool_value(const std::string & value)
+bool parse_bool_value(const std::string& value)
 {
   std::string normalized = value;
-  std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char ch) {
-    return static_cast<char>(std::tolower(ch));
-  });
-  if (
-    normalized == "1" || normalized == "true" || normalized == "yes" ||
-    normalized == "on")
-  {
+  std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  if (normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on") {
     return true;
   }
-  if (
-    normalized == "0" || normalized == "false" || normalized == "no" ||
-    normalized == "off")
-  {
+  if (normalized == "0" || normalized == "false" || normalized == "no" || normalized == "off") {
     return false;
   }
   throw std::invalid_argument("Expected boolean value, got '" + value + "'");
 }
 
-Options parse_args(int argc, char ** argv)
+Options parse_args(int argc, char** argv)
 {
   Options options = default_options_from_env();
 
@@ -415,7 +404,7 @@ Options parse_args(int argc, char ** argv)
   return options;
 }
 
-std::vector<std::string> split_modes(const std::string & mode)
+std::vector<std::string> split_modes(const std::string& mode)
 {
   if (mode == "all") {
     return {"inference", "camera", "deepstream"};
@@ -445,18 +434,16 @@ Clock::duration seconds_duration(double seconds)
   return std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(seconds));
 }
 
-void print_sample_summary(const std::string & label, const std::vector<TimedSample> & samples)
+void print_sample_summary(const std::string& label, const std::vector<TimedSample>& samples)
 {
   const auto totals = total_times(samples);
-  std::cout << std::fixed << std::setprecision(3)
-            << "  " << label << "_ms avg=" << average(totals)
-            << " p50=" << percentile(totals, 0.50)
-            << " p95=" << percentile(totals, 0.95)
+  std::cout << std::fixed << std::setprecision(3) << "  " << label << "_ms avg=" << average(totals)
+            << " p50=" << percentile(totals, 0.50) << " p95=" << percentile(totals, 0.95)
             << " max=" << (totals.empty() ? 0.0 : *std::max_element(totals.begin(), totals.end()))
             << '\n';
 }
 
-void print_detector_stage_summary(const std::vector<TimedSample> & samples)
+void print_detector_stage_summary(const std::vector<TimedSample>& samples)
 {
   if (samples.empty()) {
     return;
@@ -464,7 +451,7 @@ void print_detector_stage_summary(const std::vector<TimedSample> & samples)
 
   yolo_cpp::DetectorStageTimings totals{};
   std::size_t detections = 0;
-  for (const auto & sample : samples) {
+  for (const auto& sample : samples) {
     totals.preprocess_ms += sample.timings.preprocess_ms;
     totals.upload_ms += sample.timings.upload_ms;
     totals.inference_ms += sample.timings.inference_ms;
@@ -475,19 +462,13 @@ void print_detector_stage_summary(const std::vector<TimedSample> & samples)
   const double n = static_cast<double>(samples.size());
   std::cout << std::fixed << std::setprecision(3)
             << "  stage_avg_ms preprocess=" << totals.preprocess_ms / n
-            << " upload=" << totals.upload_ms / n
-            << " infer=" << totals.inference_ms / n
-            << " download=" << totals.download_ms / n
-            << " parse=" << totals.parse_ms / n
-            << " detections_per_frame=" << static_cast<double>(detections) / n
-            << '\n';
+            << " upload=" << totals.upload_ms / n << " infer=" << totals.inference_ms / n
+            << " download=" << totals.download_ms / n << " parse=" << totals.parse_ms / n
+            << " detections_per_frame=" << static_cast<double>(detections) / n << '\n';
 }
 
-void write_csv(
-  const std::string & path,
-  const std::string & mode,
-  const std::vector<TimedSample> & samples,
-  bool append)
+void write_csv(const std::string& path, const std::string& mode,
+  const std::vector<TimedSample>& samples, bool append)
 {
   if (path.empty()) {
     return;
@@ -502,15 +483,15 @@ void write_csv(
            << "detections\n";
   }
   for (std::size_t i = 0; i < samples.size(); ++i) {
-    const auto & sample = samples[i];
-    stream << mode << ',' << i << ',' << sample.total_ms << ','
-           << sample.timings.preprocess_ms << ',' << sample.timings.upload_ms << ','
-           << sample.timings.inference_ms << ',' << sample.timings.download_ms << ','
-           << sample.timings.parse_ms << ',' << sample.detections << '\n';
+    const auto& sample = samples[i];
+    stream << mode << ',' << i << ',' << sample.total_ms << ',' << sample.timings.preprocess_ms
+           << ',' << sample.timings.upload_ms << ',' << sample.timings.inference_ms << ','
+           << sample.timings.download_ms << ',' << sample.timings.parse_ms << ','
+           << sample.detections << '\n';
   }
 }
 
-std::pair<int, int> synthetic_frame_size(const Options & options)
+std::pair<int, int> synthetic_frame_size(const Options& options)
 {
   if (options.camera.camera_type == "realsense") {
     return {options.camera.realsense_width, options.camera.realsense_height};
@@ -521,7 +502,7 @@ std::pair<int, int> synthetic_frame_size(const Options & options)
   return {options.camera.imgsz_width, options.camera.imgsz_height};
 }
 
-yolo_cpp::FramePacket make_inference_packet(const Options & options)
+yolo_cpp::FramePacket make_inference_packet(const Options& options)
 {
   yolo_cpp::FramePacket packet;
   cv::Mat image;
@@ -541,25 +522,20 @@ yolo_cpp::FramePacket make_inference_packet(const Options & options)
   packet.storage_kind = yolo_cpp::BackingStoreKind::kHost;
   packet.source_id = "synthetic";
   packet.capture_time_ns = static_cast<std::int64_t>(
-    std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch())
-      .count());
+    std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count());
   return packet;
 }
 
-void print_header(const Options & options)
+void print_header(const Options& options)
 {
   const auto [source_width, source_height] = synthetic_frame_size(options);
-  std::cout << "[fps_benchmark] mode=" << options.mode
-            << " duration_s=" << options.duration_s
-            << " warmup_s=" << options.warmup_s
-            << " model=" << options.model_path
+  std::cout << "[fps_benchmark] mode=" << options.mode << " duration_s=" << options.duration_s
+            << " warmup_s=" << options.warmup_s << " model=" << options.model_path
             << "\n[fps_benchmark] model_input=" << options.camera.imgsz_width << 'x'
-            << options.camera.imgsz_height
-            << " synthetic_source=" << source_width << 'x' << source_height
-            << " camera=" << options.camera.camera_type
+            << options.camera.imgsz_height << " synthetic_source=" << source_width << 'x'
+            << source_height << " camera=" << options.camera.camera_type
             << " basler_source=" << options.camera.basler_source_width << 'x'
-            << options.camera.basler_source_height
-            << " basler_fps=" << options.camera.basler_fps
+            << options.camera.basler_source_height << " basler_fps=" << options.camera.basler_fps
             << " basler_uncapped=" << (options.camera.basler_uncapped_fps ? "true" : "false")
             << " basler_pixel_format=" << options.camera.basler_pixel_format
             << " basler_exposure_us=" << options.camera.basler_exposure_us
@@ -567,11 +543,10 @@ void print_header(const Options & options)
             << " pre_mux_box=" << options.pre_mux_width << 'x' << options.pre_mux_height
             << " deepstream_profile_stages="
             << (options.deepstream_profile_stages ? "true" : "false")
-            << " bayer_conversion_backend=" << options.bayer_conversion_backend
-            << '\n';
+            << " bayer_conversion_backend=" << options.bayer_conversion_backend << '\n';
 }
 
-yolo_cpp::DeepStreamRuntime::Config make_deepstream_config(const Options & options)
+yolo_cpp::DeepStreamRuntime::Config make_deepstream_config(const Options& options)
 {
   yolo_cpp::DeepStreamRuntime::Config config;
   config.model_path = options.model_path;
@@ -579,12 +554,10 @@ yolo_cpp::DeepStreamRuntime::Config make_deepstream_config(const Options & optio
   config.task = options.task;
   config.imgsz_width = options.camera.imgsz_width;
   config.imgsz_height = options.camera.imgsz_height;
-  config.source_width =
-    options.camera.basler_use_full_sensor ? options.camera.basler_source_width :
-                                            options.camera.imgsz_width;
-  config.source_height =
-    options.camera.basler_use_full_sensor ? options.camera.basler_source_height :
-                                            options.camera.imgsz_height;
+  config.source_width = options.camera.basler_use_full_sensor ? options.camera.basler_source_width
+                                                              : options.camera.imgsz_width;
+  config.source_height = options.camera.basler_use_full_sensor ? options.camera.basler_source_height
+                                                               : options.camera.imgsz_height;
   config.source_fps = options.camera.basler_fps;
   config.source_exposure_us = options.camera.basler_exposure_us;
   config.source_gain_db = options.camera.basler_gain_db;
@@ -607,7 +580,7 @@ yolo_cpp::DeepStreamRuntime::Config make_deepstream_config(const Options & optio
   return config;
 }
 
-void print_decision_aid(const std::map<std::string, BenchmarkResult> & results)
+void print_decision_aid(const std::map<std::string, BenchmarkResult>& results)
 {
   const auto inference = results.find("inference");
   const auto camera = results.find("camera");
@@ -617,33 +590,27 @@ void print_decision_aid(const std::map<std::string, BenchmarkResult> & results)
   }
 
   std::cout << "\n[readout] ";
-  if (
-    inference != results.end() && camera != results.end() && inference->second.ok &&
-    camera->second.ok)
+  if (inference != results.end() && camera != results.end() && inference->second.ok
+      && camera->second.ok)
   {
     if (inference->second.fps < camera->second.fps * 0.8) {
-      std::cout
-        << "inference FPS is below camera-only FPS, "
-        << "so the model/GPU path is the lower ceiling. ";
+      std::cout << "inference FPS is below camera-only FPS, "
+                << "so the model/GPU path is the lower ceiling. ";
     } else if (camera->second.fps < inference->second.fps * 0.8) {
-      std::cout
-        << "camera-only FPS is below inference FPS, "
-        << "so camera exposure/format/link is the lower ceiling. ";
+      std::cout << "camera-only FPS is below inference FPS, "
+                << "so camera exposure/format/link is the lower ceiling. ";
     } else {
-      std::cout
-        << "camera-only and inference-only FPS are close, "
-        << "so check full-pipeline overhead next. ";
+      std::cout << "camera-only and inference-only FPS are close, "
+                << "so check full-pipeline overhead next. ";
     }
   }
-  if (
-    deepstream != results.end() && deepstream->second.ok && inference != results.end() &&
-    inference->second.ok && camera != results.end() && camera->second.ok)
+  if (deepstream != results.end() && deepstream->second.ok && inference != results.end()
+      && inference->second.ok && camera != results.end() && camera->second.ok)
   {
     const double isolated_ceiling = std::min(inference->second.fps, camera->second.fps);
     if (deepstream->second.fps < isolated_ceiling * 0.8) {
-      std::cout
-        << "DeepStream combined FPS is well below both isolated ceilings, "
-        << "so inspect GStreamer caps, color conversion, and drops.";
+      std::cout << "DeepStream combined FPS is well below both isolated ceilings, "
+                << "so inspect GStreamer caps, color conversion, and drops.";
     } else {
       std::cout << "DeepStream combined FPS tracks the lower isolated ceiling.";
     }

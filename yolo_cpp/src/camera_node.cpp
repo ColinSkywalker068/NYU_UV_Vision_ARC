@@ -3,20 +3,18 @@
 
 #include "yolo_cpp/camera_node.hpp"
 
-#include <rclcpp_components/register_node_macro.hpp>
-#include <sensor_msgs/image_encodings.hpp>
-
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <rclcpp_components/register_node_macro.hpp>
+#include <sensor_msgs/image_encodings.hpp>
 
 namespace yolo_cpp
 {
 
 /// Initialize the selected camera backend and publish frames at the measured FPS.
-CameraNode::CameraNode(const rclcpp::NodeOptions & options)
-: rclcpp::Node("camera_node", options),
-  last_warning_time_(this->get_clock()->now())
+CameraNode::CameraNode(const rclcpp::NodeOptions& options)
+    : rclcpp::Node("camera_node", options), last_warning_time_(this->get_clock()->now())
 {
   camera_config_ = load_camera_config(*this);
   camera_type_ = camera_config_.camera_type;
@@ -26,15 +24,11 @@ CameraNode::CameraNode(const rclcpp::NodeOptions & options)
 
   auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort().durability_volatile();
   image_publisher_ = this->create_publisher<sensor_msgs::msg::Image>("image_raw", qos);
-  timer_ = this->create_wall_timer(
-    std::chrono::duration<double>(1.0 / std::max(1.0, fps_)),
+  timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / std::max(1.0, fps_)),
     std::bind(&CameraNode::timer_callback, this));
 
-  RCLCPP_INFO(
-    this->get_logger(),
-    "Initialized legacy %s camera node at %.2f FPS",
-    camera_type_.c_str(),
-    fps_);
+  RCLCPP_INFO(this->get_logger(), "Initialized legacy %s camera node at %.2f FPS",
+    camera_type_.c_str(), fps_);
 }
 
 CameraNode::~CameraNode()
@@ -65,14 +59,12 @@ void CameraNode::publish_no_frame_warning()
   const auto now = this->get_clock()->now();
   if ((now - last_warning_time_).seconds() >= 1.0) {
     RCLCPP_WARN(
-      this->get_logger(),
-      "Failed to get frame from %s camera backend",
-      camera_type_.c_str());
+      this->get_logger(), "Failed to get frame from %s camera backend", camera_type_.c_str());
     last_warning_time_ = now;
   }
 }
 
-sensor_msgs::msg::Image::UniquePtr CameraNode::to_image_message(const FramePacket & packet)
+sensor_msgs::msg::Image::UniquePtr CameraNode::to_image_message(const FramePacket& packet)
 {
   // Copy frame data into a ROS-owned message so backend frame owners can be released safely.
   if (packet.empty()) {

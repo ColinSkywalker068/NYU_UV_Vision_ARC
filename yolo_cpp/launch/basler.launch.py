@@ -34,7 +34,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "basler",
             "Camera backend. Basler is the canonical default for this launch file.",
         ),
-        ("detector_backend", "deepstream", "Detector backend: deepstream or native_tensorrt"),
+        (
+            "detector_backend",
+            "deepstream",
+            "Detector backend: deepstream or native_tensorrt",
+        ),
         (
             "allow_native_tensorrt_fallback",
             "false",
@@ -45,7 +49,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             package_config_path("deepstream_bestmerge_nvinfer.txt"),
             "Optional DeepStream nvinfer config template path",
         ),
-        ("model_path", DEFAULT_MODEL_PATH, "Path to YOLO weights (.pt / .engine / .onnx)"),
+        (
+            "model_path",
+            DEFAULT_MODEL_PATH,
+            "Path to YOLO weights (.pt / .engine / .onnx)",
+        ),
         ("serial_port", "/dev/ttyUSB0", "Serial port for STM32 connection"),
         ("serial_baudrate", "115200", "Baud rate for STM32 serial"),
         ("serial_verbose", "false", "Enable verbose serial logging"),
@@ -77,7 +85,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "true",
             "Resize full-FOV Basler frames before nvstreammux pads them to the model input",
         ),
-        ("pre_mux_width", "0", "Optional pre-mux resize bounding width; 0 uses the model width"),
+        (
+            "pre_mux_width",
+            "0",
+            "Optional pre-mux resize bounding width; 0 uses the model width",
+        ),
         (
             "pre_mux_height",
             "0",
@@ -127,7 +139,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Use the best native RealSense FPS for the requested resolution",
         ),
         ("inference_mode", "predict", "Detector inference mode"),
-        ("debug_publish_image_raw", "false", "Publish debug image_raw frame from detector"),
+        (
+            "debug_publish_image_raw",
+            "false",
+            "Publish debug image_raw frame from detector",
+        ),
         (
             "save_target_frames",
             "false",
@@ -156,7 +172,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Enemy armor color used until STM or robot_id feedback overrides it: blue or red",
         ),
         ("show", "true", "Show OpenCV visualization window"),
-        ("preview_max_fps", "60.0", "Maximum OpenCV preview render FPS when show is enabled"),
+        (
+            "preview_max_fps",
+            "60.0",
+            "Maximum OpenCV preview render FPS when show is enabled",
+        ),
         ("track_min_hits", "1", "Frames required to confirm a track"),
         ("track_max_coast_frames", "1", "Maximum published coast frames"),
         ("track_drop_frames", "4", "Frames before dropping an unmatched track"),
@@ -171,7 +191,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "0.02",
             "Confidence delta required to steal target lock",
         ),
-        ("target_lock_hysteresis_frames", "0", "Coast frames allowed before target lock yields"),
+        (
+            "target_lock_hysteresis_frames",
+            "0",
+            "Coast frames allowed before target lock yields",
+        ),
         (
             "association_max_3d_distance_m",
             "0.35",
@@ -179,11 +203,31 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ),
         ("hfov_degrees", "79.2", "Horizontal FOV degrees"),
         ("vfov_degrees", "63.78", "Vertical FOV degrees"),
-        ("enable_3d_pose", "true", "Enable armor corner PnP pose solving in the detector"),
-        ("camera_frame_id", "camera_optical_frame", "Frame id attached to detector PnP poses"),
-        ("camera_info_topic", "camera_info", "CameraInfo topic used for calibrated PnP intrinsics"),
-        ("camera_fx", "0.0", "Optional static camera fx; FOV fallback is used when unset"),
-        ("camera_fy", "0.0", "Optional static camera fy; FOV fallback is used when unset"),
+        (
+            "enable_3d_pose",
+            "true",
+            "Enable armor corner PnP pose solving in the detector",
+        ),
+        (
+            "camera_frame_id",
+            "camera_optical_frame",
+            "Frame id attached to detector PnP poses",
+        ),
+        (
+            "camera_info_topic",
+            "camera_info",
+            "CameraInfo topic used for calibrated PnP intrinsics",
+        ),
+        (
+            "camera_fx",
+            "0.0",
+            "Optional static camera fx; FOV fallback is used when unset",
+        ),
+        (
+            "camera_fy",
+            "0.0",
+            "Optional static camera fy; FOV fallback is used when unset",
+        ),
         ("camera_cx", "0.0", "Optional static camera cx"),
         ("camera_cy", "0.0", "Optional static camera cy"),
         (
@@ -207,7 +251,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Fallback bullet speed when STM feedback does not provide one",
         ),
         ("solver_latency_s", "0.03", "Latency used by the 3D ballistic prediction"),
-        ("compensate_gravity", "true", "Enable simple gravity drop compensation in the 3D solver"),
+        (
+            "compensate_gravity",
+            "true",
+            "Enable simple gravity drop compensation in the 3D solver",
+        ),
         (
             "publish_zero_angles_when_no_target",
             "true",
@@ -215,10 +263,14 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ),
         (
             "transmit_angles_in_degrees",
-            "true",
+            "false",
             "Convert solver radians to degrees before STM TX",
         ),
-        ("hold_fire_mode", "0", "Fire mode sent while the solver suggests holding fire"),
+        (
+            "hold_fire_mode",
+            "0",
+            "Fire mode sent while the solver suggests holding fire",
+        ),
     ]
 
 
@@ -241,7 +293,9 @@ def make_detector_node() -> Node:
             {
                 "camera_type": launch_config("camera_type"),
                 "detector_backend": launch_config("detector_backend"),
-                "allow_native_tensorrt_fallback": launch_config("allow_native_tensorrt_fallback"),
+                "allow_native_tensorrt_fallback": launch_config(
+                    "allow_native_tensorrt_fallback"
+                ),
                 "model_path": launch_config("model_path"),
                 "deepstream_config_path": launch_config("deepstream_config_path"),
                 "imgsz_width": launch_config("basler_width"),
@@ -270,7 +324,9 @@ def make_detector_node() -> Node:
                 "realsense_exposure": launch_config("realsense_exposure"),
                 "realsense_auto_exposure": launch_config("realsense_auto_exposure"),
                 "realsense_use_poll": launch_config("realsense_use_poll"),
-                "realsense_use_max_native_fps": launch_config("realsense_use_max_native_fps"),
+                "realsense_use_max_native_fps": launch_config(
+                    "realsense_use_max_native_fps"
+                ),
                 "hfov_degrees": launch_config("hfov_degrees"),
                 "vfov_degrees": launch_config("vfov_degrees"),
                 "enable_3d_pose": launch_config("enable_3d_pose"),
@@ -315,8 +371,12 @@ def make_tracker_node() -> Node:
                     "association_max_center_distance_ratio"
                 ),
                 "association_min_iou": launch_config("association_min_iou"),
-                "target_switch_min_score_delta": launch_config("target_switch_min_score_delta"),
-                "target_lock_hysteresis_frames": launch_config("target_lock_hysteresis_frames"),
+                "target_switch_min_score_delta": launch_config(
+                    "target_switch_min_score_delta"
+                ),
+                "target_lock_hysteresis_frames": launch_config(
+                    "target_lock_hysteresis_frames"
+                ),
                 "association_max_3d_distance_m": launch_config(
                     "association_max_3d_distance_m"
                 ),
@@ -377,7 +437,9 @@ def make_stm_bridge_node() -> Node:
                 "serial_baudrate": launch_config("serial_baudrate"),
                 "serial_verbose": launch_config("serial_verbose"),
                 "hold_fire_mode": launch_config("hold_fire_mode"),
-                "transmit_angles_in_degrees": launch_config("transmit_angles_in_degrees"),
+                "transmit_angles_in_degrees": launch_config(
+                    "transmit_angles_in_degrees"
+                ),
             }
         ],
     )

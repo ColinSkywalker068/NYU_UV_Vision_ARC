@@ -32,7 +32,7 @@ void transpose_6x6(const double in[6][6], double out[6][6])
   }
 }
 
-cv::Point2f clamp_center(const cv::Point2f & center, int image_width, int image_height)
+cv::Point2f clamp_center(const cv::Point2f& center, int image_width, int image_height)
 {
   const float max_x = static_cast<float>(std::max(0, image_width - 1));
   const float max_y = static_cast<float>(std::max(0, image_height - 1));
@@ -40,11 +40,7 @@ cv::Point2f clamp_center(const cv::Point2f & center, int image_width, int image_
 }
 
 cv::Rect rect_from_center(
-  const cv::Point2f & center,
-  double width,
-  double height,
-  int image_width,
-  int image_height)
+  const cv::Point2f& center, double width, double height, int image_width, int image_height)
 {
   const int max_w = std::max(1, image_width);
   const int max_h = std::max(1, image_height);
@@ -66,7 +62,7 @@ cv::Rect rect_from_center(
   return cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1));
 }
 
-double rect_iou(const cv::Rect & lhs, const cv::Rect & rhs)
+double rect_iou(const cv::Rect& lhs, const cv::Rect& rhs)
 {
   const int x1 = std::max(lhs.x, rhs.x);
   const int y1 = std::max(lhs.y, rhs.y);
@@ -85,30 +81,25 @@ double rect_iou(const cv::Rect & lhs, const cv::Rect & rhs)
 }
 
 double normalized_center_distance(
-  const cv::Point2f & lhs,
-  const cv::Point2f & rhs,
-  int image_width,
-  int image_height)
+  const cv::Point2f& lhs, const cv::Point2f& rhs, int image_width, int image_height)
 {
   const double dx = static_cast<double>(lhs.x - rhs.x);
   const double dy = static_cast<double>(lhs.y - rhs.y);
   const double diagonal = std::hypot(
-    static_cast<double>(std::max(1, image_width)),
-    static_cast<double>(std::max(1, image_height)));
+    static_cast<double>(std::max(1, image_width)), static_cast<double>(std::max(1, image_height)));
   if (diagonal <= 0.0) {
     return 0.0;
   }
   return std::hypot(dx, dy) / diagonal;
 }
 
-double distance_3d(const cv::Point3d & lhs, const cv::Point3d & rhs)
+double distance_3d(const cv::Point3d& lhs, const cv::Point3d& rhs)
 {
-  return std::sqrt(
-    ((lhs.x - rhs.x) * (lhs.x - rhs.x)) + ((lhs.y - rhs.y) * (lhs.y - rhs.y)) +
-    ((lhs.z - rhs.z) * (lhs.z - rhs.z)));
+  return std::sqrt(((lhs.x - rhs.x) * (lhs.x - rhs.x)) + ((lhs.y - rhs.y) * (lhs.y - rhs.y))
+                   + ((lhs.z - rhs.z) * (lhs.z - rhs.z)));
 }
 
-std::vector<int> solve_hungarian(const std::vector<std::vector<double>> & cost_matrix)
+std::vector<int> solve_hungarian(const std::vector<std::vector<double>>& cost_matrix)
 {
   if (cost_matrix.empty() || cost_matrix.front().empty()) {
     return {};
@@ -118,8 +109,7 @@ std::vector<int> solve_hungarian(const std::vector<std::vector<double>> & cost_m
   const int cols = static_cast<int>(cost_matrix.front().size());
   const int size = std::max(rows, cols);
 
-  std::vector<std::vector<double>> padded(
-    static_cast<std::size_t>(size),
+  std::vector<std::vector<double>> padded(static_cast<std::size_t>(size),
     std::vector<double>(static_cast<std::size_t>(size), kInvalidAssignmentCost));
   for (int r = 0; r < rows; ++r) {
     for (int c = 0; c < cols; ++c) {
@@ -146,10 +136,8 @@ std::vector<int> solve_hungarian(const std::vector<std::vector<double>> & cost_m
         if (used[static_cast<std::size_t>(j)]) {
           continue;
         }
-        const double cur = padded[static_cast<std::size_t>(i0 - 1)]
-                                 [static_cast<std::size_t>(j - 1)] -
-                           u[static_cast<std::size_t>(i0)] -
-                           v[static_cast<std::size_t>(j)];
+        const double cur = padded[static_cast<std::size_t>(i0 - 1)][static_cast<std::size_t>(j - 1)]
+                           - u[static_cast<std::size_t>(i0)] - v[static_cast<std::size_t>(j)];
         if (cur < minv[static_cast<std::size_t>(j)]) {
           minv[static_cast<std::size_t>(j)] = cur;
           way[static_cast<std::size_t>(j)] = j0;

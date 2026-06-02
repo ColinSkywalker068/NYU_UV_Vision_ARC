@@ -2,10 +2,6 @@
 /// @brief Implements native TensorRT detector loading, preprocessing, inference, and fallback.
 
 #include "yolo_cpp/detector_backend.hpp"
-#include "yolo_cpp/detection_postprocess.hpp"
-
-#include <opencv2/imgproc.hpp>
-#include <rclcpp/logging.hpp>
 
 #include <algorithm>
 #include <array>
@@ -15,11 +11,15 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <opencv2/imgproc.hpp>
 #include <optional>
+#include <rclcpp/logging.hpp>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "yolo_cpp/detection_postprocess.hpp"
 
 #ifdef HAVE_TENSORRT
 #include <NvInfer.h>
@@ -33,7 +33,7 @@ namespace
 {
 
 /// Clamp a value into an inclusive range.
-template<typename T>
+template <typename T>
 T clamp_value(T value, T lo, T hi)
 {
   return std::max(lo, std::min(value, hi));
@@ -100,8 +100,7 @@ float half_bits_to_float(std::uint16_t value)
 
 /// Letterbox, normalize, and pack a BGR frame into a TensorRT input buffer.
 void preprocess_bgr_frame(
-  const FramePacket & packet, float * host_input, int dst_w, int dst_h,
-  LetterboxMetadata & metadata)
+  const FramePacket& packet, float* host_input, int dst_w, int dst_h, LetterboxMetadata& metadata)
 {
   if (packet.frame.empty() || packet.frame.type() != CV_8UC3) {
     throw std::runtime_error("Expected non-empty BGR8 frame for TensorRT preprocessing");
@@ -127,19 +126,17 @@ void preprocess_bgr_frame(
 
   const int plane = dst_w * dst_h;
   for (int c = 0; c < 3; ++c) {
-    std::memcpy(
-      host_input + (c * plane),
-      channels[static_cast<std::size_t>(c)].ptr<float>(),
+    std::memcpy(host_input + (c * plane), channels[static_cast<std::size_t>(c)].ptr<float>(),
       static_cast<std::size_t>(plane) * sizeof(float));
   }
 }
 
 #ifdef HAVE_TENSORRT
 /// Deleter for TensorRT objects that are released with delete in this API version.
-template<typename T>
+template <typename T>
 struct TrtDeleter
 {
-  void operator()(T * ptr) const
+  void operator()(T* ptr) const
   {
     delete ptr;
   }
@@ -151,7 +148,7 @@ class TrtLogger : public nvinfer1::ILogger
 public:
   explicit TrtLogger(rclcpp::Logger logger) : logger_(logger) {}
 
-  void log(Severity severity, const char * msg) noexcept override
+  void log(Severity severity, const char* msg) noexcept override
   {
     if (severity == Severity::kERROR || severity == Severity::kINTERNAL_ERROR) {
       RCLCPP_ERROR(logger_, "TensorRT: %s", msg);
@@ -165,7 +162,7 @@ private:
 };
 
 /// Throw a runtime_error when a CUDA API call fails.
-void throw_if_cuda_failed(cudaError_t status, const char * what)
+void throw_if_cuda_failed(cudaError_t status, const char* what)
 {
   if (status != cudaSuccess) {
     throw std::runtime_error(std::string(what) + ": " + cudaGetErrorString(status));
@@ -195,15 +192,15 @@ struct NativeTensorRTBackend::Impl
   std::vector<int64_t> output_shape;
   std::vector<int64_t> runtime_input_shape;
   std::vector<int64_t> runtime_output_shape;
-  float * host_input{nullptr};
-  float * host_output{nullptr};
-  std::uint16_t * host_input_half{nullptr};
-  std::uint16_t * host_output_half{nullptr};
+  float* host_input{nullptr};
+  float* host_output{nullptr};
+  std::uint16_t* host_input_half{nullptr};
+  std::uint16_t* host_output_half{nullptr};
   std::vector<float> parsed_output;
   std::size_t input_volume{0};
   std::size_t output_volume{0};
-  void * device_input{nullptr};
-  void * device_output{nullptr};
+  void* device_input{nullptr};
+  void* device_output{nullptr};
   nvinfer1::DataType input_dtype{nvinfer1::DataType::kFLOAT};
   nvinfer1::DataType output_dtype{nvinfer1::DataType::kFLOAT};
   int img_w{640};
@@ -245,7 +242,7 @@ namespace
 
 #ifdef HAVE_TENSORRT
 /// Convert TensorRT dimensions into a standard vector.
-std::vector<int64_t> dims_to_vector(const nvinfer1::Dims & dims)
+std::vector<int64_t> dims_to_vector(const nvinfer1::Dims& dims)
 {
   std::vector<int64_t> result;
   result.reserve(dims.nbDims);
@@ -256,7 +253,7 @@ std::vector<int64_t> dims_to_vector(const nvinfer1::Dims & dims)
 }
 
 /// Return the element volume for a fully specified tensor shape.
-int64_t volume_of(const std::vector<int64_t> & shape)
+int64_t volume_of(const std::vector<int64_t>& shape)
 {
   int64_t volume = 1;
   for (const auto dim : shape) {
@@ -269,8 +266,7 @@ int64_t volume_of(const std::vector<int64_t> & shape)
 }
 
 /// Resolve dynamic batch/spatial dimensions for this package's fixed-size inference path.
-std::vector<int64_t> resolve_runtime_shape(
-  const std::vector<int64_t> & shape, int img_h, int img_w)
+std::vector<int64_t> resolve_runtime_shape(const std::vector<int64_t>& shape, int img_h, int img_w)
 {
   auto resolved = shape;
   if (resolved.size() >= 4) {
@@ -291,19 +287,18 @@ std::vector<int64_t> resolve_runtime_shape(
 }  // namespace
 
 NativeTensorRTBackend::NativeTensorRTBackend(
-  std::string model_path, std::string task, std::string model_type, bool half,
-  float conf_threshold)
-: model_path_(std::move(model_path)),
-  task_(std::move(task)),
-  model_type_(std::move(model_type)),
-  half_(half),
-  conf_threshold_(conf_threshold)
+  std::string model_path, std::string task, std::string model_type, bool half, float conf_threshold)
+    : model_path_(std::move(model_path)),
+      task_(std::move(task)),
+      model_type_(std::move(model_type)),
+      half_(half),
+      conf_threshold_(conf_threshold)
 {
 }
 
 NativeTensorRTBackend::~NativeTensorRTBackend() = default;
 
-void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
+void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger& logger)
 {
   // Metadata is read first so class count, task, and NMS behavior are known before allocation.
   if (initialized_) {
@@ -324,7 +319,7 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
     if (class_names_.empty()) {
       class_names_.emplace(0, "plate");
     }
-  } catch (const std::exception & exc) {
+  } catch (const std::exception& exc) {
     RCLCPP_WARN(logger, "Failed reading engine metadata: %s", exc.what());
   }
 
@@ -353,7 +348,7 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
 
   const int nb = impl_->engine->getNbBindings();
   for (int i = 0; i < nb; ++i) {
-    const char * name = impl_->engine->getBindingName(i);
+    const char* name = impl_->engine->getBindingName(i);
     const auto dims = dims_to_vector(impl_->engine->getBindingDimensions(i));
     if (impl_->engine->bindingIsInput(i)) {
       impl_->input_index = i;
@@ -395,92 +390,74 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
     throw std::runtime_error("Failed to set TensorRT binding dimensions");
   }
 
-  impl_->runtime_output_shape = dims_to_vector(
-    impl_->context->getBindingDimensions(impl_->output_index));
+  impl_->runtime_output_shape =
+    dims_to_vector(impl_->context->getBindingDimensions(impl_->output_index));
   if (volume_of(impl_->runtime_output_shape) <= 0) {
     throw std::runtime_error("Unable to resolve TensorRT output dimensions");
   }
 
-  if (
-    impl_->input_dtype != nvinfer1::DataType::kFLOAT &&
-    impl_->input_dtype != nvinfer1::DataType::kHALF)
+  if (impl_->input_dtype != nvinfer1::DataType::kFLOAT
+      && impl_->input_dtype != nvinfer1::DataType::kHALF)
   {
-    throw std::runtime_error(
-            "TensorRT engine uses unsupported input I/O datatype. "
-            "Ultralytics INT8 exports are supported when bindings stay FP32/FP16, "
-            "but true INT8 input bindings are not yet handled by this runtime.");
+    throw std::runtime_error("TensorRT engine uses unsupported input I/O datatype. "
+                             "Ultralytics INT8 exports are supported when bindings stay FP32/FP16, "
+                             "but true INT8 input bindings are not yet handled by this runtime.");
   }
-  if (
-    impl_->output_dtype != nvinfer1::DataType::kFLOAT &&
-    impl_->output_dtype != nvinfer1::DataType::kHALF)
+  if (impl_->output_dtype != nvinfer1::DataType::kFLOAT
+      && impl_->output_dtype != nvinfer1::DataType::kHALF)
   {
-    throw std::runtime_error(
-            "TensorRT engine uses unsupported output I/O datatype. "
-            "Ultralytics INT8 exports are supported when bindings stay FP32/FP16, "
-            "but true INT8 output bindings are not yet handled by this runtime.");
+    throw std::runtime_error("TensorRT engine uses unsupported output I/O datatype. "
+                             "Ultralytics INT8 exports are supported when bindings stay FP32/FP16, "
+                             "but true INT8 output bindings are not yet handled by this runtime.");
   }
 
   impl_->input_volume = static_cast<std::size_t>(volume_of(impl_->runtime_input_shape));
   impl_->output_volume = static_cast<std::size_t>(volume_of(impl_->runtime_output_shape));
   impl_->parsed_output.resize(impl_->output_volume);
 
-  throw_if_cuda_failed(
-    cudaHostAlloc(
-      reinterpret_cast<void **>(&impl_->host_input), impl_->input_volume * sizeof(float),
-      cudaHostAllocPortable),
+  throw_if_cuda_failed(cudaHostAlloc(reinterpret_cast<void**>(&impl_->host_input),
+                         impl_->input_volume * sizeof(float), cudaHostAllocPortable),
     "cudaHostAlloc input buffer failed");
-  throw_if_cuda_failed(
-    cudaHostAlloc(
-      reinterpret_cast<void **>(&impl_->host_output), impl_->output_volume * sizeof(float),
-      cudaHostAllocPortable),
+  throw_if_cuda_failed(cudaHostAlloc(reinterpret_cast<void**>(&impl_->host_output),
+                         impl_->output_volume * sizeof(float), cudaHostAllocPortable),
     "cudaHostAlloc output buffer failed");
 
   if (impl_->input_dtype == nvinfer1::DataType::kHALF) {
-    throw_if_cuda_failed(
-      cudaHostAlloc(
-        reinterpret_cast<void **>(&impl_->host_input_half),
-        impl_->input_volume * sizeof(std::uint16_t),
-        cudaHostAllocPortable),
+    throw_if_cuda_failed(cudaHostAlloc(reinterpret_cast<void**>(&impl_->host_input_half),
+                           impl_->input_volume * sizeof(std::uint16_t), cudaHostAllocPortable),
       "cudaHostAlloc FP16 input buffer failed");
   }
   if (impl_->output_dtype == nvinfer1::DataType::kHALF) {
-    throw_if_cuda_failed(
-      cudaHostAlloc(
-        reinterpret_cast<void **>(&impl_->host_output_half),
-        impl_->output_volume * sizeof(std::uint16_t),
-        cudaHostAllocPortable),
+    throw_if_cuda_failed(cudaHostAlloc(reinterpret_cast<void**>(&impl_->host_output_half),
+                           impl_->output_volume * sizeof(std::uint16_t), cudaHostAllocPortable),
       "cudaHostAlloc FP16 output buffer failed");
   }
 
   throw_if_cuda_failed(
-    cudaMalloc(
-      &impl_->device_input,
-      impl_->input_volume *
-      ((impl_->input_dtype == nvinfer1::DataType::kHALF) ? sizeof(std::uint16_t) : sizeof(float))),
+    cudaMalloc(&impl_->device_input,
+      impl_->input_volume
+        * ((impl_->input_dtype == nvinfer1::DataType::kHALF) ? sizeof(std::uint16_t)
+                                                             : sizeof(float))),
     "cudaMalloc input buffer failed");
   throw_if_cuda_failed(
-    cudaMalloc(
-      &impl_->device_output,
-      impl_->output_volume *
-      ((impl_->output_dtype == nvinfer1::DataType::kHALF) ? sizeof(std::uint16_t) : sizeof(float))),
+    cudaMalloc(&impl_->device_output,
+      impl_->output_volume
+        * ((impl_->output_dtype == nvinfer1::DataType::kHALF) ? sizeof(std::uint16_t)
+                                                              : sizeof(float))),
     "cudaMalloc output buffer failed");
 
   backend_name_ = "native_tensorrt";
-  RCLCPP_INFO(
-    logger,
+  RCLCPP_INFO(logger,
     "TensorRT engine ready: task=%s version=%s export_int8=%s export_nms=%s "
     "end2end=%s input_dtype=%d output_dtype=%d",
-    task_.c_str(),
-    engine_version_.empty() ? "unknown" : engine_version_.c_str(),
+    task_.c_str(), engine_version_.empty() ? "unknown" : engine_version_.c_str(),
     int8_export_ ? "true" : "false",
     export_includes_nms_.has_value() ? (*export_includes_nms_ ? "true" : "false") : "unknown",
-    end2end_ ? "true" : "false",
-    static_cast<int>(impl_->input_dtype),
+    end2end_ ? "true" : "false", static_cast<int>(impl_->input_dtype),
     static_cast<int>(impl_->output_dtype));
 #else
   if (!warned_unavailable_) {
-    RCLCPP_WARN(
-      logger,
+    RCLCPP_WARN(logger,
       "TensorRT headers/libs were not available at build time. Detector will stay in stub mode.");
     warned_unavailable_ = true;
   }
@@ -490,7 +467,7 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
 }
 
 DetectionBatch NativeTensorRTBackend::infer(
-  const FramePacket & packet, const rclcpp::Logger & logger, DetectorStageTimings * timings)
+  const FramePacket& packet, const rclcpp::Logger& logger, DetectorStageTimings* timings)
 {
   ensure_initialized(logger);
 
@@ -517,7 +494,7 @@ DetectionBatch NativeTensorRTBackend::infer(
   preprocess_bgr_frame(packet, impl_->host_input, impl_->img_w, impl_->img_h, batch.letterbox);
   const auto preprocess_done = std::chrono::steady_clock::now();
 
-  const void * input_ptr = impl_->host_input;
+  const void* input_ptr = impl_->host_input;
   std::size_t input_bytes = impl_->input_volume * sizeof(float);
   if (impl_->input_dtype == nvinfer1::DataType::kHALF) {
     for (std::size_t i = 0; i < impl_->input_volume; ++i) {
@@ -527,13 +504,12 @@ DetectionBatch NativeTensorRTBackend::infer(
     input_bytes = impl_->input_volume * sizeof(std::uint16_t);
   }
   const auto upload_start = std::chrono::steady_clock::now();
-  throw_if_cuda_failed(
-    cudaMemcpyAsync(
-      impl_->device_input, input_ptr, input_bytes, cudaMemcpyHostToDevice, impl_->stream),
+  throw_if_cuda_failed(cudaMemcpyAsync(impl_->device_input, input_ptr, input_bytes,
+                         cudaMemcpyHostToDevice, impl_->stream),
     "TensorRT input upload failed");
   const auto upload_done = std::chrono::steady_clock::now();
 
-  std::vector<void *> bindings(static_cast<std::size_t>(impl_->engine->getNbBindings()), nullptr);
+  std::vector<void*> bindings(static_cast<std::size_t>(impl_->engine->getNbBindings()), nullptr);
   bindings[static_cast<std::size_t>(impl_->input_index)] = impl_->device_input;
   bindings[static_cast<std::size_t>(impl_->output_index)] = impl_->device_output;
   const auto inference_start = std::chrono::steady_clock::now();
@@ -542,16 +518,15 @@ DetectionBatch NativeTensorRTBackend::infer(
   }
   const auto inference_done = std::chrono::steady_clock::now();
 
-  void * output_ptr = impl_->host_output;
+  void* output_ptr = impl_->host_output;
   std::size_t output_bytes = impl_->output_volume * sizeof(float);
   if (impl_->output_dtype == nvinfer1::DataType::kHALF) {
     output_ptr = impl_->host_output_half;
     output_bytes = impl_->output_volume * sizeof(std::uint16_t);
   }
   const auto download_start = std::chrono::steady_clock::now();
-  throw_if_cuda_failed(
-    cudaMemcpyAsync(
-      output_ptr, impl_->device_output, output_bytes, cudaMemcpyDeviceToHost, impl_->stream),
+  throw_if_cuda_failed(cudaMemcpyAsync(output_ptr, impl_->device_output, output_bytes,
+                         cudaMemcpyDeviceToHost, impl_->stream),
     "TensorRT output download failed");
   throw_if_cuda_failed(cudaStreamSynchronize(impl_->stream), "TensorRT stream sync failed");
   const auto download_done = std::chrono::steady_clock::now();
@@ -566,73 +541,60 @@ DetectionBatch NativeTensorRTBackend::infer(
   }
 
   const auto parse_start = std::chrono::steady_clock::now();
-  batch.detections = parse_yolo_output_tensor(
-    impl_->parsed_output.data(),
-    impl_->runtime_output_shape,
-    impl_->img_w,
-    impl_->img_h,
-    impl_->nc,
-    conf_threshold_,
-    impl_->task_obb,
-    impl_->end2end,
-    impl_->export_includes_nms,
-    &logger);
+  batch.detections = parse_yolo_output_tensor(impl_->parsed_output.data(),
+    impl_->runtime_output_shape, impl_->img_w, impl_->img_h, impl_->nc, conf_threshold_,
+    impl_->task_obb, impl_->end2end, impl_->export_includes_nms, &logger);
   const auto parse_done = std::chrono::steady_clock::now();
 
   if (timings != nullptr) {
-    timings->preprocess_ms = std::chrono::duration<double, std::milli>(
-      preprocess_done - preprocess_start).count();
-    timings->upload_ms = std::chrono::duration<double, std::milli>(
-      upload_done - upload_start).count();
-    timings->inference_ms = std::chrono::duration<double, std::milli>(
-      inference_done - inference_start).count();
-    timings->download_ms = std::chrono::duration<double, std::milli>(
-      download_done - download_start).count();
-    timings->parse_ms = std::chrono::duration<double, std::milli>(
-      parse_done - parse_start).count();
+    timings->preprocess_ms =
+      std::chrono::duration<double, std::milli>(preprocess_done - preprocess_start).count();
+    timings->upload_ms =
+      std::chrono::duration<double, std::milli>(upload_done - upload_start).count();
+    timings->inference_ms =
+      std::chrono::duration<double, std::milli>(inference_done - inference_start).count();
+    timings->download_ms =
+      std::chrono::duration<double, std::milli>(download_done - download_start).count();
+    timings->parse_ms = std::chrono::duration<double, std::milli>(parse_done - parse_start).count();
   }
 
   return batch;
 #endif
 }
 
-const std::string & NativeTensorRTBackend::backend_name() const
+const std::string& NativeTensorRTBackend::backend_name() const
 {
   return backend_name_;
 }
 
 DeepStreamBackend::DeepStreamBackend(
-  std::string model_path, std::string task, std::string model_type, bool half,
-  float conf_threshold)
-: fallback_(
-    std::move(model_path), std::move(task), std::move(model_type), half, conf_threshold)
+  std::string model_path, std::string task, std::string model_type, bool half, float conf_threshold)
+    : fallback_(std::move(model_path), std::move(task), std::move(model_type), half, conf_threshold)
 {
 }
 
 DetectionBatch DeepStreamBackend::infer(
-  const FramePacket & packet, const rclcpp::Logger & logger, DetectorStageTimings * timings)
+  const FramePacket& packet, const rclcpp::Logger& logger, DetectorStageTimings* timings)
 {
   if (!warned_) {
-    RCLCPP_WARN(
-      logger,
+    RCLCPP_WARN(logger,
       "DeepStream backend is not implemented yet in yolo_cpp; falling back to native TensorRT.");
     warned_ = true;
   }
   return fallback_.infer(packet, logger, timings);
 }
 
-const std::string & DeepStreamBackend::backend_name() const
+const std::string& DeepStreamBackend::backend_name() const
 {
   return backend_name_;
 }
 
-std::unique_ptr<DetectorBackend> create_detector_backend(
-  const std::string & backend_kind, const std::string & model_path, const std::string & task,
-  const std::string & model_type, bool half, float conf_threshold)
+std::unique_ptr<DetectorBackend> create_detector_backend(const std::string& backend_kind,
+  const std::string& model_path, const std::string& task, const std::string& model_type, bool half,
+  float conf_threshold)
 {
   if (backend_kind == "deepstream") {
-    return std::make_unique<DeepStreamBackend>(
-      model_path, task, model_type, half, conf_threshold);
+    return std::make_unique<DeepStreamBackend>(model_path, task, model_type, half, conf_threshold);
   }
   return std::make_unique<NativeTensorRTBackend>(
     model_path, task, model_type, half, conf_threshold);

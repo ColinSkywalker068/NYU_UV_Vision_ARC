@@ -1,12 +1,12 @@
 #ifndef YOLO_CPP__DETECTION_POSTPROCESS_HPP_
 #define YOLO_CPP__DETECTION_POSTPROCESS_HPP_
 
-#include "yolo_cpp/detector_backend.hpp"
-
 #include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "yolo_cpp/detector_backend.hpp"
 
 namespace yolo_cpp
 {
@@ -35,7 +35,7 @@ struct EngineMetadata
 /// Returns:
 ///   Parsed metadata. Missing fields remain unset so callers can fall back to
 ///   launch parameters or model defaults.
-EngineMetadata read_engine_metadata_from_file(const std::string & model_path);
+EngineMetadata read_engine_metadata_from_file(const std::string& model_path);
 
 /// Read a TensorRT plan file as an opaque string for metadata scanning.
 ///
@@ -44,7 +44,7 @@ EngineMetadata read_engine_metadata_from_file(const std::string & model_path);
 ///
 /// Returns:
 ///   Raw plan contents. An empty string indicates the file could not be read.
-std::string read_engine_plan_from_file(const std::string & model_path);
+std::string read_engine_plan_from_file(const std::string& model_path);
 
 /// Convert a raw YOLO output tensor into source-image detections.
 ///
@@ -63,17 +63,10 @@ std::string read_engine_plan_from_file(const std::string & model_path);
 /// Returns:
 ///   Detections in model-space coordinates, with OBB fields populated when
 ///   available.
-std::vector<Detection> parse_yolo_output_tensor(
-  const float * tensor_data,
-  const std::vector<int64_t> & shape,
-  int img_w,
-  int img_h,
-  int num_classes,
-  float conf_threshold,
-  bool task_obb,
-  bool end2end,
-  std::optional<bool> export_includes_nms = std::nullopt,
-  const rclcpp::Logger * logger = nullptr);
+std::vector<Detection> parse_yolo_output_tensor(const float* tensor_data,
+  const std::vector<int64_t>& shape, int img_w, int img_h, int num_classes, float conf_threshold,
+  bool task_obb, bool end2end, std::optional<bool> export_includes_nms = std::nullopt,
+  const rclcpp::Logger* logger = nullptr);
 
 }  // namespace yolo_cpp
 

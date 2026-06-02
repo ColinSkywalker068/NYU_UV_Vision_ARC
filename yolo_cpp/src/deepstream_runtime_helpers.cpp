@@ -15,18 +15,16 @@
 namespace yolo_cpp::deepstream_helpers
 {
 
-std::string read_text_file(const std::string & path)
+std::string read_text_file(const std::string& path)
 {
   std::ifstream stream(path);
   if (!stream) {
     throw std::runtime_error("Failed to open DeepStream config template: " + path);
   }
-  return {
-    (std::istreambuf_iterator<char>(stream)),
-    std::istreambuf_iterator<char>()};
+  return {(std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>()};
 }
 
-void replace_all(std::string & text, const std::string & needle, const std::string & replacement)
+void replace_all(std::string& text, const std::string& needle, const std::string& replacement)
 {
   std::size_t pos = 0;
   while ((pos = text.find(needle, pos)) != std::string::npos) {
@@ -35,7 +33,7 @@ void replace_all(std::string & text, const std::string & needle, const std::stri
   }
 }
 
-bool path_has_extension(const std::string & path, const std::string & extension)
+bool path_has_extension(const std::string& path, const std::string& extension)
 {
   if (path.size() < extension.size()) {
     return false;
@@ -43,12 +41,8 @@ bool path_has_extension(const std::string & path, const std::string & extension)
   return std::equal(extension.rbegin(), extension.rend(), path.rbegin());
 }
 
-std::string make_video_caps_text(
-  const std::string & media_type,
-  const std::string & format,
-  std::optional<int> width,
-  std::optional<int> height,
-  std::optional<int> fps)
+std::string make_video_caps_text(const std::string& media_type, const std::string& format,
+  std::optional<int> width, std::optional<int> height, std::optional<int> fps)
 {
   std::string caps = media_type;
   if (!format.empty()) {
@@ -74,14 +68,11 @@ std::optional<int> positive_dimension(int value)
 
 std::string normalize_format_token(std::string value)
 {
-  value.erase(
-    std::remove_if(value.begin(), value.end(), [](unsigned char ch) {
-      return std::isspace(ch) != 0 || ch == '-' || ch == '_';
-    }),
+  value.erase(std::remove_if(value.begin(), value.end(),
+                [](unsigned char ch) { return std::isspace(ch) != 0 || ch == '-' || ch == '_'; }),
     value.end());
-  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-    return static_cast<char>(std::tolower(ch));
-  });
+  std::transform(value.begin(), value.end(), value.begin(),
+    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
   return value;
 }
 
@@ -99,8 +90,7 @@ int even_dimension(int value)
 
 }  // namespace
 
-std::optional<std::pair<int, int>> resolve_pre_mux_resize(
-  const DeepStreamRuntime::Config & config)
+std::optional<std::pair<int, int>> resolve_pre_mux_resize(const DeepStreamRuntime::Config& config)
 {
   if (!config.pre_mux_resize) {
     return std::nullopt;
@@ -115,32 +105,29 @@ std::optional<std::pair<int, int>> resolve_pre_mux_resize(
   int box_width = config.pre_mux_width > 0 ? config.pre_mux_width : config.imgsz_width;
   int box_height = config.pre_mux_height > 0 ? config.pre_mux_height : config.imgsz_height;
   if (config.pre_mux_width > 0 && config.pre_mux_height <= 0) {
-    box_height = static_cast<int>(
-      std::lround(static_cast<double>(source_height) * box_width / source_width));
+    box_height =
+      static_cast<int>(std::lround(static_cast<double>(source_height) * box_width / source_width));
   } else if (config.pre_mux_height > 0 && config.pre_mux_width <= 0) {
-    box_width = static_cast<int>(
-      std::lround(static_cast<double>(source_width) * box_height / source_height));
+    box_width =
+      static_cast<int>(std::lround(static_cast<double>(source_width) * box_height / source_height));
   }
 
   box_width = even_dimension(box_width);
   box_height = even_dimension(box_height);
   const double scale = std::min(
-    static_cast<double>(box_width) / source_width,
-    static_cast<double>(box_height) / source_height);
+    static_cast<double>(box_width) / source_width, static_cast<double>(box_height) / source_height);
   if (scale <= 0.0) {
     return std::nullopt;
   }
 
-  const int width = std::min(
-    box_width,
-    even_dimension(static_cast<int>(std::lround(source_width * scale))));
-  const int height = std::min(
-    box_height,
-    even_dimension(static_cast<int>(std::lround(source_height * scale))));
+  const int width =
+    std::min(box_width, even_dimension(static_cast<int>(std::lround(source_width * scale))));
+  const int height =
+    std::min(box_height, even_dimension(static_cast<int>(std::lround(source_height * scale))));
   return std::make_pair(width, height);
 }
 
-SourceFormatSpec resolve_source_format(const std::string & value)
+SourceFormatSpec resolve_source_format(const std::string& value)
 {
   const auto normalized = normalize_format_token(value);
   if (normalized == "bayerrggb8" || normalized == "rggb" || normalized == "bayerrg8") {
@@ -169,8 +156,8 @@ SourceFormatSpec resolve_source_format(const std::string & value)
   }
 
   throw std::runtime_error(
-    "Unsupported Basler source pixel format '" + value +
-    "'. Use bayer_rggb8, bayer_bggr8, bayer_grbg8, bayer_gbrg8, mono8, yuy2, bgr8, or rgb8.");
+    "Unsupported Basler source pixel format '" + value
+    + "'. Use bayer_rggb8, bayer_bggr8, bayer_grbg8, bayer_gbrg8, mono8, yuy2, bgr8, or rgb8.");
 }
 
 }  // namespace yolo_cpp::deepstream_helpers

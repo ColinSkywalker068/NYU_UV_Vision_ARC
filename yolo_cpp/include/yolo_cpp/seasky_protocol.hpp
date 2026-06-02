@@ -39,20 +39,20 @@ struct AttitudeFrame
 };
 
 /// Compute the Seasky CRC8 over header bytes.
-uint8_t compute_crc8(const std::vector<uint8_t> & data);
+uint8_t compute_crc8(const std::vector<uint8_t>& data);
 
 /// Compute the Seasky CRC16 over a complete frame prefix.
-uint16_t compute_crc16(const std::vector<uint8_t> & data);
+uint16_t compute_crc16(const std::vector<uint8_t>& data);
 
 /// Pack fire mode, target state, and target type into the protocol flags field.
 uint16_t build_vision_flags(int fire_mode, int target_state, int target_type);
 
 /// Build a complete Seasky frame with SOF, checksums, command id, flags, and floats.
 std::vector<uint8_t> build_seasky_frame(
-  uint16_t command_id, uint16_t flags_register, const std::vector<float> & float_payload);
+  uint16_t command_id, uint16_t flags_register, const std::vector<float>& float_payload);
 
 /// Parse all complete attitude frames from rx_buffer and leave incomplete bytes buffered.
-std::vector<AttitudeFrame> parse_attitude_frames(std::vector<uint8_t> & rx_buffer);
+std::vector<AttitudeFrame> parse_attitude_frames(std::vector<uint8_t>& rx_buffer);
 
 }  // namespace yolo_cpp
 

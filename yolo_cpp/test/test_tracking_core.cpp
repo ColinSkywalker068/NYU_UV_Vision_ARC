@@ -1,21 +1,17 @@
-#include "yolo_cpp/tracker.hpp"
-
 #include <gtest/gtest.h>
+
+#include "yolo_cpp/tracker.hpp"
 
 namespace
 {
 
-yolo_cpp::TrackObservation make_detection(
-  float center_x, float center_y, float confidence, bool is_enemy = true,
-  int image_width = 640, int image_height = 480)
+yolo_cpp::TrackObservation make_detection(float center_x, float center_y, float confidence,
+  bool is_enemy = true, int image_width = 640, int image_height = 480)
 {
   yolo_cpp::TrackObservation observation;
   observation.center = cv::Point2f(center_x, center_y);
-  observation.bbox = cv::Rect(
-    static_cast<int>(center_x - 20.0F),
-    static_cast<int>(center_y - 10.0F),
-    40,
-    20);
+  observation.bbox =
+    cv::Rect(static_cast<int>(center_x - 20.0F), static_cast<int>(center_y - 10.0F), 40, 20);
   observation.confidence = confidence;
   observation.class_id = 0;
   observation.is_enemy = is_enemy;
@@ -103,20 +99,17 @@ TEST(TrackManagerTest, RetainsLockedTargetUntilChallengerClearlyWins)
   yolo_cpp::TrackManager manager(config);
 
   auto result = manager.update(
-    {make_detection(120.0F, 220.0F, 0.70F), make_detection(310.0F, 220.0F, 0.60F)},
-    1.0 / 60.0);
+    {make_detection(120.0F, 220.0F, 0.70F), make_detection(310.0F, 220.0F, 0.60F)}, 1.0 / 60.0);
   ASSERT_EQ(result.tracks.size(), 2U);
   const int initially_selected = result.selected_target->track_id;
 
   result = manager.update(
-    {make_detection(125.0F, 220.0F, 0.72F), make_detection(305.0F, 220.0F, 0.65F)},
-    1.0 / 60.0);
+    {make_detection(125.0F, 220.0F, 0.72F), make_detection(305.0F, 220.0F, 0.65F)}, 1.0 / 60.0);
   ASSERT_TRUE(result.selected_target.has_value());
   EXPECT_EQ(result.selected_target->track_id, initially_selected);
 
   result = manager.update(
-    {make_detection(130.0F, 220.0F, 0.70F), make_detection(300.0F, 220.0F, 0.80F)},
-    1.0 / 60.0);
+    {make_detection(130.0F, 220.0F, 0.70F), make_detection(300.0F, 220.0F, 0.80F)}, 1.0 / 60.0);
   ASSERT_TRUE(result.selected_target.has_value());
   EXPECT_NE(result.selected_target->track_id, initially_selected);
 }
@@ -126,13 +119,11 @@ TEST(TrackManagerTest, MaintainsSeparateTracksForTwoTargets)
   yolo_cpp::TrackManager manager;
 
   auto result = manager.update(
-    {make_detection(150.0F, 140.0F, 0.80F), make_detection(420.0F, 140.0F, 0.78F)},
-    1.0 / 60.0);
+    {make_detection(150.0F, 140.0F, 0.80F), make_detection(420.0F, 140.0F, 0.78F)}, 1.0 / 60.0);
   ASSERT_EQ(result.tracks.size(), 2U);
 
   result = manager.update(
-    {make_detection(165.0F, 140.0F, 0.82F), make_detection(405.0F, 140.0F, 0.79F)},
-    1.0 / 60.0);
+    {make_detection(165.0F, 140.0F, 0.82F), make_detection(405.0F, 140.0F, 0.79F)}, 1.0 / 60.0);
   ASSERT_EQ(result.tracks.size(), 2U);
   EXPECT_NE(result.tracks[0].track_id, result.tracks[1].track_id);
   EXPECT_EQ(result.tracks[0].state, yolo_cpp::TrackState::kTracking);
@@ -146,21 +137,18 @@ TEST(TrackManagerTest, Uses3DGateWhenPoseIsAvailable)
   yolo_cpp::TrackManager manager(config);
 
   auto result = manager.update(
-    {make_detection_3d(100.0F, 120.0F, 0.8F, cv::Point3d(0.0, 0.0, 2.0))},
-    1.0 / 60.0);
+    {make_detection_3d(100.0F, 120.0F, 0.8F, cv::Point3d(0.0, 0.0, 2.0))}, 1.0 / 60.0);
   ASSERT_EQ(result.tracks.size(), 1U);
   const int first_track = result.tracks.front().track_id;
   EXPECT_TRUE(result.tracks.front().has_pose);
 
   result = manager.update(
-    {make_detection_3d(102.0F, 121.0F, 0.82F, cv::Point3d(0.02, 0.0, 2.0))},
-    1.0 / 60.0);
+    {make_detection_3d(102.0F, 121.0F, 0.82F, cv::Point3d(0.02, 0.0, 2.0))}, 1.0 / 60.0);
   ASSERT_EQ(result.tracks.size(), 1U);
   EXPECT_EQ(result.tracks.front().track_id, first_track);
   EXPECT_TRUE(result.tracks.front().has_velocity);
 
   result = manager.update(
-    {make_detection_3d(104.0F, 122.0F, 0.9F, cv::Point3d(1.0, 0.0, 2.0))},
-    1.0 / 60.0);
+    {make_detection_3d(104.0F, 122.0F, 0.9F, cv::Point3d(1.0, 0.0, 2.0))}, 1.0 / 60.0);
   ASSERT_EQ(result.tracks.size(), 2U);
 }
