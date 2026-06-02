@@ -58,7 +58,10 @@ private:
     const std_msgs::msg::Header & header, const geometry_msgs::msg::Point & point,
     geometry_msgs::msg::Point & transformed);
   /// Update the position/velocity filter with a measured target point.
-  void update_filter(int track_id, const rclcpp::Time & stamp, const geometry_msgs::msg::Point & measurement);
+  void update_filter(
+    int track_id,
+    const rclcpp::Time & stamp,
+    const geometry_msgs::msg::Point & measurement);
 
   /// Advance filter state when the selected target is coasting.
   void predict_without_measurement(const rclcpp::Time & stamp);

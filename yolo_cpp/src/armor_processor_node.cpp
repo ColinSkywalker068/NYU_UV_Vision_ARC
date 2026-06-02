@@ -78,7 +78,10 @@ ArmorProcessorNode::ArmorProcessorNode(const rclcpp::NodeOptions & options)
     this->create_publisher<visualization_msgs::msg::MarkerArray>("processor/marker", 10);
 
   spin_.last_jump_time = this->get_clock()->now();
-  RCLCPP_INFO(this->get_logger(), "Initialized ArmorProcessorNode target_frame=%s", target_frame_.c_str());
+  RCLCPP_INFO(
+    this->get_logger(),
+    "Initialized ArmorProcessorNode target_frame=%s",
+    target_frame_.c_str());
 }
 
 void ArmorProcessorNode::handle_tracks(
@@ -265,7 +268,9 @@ void ArmorProcessorNode::apply_spin_observer(cv_auto_aim_interfaces::msg::Target
     yaw_diff = normalize_angle(current_yaw - spin_.last_yaw);
     if (std::abs(yaw_diff) > spin_max_jump_angle_) {
       ++spin_.jump_count;
-      if (spin_.jump_count > 1 && std::signbit(yaw_diff) == std::signbit(spin_.last_jump_yaw_diff)) {
+      const bool same_spin_direction =
+        std::signbit(yaw_diff) == std::signbit(spin_.last_jump_yaw_diff);
+      if (spin_.jump_count > 1 && same_spin_direction) {
         spin_.target_spinning = true;
         spin_.jump_period = std::max(1e-3, time_after_jump);
       }

@@ -3,16 +3,15 @@
 
 #include "yolo_cpp/perception_node.hpp"
 
+#include "vision_node_helpers.hpp"
+
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
-#include <sensor_msgs/image_encodings.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <cstring>
-#include <ctime>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -38,81 +37,6 @@ constexpr double kPi = 3.14159265358979323846;
 constexpr int kPreviewMaxWidth = 1280;
 constexpr int kPreviewMaxHeight = 720;
 constexpr char kVisionLogDirName[] = "vision_logs";
-
-/// Return local wall-clock time formatted for human-readable runtime logs.
-std::string timestamp_now_iso8601_ms()
-{
-  const auto now = std::chrono::system_clock::now();
-  const auto seconds = std::chrono::time_point_cast<std::chrono::seconds>(now);
-  const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
-    now - seconds).count();
-  const std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-  std::tm local_tm{};
-#ifdef _WIN32
-  localtime_s(&local_tm, &now_c);
-#else
-  localtime_r(&now_c, &local_tm);
-#endif
-
-  std::ostringstream out;
-  out << std::put_time(&local_tm, "%Y-%m-%dT%H:%M:%S")
-      << '.' << std::setw(3) << std::setfill('0') << milliseconds;
-  return out.str();
-}
-
-/// Return compact local wall-clock time suitable for log file names.
-std::string timestamp_now_compact()
-{
-  const auto now = std::chrono::system_clock::now();
-  const std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-  std::tm local_tm{};
-#ifdef _WIN32
-  localtime_s(&local_tm, &now_c);
-#else
-  localtime_r(&now_c, &local_tm);
-#endif
-
-  std::ostringstream out;
-  out << std::put_time(&local_tm, "%Y%m%d_%H%M%S");
-  return out.str();
-}
-
-/// Copy an internal BGR frame packet into a ROS Image message.
-sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
-  const FramePacket & packet, const rclcpp::Time & stamp)
-{
-  if (packet.empty()) {
-    return nullptr;
-  }
-
-  auto msg = std::make_unique<sensor_msgs::msg::Image>();
-  msg->header.stamp = stamp;
-  msg->header.frame_id = packet.source_id;
-  msg->height = static_cast<uint32_t>(packet.frame.rows);
-  msg->width = static_cast<uint32_t>(packet.frame.cols);
-  msg->encoding = sensor_msgs::image_encodings::BGR8;
-  msg->is_bigendian = false;
-  msg->step = static_cast<sensor_msgs::msg::Image::_step_type>(packet.frame.step);
-  const std::size_t byte_count = packet.frame.total() * packet.frame.elemSize();
-  msg->data.resize(byte_count);
-  std::memcpy(msg->data.data(), packet.frame.data, byte_count);
-  return msg;
-}
-
-cv::Rect scale_rect_to_preview(
-  const cv::Rect & rect,
-  double scale_x,
-  double scale_y,
-  const cv::Rect & image_rect)
-{
-  const int x = static_cast<int>(std::lround(static_cast<double>(rect.x) * scale_x));
-  const int y = static_cast<int>(std::lround(static_cast<double>(rect.y) * scale_y));
-  const int width = std::max(
-    1, static_cast<int>(std::lround(static_cast<double>(rect.width) * scale_x)));
-  const int height = std::max(
-    1, static_cast<int>(std::lround(static_cast<double>(rect.height) * scale_y)));
-  return cv::Rect(x, y, width, height) & image_rect;
-}
 
 }  // namespace
 
@@ -206,7 +130,7 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
 
   runtime_log_path_ =
     (std::filesystem::path(resolve_runtime_log_dir()) /
-    ("vision_runtime_" + timestamp_now_compact() + ".log")).string();
+    ("vision_runtime_" + vision_node_helpers::timestamp_now_compact() + ".log")).string();
   runtime_log_stream_.open(runtime_log_path_, std::ios::app);
   if (!runtime_log_stream_.is_open()) {
     RCLCPP_WARN(
@@ -245,19 +169,22 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
       }
       RCLCPP_WARN(
         this->get_logger(),
-        "DeepStream startup failed (%s). Falling back to native TensorRT because allow_native_tensorrt_fallback=true.",
+        "DeepStream startup failed (%s). Falling back to native TensorRT because "
+        "allow_native_tensorrt_fallback=true.",
         exc.what());
       detector_backend_kind_ = "native_tensorrt";
       initialize_native_pipeline();
-    }
-    catch (...) {
+    } catch (...) {
       if (!allow_native_tensorrt_fallback_) {
         throw std::runtime_error(
-                "DeepStream startup failed with a non-std exception, likely from the Basler/Pylon GStreamer source");
+          "DeepStream startup failed with a non-std exception, likely from the "
+          "Basler/Pylon GStreamer source");
       }
       RCLCPP_WARN(
         this->get_logger(),
-        "DeepStream startup failed with a non-std exception, likely from the Basler/Pylon GStreamer source. Falling back to native TensorRT because allow_native_tensorrt_fallback=true.");
+        "DeepStream startup failed with a non-std exception, likely from the "
+        "Basler/Pylon GStreamer source. Falling back to native TensorRT because "
+        "allow_native_tensorrt_fallback=true.");
       detector_backend_kind_ = "native_tensorrt";
       initialize_native_pipeline();
     }
@@ -426,7 +353,8 @@ void PerceptionNode::timer_callback()
 
 void PerceptionNode::handle_deepstream_result(DeepStreamRuntime::Result result)
 {
-  const FramePacket * packet = result.source_packet.has_value() ? &(*result.source_packet) : nullptr;
+  const FramePacket * packet =
+    result.source_packet.has_value() ? &(*result.source_packet) : nullptr;
   process_detection_cycle(result.batch, packet, result.timings, result.capture_ms);
 }
 
@@ -502,11 +430,16 @@ void PerceptionNode::process_detection_cycle(
 
   log_runtime_fps_once_per_second();
   if (detected_opponent.has_value() && detected_opponent->is_enemy) {
-    log_runtime_opponent_event(*detected_opponent, true, capture_ms + detector_timings.preprocess_ms +
-      detector_timings.upload_ms + detector_timings.inference_ms + detector_timings.download_ms +
-      detector_timings.parse_ms + std::chrono::duration<double, std::milli>(
-      tracking_done - tracking_start).count() +
-      std::chrono::duration<double, std::milli>(publish_done - publish_start).count());
+    const double detector_latency_ms =
+      detector_timings.preprocess_ms + detector_timings.upload_ms +
+      detector_timings.inference_ms + detector_timings.download_ms + detector_timings.parse_ms;
+    const double tracking_latency_ms =
+      std::chrono::duration<double, std::milli>(tracking_done - tracking_start).count();
+    const double publish_latency_ms =
+      std::chrono::duration<double, std::milli>(publish_done - publish_start).count();
+    const double total_latency_ms =
+      capture_ms + detector_latency_ms + tracking_latency_ms + publish_latency_ms;
+    log_runtime_opponent_event(*detected_opponent, true, total_latency_ms);
   }
 
   ++frame_count_;
@@ -532,7 +465,7 @@ void PerceptionNode::publish_debug_image(const FramePacket & packet)
   if (!debug_image_publisher_) {
     return;
   }
-  auto msg = frame_to_image_message(packet, this->now());
+  auto msg = vision_node_helpers::frame_to_image_message(packet, this->now());
   if (msg) {
     debug_image_publisher_->publish(std::move(msg));
   }
@@ -560,7 +493,8 @@ void PerceptionNode::render_preview(
         cv::Scalar(0, 255, 0) :
         cv::Scalar(0, 165, 255);
       const cv::Rect preview_rect =
-        scale_rect_to_preview(candidate.bbox_source, scale_x, scale_y, image_rect);
+        vision_node_helpers::scale_rect_to_preview(
+          candidate.bbox_source, scale_x, scale_y, image_rect);
       if (preview_rect.empty()) {
         continue;
       }
@@ -580,7 +514,8 @@ void PerceptionNode::render_preview(
 
     if (target.has_value()) {
       const cv::Rect target_rect =
-        scale_rect_to_preview(target->bbox_source, scale_x, scale_y, image_rect);
+        vision_node_helpers::scale_rect_to_preview(
+          target->bbox_source, scale_x, scale_y, image_rect);
       if (!target_rect.empty()) {
         cv::rectangle(preview, target_rect, cv::Scalar(0, 0, 255), 3);
       }
@@ -659,9 +594,12 @@ std::vector<Candidate> PerceptionNode::extract_candidates(
 
   std::sort(
     candidates.begin(), candidates.end(),
-    [](const Candidate & lhs, const Candidate & rhs) {return lhs.confidence > rhs.confidence;});
+    [](const Candidate & lhs, const Candidate & rhs) {
+      return lhs.confidence > rhs.confidence;
+    });
+  const int candidate_count = static_cast<int>(candidates.size());
   const auto check_count =
-    static_cast<std::size_t>(std::min<int>(max_hsv_candidates_, static_cast<int>(candidates.size())));
+    static_cast<std::size_t>(std::min<int>(max_hsv_candidates_, candidate_count));
 
   const auto color_start = std::chrono::steady_clock::now();
   for (std::size_t i = 0; i < candidates.size(); ++i) {
@@ -709,7 +647,8 @@ std::vector<Candidate> PerceptionNode::rank_candidates(std::vector<Candidate> ca
   return candidates;
 }
 
-std::optional<Candidate> PerceptionNode::select_target(const std::vector<Candidate> & candidates) const
+std::optional<Candidate> PerceptionNode::select_target(
+  const std::vector<Candidate> & candidates) const
 {
   for (const auto & candidate : candidates) {
     if (candidate.is_enemy) {
@@ -730,7 +669,8 @@ void PerceptionNode::publish_target(const Candidate & target, const LetterboxMet
   bbox_publisher_->publish(bbox_msg_);
   override_publisher_->publish(override_msg_);
 
-  auto [yaw, pitch] = calculate_angles(target.bbox_source, lb.src_w, lb.src_h, hfov_rad_, vfov_rad_);
+  auto [yaw, pitch] =
+    calculate_angles(target.bbox_source, lb.src_w, lb.src_h, hfov_rad_, vfov_rad_);
   angle_msg_.data = {yaw, pitch};
   angle_publisher_->publish(angle_msg_);
 
@@ -888,7 +828,8 @@ void PerceptionNode::write_runtime_log_line(const std::string & line)
   if (!runtime_log_stream_.is_open()) {
     return;
   }
-  runtime_log_stream_ << "ts=" << timestamp_now_iso8601_ms() << ' ' << line << '\n';
+  runtime_log_stream_ << "ts=" << vision_node_helpers::timestamp_now_iso8601_ms() << ' '
+                      << line << '\n';
   runtime_log_stream_.flush();
 }
 
@@ -901,7 +842,8 @@ void PerceptionNode::log_runtime_fps_once_per_second()
 {
   const auto now = std::chrono::steady_clock::now();
   if (have_last_runtime_fps_log_time_) {
-    const double elapsed_s = std::chrono::duration<double>(now - last_runtime_fps_log_time_).count();
+    const double elapsed_s =
+      std::chrono::duration<double>(now - last_runtime_fps_log_time_).count();
     if (elapsed_s < 1.0) {
       return;
     }

@@ -593,7 +593,8 @@ std::shared_ptr<CameraBackend> create_camera_backend(
     return std::make_shared<RealSenseBackend>(config);
 #else
     return std::make_shared<UnsupportedCameraBackend>(
-      "RealSense backend requested but librealsense2 headers/libs were not available at build time.",
+      "RealSense backend requested but librealsense2 headers/libs were not available "
+      "at build time.",
       "realsense");
 #endif
   }

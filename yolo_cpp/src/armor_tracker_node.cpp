@@ -157,7 +157,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
     "detector/armors", 10,
     std::bind(&ArmorTrackerNode::armors_callback, this, std::placeholders::_1));
   robot_id_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
-    "robot_id", 10, std::bind(&ArmorTrackerNode::id_listener_callback, this, std::placeholders::_1));
+    "robot_id",
+    10,
+    std::bind(&ArmorTrackerNode::id_listener_callback, this, std::placeholders::_1));
   attitude_flags_subscription_ = this->create_subscription<std_msgs::msg::Int32MultiArray>(
     "attitude_flags", 10,
     std::bind(&ArmorTrackerNode::handle_attitude_flags, this, std::placeholders::_1));

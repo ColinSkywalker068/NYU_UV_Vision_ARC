@@ -151,7 +151,8 @@ public:
 
     const std::size_t old_size = rx_buffer_.size();
     rx_buffer_.resize(old_size + static_cast<std::size_t>(available_bytes));
-    const auto bytes_read = ::read(fd_, rx_buffer_.data() + old_size, static_cast<std::size_t>(available_bytes));
+    const auto bytes_read =
+      ::read(fd_, rx_buffer_.data() + old_size, static_cast<std::size_t>(available_bytes));
     if (bytes_read <= 0) {
       rx_buffer_.resize(old_size);
       return {};
@@ -271,7 +272,9 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions & options
   }
 
   override_subscription_ = this->create_subscription<std_msgs::msg::Bool>(
-    "override", 10, std::bind(&STM32SerialBridgeNode::handle_override, this, std::placeholders::_1));
+    "override",
+    10,
+    std::bind(&STM32SerialBridgeNode::handle_override, this, std::placeholders::_1));
   suggest_fire_subscription_ = this->create_subscription<std_msgs::msg::Bool>(
     "suggest_fire", 10,
     std::bind(&STM32SerialBridgeNode::handle_suggest_fire, this, std::placeholders::_1));
@@ -342,9 +345,13 @@ void STM32SerialBridgeNode::handle_rx_poll()
     attitude_msg.data = {frame.yaw, frame.pitch, frame.roll};
     attitude_publisher_->publish(attitude_msg);
 
-    std_msgs::msg::Int32MultiArray flags_msg;
-    flags_msg.data = {
-      frame.enemy_color, frame.work_mode, frame.bullet_speed, frame.flags_register, frame.command_id};
+  std_msgs::msg::Int32MultiArray flags_msg;
+  flags_msg.data = {
+    frame.enemy_color,
+    frame.work_mode,
+    frame.bullet_speed,
+    frame.flags_register,
+    frame.command_id};
     attitude_flags_publisher_->publish(flags_msg);
     log_rx_event(
       frame.yaw, frame.pitch, frame.roll, frame.enemy_color, frame.work_mode, frame.bullet_speed,

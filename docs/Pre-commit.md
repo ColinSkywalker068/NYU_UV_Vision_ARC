@@ -74,6 +74,13 @@ git config --global user.email "youremail@example.com"
    pre-commit run --all-files
    ```
 
+   C++ formatting follows the repository `.clang-format` file and can also be checked
+   through ROS 2's ament formatter:
+
+   ```bash
+   ament_clang_format --config .clang-format yolo_cpp cv_auto_aim_interfaces
+   ```
+
 5. **Updating Hooks:**
 
    To update the hooks to the latest versions specified in the `.pre-commit-config.yaml` file, run:

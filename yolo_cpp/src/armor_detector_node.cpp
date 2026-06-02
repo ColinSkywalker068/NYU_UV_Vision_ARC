@@ -3,20 +3,19 @@
 
 #include "yolo_cpp/armor_detector_node.hpp"
 
+#include "vision_node_helpers.hpp"
+
 #include "cv_auto_aim_interfaces/msg/armor.hpp"
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
-#include <sensor_msgs/image_encodings.hpp>
 
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
-#include <cstring>
-#include <ctime>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -39,92 +38,6 @@ constexpr int kPreviewMaxHeight = 720;
 constexpr char kVisionLogDirName[] = "vision_logs";
 constexpr char kTargetFrameDirName[] = "pictures";
 constexpr double kPi = 3.14159265358979323846;
-
-/// Return local wall-clock time formatted for human-readable runtime logs.
-std::string timestamp_now_iso8601_ms()
-{
-  const auto now = std::chrono::system_clock::now();
-  const auto seconds = std::chrono::time_point_cast<std::chrono::seconds>(now);
-  const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
-    now - seconds).count();
-  const std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-  std::tm local_tm{};
-#ifdef _WIN32
-  localtime_s(&local_tm, &now_c);
-#else
-  localtime_r(&now_c, &local_tm);
-#endif
-
-  std::ostringstream out;
-  out << std::put_time(&local_tm, "%Y-%m-%dT%H:%M:%S")
-      << '.' << std::setw(3) << std::setfill('0') << milliseconds;
-  return out.str();
-}
-
-/// Return compact local wall-clock time suitable for log file names.
-std::string timestamp_now_compact()
-{
-  const auto now = std::chrono::system_clock::now();
-  const std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-  std::tm local_tm{};
-#ifdef _WIN32
-  localtime_s(&local_tm, &now_c);
-#else
-  localtime_r(&now_c, &local_tm);
-#endif
-
-  std::ostringstream out;
-  out << std::put_time(&local_tm, "%Y%m%d_%H%M%S");
-  return out.str();
-}
-
-/// Copy an internal BGR frame packet into a ROS Image message.
-sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
-  const FramePacket & packet, const rclcpp::Time & stamp)
-{
-  if (packet.empty()) {
-    return nullptr;
-  }
-
-  auto msg = std::make_unique<sensor_msgs::msg::Image>();
-  msg->header.stamp = stamp;
-  msg->header.frame_id = packet.source_id;
-  msg->height = static_cast<uint32_t>(packet.frame.rows);
-  msg->width = static_cast<uint32_t>(packet.frame.cols);
-  msg->encoding = sensor_msgs::image_encodings::BGR8;
-  msg->is_bigendian = false;
-  msg->step = static_cast<sensor_msgs::msg::Image::_step_type>(packet.frame.step);
-  const std::size_t byte_count = packet.frame.total() * packet.frame.elemSize();
-  msg->data.resize(byte_count);
-  std::memcpy(msg->data.data(), packet.frame.data, byte_count);
-  return msg;
-}
-
-double rect_iou_for_capture(const cv::Rect & lhs, const cv::Rect & rhs)
-{
-  const cv::Rect overlap = lhs & rhs;
-  if (overlap.empty()) {
-    return 0.0;
-  }
-  const double intersection = static_cast<double>(overlap.area());
-  const double union_area = static_cast<double>(lhs.area() + rhs.area()) - intersection;
-  return union_area > 0.0 ? intersection / union_area : 0.0;
-}
-
-cv::Rect scale_rect_to_preview(
-  const cv::Rect & rect,
-  double scale_x,
-  double scale_y,
-  const cv::Rect & image_rect)
-{
-  const int x = static_cast<int>(std::lround(static_cast<double>(rect.x) * scale_x));
-  const int y = static_cast<int>(std::lround(static_cast<double>(rect.y) * scale_y));
-  const int width = std::max(
-    1, static_cast<int>(std::lround(static_cast<double>(rect.width) * scale_x)));
-  const int height = std::max(
-    1, static_cast<int>(std::lround(static_cast<double>(rect.height) * scale_y)));
-  return cv::Rect(x, y, width, height) & image_rect;
-}
 
 }  // namespace
 
@@ -244,7 +157,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
 
   runtime_log_path_ =
     (std::filesystem::path(resolve_runtime_log_dir()) /
-    ("vision_runtime_" + timestamp_now_compact() + ".log")).string();
+    ("vision_runtime_" + vision_node_helpers::timestamp_now_compact() + ".log")).string();
   runtime_log_stream_.open(runtime_log_path_, std::ios::app);
   if (!runtime_log_stream_.is_open()) {
     RCLCPP_WARN(
@@ -259,7 +172,8 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
       target_frame_save_dir_ = resolve_target_frame_save_dir();
       target_frame_index_path_ =
         (std::filesystem::path(target_frame_save_dir_) /
-        ("target_frames_" + timestamp_now_compact() + ".csv")).string();
+         ("target_frames_" + vision_node_helpers::timestamp_now_compact() + ".csv"))
+          .string();
       target_frame_index_stream_.open(target_frame_index_path_, std::ios::app);
       if (!target_frame_index_stream_.is_open()) {
         RCLCPP_WARN(
@@ -291,12 +205,15 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   target_class_ = (target_color_ == "red") ? RED_CLASS : BLUE_CLASS;
   RCLCPP_INFO(
     this->get_logger(),
-    "Default enemy target_color=%s class_id=%d; STM attitude_flags or robot_id can override when available",
+    "Default enemy target_color=%s class_id=%d; STM attitude_flags or robot_id can "
+    "override when available",
     target_color_.c_str(),
     target_class_);
 
   robot_id_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
-    "robot_id", 10, std::bind(&ArmorDetectorNode::id_listener_callback, this, std::placeholders::_1));
+    "robot_id",
+    10,
+    std::bind(&ArmorDetectorNode::id_listener_callback, this, std::placeholders::_1));
   attitude_flags_subscription_ = this->create_subscription<std_msgs::msg::Int32MultiArray>(
     "attitude_flags", 10,
     std::bind(&ArmorDetectorNode::handle_attitude_flags, this, std::placeholders::_1));
@@ -326,19 +243,22 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
       }
       RCLCPP_WARN(
         this->get_logger(),
-        "DeepStream startup failed (%s). Falling back to native TensorRT because allow_native_tensorrt_fallback=true.",
+        "DeepStream startup failed (%s). Falling back to native TensorRT because "
+        "allow_native_tensorrt_fallback=true.",
         exc.what());
       detector_backend_kind_ = "native_tensorrt";
       initialize_native_pipeline();
-    }
-    catch (...) {
+    } catch (...) {
       if (!allow_native_tensorrt_fallback_) {
         throw std::runtime_error(
-                "DeepStream startup failed with a non-std exception, likely from the Basler/Pylon GStreamer source");
+          "DeepStream startup failed with a non-std exception, likely from the "
+          "Basler/Pylon GStreamer source");
       }
       RCLCPP_WARN(
         this->get_logger(),
-        "DeepStream startup failed with a non-std exception, likely from the Basler/Pylon GStreamer source. Falling back to native TensorRT because allow_native_tensorrt_fallback=true.");
+        "DeepStream startup failed with a non-std exception, likely from the "
+        "Basler/Pylon GStreamer source. Falling back to native TensorRT because "
+        "allow_native_tensorrt_fallback=true.");
       detector_backend_kind_ = "native_tensorrt";
       initialize_native_pipeline();
     }
@@ -597,7 +517,8 @@ void ArmorDetectorNode::timer_callback()
 
 void ArmorDetectorNode::handle_deepstream_result(DeepStreamRuntime::Result result)
 {
-  const FramePacket * packet = result.source_packet.has_value() ? &(*result.source_packet) : nullptr;
+  const FramePacket * packet =
+    result.source_packet.has_value() ? &(*result.source_packet) : nullptr;
   process_detection_cycle(result.batch, packet, result.timings, result.capture_ms);
 }
 
@@ -775,7 +696,7 @@ void ArmorDetectorNode::publish_debug_image(const FramePacket & packet, const rc
   if (!debug_image_publisher_) {
     return;
   }
-  auto msg = frame_to_image_message(packet, stamp);
+  auto msg = vision_node_helpers::frame_to_image_message(packet, stamp);
   if (msg) {
     debug_image_publisher_->publish(std::move(msg));
   }
@@ -802,7 +723,8 @@ void ArmorDetectorNode::render_preview(
         cv::Scalar(0, 255, 0) :
         cv::Scalar(0, 165, 255);
       const cv::Rect preview_rect =
-        scale_rect_to_preview(candidate.bbox_source, scale_x, scale_y, image_rect);
+        vision_node_helpers::scale_rect_to_preview(
+          candidate.bbox_source, scale_x, scale_y, image_rect);
       if (preview_rect.empty()) {
         continue;
       }
@@ -825,7 +747,7 @@ void ArmorDetectorNode::render_preview(
       const int y1 = preview_target_bbox_xyxy_[1];
       const int x2 = preview_target_bbox_xyxy_[2];
       const int y2 = preview_target_bbox_xyxy_[3];
-      const cv::Rect target_rect = scale_rect_to_preview(
+      const cv::Rect target_rect = vision_node_helpers::scale_rect_to_preview(
         cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)),
         scale_x,
         scale_y,
@@ -917,7 +839,7 @@ void ArmorDetectorNode::save_target_frame_if_needed(
       double best_iou = 0.0;
       for (const auto & candidate : candidates) {
         const auto clipped = candidate.bbox_source & image_rect;
-        const double iou = rect_iou_for_capture(target_rect, clipped);
+        const double iou = vision_node_helpers::rect_iou(target_rect, clipped);
         if (iou > best_iou) {
           best_iou = iou;
           target_candidate = &candidate;
@@ -1034,7 +956,8 @@ std::vector<Candidate> ArmorDetectorNode::extract_candidates(
     if (detection.has_corners) {
       auto & candidate = candidates.back();
       for (std::size_t i = 0; i < detection.corners_model.size(); ++i) {
-        candidate.corners_source[i] = unletterbox_point(detection.corners_model[i], batch.letterbox);
+        candidate.corners_source[i] =
+          unletterbox_point(detection.corners_model[i], batch.letterbox);
       }
     }
   }
@@ -1052,9 +975,12 @@ std::vector<Candidate> ArmorDetectorNode::extract_candidates(
 
   std::sort(
     candidates.begin(), candidates.end(),
-    [](const Candidate & lhs, const Candidate & rhs) {return lhs.confidence > rhs.confidence;});
+    [](const Candidate & lhs, const Candidate & rhs) {
+      return lhs.confidence > rhs.confidence;
+    });
+  const int candidate_count = static_cast<int>(candidates.size());
   const auto check_count =
-    static_cast<std::size_t>(std::min<int>(max_hsv_candidates_, static_cast<int>(candidates.size())));
+    static_cast<std::size_t>(std::min<int>(max_hsv_candidates_, candidate_count));
 
   const auto color_start = std::chrono::steady_clock::now();
   for (std::size_t i = 0; i < candidates.size(); ++i) {
@@ -1150,7 +1076,8 @@ void ArmorDetectorNode::write_runtime_log_line(const std::string & line)
   if (!runtime_log_stream_.is_open()) {
     return;
   }
-  runtime_log_stream_ << "ts=" << timestamp_now_iso8601_ms() << ' ' << line << '\n';
+  runtime_log_stream_ << "ts=" << vision_node_helpers::timestamp_now_iso8601_ms() << ' '
+                      << line << '\n';
   runtime_log_stream_.flush();
 }
 

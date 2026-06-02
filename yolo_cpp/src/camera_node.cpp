@@ -30,7 +30,11 @@ CameraNode::CameraNode(const rclcpp::NodeOptions & options)
     std::chrono::duration<double>(1.0 / std::max(1.0, fps_)),
     std::bind(&CameraNode::timer_callback, this));
 
-  RCLCPP_INFO(this->get_logger(), "Initialized legacy %s camera node at %.2f FPS", camera_type_.c_str(), fps_);
+  RCLCPP_INFO(
+    this->get_logger(),
+    "Initialized legacy %s camera node at %.2f FPS",
+    camera_type_.c_str(),
+    fps_);
 }
 
 CameraNode::~CameraNode()
@@ -60,7 +64,10 @@ void CameraNode::publish_no_frame_warning()
 {
   const auto now = this->get_clock()->now();
   if ((now - last_warning_time_).seconds() >= 1.0) {
-    RCLCPP_WARN(this->get_logger(), "Failed to get frame from %s camera backend", camera_type_.c_str());
+    RCLCPP_WARN(
+      this->get_logger(),
+      "Failed to get frame from %s camera backend",
+      camera_type_.c_str());
     last_warning_time_ = now;
   }
 }

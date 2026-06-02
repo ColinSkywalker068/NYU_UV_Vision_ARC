@@ -468,7 +468,8 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger & logger)
   backend_name_ = "native_tensorrt";
   RCLCPP_INFO(
     logger,
-    "TensorRT engine ready: task=%s version=%s export_int8=%s export_nms=%s end2end=%s input_dtype=%d output_dtype=%d",
+    "TensorRT engine ready: task=%s version=%s export_int8=%s export_nms=%s "
+    "end2end=%s input_dtype=%d output_dtype=%d",
     task_.c_str(),
     engine_version_.empty() ? "unknown" : engine_version_.c_str(),
     int8_export_ ? "true" : "false",
@@ -504,7 +505,8 @@ DetectionBatch NativeTensorRTBackend::infer(
       logger, "TensorRT inference unavailable in this build; detector returning no detections.");
     warned_unavailable_ = true;
   }
-  batch.letterbox = make_letterbox_metadata(packet.width(), packet.height(), packet.width(), packet.height());
+  batch.letterbox =
+    make_letterbox_metadata(packet.width(), packet.height(), packet.width(), packet.height());
   return batch;
 #else
   if (!impl_) {

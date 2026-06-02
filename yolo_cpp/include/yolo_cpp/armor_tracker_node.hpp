@@ -58,7 +58,8 @@ private:
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::Armors>::SharedPtr armors_subscription_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr robot_id_subscription_;
   rclcpp::Subscription<std_msgs::msg::Int32MultiArray>::SharedPtr attitude_flags_subscription_;
-  rclcpp::Publisher<cv_auto_aim_interfaces::msg::TrackedArmors>::SharedPtr tracked_armors_publisher_;
+  rclcpp::Publisher<cv_auto_aim_interfaces::msg::TrackedArmors>::SharedPtr
+    tracked_armors_publisher_;
   rclcpp::Publisher<cv_auto_aim_interfaces::msg::Target>::SharedPtr target_publisher_;
 
   TrackManager track_manager_;

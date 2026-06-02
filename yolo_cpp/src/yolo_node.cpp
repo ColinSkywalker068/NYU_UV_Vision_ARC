@@ -67,7 +67,8 @@ YoloNode::YoloNode(const rclcpp::NodeOptions & options)
   show_ = this->get_parameter("show").as_bool();
   conf_ = static_cast<float>(this->get_parameter("conf").as_double());
   tracker_timeout_ = this->get_parameter("tracker_timeout").as_int();
-  lookahead_steps_ = static_cast<float>(this->get_parameter("prediction_lookahead_steps").as_double());
+  lookahead_steps_ =
+    static_cast<float>(this->get_parameter("prediction_lookahead_steps").as_double());
   inference_mode_ = this->get_parameter("inference_mode").as_string();
   persist_tracking_ = this->get_parameter("persist_tracking").as_bool();
   use_kalman_ = this->get_parameter("use_kalman").as_bool();
@@ -221,9 +222,12 @@ std::vector<Candidate> YoloNode::extract_candidates(
   } else if (enable_color_verification_ && !candidates.empty()) {
     std::sort(
       candidates.begin(), candidates.end(),
-      [](const Candidate & lhs, const Candidate & rhs) {return lhs.confidence > rhs.confidence;});
+      [](const Candidate & lhs, const Candidate & rhs) {
+        return lhs.confidence > rhs.confidence;
+      });
+    const int candidate_count = static_cast<int>(candidates.size());
     const auto check_count =
-      static_cast<std::size_t>(std::min<int>(max_hsv_candidates_, static_cast<int>(candidates.size())));
+      static_cast<std::size_t>(std::min<int>(max_hsv_candidates_, candidate_count));
     for (std::size_t i = 0; i < candidates.size(); ++i) {
       auto & candidate = candidates[i];
       if (i >= check_count) {
@@ -287,7 +291,8 @@ void YoloNode::publish_target(const Candidate & target, const LetterboxResult & 
   bbox_publisher_->publish(bbox_msg_);
   override_publisher_->publish(override_msg_);
 
-  auto [yaw, pitch] = calculate_angles(target.bbox_source, lb.src_w, lb.src_h, hfov_rad_, vfov_rad_);
+  auto [yaw, pitch] =
+    calculate_angles(target.bbox_source, lb.src_w, lb.src_h, hfov_rad_, vfov_rad_);
   angle_msg_.data = {yaw, pitch};
   angle_publisher_->publish(angle_msg_);
 
