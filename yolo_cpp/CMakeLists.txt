@@ -303,6 +303,15 @@ target_include_directories(stm32_serial_bridge PUBLIC
 )
 ament_target_dependencies(stm32_serial_bridge rclcpp std_msgs)
 
+add_executable(stm32_yaw_packet_test
+  test/stm32_yaw_packet_test.cpp
+  src/seasky_protocol.cpp
+)
+target_include_directories(stm32_yaw_packet_test PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
 install(
   DIRECTORY include/
   DESTINATION include
@@ -311,7 +320,7 @@ install(
 install(
   TARGETS yolo_cpp_components camera_node yolo_modular_node perception_node
     armor_detector_node armor_tracker_node armor_processor_node aim_solver_node fps_benchmark
-    stm32_serial_bridge
+    stm32_serial_bridge stm32_yaw_packet_test
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}

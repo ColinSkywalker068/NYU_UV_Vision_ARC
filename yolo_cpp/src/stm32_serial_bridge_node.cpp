@@ -228,7 +228,7 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
   this->declare_parameter<bool>("serial_verbose", false);
   this->declare_parameter<std::string>("runtime_log_dir", "");
   this->declare_parameter<int>("fire_mode", DEFAULT_FIRE_MODE);
-  this->declare_parameter<int>("hold_fire_mode", 0);
+  this->declare_parameter<int>("hold_fire_mode", FIRE_MODE_NO_FIRE);
   this->declare_parameter<int>("target_type", DEFAULT_TARGET_TYPE);
   this->declare_parameter<bool>("transmit_angles_in_degrees", false);
 
@@ -295,7 +295,9 @@ void STM32SerialBridgeNode::handle_override(const std_msgs::msg::Bool::SharedPtr
 {
   const bool prev_has_target = has_target_;
   has_target_ = msg->data;
-  target_state_ = has_target_ ? TARGET_STATE_CONVERGING : TARGET_STATE_NO_TARGET;
+  target_state_ = has_target_
+                    ? (suggest_fire_ ? TARGET_STATE_READY_TO_FIRE : TARGET_STATE_CONVERGING)
+                    : TARGET_STATE_NO_TARGET;
   if (has_target_ && !prev_has_target) {
     maybe_send();
   }
@@ -304,6 +306,12 @@ void STM32SerialBridgeNode::handle_override(const std_msgs::msg::Bool::SharedPtr
 void STM32SerialBridgeNode::handle_suggest_fire(const std_msgs::msg::Bool::SharedPtr msg)
 {
   suggest_fire_ = msg->data;
+  target_state_ = has_target_
+                    ? (suggest_fire_ ? TARGET_STATE_READY_TO_FIRE : TARGET_STATE_CONVERGING)
+                    : TARGET_STATE_NO_TARGET;
+  if (has_target_) {
+    maybe_send();
+  }
 }
 
 void STM32SerialBridgeNode::handle_angles(const std_msgs::msg::Float32MultiArray::SharedPtr msg)
@@ -344,7 +352,10 @@ void STM32SerialBridgeNode::maybe_send()
   }
   const float yaw_tx = transmit_angles_in_degrees_ ? latest_yaw_ * kRadToDeg : latest_yaw_;
   const float pitch_tx = transmit_angles_in_degrees_ ? latest_pitch_ * kRadToDeg : latest_pitch_;
-  const int fire_mode = suggest_fire_ ? fire_mode_ : hold_fire_mode_;
+  target_state_ = has_target_
+                    ? (suggest_fire_ ? TARGET_STATE_READY_TO_FIRE : TARGET_STATE_CONVERGING)
+                    : TARGET_STATE_NO_TARGET;
+  const int fire_mode = has_target_ ? fire_mode_ : hold_fire_mode_;
   const bool success =
     transport_->send_vision_data(pitch_tx, yaw_tx, fire_mode, target_state_, target_type_);
   log_tx_event(yaw_tx, pitch_tx, success, fire_mode);

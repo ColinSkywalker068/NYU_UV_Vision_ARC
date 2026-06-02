@@ -12,19 +12,21 @@ namespace yolo_cpp
 constexpr uint8_t SEASKY_SOF = 0xA5;
 constexpr uint16_t SEASKY_COMMAND_VISION_RECV = 0x0001;
 constexpr uint16_t SEASKY_COMMAND_ATTITUDE_SEND = 0x0002;
+constexpr int FIRE_MODE_NO_FIRE = 0;
 constexpr int DEFAULT_FIRE_MODE = 2;
 constexpr int DEFAULT_TARGET_TYPE = 0;
 constexpr int TARGET_STATE_NO_TARGET = 0;
 constexpr int TARGET_STATE_CONVERGING = 1;
+constexpr int TARGET_STATE_READY_TO_FIRE = 2;
 constexpr double DEFAULT_RX_POLL_PERIOD_SECONDS = 0.01;
 
 struct AttitudeFrame
 {
-  /// Controller-reported yaw in radians.
+  /// Controller-reported yaw converted to radians for ROS consumers.
   float yaw{0.0F};
-  /// Controller-reported pitch in radians.
+  /// Controller-reported pitch converted to radians for ROS consumers.
   float pitch{0.0F};
-  /// Controller-reported roll in radians.
+  /// Controller-reported roll converted to radians for ROS consumers.
   float roll{0.0F};
   /// Enemy color code forwarded by the controller.
   int enemy_color{0};
