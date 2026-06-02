@@ -80,7 +80,6 @@
 | `colcon test` | Runs ROS package tests when available. | `colcon test --packages-select yolo_cpp` |
 | GoogleTest via `ament_cmake_gtest` | Tests detection postprocess and tracking core. | [yolo_cpp/test](../../yolo_cpp/test/test_tracking_core.cpp) |
 | pre-commit | Python formatting and general checks. | [.pre-commit-config.yaml](../../.pre-commit-config.yaml) |
-| Commitizen | Conventional commit helper. | [package.json](../../package.json) |
 
 ## Container Stack
 
