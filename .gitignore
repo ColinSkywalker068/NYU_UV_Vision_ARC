@@ -147,5 +147,6 @@ dmypy.json
 .ruff_cache
 .git*
 !.gitmodules
+!Docker/pylon/.gitkeep
 .cursor
 graphify-out/

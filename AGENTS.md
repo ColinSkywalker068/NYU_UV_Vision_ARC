@@ -112,10 +112,11 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 | `cv_auto_aim_interfaces/msg/` | Custom ROS 2 messages for detections, tracks, targets, spin state, and aim solutions. |
 | `Docker/` and `services/` | Container images, compose config, and helper scripts. |
 | `legacy/models/` | Stale or experimental model variants and archived export utilities. |
+| `legacy/yolov8_ros/` | Archived Python ROS 2 YOLOv8 package from the former main branch. |
 | `legacy/cpp/` | Archived C++ reference nodes removed from the active package build. |
 | `legacy/prototypes/mac/` | Archived macOS/CoreML prototype tooling. |
 | `legacy/docker/` | Retired Dockerfiles, compose files, and VIAM-era container helpers. |
-| `legacy/docs/setup/`, `legacy/envs/`, `legacy/nav/`, and `legacy/scripts/` | Historical setup notes, conda environments, navigation notes, and root helper scripts. |
+| `legacy/docs/setup/`, `legacy/docs/yolov8_node/`, `legacy/envs/`, `legacy/nav/`, and `legacy/scripts/` | Historical setup notes, archived YOLOv8 Python docs, conda environments, navigation notes, and root helper scripts. |
 
 ## Maintenance
 

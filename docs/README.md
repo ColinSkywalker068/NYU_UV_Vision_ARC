@@ -19,7 +19,7 @@
 | Launch and config | [../yolo_cpp/docs/launch-and-config.md](../yolo_cpp/docs/launch-and-config.md), [../CPP_CONTAINER_RUNBOOK.md](../CPP_CONTAINER_RUNBOOK.md), [../Docker/README.md](../Docker/README.md) | Launch choice, container bring-up, camera backends, and inference runtime. |
 | Standards | [documentation_standards.md](documentation_standards.md), [principles.md](principles.md), [Pre-commit.md](Pre-commit.md) | Documentation rules, development principles, and pre-commit setup. |
 | Roadmaps and next steps | [RM_AUTO_AIM_PARITY_NEXT_STEPS.md](RM_AUTO_AIM_PARITY_NEXT_STEPS.md), [SPIN_AND_ARMOR_OFFSET_NEXT_STEPS.md](SPIN_AND_ARMOR_OFFSET_NEXT_STEPS.md) | Current planning notes for runtime parity and aiming behavior. |
-| Legacy archive | [../legacy/docs/Pipeline/Pipeline.md](../legacy/docs/Pipeline/Pipeline.md), [../legacy/docs/setup](../legacy/docs/setup), [../legacy/prototypes/mac](../legacy/prototypes/mac), [../legacy/docker](../legacy/docker), [../legacy/cpp](../legacy/cpp) | Historical pipeline docs, old setup notes, prototypes, retired containers, archived C++ references, and stale model variants. |
+| Legacy archive | [../legacy/yolov8_ros](../legacy/yolov8_ros), [../legacy/docs/yolov8_node](../legacy/docs/yolov8_node), [../legacy/docs/Pipeline/Pipeline.md](../legacy/docs/Pipeline/Pipeline.md), [../legacy/docs/setup](../legacy/docs/setup), [../legacy/prototypes/mac](../legacy/prototypes/mac), [../legacy/docker](../legacy/docker), [../legacy/cpp](../legacy/cpp) | Archived Python YOLOv8 ROS package, historical pipeline docs, old setup notes, prototypes, retired containers, archived C++ references, and stale model variants. |
 
 ## Agent Entry
 
@@ -46,7 +46,7 @@ The repository documentation is split by audience and stability. Root docs ident
 | `yolo_cpp/docs/` | Active C++ runtime architecture, message flow, nodes, launches, and package development notes. | Legacy Python training details. |
 | `docs/` | Current project docs, planning notes, standards, principles, and documentation governance. | Source-level ownership of ROS nodes; historical setup archives. |
 | `Docker/` | Active container images, compose defaults, and Docker-specific run notes. | ROS message or topic contracts; retired Docker files. |
-| `legacy/` | Historical Python tools, archived C++ references, prototype scripts, training utilities, stale model variants, retired Docker files, archived setup notes, and old navigation docs. | Current active runtime guidance unless a task explicitly targets legacy behavior. |
+| `legacy/` | Historical Python tools, archived Python YOLOv8 ROS package, archived C++ references, prototype scripts, training utilities, stale model variants, retired Docker files, archived setup notes, and old navigation docs. | Current active runtime guidance unless a task explicitly targets legacy behavior. |
 
 ## General Documentation Standards
 

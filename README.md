@@ -64,4 +64,4 @@ Override it with `CV_STM_MODEL_PATH` or a launch `model_path:=...` argument.
 
 ## Legacy Archive
 
-Historical Python tooling, Mac/CoreML prototypes, old setup notes, stale model variants, and retired Docker files are archived under `legacy/`. Treat them as reference material unless a task explicitly targets legacy behavior.
+Historical Python tooling, including the former `yolov8_ros/` package, Mac/CoreML prototypes, old setup notes, stale model variants, and retired Docker files are archived under `legacy/`. Treat them as reference material unless a task explicitly targets legacy behavior.
