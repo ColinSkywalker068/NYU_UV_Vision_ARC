@@ -1,18 +1,17 @@
 #ifndef YOLO_CPP__AIM_SOLVER_NODE_HPP_
 #define YOLO_CPP__AIM_SOLVER_NODE_HPP_
 
-#include "cv_auto_aim_interfaces/msg/aim_solution.hpp"
-#include "cv_auto_aim_interfaces/msg/target.hpp"
-#include "yolo_cpp/visibility_control.hpp"
-
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/int32_multi_array.hpp>
-
 #include <string>
 #include <utility>
+
+#include "cv_auto_aim_interfaces/msg/aim_solution.hpp"
+#include "cv_auto_aim_interfaces/msg/target.hpp"
+#include "yolo_cpp/visibility_control.hpp"
 
 namespace yolo_cpp
 {
@@ -22,7 +21,7 @@ class YOLO_CPP_PUBLIC AimSolverNode : public rclcpp::Node
 {
 public:
   /// Create solver subscriptions and command publishers.
-  explicit AimSolverNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+  explicit AimSolverNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
   ~AimSolverNode() override = default;
 
 private:
@@ -40,7 +39,7 @@ private:
 
   /// Compute yaw/pitch from target pose, velocity, latency, and ballistic settings.
   std::pair<float, float> solve_3d_angles(
-    const cv_auto_aim_interfaces::msg::Target & target, float * flight_time, float * range) const;
+    const cv_auto_aim_interfaces::msg::Target& target, float* flight_time, float* range) const;
 
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::Target>::SharedPtr target_subscription_;
   rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr attitude_subscription_;

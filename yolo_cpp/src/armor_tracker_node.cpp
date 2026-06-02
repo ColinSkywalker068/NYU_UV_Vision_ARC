@@ -3,19 +3,18 @@
 
 #include "yolo_cpp/armor_tracker_node.hpp"
 
-#include "cv_auto_aim_interfaces/msg/armor.hpp"
-#include "cv_auto_aim_interfaces/msg/tracked_armor.hpp"
-#include "yolo_cpp/utils.hpp"
-
-#include <rclcpp_components/register_node_macro.hpp>
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <utility>
 #include <vector>
+
+#include "cv_auto_aim_interfaces/msg/armor.hpp"
+#include "cv_auto_aim_interfaces/msg/tracked_armor.hpp"
+#include "yolo_cpp/utils.hpp"
 
 namespace yolo_cpp
 {
@@ -38,14 +37,11 @@ std::uint8_t to_msg_state(TrackState state)
 }
 
 /// Convert a tracker observation back to an Armor message for tracked outputs.
-cv_auto_aim_interfaces::msg::Armor make_armor_message(const TrackObservation & observation)
+cv_auto_aim_interfaces::msg::Armor make_armor_message(const TrackObservation& observation)
 {
   cv_auto_aim_interfaces::msg::Armor armor;
-  armor.bbox_xyxy = {
-    observation.bbox.x,
-    observation.bbox.y,
-    observation.bbox.x + observation.bbox.width,
-    observation.bbox.y + observation.bbox.height};
+  armor.bbox_xyxy = {observation.bbox.x, observation.bbox.y,
+    observation.bbox.x + observation.bbox.width, observation.bbox.y + observation.bbox.height};
   armor.center_x = observation.center.x;
   armor.center_y = observation.center.y;
   armor.confidence = observation.confidence;
@@ -77,7 +73,7 @@ cv_auto_aim_interfaces::msg::Armor make_armor_message(const TrackObservation & o
 }
 
 /// Convert an Armor message into the normalized tracker observation type.
-TrackObservation make_track_observation(const cv_auto_aim_interfaces::msg::Armor & armor)
+TrackObservation make_track_observation(const cv_auto_aim_interfaces::msg::Armor& armor)
 {
   const int x1 = armor.bbox_xyxy[0];
   const int y1 = armor.bbox_xyxy[1];
@@ -106,9 +102,7 @@ TrackObservation make_track_observation(const cv_auto_aim_interfaces::msg::Armor
   observation.has_pose = armor.has_pose;
   if (armor.has_pose) {
     observation.position_camera = cv::Point3d(
-      armor.pose_camera.position.x,
-      armor.pose_camera.position.y,
-      armor.pose_camera.position.z);
+      armor.pose_camera.position.x, armor.pose_camera.position.y, armor.pose_camera.position.z);
   }
   return observation;
 }
@@ -116,8 +110,8 @@ TrackObservation make_track_observation(const cv_auto_aim_interfaces::msg::Armor
 }  // namespace
 
 /// Declare tracker parameters and wire detector input to tracked output topics.
-ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
-: rclcpp::Node("armor_tracker_node", options)
+ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
+    : rclcpp::Node("armor_tracker_node", options)
 {
   this->declare_parameter<bool>("use_robot_id_targeting", false);
   this->declare_parameter<int>("enemy_color_red_value", 0);
@@ -134,8 +128,8 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   use_robot_id_targeting_ = this->get_parameter("use_robot_id_targeting").as_bool();
   enemy_color_red_value_ = this->get_parameter("enemy_color_red_value").as_int();
   enemy_color_blue_value_ = this->get_parameter("enemy_color_blue_value").as_int();
-  stage_log_interval_ = std::max(
-    1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
+  stage_log_interval_ =
+    std::max(1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
 
   TrackConfig config;
   config.track_min_hits = this->get_parameter("track_min_hits").as_int();
@@ -153,14 +147,14 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
     this->get_parameter("target_lock_hysteresis_frames").as_int();
   track_manager_.set_config(config);
 
-  armors_subscription_ = this->create_subscription<cv_auto_aim_interfaces::msg::Armors>(
-    "detector/armors", 10,
-    std::bind(&ArmorTrackerNode::armors_callback, this, std::placeholders::_1));
-  robot_id_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
-    "robot_id", 10, std::bind(&ArmorTrackerNode::id_listener_callback, this, std::placeholders::_1));
-  attitude_flags_subscription_ = this->create_subscription<std_msgs::msg::Int32MultiArray>(
-    "attitude_flags", 10,
-    std::bind(&ArmorTrackerNode::handle_attitude_flags, this, std::placeholders::_1));
+  armors_subscription_ =
+    this->create_subscription<cv_auto_aim_interfaces::msg::Armors>("detector/armors", 10,
+      std::bind(&ArmorTrackerNode::armors_callback, this, std::placeholders::_1));
+  robot_id_subscription_ = this->create_subscription<std_msgs::msg::Int32>("robot_id", 10,
+    std::bind(&ArmorTrackerNode::id_listener_callback, this, std::placeholders::_1));
+  attitude_flags_subscription_ =
+    this->create_subscription<std_msgs::msg::Int32MultiArray>("attitude_flags", 10,
+      std::bind(&ArmorTrackerNode::handle_attitude_flags, this, std::placeholders::_1));
   tracked_armors_publisher_ = this->create_publisher<cv_auto_aim_interfaces::msg::TrackedArmors>(
     "tracker/tracked_armors", 10);
   target_publisher_ =
@@ -190,7 +184,7 @@ void ArmorTrackerNode::armors_callback(const cv_auto_aim_interfaces::msg::Armors
 
   std::vector<TrackObservation> observations;
   observations.reserve(msg->armors.size());
-  for (const auto & armor : msg->armors) {
+  for (const auto& armor : msg->armors) {
     observations.push_back(make_track_observation(armor));
   }
 
@@ -203,10 +197,10 @@ void ArmorTrackerNode::armors_callback(const cv_auto_aim_interfaces::msg::Armors
   const auto publish_done = std::chrono::steady_clock::now();
 
   ++frame_count_;
-  stage_totals_.tracking_ms += std::chrono::duration<double, std::milli>(
-    tracking_done - tracking_start).count();
-  stage_totals_.publish_ms += std::chrono::duration<double, std::milli>(
-    publish_done - publish_start).count();
+  stage_totals_.tracking_ms +=
+    std::chrono::duration<double, std::milli>(tracking_done - tracking_start).count();
+  stage_totals_.publish_ms +=
+    std::chrono::duration<double, std::milli>(publish_done - publish_start).count();
 
   if (frame_count_ % stage_log_interval_ == 0) {
     log_stage_timing();
@@ -244,15 +238,14 @@ void ArmorTrackerNode::handle_attitude_flags(const std_msgs::msg::Int32MultiArra
 }
 
 void ArmorTrackerNode::publish_tracked_armors(
-  const cv_auto_aim_interfaces::msg::Armors & source_msg,
-  const TrackingFrameResult & result)
+  const cv_auto_aim_interfaces::msg::Armors& source_msg, const TrackingFrameResult& result)
 {
   cv_auto_aim_interfaces::msg::TrackedArmors msg;
   msg.header = source_msg.header;
   msg.source_id = source_msg.source_id;
   msg.selected_track_id = result.selected_track_id.value_or(-1);
   msg.tracks.reserve(result.tracks.size());
-  for (const auto & track : result.tracks) {
+  for (const auto& track : result.tracks) {
     cv_auto_aim_interfaces::msg::TrackedArmor tracked;
     tracked.armor = make_armor_message(track.observation);
     tracked.track_id = track.track_id;
@@ -284,8 +277,7 @@ void ArmorTrackerNode::publish_tracked_armors(
 }
 
 void ArmorTrackerNode::publish_target(
-  const cv_auto_aim_interfaces::msg::Armors & source_msg,
-  const std::optional<TrackSnapshot> & target)
+  const cv_auto_aim_interfaces::msg::Armors& source_msg, const std::optional<TrackSnapshot>& target)
 {
   cv_auto_aim_interfaces::msg::Target msg;
   msg.header = source_msg.header;
@@ -308,15 +300,13 @@ void ArmorTrackerNode::publish_target(
     return;
   }
 
-  const auto & snapshot = *target;
+  const auto& snapshot = *target;
   msg.has_target = true;
   msg.tracking = true;
   msg.suggest_fire = true;
   msg.is_coasting = snapshot.state == TrackState::kCoasting;
   msg.track_id = snapshot.track_id;
-  msg.bbox_xyxy = {
-    snapshot.observation.bbox.x,
-    snapshot.observation.bbox.y,
+  msg.bbox_xyxy = {snapshot.observation.bbox.x, snapshot.observation.bbox.y,
     snapshot.observation.bbox.x + snapshot.observation.bbox.width,
     snapshot.observation.bbox.y + snapshot.observation.bbox.height};
   msg.center_x = snapshot.observation.center.x;
@@ -338,9 +328,9 @@ void ArmorTrackerNode::publish_target(
     msg.pose.position.z = snapshot.observation.position_camera.z;
     msg.pose.orientation.w = 1.0;
     msg.range = static_cast<float>(std::sqrt(
-      (snapshot.observation.position_camera.x * snapshot.observation.position_camera.x) +
-      (snapshot.observation.position_camera.y * snapshot.observation.position_camera.y) +
-      (snapshot.observation.position_camera.z * snapshot.observation.position_camera.z)));
+      (snapshot.observation.position_camera.x * snapshot.observation.position_camera.x)
+      + (snapshot.observation.position_camera.y * snapshot.observation.position_camera.y)
+      + (snapshot.observation.position_camera.z * snapshot.observation.position_camera.z)));
   }
   msg.has_velocity = snapshot.has_velocity;
   if (snapshot.has_velocity) {
@@ -364,13 +354,9 @@ void ArmorTrackerNode::log_stage_timing()
   }
   last_stage_log_wall_time_ = now;
   have_last_stage_log_wall_time_ = true;
-  RCLCPP_INFO(
-    this->get_logger(),
+  RCLCPP_INFO(this->get_logger(),
     "Tracker timing mean over %d frames: fps=%.1f tracking=%.2fms publish=%.2fms",
-    stage_log_interval_,
-    avg_fps,
-    stage_totals_.tracking_ms / n,
-    stage_totals_.publish_ms / n);
+    stage_log_interval_, avg_fps, stage_totals_.tracking_ms / n, stage_totals_.publish_ms / n);
   stage_totals_ = StageTotals{};
 }
 

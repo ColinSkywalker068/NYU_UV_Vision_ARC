@@ -3,15 +3,14 @@
 
 #include "yolo_cpp/camera_backend.hpp"
 
-#include <opencv2/imgproc.hpp>
-#include <rclcpp/node.hpp>
-
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <memory>
+#include <opencv2/imgproc.hpp>
 #include <optional>
+#include <rclcpp/node.hpp>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -37,21 +36,29 @@ class UnsupportedCameraBackend : public CameraBackend
 {
 public:
   explicit UnsupportedCameraBackend(std::string reason, std::string source_id)
-  : reason_(std::move(reason)), source_id_(std::move(source_id)) {}
+      : reason_(std::move(reason)), source_id_(std::move(source_id))
+  {
+  }
 
   void initialize() override
   {
     throw std::runtime_error(reason_);
   }
 
-  bool capture(FramePacket &) override
+  bool capture(FramePacket&) override
   {
     return false;
   }
 
   void release() override {}
-  double actual_fps() const override {return 0.0;}
-  const std::string & source_id() const override {return source_id_;}
+  double actual_fps() const override
+  {
+    return 0.0;
+  }
+  const std::string& source_id() const override
+  {
+    return source_id_;
+  }
 
 private:
   std::string reason_;
@@ -60,7 +67,7 @@ private:
 
 #ifdef HAVE_LIBREALSENSE2
 /// Map a launch/config format name to a RealSense SDK pixel format.
-rs2_format format_by_name(const std::string & name)
+rs2_format format_by_name(const std::string& name)
 {
   if (name == "bgr8") {
     return RS2_FORMAT_BGR8;
@@ -75,10 +82,7 @@ rs2_format format_by_name(const std::string & name)
 class RealSenseBackend final : public CameraBackend
 {
 public:
-  explicit RealSenseBackend(const CameraConfig & config)
-  : config_(config)
-  {
-  }
+  explicit RealSenseBackend(const CameraConfig& config) : config_(config) {}
 
   void initialize() override
   {
@@ -105,7 +109,7 @@ public:
     converted_bgr_.create(stream_profile.height(), stream_profile.width(), CV_8UC3);
   }
 
-  bool capture(FramePacket & packet) override
+  bool capture(FramePacket& packet) override
   {
     rs2::frameset frames;
     if (config_.realsense_use_poll) {
@@ -123,16 +127,17 @@ public:
 
     const int width = color_frame.get_width();
     const int height = color_frame.get_height();
-    const auto * data = static_cast<const std::uint8_t *>(color_frame.get_data());
-    packet.capture_time_ns = static_cast<std::int64_t>(
-      std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now().time_since_epoch()).count());
+    const auto* data = static_cast<const std::uint8_t*>(color_frame.get_data());
+    packet.capture_time_ns =
+      static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch())
+          .count());
     packet.source_id = source_id_;
 
     if (stream_format_ == RS2_FORMAT_BGR8) {
       auto owner = std::make_shared<rs2::video_frame>(color_frame);
-      packet.frame = cv::Mat(
-        height, width, CV_8UC3, const_cast<std::uint8_t *>(data), cv::Mat::AUTO_STEP);
+      packet.frame =
+        cv::Mat(height, width, CV_8UC3, const_cast<std::uint8_t*>(data), cv::Mat::AUTO_STEP);
       packet.pixel_format = PixelFormat::kBgr8;
       packet.storage_kind = BackingStoreKind::kHost;
       packet.owner = owner;
@@ -140,12 +145,10 @@ public:
     }
 
     if (stream_format_ == RS2_FORMAT_RGB8) {
-      cv::Mat rgb(
-        height, width, CV_8UC3, const_cast<std::uint8_t *>(data), cv::Mat::AUTO_STEP);
+      cv::Mat rgb(height, width, CV_8UC3, const_cast<std::uint8_t*>(data), cv::Mat::AUTO_STEP);
       cv::cvtColor(rgb, converted_bgr_, cv::COLOR_RGB2BGR);
     } else {
-      cv::Mat yuyv(
-        height, width, CV_8UC2, const_cast<std::uint8_t *>(data), cv::Mat::AUTO_STEP);
+      cv::Mat yuyv(height, width, CV_8UC2, const_cast<std::uint8_t*>(data), cv::Mat::AUTO_STEP);
       cv::cvtColor(yuyv, converted_bgr_, cv::COLOR_YUV2BGR_YUY2);
     }
 
@@ -169,14 +172,14 @@ public:
     return actual_fps_;
   }
 
-  const std::string & source_id() const override
+  const std::string& source_id() const override
   {
     return source_id_;
   }
 
 private:
   /// Pick the highest usable color FPS and preferred format for the requested resolution.
-  void discover_best_stream(const rs2::context & ctx)
+  void discover_best_stream(const rs2::context& ctx)
   {
     static const std::vector<std::string> preferred_formats{"bgr8", "rgb8", "yuyv"};
     requested_width_ = config_.realsense_width;
@@ -187,19 +190,18 @@ private:
     int best_fps = -1;
     int best_rank = static_cast<int>(preferred_formats.size());
 
-    for (auto && device : ctx.query_devices()) {
-      for (auto && sensor : device.query_sensors()) {
+    for (auto&& device : ctx.query_devices()) {
+      for (auto&& sensor : device.query_sensors()) {
         if (!sensor.is<rs2::color_sensor>()) {
           continue;
         }
-        for (auto && profile : sensor.get_stream_profiles()) {
+        for (auto&& profile : sensor.get_stream_profiles()) {
           auto video = profile.as<rs2::video_stream_profile>();
           if (video.stream_type() != RS2_STREAM_COLOR) {
             continue;
           }
-          if (
-            video.width() != config_.realsense_width ||
-            video.height() != config_.realsense_height)
+          if (video.width() != config_.realsense_width
+              || video.height() != config_.realsense_height)
           {
             continue;
           }
@@ -228,7 +230,7 @@ private:
   void configure_sensor()
   {
     auto device = profile_.get_device();
-    for (auto && sensor : device.query_sensors()) {
+    for (auto&& sensor : device.query_sensors()) {
       if (!sensor.is<rs2::color_sensor>()) {
         continue;
       }
@@ -246,8 +248,7 @@ private:
       }
       if (sensor.supports(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE)) {
         sensor.set_option(
-          RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE,
-          config_.realsense_auto_white_balance ? 1.0F : 0.0F);
+          RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, config_.realsense_auto_white_balance ? 1.0F : 0.0F);
       }
       if (!config_.realsense_auto_white_balance && sensor.supports(RS2_OPTION_WHITE_BALANCE)) {
         sensor.set_option(
@@ -272,18 +273,15 @@ private:
 #ifdef HAVE_PYLON
 std::string normalize_basler_pixel_format(std::string value)
 {
-  value.erase(
-    std::remove_if(value.begin(), value.end(), [](unsigned char ch) {
-      return std::isspace(ch) != 0 || ch == '-' || ch == '_';
-    }),
+  value.erase(std::remove_if(value.begin(), value.end(),
+                [](unsigned char ch) { return std::isspace(ch) != 0 || ch == '-' || ch == '_'; }),
     value.end());
-  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-    return static_cast<char>(std::tolower(ch));
-  });
+  std::transform(value.begin(), value.end(), value.begin(),
+    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
   return value;
 }
 
-std::string genicam_pixel_format_for_config(const std::string & value)
+std::string genicam_pixel_format_for_config(const std::string& value)
 {
   const auto normalized = normalize_basler_pixel_format(value);
   if (normalized == "bayerrggb8" || normalized == "rggb" || normalized == "bayerrg8") {
@@ -317,8 +315,7 @@ std::string genicam_pixel_format_for_config(const std::string & value)
 class BaslerBackend final : public CameraBackend
 {
 public:
-  explicit BaslerBackend(const CameraConfig & config)
-  : config_(config)
+  explicit BaslerBackend(const CameraConfig& config) : config_(config)
   {
     Pylon::PylonInitialize();
   }
@@ -334,15 +331,15 @@ public:
     camera_.Attach(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
     camera_.Open();
     configure_camera();
-    actual_fps_ = read_resulting_fps(camera_.GetNodeMap()).value_or(
-      static_cast<double>(config_.basler_fps));
+    actual_fps_ =
+      read_resulting_fps(camera_.GetNodeMap()).value_or(static_cast<double>(config_.basler_fps));
     converter_.OutputPixelFormat = Pylon::PixelType_BGR8packed;
     converter_.OutputBitAlignment = Pylon::OutputBitAlignment_MsbAligned;
     camera_.StartGrabbing(
       Pylon::GrabStrategy_LatestImageOnly, Pylon::GrabLoop_ProvidedByInstantCamera);
   }
 
-  bool capture(FramePacket & packet) override
+  bool capture(FramePacket& packet) override
   {
     if (!camera_.IsGrabbing()) {
       return false;
@@ -356,16 +353,14 @@ public:
 
     auto image = std::make_shared<Pylon::CPylonImage>();
     converter_.Convert(*image, result);
-    packet.frame = cv::Mat(
-      static_cast<int>(result->GetHeight()),
-      static_cast<int>(result->GetWidth()),
-      CV_8UC3,
-      image->GetBuffer());
+    packet.frame = cv::Mat(static_cast<int>(result->GetHeight()),
+      static_cast<int>(result->GetWidth()), CV_8UC3, image->GetBuffer());
     packet.pixel_format = PixelFormat::kBgr8;
     packet.storage_kind = BackingStoreKind::kHost;
-    packet.capture_time_ns = static_cast<std::int64_t>(
-      std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now().time_since_epoch()).count());
+    packet.capture_time_ns =
+      static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch())
+          .count());
     packet.source_id = source_id_;
     packet.owner = image;
     if (config_.basler_flip) {
@@ -389,14 +384,14 @@ public:
     return actual_fps_;
   }
 
-  const std::string & source_id() const override
+  const std::string& source_id() const override
   {
     return source_id_;
   }
 
 private:
-  template<typename NodeT, typename ValueT>
-  void set_if_writable(GenApi::INodeMap & node_map, const char * name, const ValueT & value)
+  template <typename NodeT, typename ValueT>
+  void set_if_writable(GenApi::INodeMap& node_map, const char* name, const ValueT& value)
   {
     NodeT node(node_map.GetNode(name));
     if (node && GenApi::IsWritable(node)) {
@@ -404,7 +399,7 @@ private:
     }
   }
 
-  void set_enum_if_writable(GenApi::INodeMap & node_map, const char * name, const char * value)
+  void set_enum_if_writable(GenApi::INodeMap& node_map, const char* name, const char* value)
   {
     GenApi::CEnumerationPtr node(node_map.GetNode(name));
     if (!node || !GenApi::IsWritable(node)) {
@@ -416,7 +411,7 @@ private:
     }
   }
 
-  std::optional<double> read_float_if_readable(GenApi::INodeMap & node_map, const char * name) const
+  std::optional<double> read_float_if_readable(GenApi::INodeMap& node_map, const char* name) const
   {
     GenApi::CFloatPtr node(node_map.GetNode(name));
     if (node && GenApi::IsReadable(node)) {
@@ -428,7 +423,7 @@ private:
     return std::nullopt;
   }
 
-  std::optional<double> read_resulting_fps(GenApi::INodeMap & node_map) const
+  std::optional<double> read_resulting_fps(GenApi::INodeMap& node_map) const
   {
     if (auto fps = read_float_if_readable(node_map, "BslResultingAcquisitionFrameRate")) {
       return fps;
@@ -439,7 +434,7 @@ private:
     return read_float_if_readable(node_map, "ResultingFrameRateAbs");
   }
 
-  int64_t clamp_integer_node_value(const GenApi::CIntegerPtr & node, int requested) const
+  int64_t clamp_integer_node_value(const GenApi::CIntegerPtr& node, int requested) const
   {
     const int64_t min_value = node->GetMin();
     const int64_t max_value = node->GetMax();
@@ -453,7 +448,7 @@ private:
   }
 
   void set_integer_node_if_writable(
-    GenApi::INodeMap & node_map, const char * name, int requested) const
+    GenApi::INodeMap& node_map, const char* name, int requested) const
   {
     GenApi::CIntegerPtr node(node_map.GetNode(name));
     if (node && GenApi::IsWritable(node)) {
@@ -463,7 +458,7 @@ private:
 
   void configure_camera()
   {
-    auto & node_map = camera_.GetNodeMap();
+    auto& node_map = camera_.GetNodeMap();
     const auto pixel_format = genicam_pixel_format_for_config(config_.basler_pixel_format);
     set_enum_if_writable(node_map, "PixelFormat", pixel_format.c_str());
     set_if_writable<GenApi::CBooleanPtr>(
@@ -479,12 +474,10 @@ private:
     set_enum_if_writable(node_map, "GainSelector", "All");
     set_if_writable<GenApi::CFloatPtr>(node_map, "Gain", config_.basler_gain_db);
 
-    const int requested_width = config_.basler_use_full_sensor ?
-      config_.basler_source_width :
-      config_.imgsz_width;
-    const int requested_height = config_.basler_use_full_sensor ?
-      config_.basler_source_height :
-      config_.imgsz_height;
+    const int requested_width =
+      config_.basler_use_full_sensor ? config_.basler_source_width : config_.imgsz_width;
+    const int requested_height =
+      config_.basler_use_full_sensor ? config_.basler_source_height : config_.imgsz_height;
     set_integer_node_if_writable(node_map, "Width", requested_width);
     set_integer_node_if_writable(node_map, "Height", requested_height);
 
@@ -518,7 +511,7 @@ private:
 
 }  // namespace
 
-CameraConfig load_camera_config(rclcpp::Node & node)
+CameraConfig load_camera_config(rclcpp::Node& node)
 {
   CameraConfig config{};
   node.declare_parameter<std::string>("camera_type", config.camera_type);
@@ -540,12 +533,10 @@ CameraConfig load_camera_config(rclcpp::Node & node)
   node.declare_parameter<double>("realsense_exposure", config.realsense_exposure);
   node.declare_parameter<double>("realsense_gain", config.realsense_gain);
   node.declare_parameter<bool>("realsense_auto_exposure", config.realsense_auto_exposure);
-  node.declare_parameter<bool>(
-    "realsense_auto_white_balance", config.realsense_auto_white_balance);
+  node.declare_parameter<bool>("realsense_auto_white_balance", config.realsense_auto_white_balance);
   node.declare_parameter<double>("realsense_white_balance", config.realsense_white_balance);
   node.declare_parameter<bool>("realsense_use_poll", config.realsense_use_poll);
-  node.declare_parameter<bool>(
-    "realsense_use_max_native_fps", config.realsense_use_max_native_fps);
+  node.declare_parameter<bool>("realsense_use_max_native_fps", config.realsense_use_max_native_fps);
 
   config.camera_type = node.get_parameter("camera_type").as_string();
   config.imgsz_width = node.get_parameter("imgsz_width").as_int();
@@ -576,7 +567,7 @@ CameraConfig load_camera_config(rclcpp::Node & node)
 }
 
 std::shared_ptr<CameraBackend> create_camera_backend(
-  const CameraConfig & config, const rclcpp::Logger &)
+  const CameraConfig& config, const rclcpp::Logger&)
 {
   if (config.camera_type == "basler") {
 #ifdef HAVE_PYLON
@@ -593,7 +584,8 @@ std::shared_ptr<CameraBackend> create_camera_backend(
     return std::make_shared<RealSenseBackend>(config);
 #else
     return std::make_shared<UnsupportedCameraBackend>(
-      "RealSense backend requested but librealsense2 headers/libs were not available at build time.",
+      "RealSense backend requested but librealsense2 headers/libs were not available "
+      "at build time.",
       "realsense");
 #endif
   }

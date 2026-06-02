@@ -1,10 +1,9 @@
 #ifndef YOLO_CPP__TRACKER_HPP_
 #define YOLO_CPP__TRACKER_HPP_
 
-#include <opencv2/core.hpp>
-
 #include <array>
 #include <cstdint>
+#include <opencv2/core.hpp>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -28,8 +27,7 @@ public:
   ///   proc_noise_acc: Process noise for acceleration states.
   ///   meas_noise: Measurement noise for observed centers.
   ///   init_cov: Initial covariance on all state dimensions.
-  ArmorPlateTracker(
-    double x, double y, double width, double height, double proc_noise_pos = 0.01,
+  ArmorPlateTracker(double x, double y, double width, double height, double proc_noise_pos = 0.01,
     double proc_noise_vel = 0.05, double proc_noise_acc = 0.1, double meas_noise = 0.15,
     double init_cov = 0.1);
 
@@ -43,7 +41,7 @@ public:
   std::pair<double, double> project(double dt) const;
 
   /// Return the raw state vector [x, y, vx, vy, ax, ay].
-  const std::array<double, 6> & state() const;
+  const std::array<double, 6>& state() const;
 
   /// Return the latest tracked bounding-box width in pixels.
   double width() const;
@@ -145,10 +143,10 @@ public:
   explicit TrackManager(TrackConfig config = {});
 
   /// Replace tracking parameters used on subsequent frames.
-  void set_config(const TrackConfig & config);
+  void set_config(const TrackConfig& config);
 
   /// Return the active tracking configuration.
-  const TrackConfig & config() const;
+  const TrackConfig& config() const;
 
   /// Drop all tracks and target lock state.
   void reset();
@@ -161,7 +159,7 @@ public:
   ///
   /// Returns:
   ///   Updated track snapshots plus the selected target, when one is available.
-  TrackingFrameResult update(const std::vector<TrackObservation> & detections, double dt);
+  TrackingFrameResult update(const std::vector<TrackObservation>& detections, double dt);
 
 private:
   struct TrackRecord
@@ -182,13 +180,13 @@ private:
 
   struct RankedTrack
   {
-    const TrackSnapshot * snapshot{nullptr};
+    const TrackSnapshot* snapshot{nullptr};
     double center_distance{0.0};
   };
 
-  TrackSnapshot make_snapshot(const TrackRecord & track) const;
-  std::optional<int> choose_selected_track_id(const std::vector<TrackSnapshot> & tracks);
-  bool is_selectable(const TrackRecord & track) const;
+  TrackSnapshot make_snapshot(const TrackRecord& track) const;
+  std::optional<int> choose_selected_track_id(const std::vector<TrackSnapshot>& tracks);
+  bool is_selectable(const TrackRecord& track) const;
 
   TrackConfig config_;
   int next_track_id_{1};

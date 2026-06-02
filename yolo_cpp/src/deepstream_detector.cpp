@@ -7,15 +7,13 @@ namespace yolo_cpp
 {
 
 DeepStreamDetector::DeepStreamDetector(
-  std::string model_path, std::string task, std::string model_type, bool half,
-  float conf_threshold)
-: backend_(std::make_unique<NativeTensorRTBackend>(
-    std::move(model_path), std::move(task), std::move(model_type), half, conf_threshold))
+  std::string model_path, std::string task, std::string model_type, bool half, float conf_threshold)
+    : backend_(std::make_unique<NativeTensorRTBackend>(
+        std::move(model_path), std::move(task), std::move(model_type), half, conf_threshold))
 {
 }
 
-std::vector<Detection> DeepStreamDetector::infer(
-  const cv::Mat & frame, const rclcpp::Logger & logger)
+std::vector<Detection> DeepStreamDetector::infer(const cv::Mat& frame, const rclcpp::Logger& logger)
 {
   // Adapt the old cv::Mat API into the newer FramePacket detector backend API.
   FramePacket packet{};
@@ -25,7 +23,7 @@ std::vector<Detection> DeepStreamDetector::infer(
   return backend_->infer(packet, logger, nullptr).detections;
 }
 
-const std::string & DeepStreamDetector::backend_name() const
+const std::string& DeepStreamDetector::backend_name() const
 {
   return backend_->backend_name();
 }

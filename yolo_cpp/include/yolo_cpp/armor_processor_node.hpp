@@ -1,21 +1,21 @@
 #ifndef YOLO_CPP__ARMOR_PROCESSOR_NODE_HPP_
 #define YOLO_CPP__ARMOR_PROCESSOR_NODE_HPP_
 
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/vector3.hpp>
+#include <optional>
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/header.hpp>
+#include <string>
+#include <visualization_msgs/msg/marker_array.hpp>
+
 #include "cv_auto_aim_interfaces/msg/spin_info.hpp"
 #include "cv_auto_aim_interfaces/msg/target.hpp"
 #include "cv_auto_aim_interfaces/msg/tracked_armors.hpp"
 #include "yolo_cpp/visibility_control.hpp"
-
-#include <geometry_msgs/msg/point.hpp>
-#include <geometry_msgs/msg/vector3.hpp>
-#include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/header.hpp>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
-#include <visualization_msgs/msg/marker_array.hpp>
-
-#include <optional>
-#include <string>
 
 namespace yolo_cpp
 {
@@ -25,7 +25,7 @@ class YOLO_CPP_PUBLIC ArmorProcessorNode : public rclcpp::Node
 {
 public:
   /// Create the processor, TF listener, and publishers.
-  explicit ArmorProcessorNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+  explicit ArmorProcessorNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
   ~ArmorProcessorNode() override = default;
 
 private:
@@ -54,20 +54,20 @@ private:
   void handle_tracks(const cv_auto_aim_interfaces::msg::TrackedArmors::SharedPtr msg);
 
   /// Transform a camera-frame point into the configured target frame.
-  bool transform_point(
-    const std_msgs::msg::Header & header, const geometry_msgs::msg::Point & point,
-    geometry_msgs::msg::Point & transformed);
+  bool transform_point(const std_msgs::msg::Header& header, const geometry_msgs::msg::Point& point,
+    geometry_msgs::msg::Point& transformed);
   /// Update the position/velocity filter with a measured target point.
-  void update_filter(int track_id, const rclcpp::Time & stamp, const geometry_msgs::msg::Point & measurement);
+  void update_filter(
+    int track_id, const rclcpp::Time& stamp, const geometry_msgs::msg::Point& measurement);
 
   /// Advance filter state when the selected target is coasting.
-  void predict_without_measurement(const rclcpp::Time & stamp);
+  void predict_without_measurement(const rclcpp::Time& stamp);
 
   /// Annotate the target with spin-following and fire-suggestion state.
-  void apply_spin_observer(cv_auto_aim_interfaces::msg::Target & target);
+  void apply_spin_observer(cv_auto_aim_interfaces::msg::Target& target);
 
   /// Publish visualization markers for the selected processed target.
-  void publish_markers(const cv_auto_aim_interfaces::msg::Target & target);
+  void publish_markers(const cv_auto_aim_interfaces::msg::Target& target);
 
   std::string target_frame_{"shooter_link"};
   int processor_lost_threshold_{5};

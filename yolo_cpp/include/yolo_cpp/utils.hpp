@@ -1,9 +1,8 @@
 #ifndef YOLO_CPP__UTILS_HPP_
 #define YOLO_CPP__UTILS_HPP_
 
-#include <opencv2/core.hpp>
-
 #include <array>
+#include <opencv2/core.hpp>
 #include <optional>
 #include <tuple>
 #include <vector>
@@ -55,23 +54,23 @@ struct Candidate
 };
 
 /// Resize and pad frame to target dimensions while preserving aspect ratio.
-LetterboxFrameResult letterbox_frame(const cv::Mat & frame, int target_w, int target_h);
+LetterboxFrameResult letterbox_frame(const cv::Mat& frame, int target_w, int target_h);
 
 /// Build letterbox metadata without materializing a resized frame.
 LetterboxMetadata make_letterbox_metadata(int src_w, int src_h, int target_w, int target_h);
 
 /// Map a rectangle from letterboxed model coordinates back to source coordinates.
-cv::Rect unletterbox_rect(const cv::Rect & rect, const LetterboxMetadata & lb);
+cv::Rect unletterbox_rect(const cv::Rect& rect, const LetterboxMetadata& lb);
 
 /// Map a point from letterboxed model coordinates back to source coordinates.
-cv::Point2f unletterbox_point(const cv::Point2f & point, const LetterboxMetadata & lb);
+cv::Point2f unletterbox_point(const cv::Point2f& point, const LetterboxMetadata& lb);
 
 /// Convert image-space target offset into yaw/pitch angles using camera FOV.
 std::pair<float, float> calculate_angles(
-  const cv::Rect & bbox, int img_w, int img_h, float hfov_rad, float vfov_rad);
+  const cv::Rect& bbox, int img_w, int img_h, float hfov_rad, float vfov_rad);
 
 /// Estimate whether an ROI matches the configured enemy color using HSV thresholds.
-std::pair<bool, int> check_enemy(const cv::Mat & roi_image, int target_class);
+std::pair<bool, int> check_enemy(const cv::Mat& roi_image, int target_class);
 
 }  // namespace yolo_cpp
 

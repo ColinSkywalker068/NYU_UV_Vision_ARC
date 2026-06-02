@@ -3,9 +3,8 @@
 
 #include "yolo_cpp/pnp_solver.hpp"
 
-#include <opencv2/calib3d.hpp>
-
 #include <cmath>
+#include <opencv2/calib3d.hpp>
 #include <utility>
 
 namespace yolo_cpp
@@ -19,15 +18,12 @@ std::vector<cv::Point3f> make_armor_points(double width_m, double height_m)
 {
   const auto half_x = static_cast<float>(width_m / 2.0);
   const auto half_y = static_cast<float>(height_m / 2.0);
-  return {
-    cv::Point3f(-half_x, half_y, 0.0F),
-    cv::Point3f(-half_x, -half_y, 0.0F),
-    cv::Point3f(half_x, -half_y, 0.0F),
-    cv::Point3f(half_x, half_y, 0.0F)};
+  return {cv::Point3f(-half_x, half_y, 0.0F), cv::Point3f(-half_x, -half_y, 0.0F),
+    cv::Point3f(half_x, -half_y, 0.0F), cv::Point3f(half_x, half_y, 0.0F)};
 }
 
 /// Convert an OpenCV rotation matrix into a geometry_msgs quaternion.
-void rotation_matrix_to_quaternion(const cv::Mat & rotation, geometry_msgs::msg::Pose & pose)
+void rotation_matrix_to_quaternion(const cv::Mat& rotation, geometry_msgs::msg::Pose& pose)
 {
   const double m00 = rotation.at<double>(0, 0);
   const double m01 = rotation.at<double>(0, 1);
@@ -72,21 +68,19 @@ void rotation_matrix_to_quaternion(const cv::Mat & rotation, geometry_msgs::msg:
 
 }  // namespace
 
-ArmorPnPSolver::ArmorPnPSolver(
-  PnPCameraModel camera_model, double small_armor_width_m, double small_armor_height_m,
-  double large_armor_width_m, double large_armor_height_m)
-: camera_model_(std::move(camera_model)),
-  small_armor_points_(make_armor_points(small_armor_width_m, small_armor_height_m)),
-  large_armor_points_(make_armor_points(large_armor_width_m, large_armor_height_m))
+ArmorPnPSolver::ArmorPnPSolver(PnPCameraModel camera_model, double small_armor_width_m,
+  double small_armor_height_m, double large_armor_width_m, double large_armor_height_m)
+    : camera_model_(std::move(camera_model)),
+      small_armor_points_(make_armor_points(small_armor_width_m, small_armor_height_m)),
+      large_armor_points_(make_armor_points(large_armor_width_m, large_armor_height_m))
 {
 }
 
-bool ArmorPnPSolver::solve(
-  const std::array<cv::Point2f, 4> & image_points, int armor_type,
-  geometry_msgs::msg::Pose & pose) const
+bool ArmorPnPSolver::solve(const std::array<cv::Point2f, 4>& image_points, int armor_type,
+  geometry_msgs::msg::Pose& pose) const
 {
   // SOLVEPNP_IPPE is appropriate for planar rectangular armor targets.
-  const auto & object_points = armor_type == 1 ? large_armor_points_ : small_armor_points_;
+  const auto& object_points = armor_type == 1 ? large_armor_points_ : small_armor_points_;
   cv::Mat camera_matrix(camera_model_.camera_matrix);
   cv::Mat dist_coeffs(camera_model_.distortion_coefficients, true);
   if (dist_coeffs.empty()) {

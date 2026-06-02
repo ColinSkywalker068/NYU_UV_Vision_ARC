@@ -1,15 +1,14 @@
 #ifndef YOLO_CPP__DEEPSTREAM_RUNTIME_HPP_
 #define YOLO_CPP__DEEPSTREAM_RUNTIME_HPP_
 
-#include "yolo_cpp/detector_backend.hpp"
-#include "yolo_cpp/frame_packet.hpp"
-
-#include <rclcpp/logger.hpp>
-
 #include <functional>
 #include <memory>
 #include <optional>
+#include <rclcpp/logger.hpp>
 #include <string>
+
+#include "yolo_cpp/detector_backend.hpp"
+#include "yolo_cpp/frame_packet.hpp"
 
 namespace yolo_cpp
 {
@@ -60,17 +59,14 @@ public:
   };
 
   /// Callback invoked from the runtime whenever a frame has detections.
-  using ResultCallback = std::function<void(Result &&)>;
+  using ResultCallback = std::function<void(Result&&)>;
 
   /// Start the DeepStream runtime and deliver results to callback.
-  DeepStreamRuntime(
-    rclcpp::Logger logger,
-    Config config,
-    ResultCallback callback);
+  DeepStreamRuntime(rclcpp::Logger logger, Config config, ResultCallback callback);
   ~DeepStreamRuntime();
 
   /// Return the backend name used in logs.
-  const std::string & backend_name() const;
+  const std::string& backend_name() const;
 
   /// Return the camera source's reported FPS when available.
   double source_actual_fps() const;

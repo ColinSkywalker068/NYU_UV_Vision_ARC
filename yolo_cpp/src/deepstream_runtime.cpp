@@ -3,17 +3,11 @@
 
 #include "yolo_cpp/deepstream_runtime.hpp"
 
-#include "yolo_cpp/detection_postprocess.hpp"
-#include "yolo_cpp/gst_cuda_bayer_resize.hpp"
-#include "yolo_cpp/utils.hpp"
-
-#include <rclcpp/logging.hpp>
-
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -24,12 +18,18 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <rclcpp/logging.hpp>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
+
+#include "deepstream_runtime_helpers.hpp"
+#include "yolo_cpp/detection_postprocess.hpp"
+#include "yolo_cpp/gst_cuda_bayer_resize.hpp"
+#include "yolo_cpp/utils.hpp"
 
 #if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
 #include <gst/app/gstappsink.h>
@@ -47,168 +47,15 @@ namespace yolo_cpp
 namespace
 {
 
-/// Read a text config template or throw a runtime error with path context.
-std::string read_text_file(const std::string & path)
-{
-  std::ifstream stream(path);
-  if (!stream) {
-    throw std::runtime_error("Failed to open DeepStream config template: " + path);
-  }
-  std::string content(
-    (std::istreambuf_iterator<char>(stream)),
-    std::istreambuf_iterator<char>());
-  return content;
-}
-
-/// Replace every occurrence of needle with replacement inside text.
-void replace_all(std::string & text, const std::string & needle, const std::string & replacement)
-{
-  std::size_t pos = 0;
-  while ((pos = text.find(needle, pos)) != std::string::npos) {
-    text.replace(pos, needle.size(), replacement);
-    pos += replacement.size();
-  }
-}
-
-bool path_has_extension(const std::string & path, const std::string & extension)
-{
-  if (path.size() < extension.size()) {
-    return false;
-  }
-  return std::equal(extension.rbegin(), extension.rend(), path.rbegin());
-}
-
-std::string make_video_caps_text(
-  const std::string & media_type,
-  const std::string & format,
-  std::optional<int> width,
-  std::optional<int> height,
-  std::optional<int> fps)
-{
-  std::string caps = media_type;
-  if (!format.empty()) {
-    caps += ",format=" + format;
-  }
-  if (width.has_value() && height.has_value()) {
-    caps += ",width=" + std::to_string(*width);
-    caps += ",height=" + std::to_string(*height);
-  }
-  if (fps.has_value() && *fps > 0) {
-    caps += ",framerate=" + std::to_string(*fps) + "/1";
-  }
-  return caps;
-}
-
-std::optional<int> positive_dimension(int value)
-{
-  if (value > 0) {
-    return value;
-  }
-  return std::nullopt;
-}
-
-std::string normalize_format_token(std::string value)
-{
-  value.erase(
-    std::remove_if(value.begin(), value.end(), [](unsigned char ch) {
-      return std::isspace(ch) != 0 || ch == '-' || ch == '_';
-    }),
-    value.end());
-  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-    return static_cast<char>(std::tolower(ch));
-  });
-  return value;
-}
-
-int even_dimension(int value)
-{
-  value = std::max(2, value);
-  if ((value % 2) != 0) {
-    --value;
-  }
-  return std::max(2, value);
-}
-
-std::optional<std::pair<int, int>> resolve_pre_mux_resize(
-  const DeepStreamRuntime::Config & config)
-{
-  if (!config.pre_mux_resize) {
-    return std::nullopt;
-  }
-
-  const int source_width = positive_dimension(config.source_width).value_or(config.imgsz_width);
-  const int source_height = positive_dimension(config.source_height).value_or(config.imgsz_height);
-  if (source_width <= 0 || source_height <= 0) {
-    return std::nullopt;
-  }
-
-  int box_width = config.pre_mux_width > 0 ? config.pre_mux_width : config.imgsz_width;
-  int box_height = config.pre_mux_height > 0 ? config.pre_mux_height : config.imgsz_height;
-  if (config.pre_mux_width > 0 && config.pre_mux_height <= 0) {
-    box_height = static_cast<int>(
-      std::lround(static_cast<double>(source_height) * box_width / source_width));
-  } else if (config.pre_mux_height > 0 && config.pre_mux_width <= 0) {
-    box_width = static_cast<int>(
-      std::lround(static_cast<double>(source_width) * box_height / source_height));
-  }
-
-  box_width = even_dimension(box_width);
-  box_height = even_dimension(box_height);
-  const double scale = std::min(
-    static_cast<double>(box_width) / source_width,
-    static_cast<double>(box_height) / source_height);
-  if (scale <= 0.0) {
-    return std::nullopt;
-  }
-
-  const int width = std::min(box_width, even_dimension(static_cast<int>(std::lround(
-    source_width * scale))));
-  const int height = std::min(box_height, even_dimension(static_cast<int>(std::lround(
-    source_height * scale))));
-  return std::make_pair(width, height);
-}
-
-struct SourceFormatSpec
-{
-  std::string label;
-  std::string media_type;
-  std::string caps_format;
-  std::string camera_pixel_format;
-  bool needs_bayer_convert{false};
-};
-
-SourceFormatSpec resolve_source_format(const std::string & value)
-{
-  const auto normalized = normalize_format_token(value);
-  if (normalized == "bayerrggb8" || normalized == "rggb" || normalized == "bayerrg8") {
-    return {"bayer_rggb8", "video/x-bayer", "rggb", "BayerRG8", true};
-  }
-  if (normalized == "bayerbggr8" || normalized == "bggr" || normalized == "bayerbg8") {
-    return {"bayer_bggr8", "video/x-bayer", "bggr", "BayerBG8", true};
-  }
-  if (normalized == "bayergrbg8" || normalized == "grbg" || normalized == "bayergr8") {
-    return {"bayer_grbg8", "video/x-bayer", "grbg", "BayerGR8", true};
-  }
-  if (normalized == "bayergbrg8" || normalized == "gbrg" || normalized == "bayergb8") {
-    return {"bayer_gbrg8", "video/x-bayer", "gbrg", "BayerGB8", true};
-  }
-  if (normalized == "mono8" || normalized == "gray8" || normalized == "grey8") {
-    return {"mono8", "video/x-raw", "GRAY8", "Mono8", false};
-  }
-  if (normalized == "yuy2" || normalized == "yuyv" || normalized == "yuv422") {
-    return {"yuy2", "video/x-raw", "YUY2", "YUV422Packed", false};
-  }
-  if (normalized == "bgr" || normalized == "bgr8") {
-    return {"bgr8", "video/x-raw", "BGR", "BGR8", false};
-  }
-  if (normalized == "rgb" || normalized == "rgb8") {
-    return {"rgb8", "video/x-raw", "RGB", "RGB8", false};
-  }
-
-  throw std::runtime_error(
-          "Unsupported Basler source pixel format '" + value +
-          "'. Use bayer_rggb8, bayer_bggr8, bayer_grbg8, bayer_gbrg8, mono8, yuy2, bgr8, or rgb8.");
-}
+using deepstream_helpers::make_video_caps_text;
+using deepstream_helpers::normalize_format_token;
+using deepstream_helpers::path_has_extension;
+using deepstream_helpers::positive_dimension;
+using deepstream_helpers::read_text_file;
+using deepstream_helpers::replace_all;
+using deepstream_helpers::resolve_pre_mux_resize;
+using deepstream_helpers::resolve_source_format;
+using deepstream_helpers::SourceFormatSpec;
 
 #if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
 /// Format a GstClockTime for diagnostics without losing GST_CLOCK_TIME_NONE.
@@ -221,7 +68,7 @@ std::string gst_clock_to_string(GstClockTime value)
 }
 
 /// Release a GStreamer request pad and null out the caller's pointer.
-void release_request_pad(GstElement * element, GstPad *& pad)
+void release_request_pad(GstElement* element, GstPad*& pad)
 {
   if (element == nullptr || pad == nullptr) {
     return;
@@ -231,13 +78,13 @@ void release_request_pad(GstElement * element, GstPad *& pad)
   pad = nullptr;
 }
 
-bool set_child_proxy_bool_if_present(GstElement * element, const char * name, bool value)
+bool set_child_proxy_bool_if_present(GstElement* element, const char* name, bool value)
 {
   if (element == nullptr || name == nullptr) {
     return false;
   }
 
-  if (GParamSpec * pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
+  if (GParamSpec* pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
     GValue gvalue = G_VALUE_INIT;
     g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
     bool did_set = false;
@@ -253,8 +100,8 @@ bool set_child_proxy_bool_if_present(GstElement * element, const char * name, bo
     return false;
   }
 
-  GObject * target = nullptr;
-  GParamSpec * pspec = nullptr;
+  GObject* target = nullptr;
+  GParamSpec* pspec = nullptr;
   if (!gst_child_proxy_lookup(GST_CHILD_PROXY(element), name, &target, &pspec)) {
     return false;
   }
@@ -274,32 +121,30 @@ bool set_child_proxy_bool_if_present(GstElement * element, const char * name, bo
   return did_set;
 }
 
-bool string_matches_enum_value(const GEnumValue * enum_value, const char * value)
+bool string_matches_enum_value(const GEnumValue* enum_value, const char* value)
 {
   if (enum_value == nullptr || value == nullptr) {
     return false;
   }
-  if (
-    g_strcmp0(enum_value->value_name, value) == 0 ||
-    g_strcmp0(enum_value->value_nick, value) == 0 ||
-    g_ascii_strcasecmp(enum_value->value_name, value) == 0 ||
-    g_ascii_strcasecmp(enum_value->value_nick, value) == 0)
+  if (g_strcmp0(enum_value->value_name, value) == 0 || g_strcmp0(enum_value->value_nick, value) == 0
+      || g_ascii_strcasecmp(enum_value->value_name, value) == 0
+      || g_ascii_strcasecmp(enum_value->value_nick, value) == 0)
   {
     return true;
   }
 
-  const char * suffix = std::strrchr(enum_value->value_name, '_');
+  const char* suffix = std::strrchr(enum_value->value_name, '_');
   return suffix != nullptr && g_ascii_strcasecmp(suffix + 1, value) == 0;
 }
 
-bool set_enum_value_from_string(GValue * gvalue, const char * value)
+bool set_enum_value_from_string(GValue* gvalue, const char* value)
 {
-  GEnumClass * enum_class = G_ENUM_CLASS(g_type_class_ref(G_VALUE_TYPE(gvalue)));
+  GEnumClass* enum_class = G_ENUM_CLASS(g_type_class_ref(G_VALUE_TYPE(gvalue)));
   if (enum_class == nullptr) {
     return false;
   }
 
-  GEnumValue * enum_value = g_enum_get_value_by_name(enum_class, value);
+  GEnumValue* enum_value = g_enum_get_value_by_name(enum_class, value);
   if (enum_value == nullptr) {
     enum_value = g_enum_get_value_by_nick(enum_class, value);
   }
@@ -320,7 +165,7 @@ bool set_enum_value_from_string(GValue * gvalue, const char * value)
   return did_set;
 }
 
-bool set_string_value(GValue * gvalue, const char * value)
+bool set_string_value(GValue* gvalue, const char* value)
 {
   if (G_VALUE_HOLDS_STRING(gvalue)) {
     g_value_set_string(gvalue, value);
@@ -332,7 +177,7 @@ bool set_string_value(GValue * gvalue, const char * value)
   return gst_value_deserialize(gvalue, value);
 }
 
-bool set_numeric_value(GValue * gvalue, double value)
+bool set_numeric_value(GValue* gvalue, double value)
 {
   if (G_VALUE_HOLDS_DOUBLE(gvalue)) {
     g_value_set_double(gvalue, value);
@@ -373,13 +218,13 @@ bool set_numeric_value(GValue * gvalue, double value)
   return false;
 }
 
-bool set_child_proxy_string_if_present(GstElement * element, const char * name, const char * value)
+bool set_child_proxy_string_if_present(GstElement* element, const char* name, const char* value)
 {
   if (element == nullptr || name == nullptr || value == nullptr) {
     return false;
   }
 
-  if (GParamSpec * pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
+  if (GParamSpec* pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
     GValue gvalue = G_VALUE_INIT;
     g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
     const bool did_set = set_string_value(&gvalue, value);
@@ -393,8 +238,8 @@ bool set_child_proxy_string_if_present(GstElement * element, const char * name, 
     return false;
   }
 
-  GObject * target = nullptr;
-  GParamSpec * pspec = nullptr;
+  GObject* target = nullptr;
+  GParamSpec* pspec = nullptr;
   if (!gst_child_proxy_lookup(GST_CHILD_PROXY(element), name, &target, &pspec)) {
     return false;
   }
@@ -412,13 +257,13 @@ bool set_child_proxy_string_if_present(GstElement * element, const char * name, 
   return did_set;
 }
 
-bool set_child_proxy_double_if_present(GstElement * element, const char * name, double value)
+bool set_child_proxy_double_if_present(GstElement* element, const char* name, double value)
 {
   if (element == nullptr || name == nullptr) {
     return false;
   }
 
-  if (GParamSpec * pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
+  if (GParamSpec* pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
     GValue gvalue = G_VALUE_INIT;
     g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
     const bool did_set = set_numeric_value(&gvalue, value);
@@ -432,8 +277,8 @@ bool set_child_proxy_double_if_present(GstElement * element, const char * name, 
     return false;
   }
 
-  GObject * target = nullptr;
-  GParamSpec * pspec = nullptr;
+  GObject* target = nullptr;
+  GParamSpec* pspec = nullptr;
   if (!gst_child_proxy_lookup(GST_CHILD_PROXY(element), name, &target, &pspec)) {
     return false;
   }
@@ -451,7 +296,7 @@ bool set_child_proxy_double_if_present(GstElement * element, const char * name, 
   return did_set;
 }
 
-std::optional<double> get_numeric_value(const GValue * gvalue)
+std::optional<double> get_numeric_value(const GValue* gvalue)
 {
   if (G_VALUE_HOLDS_DOUBLE(gvalue)) {
     return g_value_get_double(gvalue);
@@ -480,24 +325,23 @@ std::optional<double> get_numeric_value(const GValue * gvalue)
   return std::nullopt;
 }
 
-std::optional<std::string> get_string_value(const GValue * gvalue)
+std::optional<std::string> get_string_value(const GValue* gvalue)
 {
   if (G_VALUE_HOLDS_STRING(gvalue)) {
-    const char * value = g_value_get_string(gvalue);
+    const char* value = g_value_get_string(gvalue);
     if (value != nullptr && std::strlen(value) > 0U) {
       return std::string(value);
     }
     return std::nullopt;
   }
   if (G_VALUE_HOLDS_ENUM(gvalue)) {
-    GEnumClass * enum_class = G_ENUM_CLASS(g_type_class_ref(G_VALUE_TYPE(gvalue)));
+    GEnumClass* enum_class = G_ENUM_CLASS(g_type_class_ref(G_VALUE_TYPE(gvalue)));
     if (enum_class != nullptr) {
-      GEnumValue * enum_value = g_enum_get_value(enum_class, g_value_get_enum(gvalue));
+      GEnumValue* enum_value = g_enum_get_value(enum_class, g_value_get_enum(gvalue));
       std::optional<std::string> result;
       if (enum_value != nullptr) {
-        result = enum_value->value_nick != nullptr ?
-          std::string(enum_value->value_nick) :
-          std::string(enum_value->value_name);
+        result = enum_value->value_nick != nullptr ? std::string(enum_value->value_nick)
+                                                   : std::string(enum_value->value_name);
       }
       g_type_class_unref(enum_class);
       if (result.has_value() && !result->empty()) {
@@ -506,7 +350,7 @@ std::optional<std::string> get_string_value(const GValue * gvalue)
     }
   }
 
-  gchar * serialized = gst_value_serialize(gvalue);
+  gchar* serialized = gst_value_serialize(gvalue);
   if (serialized == nullptr) {
     return std::nullopt;
   }
@@ -518,13 +362,13 @@ std::optional<std::string> get_string_value(const GValue * gvalue)
   return result;
 }
 
-std::optional<double> get_child_proxy_numeric_if_present(GstElement * element, const char * name)
+std::optional<double> get_child_proxy_numeric_if_present(GstElement* element, const char* name)
 {
   if (element == nullptr || name == nullptr) {
     return std::nullopt;
   }
 
-  if (GParamSpec * pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
+  if (GParamSpec* pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
     GValue gvalue = G_VALUE_INIT;
     g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
     g_object_get_property(G_OBJECT(element), name, &gvalue);
@@ -536,8 +380,8 @@ std::optional<double> get_child_proxy_numeric_if_present(GstElement * element, c
     return std::nullopt;
   }
 
-  GObject * target = nullptr;
-  GParamSpec * pspec = nullptr;
+  GObject* target = nullptr;
+  GParamSpec* pspec = nullptr;
   if (!gst_child_proxy_lookup(GST_CHILD_PROXY(element), name, &target, &pspec)) {
     return std::nullopt;
   }
@@ -553,13 +397,13 @@ std::optional<double> get_child_proxy_numeric_if_present(GstElement * element, c
   return value;
 }
 
-std::optional<std::string> get_child_proxy_string_if_present(GstElement * element, const char * name)
+std::optional<std::string> get_child_proxy_string_if_present(GstElement* element, const char* name)
 {
   if (element == nullptr || name == nullptr) {
     return std::nullopt;
   }
 
-  if (GParamSpec * pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
+  if (GParamSpec* pspec = g_object_class_find_property(G_OBJECT_GET_CLASS(element), name)) {
     GValue gvalue = G_VALUE_INIT;
     g_value_init(&gvalue, G_PARAM_SPEC_VALUE_TYPE(pspec));
     g_object_get_property(G_OBJECT(element), name, &gvalue);
@@ -571,8 +415,8 @@ std::optional<std::string> get_child_proxy_string_if_present(GstElement * elemen
     return std::nullopt;
   }
 
-  GObject * target = nullptr;
-  GParamSpec * pspec = nullptr;
+  GObject* target = nullptr;
+  GParamSpec* pspec = nullptr;
   if (!gst_child_proxy_lookup(GST_CHILD_PROXY(element), name, &target, &pspec)) {
     return std::nullopt;
   }
@@ -588,12 +432,12 @@ std::optional<std::string> get_child_proxy_string_if_present(GstElement * elemen
   return value;
 }
 
-std::string caps_to_string(GstCaps * caps)
+std::string caps_to_string(GstCaps* caps)
 {
   if (caps == nullptr) {
     return "none";
   }
-  gchar * text = gst_caps_to_string(caps);
+  gchar* text = gst_caps_to_string(caps);
   if (text == nullptr) {
     return "unknown";
   }
@@ -602,16 +446,16 @@ std::string caps_to_string(GstCaps * caps)
   return result;
 }
 
-std::string current_caps_for_pad(GstElement * element, const char * pad_name)
+std::string current_caps_for_pad(GstElement* element, const char* pad_name)
 {
   if (element == nullptr || pad_name == nullptr) {
     return "none";
   }
-  GstPad * pad = gst_element_get_static_pad(element, pad_name);
+  GstPad* pad = gst_element_get_static_pad(element, pad_name);
   if (pad == nullptr) {
     return "none";
   }
-  GstCaps * caps = gst_pad_get_current_caps(pad);
+  GstCaps* caps = gst_pad_get_current_caps(pad);
   if (caps == nullptr) {
     caps = gst_pad_query_caps(pad, nullptr);
   }
@@ -623,7 +467,7 @@ std::string current_caps_for_pad(GstElement * element, const char * pad_name)
   return result;
 }
 
-std::string collect_bus_diagnostics(GstBus * bus)
+std::string collect_bus_diagnostics(GstBus* bus)
 {
   if (bus == nullptr) {
     return "";
@@ -631,18 +475,16 @@ std::string collect_bus_diagnostics(GstBus * bus)
 
   std::ostringstream diagnostics;
   for (int i = 0; i < 8; ++i) {
-    GstMessage * message = gst_bus_timed_pop_filtered(
-      bus,
-      100 * GST_MSECOND,
-      static_cast<GstMessageType>(GST_MESSAGE_ERROR | GST_MESSAGE_WARNING));
+    GstMessage* message = gst_bus_timed_pop_filtered(
+      bus, 100 * GST_MSECOND, static_cast<GstMessageType>(GST_MESSAGE_ERROR | GST_MESSAGE_WARNING));
     if (message == nullptr) {
       break;
     }
 
-    GstObject * source = GST_MESSAGE_SRC(message);
-    const char * source_name = source != nullptr ? GST_OBJECT_NAME(source) : nullptr;
-    GError * error = nullptr;
-    gchar * debug = nullptr;
+    GstObject* source = GST_MESSAGE_SRC(message);
+    const char* source_name = source != nullptr ? GST_OBJECT_NAME(source) : nullptr;
+    GError* error = nullptr;
+    gchar* debug = nullptr;
     if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
       gst_message_parse_error(message, &error, &debug);
       diagnostics << " error";
@@ -678,9 +520,7 @@ std::string collect_bus_diagnostics(GstBus * bus)
 struct DeepStreamRuntime::Impl
 {
   Impl(rclcpp::Logger logger_in, Config config_in, ResultCallback callback_in)
-  : logger(std::move(logger_in)),
-    config(std::move(config_in)),
-    callback(std::move(callback_in))
+      : logger(std::move(logger_in)), config(std::move(config_in)), callback(std::move(callback_in))
   {
   }
 
@@ -690,32 +530,32 @@ struct DeepStreamRuntime::Impl
   std::string backend_name{"deepstream"};
 
 #if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
-  GstElement * pipeline{nullptr};
-  GstElement * source{nullptr};
-  GstElement * source_caps{nullptr};
-  GstElement * source_bayer_convert{nullptr};
-  GstElement * source_bayer_caps{nullptr};
-  GstElement * source_flip{nullptr};
-  GstElement * tee{nullptr};
-  GstElement * infer_queue{nullptr};
-  GstElement * infer_convert{nullptr};
-  GstElement * infer_cpu_caps{nullptr};
-  GstElement * infer_nvconvert{nullptr};
-  GstElement * infer_nvmm_caps{nullptr};
-  GstElement * streammux{nullptr};
-  GstElement * nvinfer{nullptr};
-  GstElement * infer_post_queue{nullptr};
-  GstElement * infer_sink_elem{nullptr};
-  GstElement * color_queue{nullptr};
-  GstElement * color_convert{nullptr};
-  GstElement * color_caps{nullptr};
-  GstElement * color_sink_elem{nullptr};
-  GstBus * bus{nullptr};
-  GstAppSink * infer_sink{nullptr};
-  GstAppSink * color_sink{nullptr};
-  GstPad * tee_infer_pad{nullptr};
-  GstPad * streammux_sink_pad{nullptr};
-  GstPad * tee_color_pad{nullptr};
+  GstElement* pipeline{nullptr};
+  GstElement* source{nullptr};
+  GstElement* source_caps{nullptr};
+  GstElement* source_bayer_convert{nullptr};
+  GstElement* source_bayer_caps{nullptr};
+  GstElement* source_flip{nullptr};
+  GstElement* tee{nullptr};
+  GstElement* infer_queue{nullptr};
+  GstElement* infer_convert{nullptr};
+  GstElement* infer_cpu_caps{nullptr};
+  GstElement* infer_nvconvert{nullptr};
+  GstElement* infer_nvmm_caps{nullptr};
+  GstElement* streammux{nullptr};
+  GstElement* nvinfer{nullptr};
+  GstElement* infer_post_queue{nullptr};
+  GstElement* infer_sink_elem{nullptr};
+  GstElement* color_queue{nullptr};
+  GstElement* color_convert{nullptr};
+  GstElement* color_caps{nullptr};
+  GstElement* color_sink_elem{nullptr};
+  GstBus* bus{nullptr};
+  GstAppSink* infer_sink{nullptr};
+  GstAppSink* color_sink{nullptr};
+  GstPad* tee_infer_pad{nullptr};
+  GstPad* streammux_sink_pad{nullptr};
+  GstPad* tee_color_pad{nullptr};
   std::filesystem::path runtime_config_path;
   std::thread infer_thread;
   std::thread color_thread;
@@ -751,14 +591,15 @@ struct DeepStreamRuntime::Impl
 
   struct StageProbeContext
   {
-    DeepStreamRuntime::Impl * runtime{nullptr};
+    DeepStreamRuntime::Impl* runtime{nullptr};
     StageProbePoint point{StageProbePoint::kSourceCaps};
   };
 
   struct StageProbeFrame
   {
     std::array<std::optional<std::chrono::steady_clock::time_point>,
-      static_cast<std::size_t>(StageProbePoint::kCount)> times;
+      static_cast<std::size_t>(StageProbePoint::kCount)>
+      times;
   };
 
   struct StageProfileMetric
@@ -794,7 +635,8 @@ struct DeepStreamRuntime::Impl
   {
 #if !defined(HAVE_GSTREAMER) || !defined(HAVE_DEEPSTREAM)
     throw std::runtime_error(
-            "DeepStream runtime unavailable: build missing GStreamer or DeepStream development headers/libs");
+      "DeepStream runtime unavailable: build missing GStreamer or DeepStream development "
+      "headers/libs");
 #else
     validate_runtime();
     materialize_config();
@@ -850,8 +692,8 @@ struct DeepStreamRuntime::Impl
   bool wants_cuda_bayer_backend() const
   {
     const auto backend = normalize_format_token(config.bayer_conversion_backend);
-    return backend == "cuda" || backend == "gpu" || backend == "cudabayerresize" ||
-           backend == "yolocudabayerresize";
+    return backend == "cuda" || backend == "gpu" || backend == "cudabayerresize"
+           || backend == "yolocudabayerresize";
   }
 
   bool wants_cpu_bayer_backend() const
@@ -863,7 +705,7 @@ struct DeepStreamRuntime::Impl
   /// Verify GStreamer/DeepStream elements and read model metadata needed for parsing.
   void validate_runtime()
   {
-    GError * error = nullptr;
+    GError* error = nullptr;
     if (!gst_init_check(nullptr, nullptr, &error)) {
       const std::string message = error != nullptr ? error->message : "unknown gst init error";
       if (error != nullptr) {
@@ -879,8 +721,7 @@ struct DeepStreamRuntime::Impl
     export_includes_nms = metadata.export_includes_nms;
     if (metadata.class_names.empty() && task_obb && num_classes < 2) {
       num_classes = 2;
-      RCLCPP_WARN(
-        logger,
+      RCLCPP_WARN(logger,
         "Model metadata did not expose class names from %s; assuming 2 classes for OBB armor model",
         config.model_path.c_str());
     }
@@ -888,13 +729,10 @@ struct DeepStreamRuntime::Impl
     const auto source_format = resolve_source_format(config.source_pixel_format);
     const bool need_full_color_branch =
       config.enable_color_verification || config.debug_publish_image_raw;
-    const bool can_try_cuda_bayer =
-      source_format.needs_bayer_convert &&
-      wants_cuda_bayer_backend() &&
-      config.pre_mux_resize &&
-      !need_full_color_branch &&
-      cuda_bayer_resize_available() &&
-      register_cuda_bayer_resize_element();
+    const bool can_try_cuda_bayer = source_format.needs_bayer_convert && wants_cuda_bayer_backend()
+                                    && config.pre_mux_resize && !need_full_color_branch
+                                    && cuda_bayer_resize_available()
+                                    && register_cuda_bayer_resize_element();
     std::vector<std::string> required_elements = {
       config.source_element,
       "videoflip",
@@ -909,12 +747,11 @@ struct DeepStreamRuntime::Impl
     if (source_format.needs_bayer_convert && !can_try_cuda_bayer) {
       required_elements.push_back("bayer2rgb");
     }
-    for (const auto & element_name : required_elements) {
-      GstElementFactory * factory = gst_element_factory_find(element_name.c_str());
+    for (const auto& element_name : required_elements) {
+      GstElementFactory* factory = gst_element_factory_find(element_name.c_str());
       if (factory == nullptr) {
-        throw std::runtime_error(
-                "Required GStreamer element not found: " + element_name +
-                ". Check DeepStream and Basler plugin installation.");
+        throw std::runtime_error("Required GStreamer element not found: " + element_name
+                                 + ". Check DeepStream and Basler plugin installation.");
       }
       gst_object_unref(factory);
     }
@@ -924,9 +761,10 @@ struct DeepStreamRuntime::Impl
   void materialize_config()
   {
     std::string config_text = read_text_file(config.config_template_path);
-    const auto model_source_config = path_has_extension(config.model_path, ".onnx") ?
-      ("onnx-file=" + config.model_path + "\nmodel-engine-file=" + config.model_path + ".engine") :
-      ("model-engine-file=" + config.model_path);
+    const auto model_source_config = path_has_extension(config.model_path, ".onnx")
+                                       ? ("onnx-file=" + config.model_path
+                                           + "\nmodel-engine-file=" + config.model_path + ".engine")
+                                       : ("model-engine-file=" + config.model_path);
     replace_all(config_text, "__MODEL_SOURCE_CONFIG__", model_source_config);
     replace_all(config_text, "__MODEL_ENGINE_FILE__", config.model_path);
     replace_all(config_text, "__INPUT_WIDTH__", std::to_string(config.imgsz_width));
@@ -936,31 +774,28 @@ struct DeepStreamRuntime::Impl
     replace_all(config_text, "__NETWORK_MODE__", config.half ? "2" : "0");
     replace_all(config_text, "__OUTPUT_BLOB_NAMES__", "output0");
 
-    runtime_config_path = std::filesystem::temp_directory_path() /
-      "yolo_cpp_deepstream_runtime_config.txt";
+    runtime_config_path =
+      std::filesystem::temp_directory_path() / "yolo_cpp_deepstream_runtime_config.txt";
     std::ofstream stream(runtime_config_path);
     if (!stream) {
       throw std::runtime_error(
-              "Failed to create runtime DeepStream config: " + runtime_config_path.string());
+        "Failed to create runtime DeepStream config: " + runtime_config_path.string());
     }
     stream << config_text;
   }
 
   /// Create a required GStreamer element or throw with the missing factory name.
-  GstElement * make_element(const char * factory, const char * name)
+  GstElement* make_element(const char* factory, const char* name)
   {
-    GstElement * element = gst_element_factory_make(factory, name);
+    GstElement* element = gst_element_factory_make(factory, name);
     if (element == nullptr) {
-      throw std::runtime_error(
-              "Failed to create GStreamer element '" + std::string(factory) + "'");
+      throw std::runtime_error("Failed to create GStreamer element '" + std::string(factory) + "'");
     }
     return element;
   }
 
-  GstElement * make_bayer_converter(
-    const SourceFormatSpec & source_format,
-    const std::optional<std::pair<int, int>> & pre_mux_resize,
-    bool need_color_branch)
+  GstElement* make_bayer_converter(const SourceFormatSpec& source_format,
+    const std::optional<std::pair<int, int>>& pre_mux_resize, bool need_color_branch)
   {
     actual_bayer_conversion_backend = "none";
     cuda_bayer_resizes_source = false;
@@ -971,46 +806,33 @@ struct DeepStreamRuntime::Impl
     const auto backend = normalize_format_token(config.bayer_conversion_backend);
     if (wants_cuda_bayer_backend()) {
       if (need_color_branch) {
-        RCLCPP_WARN(
-          logger,
+        RCLCPP_WARN(logger,
           "CUDA Bayer resize backend requested, but full-resolution color/debug output is enabled; "
           "falling back to bayer2rgb");
       } else if (!pre_mux_resize.has_value()) {
-        RCLCPP_WARN(
-          logger,
+        RCLCPP_WARN(logger,
           "CUDA Bayer resize backend requested without pre_mux_resize; falling back to bayer2rgb");
       } else if (!cuda_bayer_resize_available()) {
-        RCLCPP_WARN(
-          logger,
+        RCLCPP_WARN(logger,
           "CUDA Bayer resize backend was not compiled into this build; falling back to bayer2rgb");
       } else if (!register_cuda_bayer_resize_element()) {
-        RCLCPP_WARN(
-          logger,
+        RCLCPP_WARN(logger,
           "Failed to register CUDA Bayer resize GStreamer element; falling back to bayer2rgb");
       } else {
-        GstElement * element = make_element("yolocudabayerresize", "source_bayer_convert");
-        g_object_set(
-          G_OBJECT(element),
-          "output-width", pre_mux_resize->first,
-          "output-height", pre_mux_resize->second,
-          "flip-method", config.flip_source ? 2 : 0,
-          nullptr);
+        GstElement* element = make_element("yolocudabayerresize", "source_bayer_convert");
+        g_object_set(G_OBJECT(element), "output-width", pre_mux_resize->first, "output-height",
+          pre_mux_resize->second, "flip-method", config.flip_source ? 2 : 0, nullptr);
         actual_bayer_conversion_backend = "cuda";
         cuda_bayer_resizes_source = true;
-        RCLCPP_INFO(
-          logger,
-          "Using CUDA Bayer resize backend: %dx%d Bayer -> %dx%d RGBA%s",
-          config.source_width,
-          config.source_height,
-          pre_mux_resize->first,
-          pre_mux_resize->second,
+        RCLCPP_INFO(logger, "Using CUDA Bayer resize backend: %dx%d Bayer -> %dx%d RGBA%s",
+          config.source_width, config.source_height, pre_mux_resize->first, pre_mux_resize->second,
           config.flip_source ? " with 180-degree flip" : "");
         return element;
       }
     } else if (!wants_cpu_bayer_backend()) {
-      throw std::runtime_error(
-              "Unsupported Bayer conversion backend '" + config.bayer_conversion_backend +
-              "'. Use cuda/gpu or cpu/bayer2rgb.");
+      throw std::runtime_error("Unsupported Bayer conversion backend '"
+                               + config.bayer_conversion_backend
+                               + "'. Use cuda/gpu or cpu/bayer2rgb.");
     }
 
     if (backend == "cpu" || backend == "bayer2rgb" || wants_cuda_bayer_backend()) {
@@ -1022,42 +844,32 @@ struct DeepStreamRuntime::Impl
     return make_element("bayer2rgb", "source_bayer_convert");
   }
 
-  bool set_camera_enum_off(const char * name)
+  bool set_camera_enum_off(const char* name)
   {
-    return set_child_proxy_string_if_present(source, name, "Off") ||
-           set_child_proxy_double_if_present(source, name, 0.0);
+    return set_child_proxy_string_if_present(source, name, "Off")
+           || set_child_proxy_double_if_present(source, name, 0.0);
   }
 
-  void configure_low_latency_queue(GstElement * queue)
+  void configure_low_latency_queue(GstElement* queue)
   {
     if (queue == nullptr) {
       return;
     }
-    g_object_set(
-      G_OBJECT(queue),
-      "max-size-buffers", 1,
-      "max-size-bytes", 0,
-      "max-size-time", 0,
-      "leaky", 2,
-      nullptr);
+    g_object_set(G_OBJECT(queue), "max-size-buffers", 1, "max-size-bytes", 0, "max-size-time", 0,
+      "leaky", 2, nullptr);
   }
 
-  void configure_basler_source(const SourceFormatSpec & source_format)
+  void configure_basler_source(const SourceFormatSpec& source_format)
   {
-    RCLCPP_INFO(
-      logger,
-      "Configuring Basler source format/size/framerate through caps: %s",
+    RCLCPP_INFO(logger, "Configuring Basler source format/size/framerate through caps: %s",
       source_format.label.c_str());
     set_child_proxy_string_if_present(source, "cam::ExposureMode", "Timed");
     if (!set_camera_enum_off("cam::ExposureAuto")) {
       RCLCPP_WARN(logger, "Could not set Basler cam::ExposureAuto=Off through pylonsrc");
     }
-    if (!set_child_proxy_double_if_present(
-        source, "cam::ExposureTime", config.source_exposure_us))
+    if (!set_child_proxy_double_if_present(source, "cam::ExposureTime", config.source_exposure_us))
     {
-      RCLCPP_WARN(
-        logger,
-        "Could not set Basler cam::ExposureTime=%.2f through pylonsrc",
+      RCLCPP_WARN(logger, "Could not set Basler cam::ExposureTime=%.2f through pylonsrc",
         config.source_exposure_us);
     }
 
@@ -1067,16 +879,14 @@ struct DeepStreamRuntime::Impl
     set_child_proxy_string_if_present(source, "cam::GainSelector", "All");
     if (!set_child_proxy_double_if_present(source, "cam::Gain", config.source_gain_db)) {
       RCLCPP_WARN(
-        logger,
-        "Could not set Basler cam::Gain=%.2f through pylonsrc",
-        config.source_gain_db);
+        logger, "Could not set Basler cam::Gain=%.2f through pylonsrc", config.source_gain_db);
     }
   }
 
   std::optional<double> read_source_actual_fps() const
   {
-    if (auto fps = get_child_proxy_numeric_if_present(
-        source, "cam::BslResultingAcquisitionFrameRate");
+    if (auto fps =
+          get_child_proxy_numeric_if_present(source, "cam::BslResultingAcquisitionFrameRate");
       fps.has_value() && *fps > 0.0)
     {
       return fps;
@@ -1109,40 +919,28 @@ struct DeepStreamRuntime::Impl
       config.source_height = static_cast<int>(*height);
     }
 
-    RCLCPP_INFO(
-      logger,
+    RCLCPP_INFO(logger,
       "DeepStream Basler source %s: %dx%d pixel_format=%s @ %.2f FPS "
       "(full_sensor=%s, pre_mux_resize=%s, bayer_backend=%s, fps_cap=%s)",
-      fps.has_value() ? "reported" : "fallback",
-      config.source_width,
-      config.source_height,
-      pixel_format.value_or("unknown").c_str(),
-      source_actual_fps,
-      config.source_use_full_sensor ? "true" : "false",
-      config.pre_mux_resize ? "true" : "false",
-      actual_bayer_conversion_backend.c_str(),
-      fps_cap_status.c_str());
-    RCLCPP_INFO(
-      logger,
+      fps.has_value() ? "reported" : "fallback", config.source_width, config.source_height,
+      pixel_format.value_or("unknown").c_str(), source_actual_fps,
+      config.source_use_full_sensor ? "true" : "false", config.pre_mux_resize ? "true" : "false",
+      actual_bayer_conversion_backend.c_str(), fps_cap_status.c_str());
+    RCLCPP_INFO(logger,
       "DeepStream Basler caps requested: source='%s' infer_cpu='%s' infer_nvmm='%s' color='%s'",
-      requested_source_caps.c_str(),
-      requested_infer_cpu_caps.c_str(),
+      requested_source_caps.c_str(), requested_infer_cpu_caps.c_str(),
       requested_infer_nvmm_caps.c_str(),
       requested_color_caps.empty() ? "disabled" : requested_color_caps.c_str());
-    RCLCPP_INFO(
-      logger,
-      "DeepStream Basler caps negotiated: source='%s' infer_nvmm='%s' color='%s'",
+    RCLCPP_INFO(logger, "DeepStream Basler caps negotiated: source='%s' infer_nvmm='%s' color='%s'",
       current_caps_for_pad(source_caps, "src").c_str(),
       current_caps_for_pad(infer_nvmm_caps, "src").c_str(),
       color_caps != nullptr ? current_caps_for_pad(color_caps, "src").c_str() : "disabled");
   }
 
   static GstPadProbeReturn stage_profile_pad_probe(
-    GstPad *,
-    GstPadProbeInfo * info,
-    gpointer user_data)
+    GstPad*, GstPadProbeInfo* info, gpointer user_data)
   {
-    auto * context = static_cast<StageProbeContext *>(user_data);
+    auto* context = static_cast<StageProbeContext*>(user_data);
     if (context == nullptr || context->runtime == nullptr || info == nullptr) {
       return GST_PAD_PROBE_OK;
     }
@@ -1150,7 +948,7 @@ struct DeepStreamRuntime::Impl
       return GST_PAD_PROBE_OK;
     }
 
-    GstBuffer * buffer = GST_PAD_PROBE_INFO_BUFFER(info);
+    GstBuffer* buffer = GST_PAD_PROBE_INFO_BUFFER(info);
     if (buffer == nullptr) {
       return GST_PAD_PROBE_OK;
     }
@@ -1158,7 +956,7 @@ struct DeepStreamRuntime::Impl
     return GST_PAD_PROBE_OK;
   }
 
-  static std::uint64_t stage_profile_key(GstBuffer * buffer)
+  static std::uint64_t stage_profile_key(GstBuffer* buffer)
   {
     const GstClockTime pts = GST_BUFFER_PTS(buffer);
     if (pts != GST_CLOCK_TIME_NONE) {
@@ -1171,23 +969,21 @@ struct DeepStreamRuntime::Impl
     return static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(buffer));
   }
 
-  static void add_stage_delta(
-    const StageProbeFrame & frame,
-    StageProbePoint from,
-    StageProbePoint to,
-    StageProfileMetric & metric)
+  static void add_stage_delta(const StageProbeFrame& frame, StageProbePoint from,
+    StageProbePoint to, StageProfileMetric& metric)
   {
     const auto from_index = static_cast<std::size_t>(from);
     const auto to_index = static_cast<std::size_t>(to);
     if (!frame.times[from_index].has_value() || !frame.times[to_index].has_value()) {
       return;
     }
-    metric.total_ms += std::chrono::duration<double, std::milli>(
-      *frame.times[to_index] - *frame.times[from_index]).count();
+    metric.total_ms +=
+      std::chrono::duration<double, std::milli>(*frame.times[to_index] - *frame.times[from_index])
+        .count();
     ++metric.count;
   }
 
-  static std::string average_text(const StageProfileMetric & metric)
+  static std::string average_text(const StageProfileMetric& metric)
   {
     if (metric.count == 0U) {
       return "n/a";
@@ -1205,13 +1001,11 @@ struct DeepStreamRuntime::Impl
       return;
     }
 
-    RCLCPP_INFO(
-      logger,
+    RCLCPP_INFO(logger,
       "DeepStream stage profile frames=%zu avg_ms source_to_bayer=%s "
       "bayer_or_source_to_queue=%s videoconvert=%s nvvideoconvert=%s "
       "nvmm_to_streammux=%s nvinfer=%s",
-      stage_profile_completed_frames,
-      average_text(stage_profile_totals.source_to_bayer).c_str(),
+      stage_profile_completed_frames, average_text(stage_profile_totals.source_to_bayer).c_str(),
       average_text(stage_profile_totals.source_or_bayer_to_queue).c_str(),
       average_text(stage_profile_totals.videoconvert).c_str(),
       average_text(stage_profile_totals.nvvideoconvert).c_str(),
@@ -1219,7 +1013,7 @@ struct DeepStreamRuntime::Impl
       average_text(stage_profile_totals.nvinfer).c_str());
   }
 
-  void record_stage_profile_point(GstBuffer * buffer, StageProbePoint point)
+  void record_stage_profile_point(GstBuffer* buffer, StageProbePoint point)
   {
     if (!config.profile_stages) {
       return;
@@ -1228,54 +1022,37 @@ struct DeepStreamRuntime::Impl
     const auto now = std::chrono::steady_clock::now();
     const auto key = stage_profile_key(buffer);
     std::lock_guard<std::mutex> lock(stage_profile_mutex);
-    auto & frame = stage_profile_frames[key];
+    auto& frame = stage_profile_frames[key];
     frame.times[static_cast<std::size_t>(point)] = now;
 
     switch (point) {
       case StageProbePoint::kBayerConvert:
-        add_stage_delta(
-          frame,
-          StageProbePoint::kSourceCaps,
-          StageProbePoint::kBayerConvert,
+        add_stage_delta(frame, StageProbePoint::kSourceCaps, StageProbePoint::kBayerConvert,
           stage_profile_totals.source_to_bayer);
         break;
       case StageProbePoint::kInferConvertSink:
-        add_stage_delta(
-          frame,
-          frame.times[static_cast<std::size_t>(StageProbePoint::kBayerConvert)].has_value() ?
-          StageProbePoint::kBayerConvert :
-          StageProbePoint::kSourceCaps,
-          StageProbePoint::kInferConvertSink,
-          stage_profile_totals.source_or_bayer_to_queue);
+        add_stage_delta(frame,
+          frame.times[static_cast<std::size_t>(StageProbePoint::kBayerConvert)].has_value()
+            ? StageProbePoint::kBayerConvert
+            : StageProbePoint::kSourceCaps,
+          StageProbePoint::kInferConvertSink, stage_profile_totals.source_or_bayer_to_queue);
         break;
       case StageProbePoint::kInferConvertSrc:
-        add_stage_delta(
-          frame,
-          StageProbePoint::kInferConvertSink,
-          StageProbePoint::kInferConvertSrc,
-          stage_profile_totals.videoconvert);
+        add_stage_delta(frame, StageProbePoint::kInferConvertSink,
+          StageProbePoint::kInferConvertSrc, stage_profile_totals.videoconvert);
         break;
       case StageProbePoint::kNvConvertSrc:
-        add_stage_delta(
-          frame,
-          StageProbePoint::kInferConvertSrc,
-          StageProbePoint::kNvConvertSrc,
+        add_stage_delta(frame, StageProbePoint::kInferConvertSrc, StageProbePoint::kNvConvertSrc,
           stage_profile_totals.nvvideoconvert);
         break;
       case StageProbePoint::kStreammuxSrc:
         break;
       case StageProbePoint::kStreammuxSink:
-        add_stage_delta(
-          frame,
-          StageProbePoint::kInferNvmmSrc,
-          StageProbePoint::kStreammuxSink,
+        add_stage_delta(frame, StageProbePoint::kInferNvmmSrc, StageProbePoint::kStreammuxSink,
           stage_profile_totals.nvmm_to_streammux);
         break;
       case StageProbePoint::kNvInferSrc:
-        add_stage_delta(
-          frame,
-          StageProbePoint::kStreammuxSrc,
-          StageProbePoint::kNvInferSrc,
+        add_stage_delta(frame, StageProbePoint::kStreammuxSrc, StageProbePoint::kNvInferSrc,
           stage_profile_totals.nvinfer);
         stage_profile_frames.erase(key);
         break;
@@ -1294,15 +1071,12 @@ struct DeepStreamRuntime::Impl
   }
 
   void add_stage_profile_probe(
-    GstElement * element,
-    const char * pad_name,
-    StageProbePoint point,
-    const char * label)
+    GstElement* element, const char* pad_name, StageProbePoint point, const char* label)
   {
     if (!config.profile_stages || element == nullptr || pad_name == nullptr) {
       return;
     }
-    GstPad * pad = gst_element_get_static_pad(element, pad_name);
+    GstPad* pad = gst_element_get_static_pad(element, pad_name);
     if (pad == nullptr) {
       RCLCPP_WARN(logger, "Could not attach DeepStream stage profile probe: %s", label);
       return;
@@ -1311,10 +1085,7 @@ struct DeepStreamRuntime::Impl
     gst_object_unref(pad);
   }
 
-  void add_stage_profile_probe_to_pad(
-    GstPad * pad,
-    StageProbePoint point,
-    const char * label)
+  void add_stage_profile_probe_to_pad(GstPad* pad, StageProbePoint point, const char* label)
   {
     if (!config.profile_stages || pad == nullptr) {
       return;
@@ -1322,12 +1093,8 @@ struct DeepStreamRuntime::Impl
     auto context = std::make_unique<StageProbeContext>();
     context->runtime = this;
     context->point = point;
-    gst_pad_add_probe(
-      pad,
-      GST_PAD_PROBE_TYPE_BUFFER,
-      &DeepStreamRuntime::Impl::stage_profile_pad_probe,
-      context.get(),
-      nullptr);
+    gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_BUFFER,
+      &DeepStreamRuntime::Impl::stage_profile_pad_probe, context.get(), nullptr);
     stage_probe_contexts.push_back(std::move(context));
     (void)label;
   }
@@ -1337,12 +1104,10 @@ struct DeepStreamRuntime::Impl
     if (!config.profile_stages) {
       return;
     }
-    add_stage_profile_probe(
-      source_caps, "src", StageProbePoint::kSourceCaps, "source_caps:src");
+    add_stage_profile_probe(source_caps, "src", StageProbePoint::kSourceCaps, "source_caps:src");
     if (source_bayer_convert != nullptr) {
       add_stage_profile_probe(
-        source_bayer_convert, "src", StageProbePoint::kBayerConvert,
-        "source_bayer_convert:src");
+        source_bayer_convert, "src", StageProbePoint::kBayerConvert, "source_bayer_convert:src");
     }
     add_stage_profile_probe(
       infer_convert, "sink", StageProbePoint::kInferConvertSink, "videoconvert:sink");
@@ -1354,13 +1119,9 @@ struct DeepStreamRuntime::Impl
       infer_nvmm_caps, "src", StageProbePoint::kInferNvmmSrc, "infer_nvmm_caps:src");
     add_stage_profile_probe_to_pad(
       streammux_sink_pad, StageProbePoint::kStreammuxSink, "nvstreammux:sink_0");
-    add_stage_profile_probe(
-      streammux, "src", StageProbePoint::kStreammuxSrc, "nvstreammux:src");
-    add_stage_profile_probe(
-      nvinfer, "src", StageProbePoint::kNvInferSrc, "nvinfer:src");
-    RCLCPP_INFO(
-      logger,
-      "DeepStream stage profiling enabled; logging every %d frames",
+    add_stage_profile_probe(streammux, "src", StageProbePoint::kStreammuxSrc, "nvstreammux:src");
+    add_stage_profile_probe(nvinfer, "src", StageProbePoint::kNvInferSrc, "nvinfer:src");
+    RCLCPP_INFO(logger, "DeepStream stage profiling enabled; logging every %d frames",
       std::max(1, config.profile_stage_interval));
   }
 
@@ -1381,8 +1142,8 @@ struct DeepStreamRuntime::Impl
     const bool need_color_branch = need_full_color_branch || need_preview_branch;
     source = make_element(config.source_element.c_str(), "source");
     source_caps = make_element("capsfilter", "source_caps");
-    source_bayer_convert = make_bayer_converter(
-      source_format, pre_mux_resize, need_full_color_branch);
+    source_bayer_convert =
+      make_bayer_converter(source_format, pre_mux_resize, need_full_color_branch);
     if (cuda_bayer_resizes_source) {
       source_bayer_caps = make_element("capsfilter", "source_bayer_caps");
     }
@@ -1400,9 +1161,8 @@ struct DeepStreamRuntime::Impl
 
     const bool nvconvert_flip_supported =
       g_object_class_find_property(G_OBJECT_GET_CLASS(infer_nvconvert), "flip-method") != nullptr;
-    const bool use_infer_nvconvert_flip =
-      config.flip_source && !cuda_bayer_resizes_source && !need_full_color_branch &&
-      nvconvert_flip_supported;
+    const bool use_infer_nvconvert_flip = config.flip_source && !cuda_bayer_resizes_source
+                                          && !need_full_color_branch && nvconvert_flip_supported;
     const bool use_source_flip =
       config.flip_source && !cuda_bayer_resizes_source && !use_infer_nvconvert_flip;
     if (use_source_flip) {
@@ -1416,21 +1176,9 @@ struct DeepStreamRuntime::Impl
       color_sink = GST_APP_SINK(color_sink_elem);
     }
 
-    gst_bin_add_many(
-      GST_BIN(pipeline),
-      source,
-      source_caps,
-      tee,
-      infer_queue,
-      infer_convert,
-      infer_cpu_caps,
-      infer_nvconvert,
-      infer_nvmm_caps,
-      streammux,
-      nvinfer,
-      infer_post_queue,
-      infer_sink_elem,
-      nullptr);
+    gst_bin_add_many(GST_BIN(pipeline), source, source_caps, tee, infer_queue, infer_convert,
+      infer_cpu_caps, infer_nvconvert, infer_nvmm_caps, streammux, nvinfer, infer_post_queue,
+      infer_sink_elem, nullptr);
     if (source_bayer_convert != nullptr) {
       gst_bin_add(GST_BIN(pipeline), source_bayer_convert);
     }
@@ -1442,12 +1190,7 @@ struct DeepStreamRuntime::Impl
     }
     if (need_color_branch) {
       gst_bin_add_many(
-        GST_BIN(pipeline),
-        color_queue,
-        color_convert,
-        color_caps,
-        color_sink_elem,
-        nullptr);
+        GST_BIN(pipeline), color_queue, color_convert, color_caps, color_sink_elem, nullptr);
     }
 
     const std::optional<int> processing_width =
@@ -1463,16 +1206,15 @@ struct DeepStreamRuntime::Impl
     configure_low_latency_queue(infer_post_queue);
 
     bool uncapped_fps_applied = false;
-    if (
-      config.source_fps_uncapped &&
-      set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", false))
+    if (config.source_fps_uncapped
+        && set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", false))
     {
       uncapped_fps_applied = true;
       fps_cap_status = "disabled camera AcquisitionFrameRate limit";
     } else if (config.source_fps_uncapped) {
-      RCLCPP_INFO(
-        logger,
-        "Basler AcquisitionFrameRateEnable is not exposed by pylonsrc; requesting %d FPS through caps",
+      RCLCPP_INFO(logger,
+        "Basler AcquisitionFrameRateEnable is not exposed by pylonsrc; requesting %d "
+        "FPS through caps",
         config.source_fps);
       fps_cap_status = "uncapped requested, falling back to caps framerate";
     }
@@ -1481,11 +1223,9 @@ struct DeepStreamRuntime::Impl
     if (!config.source_fps_uncapped) {
       set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", true);
       if (!set_child_proxy_double_if_present(
-          source, "cam::AcquisitionFrameRate", static_cast<double>(config.source_fps)))
+            source, "cam::AcquisitionFrameRate", static_cast<double>(config.source_fps)))
       {
-        RCLCPP_WARN(
-          logger,
-          "Could not set Basler cam::AcquisitionFrameRate=%d through pylonsrc",
+        RCLCPP_WARN(logger, "Could not set Basler cam::AcquisitionFrameRate=%d through pylonsrc",
           config.source_fps);
       }
       capped_fps = config.source_fps;
@@ -1495,12 +1235,8 @@ struct DeepStreamRuntime::Impl
       fps_cap_status = "caps framerate fallback";
     }
     requested_source_caps = make_video_caps_text(
-      source_format.media_type,
-      source_format.caps_format,
-      source_width,
-      source_height,
-      capped_fps);
-    GstCaps * source_caps_value = gst_caps_from_string(requested_source_caps.c_str());
+      source_format.media_type, source_format.caps_format, source_width, source_height, capped_fps);
+    GstCaps* source_caps_value = gst_caps_from_string(requested_source_caps.c_str());
     if (source_caps_value == nullptr) {
       throw std::runtime_error("Failed to create Basler source caps: " + requested_source_caps);
     }
@@ -1511,79 +1247,61 @@ struct DeepStreamRuntime::Impl
     }
     if (use_infer_nvconvert_flip) {
       g_object_set(G_OBJECT(infer_nvconvert), "flip-method", 2, nullptr);
-      RCLCPP_INFO(
-        logger,
+      RCLCPP_INFO(logger,
         "Moving Basler 180-degree flip to nvvideoconvert after inference-branch conversion");
-    } else if (
-      config.flip_source && !cuda_bayer_resizes_source && !need_full_color_branch &&
-      !nvconvert_flip_supported)
+    } else if (config.flip_source && !cuda_bayer_resizes_source && !need_full_color_branch
+               && !nvconvert_flip_supported)
     {
       RCLCPP_WARN(
-        logger,
-        "nvvideoconvert does not expose flip-method; keeping full-resolution videoflip");
+        logger, "nvvideoconvert does not expose flip-method; keeping full-resolution videoflip");
     }
 
-    const std::optional<int> infer_width = pre_mux_resize.has_value() ?
-      std::optional<int>(pre_mux_resize->first) :
-      (config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_width));
-    const std::optional<int> infer_height = pre_mux_resize.has_value() ?
-      std::optional<int>(pre_mux_resize->second) :
-      (config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_height));
+    const std::optional<int> infer_width =
+      pre_mux_resize.has_value()
+        ? std::optional<int>(pre_mux_resize->first)
+        : (config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_width));
+    const std::optional<int> infer_height =
+      pre_mux_resize.has_value()
+        ? std::optional<int>(pre_mux_resize->second)
+        : (config.source_use_full_sensor ? std::nullopt : std::optional<int>(config.imgsz_height));
     const std::optional<int> infer_cpu_width =
       cuda_bayer_resizes_source ? infer_width : processing_width;
     const std::optional<int> infer_cpu_height =
       cuda_bayer_resizes_source ? infer_height : processing_height;
-    requested_infer_cpu_caps = make_video_caps_text(
-      "video/x-raw", "RGBA", infer_cpu_width, infer_cpu_height, capped_fps);
-    GstCaps * infer_cpu_caps_value = gst_caps_from_string(requested_infer_cpu_caps.c_str());
+    requested_infer_cpu_caps =
+      make_video_caps_text("video/x-raw", "RGBA", infer_cpu_width, infer_cpu_height, capped_fps);
+    GstCaps* infer_cpu_caps_value = gst_caps_from_string(requested_infer_cpu_caps.c_str());
     if (infer_cpu_caps_value == nullptr) {
       throw std::runtime_error(
-              "Failed to create DeepStream CPU conversion caps: " + requested_infer_cpu_caps);
+        "Failed to create DeepStream CPU conversion caps: " + requested_infer_cpu_caps);
     }
     g_object_set(G_OBJECT(infer_cpu_caps), "caps", infer_cpu_caps_value, nullptr);
     gst_caps_unref(infer_cpu_caps_value);
     if (source_bayer_caps != nullptr) {
-      GstCaps * source_bayer_caps_value = gst_caps_from_string(requested_infer_cpu_caps.c_str());
+      GstCaps* source_bayer_caps_value = gst_caps_from_string(requested_infer_cpu_caps.c_str());
       if (source_bayer_caps_value == nullptr) {
         throw std::runtime_error(
-                "Failed to create CUDA Bayer output caps: " + requested_infer_cpu_caps);
+          "Failed to create CUDA Bayer output caps: " + requested_infer_cpu_caps);
       }
       g_object_set(G_OBJECT(source_bayer_caps), "caps", source_bayer_caps_value, nullptr);
       gst_caps_unref(source_bayer_caps_value);
     }
 
     requested_infer_nvmm_caps = make_video_caps_text(
-      "video/x-raw(memory:NVMM)",
-      "NV12",
-      infer_width,
-      infer_height,
-      capped_fps);
-    GstCaps * infer_caps_value = gst_caps_from_string(requested_infer_nvmm_caps.c_str());
+      "video/x-raw(memory:NVMM)", "NV12", infer_width, infer_height, capped_fps);
+    GstCaps* infer_caps_value = gst_caps_from_string(requested_infer_nvmm_caps.c_str());
     if (infer_caps_value == nullptr) {
-      throw std::runtime_error("Failed to create DeepStream NVMM caps: " + requested_infer_nvmm_caps);
+      throw std::runtime_error(
+        "Failed to create DeepStream NVMM caps: " + requested_infer_nvmm_caps);
     }
     g_object_set(G_OBJECT(infer_nvmm_caps), "caps", infer_caps_value, nullptr);
     gst_caps_unref(infer_caps_value);
 
-    g_object_set(
-      G_OBJECT(streammux),
-      "batch-size", 1,
-      "width", config.imgsz_width,
-      "height", config.imgsz_height,
-      "live-source", TRUE,
-      "enable-padding", TRUE,
-      nullptr);
-    g_object_set(
-      G_OBJECT(nvinfer),
-      "config-file-path", runtime_config_path.c_str(),
-      nullptr);
-    g_object_set(
-      G_OBJECT(infer_sink_elem),
-      "emit-signals", FALSE,
-      "sync", FALSE,
-      "max-buffers", 1,
-      "drop", TRUE,
-      nullptr);
+    g_object_set(G_OBJECT(streammux), "batch-size", 1, "width", config.imgsz_width, "height",
+      config.imgsz_height, "live-source", TRUE, "enable-padding", TRUE, nullptr);
+    g_object_set(G_OBJECT(nvinfer), "config-file-path", runtime_config_path.c_str(), nullptr);
+    g_object_set(G_OBJECT(infer_sink_elem), "emit-signals", FALSE, "sync", FALSE, "max-buffers", 1,
+      "drop", TRUE, nullptr);
 
     if (need_color_branch) {
       configure_low_latency_queue(color_queue);
@@ -1591,51 +1309,43 @@ struct DeepStreamRuntime::Impl
         (need_preview_branch && cuda_bayer_resizes_source) ? infer_width : processing_width;
       const std::optional<int> color_height =
         (need_preview_branch && cuda_bayer_resizes_source) ? infer_height : processing_height;
-      requested_color_caps = make_video_caps_text(
-        "video/x-raw", "BGR", color_width, color_height, capped_fps);
-      GstCaps * color_caps_value = gst_caps_from_string(requested_color_caps.c_str());
+      requested_color_caps =
+        make_video_caps_text("video/x-raw", "BGR", color_width, color_height, capped_fps);
+      GstCaps* color_caps_value = gst_caps_from_string(requested_color_caps.c_str());
       if (color_caps_value == nullptr) {
         throw std::runtime_error("Failed to create DeepStream color caps: " + requested_color_caps);
       }
       g_object_set(G_OBJECT(color_caps), "caps", color_caps_value, nullptr);
       gst_caps_unref(color_caps_value);
-      g_object_set(
-        G_OBJECT(color_sink_elem),
-        "emit-signals", FALSE,
-        "sync", FALSE,
-        "max-buffers", 4,
-        "drop", TRUE,
-        nullptr);
+      g_object_set(G_OBJECT(color_sink_elem), "emit-signals", FALSE, "sync", FALSE, "max-buffers",
+        4, "drop", TRUE, nullptr);
     }
 
     gboolean source_linked = FALSE;
-    if (
-      source_bayer_convert != nullptr && source_bayer_caps != nullptr &&
-      source_flip != nullptr)
-    {
+    if (source_bayer_convert != nullptr && source_bayer_caps != nullptr && source_flip != nullptr) {
       source_linked = gst_element_link_many(
         source, source_caps, source_bayer_convert, source_bayer_caps, source_flip, tee, nullptr);
     } else if (source_bayer_convert != nullptr && source_bayer_caps != nullptr) {
       source_linked = gst_element_link_many(
         source, source_caps, source_bayer_convert, source_bayer_caps, tee, nullptr);
     } else if (source_bayer_convert != nullptr && source_flip != nullptr) {
-      source_linked = gst_element_link_many(
-        source, source_caps, source_bayer_convert, source_flip, tee, nullptr);
+      source_linked =
+        gst_element_link_many(source, source_caps, source_bayer_convert, source_flip, tee, nullptr);
     } else if (source_bayer_convert != nullptr) {
-      source_linked = gst_element_link_many(source, source_caps, source_bayer_convert, tee, nullptr);
+      source_linked =
+        gst_element_link_many(source, source_caps, source_bayer_convert, tee, nullptr);
     } else if (source_flip != nullptr) {
       source_linked = gst_element_link_many(source, source_caps, source_flip, tee, nullptr);
     } else {
       source_linked = gst_element_link_many(source, source_caps, tee, nullptr);
     }
     if (!source_linked) {
-      throw std::runtime_error(
-              source_bayer_convert != nullptr ?
-              "Failed to link DeepStream Bayer source path" :
-              "Failed to link DeepStream source path");
+      throw std::runtime_error(source_bayer_convert != nullptr
+                                 ? "Failed to link DeepStream Bayer source path"
+                                 : "Failed to link DeepStream source path");
     }
     if (!gst_element_link_many(
-        infer_queue, infer_convert, infer_cpu_caps, infer_nvconvert, infer_nvmm_caps, nullptr))
+          infer_queue, infer_convert, infer_cpu_caps, infer_nvconvert, infer_nvmm_caps, nullptr))
     {
       throw std::runtime_error("Failed to link DeepStream inference pre-mux path");
     }
@@ -1644,10 +1354,9 @@ struct DeepStreamRuntime::Impl
     }
 
     tee_infer_pad = gst_element_request_pad_simple(tee, "src_%u");
-    GstPad * infer_queue_sink_pad = gst_element_get_static_pad(infer_queue, "sink");
-    if (
-      tee_infer_pad == nullptr || infer_queue_sink_pad == nullptr ||
-      gst_pad_link(tee_infer_pad, infer_queue_sink_pad) != GST_PAD_LINK_OK)
+    GstPad* infer_queue_sink_pad = gst_element_get_static_pad(infer_queue, "sink");
+    if (tee_infer_pad == nullptr || infer_queue_sink_pad == nullptr
+        || gst_pad_link(tee_infer_pad, infer_queue_sink_pad) != GST_PAD_LINK_OK)
     {
       release_request_pad(tee, tee_infer_pad);
       if (infer_queue_sink_pad != nullptr) {
@@ -1657,11 +1366,10 @@ struct DeepStreamRuntime::Impl
     }
     gst_object_unref(infer_queue_sink_pad);
 
-    GstPad * infer_src_pad = gst_element_get_static_pad(infer_nvmm_caps, "src");
+    GstPad* infer_src_pad = gst_element_get_static_pad(infer_nvmm_caps, "src");
     streammux_sink_pad = gst_element_request_pad_simple(streammux, "sink_0");
-    if (
-      infer_src_pad == nullptr || streammux_sink_pad == nullptr ||
-      gst_pad_link(infer_src_pad, streammux_sink_pad) != GST_PAD_LINK_OK)
+    if (infer_src_pad == nullptr || streammux_sink_pad == nullptr
+        || gst_pad_link(infer_src_pad, streammux_sink_pad) != GST_PAD_LINK_OK)
     {
       if (infer_src_pad != nullptr) {
         gst_object_unref(infer_src_pad);
@@ -1672,14 +1380,14 @@ struct DeepStreamRuntime::Impl
     gst_object_unref(infer_src_pad);
 
     if (need_color_branch) {
-      if (!gst_element_link_many(color_queue, color_convert, color_caps, color_sink_elem, nullptr)) {
+      if (!gst_element_link_many(color_queue, color_convert, color_caps, color_sink_elem, nullptr))
+      {
         throw std::runtime_error("Failed to link DeepStream color branch");
       }
       tee_color_pad = gst_element_request_pad_simple(tee, "src_%u");
-      GstPad * color_queue_sink_pad = gst_element_get_static_pad(color_queue, "sink");
-      if (
-        tee_color_pad == nullptr || color_queue_sink_pad == nullptr ||
-        gst_pad_link(tee_color_pad, color_queue_sink_pad) != GST_PAD_LINK_OK)
+      GstPad* color_queue_sink_pad = gst_element_get_static_pad(color_queue, "sink");
+      if (tee_color_pad == nullptr || color_queue_sink_pad == nullptr
+          || gst_pad_link(tee_color_pad, color_queue_sink_pad) != GST_PAD_LINK_OK)
       {
         release_request_pad(tee, tee_color_pad);
         if (color_queue_sink_pad != nullptr) {
@@ -1700,18 +1408,16 @@ struct DeepStreamRuntime::Impl
     const GstStateChangeReturn state_ret = gst_element_set_state(pipeline, GST_STATE_PLAYING);
     if (state_ret == GST_STATE_CHANGE_FAILURE) {
       const std::string diagnostics = collect_bus_diagnostics(bus);
-      throw std::runtime_error(
-              "Failed to set DeepStream pipeline to PLAYING" +
-              (diagnostics.empty() ? std::string{} : (": " + diagnostics)));
+      throw std::runtime_error("Failed to set DeepStream pipeline to PLAYING"
+                               + (diagnostics.empty() ? std::string{} : (": " + diagnostics)));
     }
     if (state_ret == GST_STATE_CHANGE_ASYNC) {
-      const GstStateChangeReturn wait_ret = gst_element_get_state(
-        pipeline, nullptr, nullptr, 2 * GST_SECOND);
+      const GstStateChangeReturn wait_ret =
+        gst_element_get_state(pipeline, nullptr, nullptr, 2 * GST_SECOND);
       if (wait_ret == GST_STATE_CHANGE_FAILURE) {
         const std::string diagnostics = collect_bus_diagnostics(bus);
-        throw std::runtime_error(
-                "DeepStream pipeline failed while waiting for PLAYING" +
-                (diagnostics.empty() ? std::string{} : (": " + diagnostics)));
+        throw std::runtime_error("DeepStream pipeline failed while waiting for PLAYING"
+                                 + (diagnostics.empty() ? std::string{} : (": " + diagnostics)));
       }
     }
     query_source_actuals();
@@ -1730,25 +1436,19 @@ struct DeepStreamRuntime::Impl
   void bus_loop()
   {
     while (running) {
-      GstMessage * message = gst_bus_timed_pop_filtered(
-        bus,
-        100 * GST_MSECOND,
+      GstMessage* message = gst_bus_timed_pop_filtered(bus, 100 * GST_MSECOND,
         static_cast<GstMessageType>(GST_MESSAGE_ERROR | GST_MESSAGE_EOS | GST_MESSAGE_WARNING));
       if (message == nullptr) {
         continue;
       }
 
       switch (GST_MESSAGE_TYPE(message)) {
-        case GST_MESSAGE_ERROR:
-        {
-          GError * error = nullptr;
-          gchar * debug = nullptr;
+        case GST_MESSAGE_ERROR: {
+          GError* error = nullptr;
+          gchar* debug = nullptr;
           gst_message_parse_error(message, &error, &debug);
-          RCLCPP_ERROR(
-            logger,
-            "DeepStream pipeline error: %s debug=%s",
-            error != nullptr ? error->message : "unknown",
-            debug != nullptr ? debug : "");
+          RCLCPP_ERROR(logger, "DeepStream pipeline error: %s debug=%s",
+            error != nullptr ? error->message : "unknown", debug != nullptr ? debug : "");
           if (error != nullptr) {
             g_error_free(error);
           }
@@ -1757,16 +1457,12 @@ struct DeepStreamRuntime::Impl
           }
           break;
         }
-        case GST_MESSAGE_WARNING:
-        {
-          GError * error = nullptr;
-          gchar * debug = nullptr;
+        case GST_MESSAGE_WARNING: {
+          GError* error = nullptr;
+          gchar* debug = nullptr;
           gst_message_parse_warning(message, &error, &debug);
-          RCLCPP_WARN(
-            logger,
-            "DeepStream pipeline warning: %s debug=%s",
-            error != nullptr ? error->message : "unknown",
-            debug != nullptr ? debug : "");
+          RCLCPP_WARN(logger, "DeepStream pipeline warning: %s debug=%s",
+            error != nullptr ? error->message : "unknown", debug != nullptr ? debug : "");
           if (error != nullptr) {
             g_error_free(error);
           }
@@ -1785,15 +1481,15 @@ struct DeepStreamRuntime::Impl
     }
   }
 
-  FramePacket sample_to_bgr_packet(GstSample * sample)
+  FramePacket sample_to_bgr_packet(GstSample* sample)
   {
     FramePacket packet{};
     if (sample == nullptr) {
       return packet;
     }
 
-    GstBuffer * buffer = gst_sample_get_buffer(sample);
-    GstCaps * caps = gst_sample_get_caps(sample);
+    GstBuffer* buffer = gst_sample_get_buffer(sample);
+    GstCaps* caps = gst_sample_get_caps(sample);
     if (buffer == nullptr || caps == nullptr) {
       return packet;
     }
@@ -1852,7 +1548,7 @@ struct DeepStreamRuntime::Impl
     return frame_cache.rbegin()->second;
   }
 
-  std::vector<int64_t> dims_to_shape(const NvDsInferDims & dims) const
+  std::vector<int64_t> dims_to_shape(const NvDsInferDims& dims) const
   {
     std::vector<int64_t> shape;
     if (dims.numDims == 2) {
@@ -1867,8 +1563,7 @@ struct DeepStreamRuntime::Impl
   }
 
   std::vector<float> tensor_to_float_vector(
-    const NvDsInferTensorMeta * tensor_meta,
-    const NvDsInferLayerInfo & layer) const
+    const NvDsInferTensorMeta* tensor_meta, const NvDsInferLayerInfo& layer) const
   {
     const auto shape = dims_to_shape(layer.inferDims);
     std::size_t volume = 1;
@@ -1877,7 +1572,7 @@ struct DeepStreamRuntime::Impl
     }
 
     const int output_index = static_cast<int>(&layer - tensor_meta->output_layers_info);
-    const void * host_ptr = nullptr;
+    const void* host_ptr = nullptr;
     if (tensor_meta->out_buf_ptrs_host != nullptr) {
       host_ptr = tensor_meta->out_buf_ptrs_host[output_index];
     }
@@ -1890,12 +1585,12 @@ struct DeepStreamRuntime::Impl
 
     std::vector<float> values(volume, 0.0F);
     if (layer.dataType == FLOAT) {
-      const auto * floats = static_cast<const float *>(host_ptr);
+      const auto* floats = static_cast<const float*>(host_ptr);
       std::copy(floats, floats + volume, values.begin());
       return values;
     }
     if (layer.dataType == HALF) {
-      const auto * halves = static_cast<const std::uint16_t *>(host_ptr);
+      const auto* halves = static_cast<const std::uint16_t*>(host_ptr);
       for (std::size_t i = 0; i < volume; ++i) {
         const std::uint16_t value = halves[i];
         const std::uint32_t sign = (static_cast<std::uint32_t>(value & 0x8000U)) << 16;
@@ -1930,20 +1625,19 @@ struct DeepStreamRuntime::Impl
     throw std::runtime_error("Unsupported DeepStream tensor output datatype");
   }
 
-  std::optional<NvDsInferTensorMeta *> find_tensor_meta(NvDsFrameMeta * frame_meta) const
+  std::optional<NvDsInferTensorMeta*> find_tensor_meta(NvDsFrameMeta* frame_meta) const
   {
     if (frame_meta == nullptr) {
       return std::nullopt;
     }
-    for (NvDsMetaList * user_meta = frame_meta->frame_user_meta_list;
-      user_meta != nullptr;
+    for (NvDsMetaList* user_meta = frame_meta->frame_user_meta_list; user_meta != nullptr;
       user_meta = user_meta->next)
     {
-      auto * meta = static_cast<NvDsUserMeta *>(user_meta->data);
+      auto* meta = static_cast<NvDsUserMeta*>(user_meta->data);
       if (meta == nullptr || meta->base_meta.meta_type != NVDSINFER_TENSOR_OUTPUT_META) {
         continue;
       }
-      return static_cast<NvDsInferTensorMeta *>(meta->user_meta_data);
+      return static_cast<NvDsInferTensorMeta*>(meta->user_meta_data);
     }
     return std::nullopt;
   }
@@ -1951,16 +1645,14 @@ struct DeepStreamRuntime::Impl
   void infer_loop()
   {
     while (running) {
-      GstSample * sample = gst_app_sink_try_pull_sample(
-        infer_sink,
-        100 * GST_MSECOND);
+      GstSample* sample = gst_app_sink_try_pull_sample(infer_sink, 100 * GST_MSECOND);
       if (sample == nullptr) {
         continue;
       }
 
       try {
         process_infer_sample(sample);
-      } catch (const std::exception & exc) {
+      } catch (const std::exception& exc) {
         RCLCPP_ERROR(logger, "Failed processing DeepStream inference sample: %s", exc.what());
       }
 
@@ -1971,16 +1663,14 @@ struct DeepStreamRuntime::Impl
   void color_loop()
   {
     while (running) {
-      GstSample * sample = gst_app_sink_try_pull_sample(
-        color_sink,
-        100 * GST_MSECOND);
+      GstSample* sample = gst_app_sink_try_pull_sample(color_sink, 100 * GST_MSECOND);
       if (sample == nullptr) {
         continue;
       }
 
       try {
         store_frame(sample_to_bgr_packet(sample));
-      } catch (const std::exception & exc) {
+      } catch (const std::exception& exc) {
         RCLCPP_ERROR(logger, "Failed processing DeepStream color sample: %s", exc.what());
       }
 
@@ -1988,23 +1678,22 @@ struct DeepStreamRuntime::Impl
     }
   }
 
-  void process_infer_sample(GstSample * sample)
+  void process_infer_sample(GstSample* sample)
   {
-    GstBuffer * buffer = gst_sample_get_buffer(sample);
+    GstBuffer* buffer = gst_sample_get_buffer(sample);
     if (buffer == nullptr) {
       return;
     }
 
-    NvDsBatchMeta * batch_meta = gst_buffer_get_nvds_batch_meta(buffer);
+    NvDsBatchMeta* batch_meta = gst_buffer_get_nvds_batch_meta(buffer);
     if (batch_meta == nullptr) {
       throw std::runtime_error("DeepStream buffer missing batch meta");
     }
 
-    for (NvDsMetaList * frame_list = batch_meta->frame_meta_list;
-      frame_list != nullptr;
+    for (NvDsMetaList* frame_list = batch_meta->frame_meta_list; frame_list != nullptr;
       frame_list = frame_list->next)
     {
-      auto * frame_meta = static_cast<NvDsFrameMeta *>(frame_list->data);
+      auto* frame_meta = static_cast<NvDsFrameMeta*>(frame_list->data);
       if (frame_meta == nullptr) {
         continue;
       }
@@ -2018,22 +1707,20 @@ struct DeepStreamRuntime::Impl
       }
 
       const auto parse_start = std::chrono::steady_clock::now();
-      const auto & output_layer = (*tensor_meta)->output_layers_info[0];
+      const auto& output_layer = (*tensor_meta)->output_layers_info[0];
       const auto tensor_values = tensor_to_float_vector(*tensor_meta, output_layer);
       const auto output_shape = dims_to_shape(output_layer.inferDims);
 
       Result result{};
-      if (
-        config.enable_color_verification || config.debug_publish_image_raw ||
-        config.preview_frame)
+      if (config.enable_color_verification || config.debug_publish_image_raw
+          || config.preview_frame)
       {
-        const auto pts = frame_meta->buf_pts != GST_CLOCK_TIME_NONE ?
-          frame_meta->buf_pts : GST_BUFFER_PTS(buffer);
+        const auto pts =
+          frame_meta->buf_pts != GST_CLOCK_TIME_NONE ? frame_meta->buf_pts : GST_BUFFER_PTS(buffer);
         if (pts != GST_CLOCK_TIME_NONE) {
           result.source_packet = lookup_frame(static_cast<std::uint64_t>(pts));
         } else {
-          RCLCPP_WARN(
-            logger,
+          RCLCPP_WARN(logger,
             "DeepStream inference sample missing valid PTS; color/debug frame lookup skipped (%s)",
             gst_clock_to_string(pts).c_str());
         }
@@ -2043,34 +1730,27 @@ struct DeepStreamRuntime::Impl
         result.source_packet.has_value() && !result.source_packet->empty();
       const bool source_packet_matches_source_geometry =
         have_source_packet && !cuda_bayer_resizes_source;
-      const int frame_meta_source_width = frame_meta->source_frame_width > 0 ?
-        static_cast<int>(frame_meta->source_frame_width) :
-        config.source_width;
-      const int frame_meta_source_height = frame_meta->source_frame_height > 0 ?
-        static_cast<int>(frame_meta->source_frame_height) :
-        config.source_height;
-      const int src_w = source_packet_matches_source_geometry ?
-        result.source_packet->width() :
-        (config.pre_mux_resize ? config.source_width : frame_meta_source_width);
-      const int src_h = source_packet_matches_source_geometry ?
-        result.source_packet->height() :
-        (config.pre_mux_resize ? config.source_height : frame_meta_source_height);
-      result.batch.letterbox = make_letterbox_metadata(
-        src_w, src_h, config.imgsz_width, config.imgsz_height);
-      result.batch.detections = parse_yolo_output_tensor(
-        tensor_values.data(),
-        output_shape,
-        config.imgsz_width,
-        config.imgsz_height,
-        std::max(1, num_classes),
-        config.conf_threshold,
-        task_obb,
-        end2end,
-        export_includes_nms,
-        &logger);
+      const int frame_meta_source_width = frame_meta->source_frame_width > 0
+                                            ? static_cast<int>(frame_meta->source_frame_width)
+                                            : config.source_width;
+      const int frame_meta_source_height = frame_meta->source_frame_height > 0
+                                             ? static_cast<int>(frame_meta->source_frame_height)
+                                             : config.source_height;
+      const int src_w = source_packet_matches_source_geometry
+                          ? result.source_packet->width()
+                          : (config.pre_mux_resize ? config.source_width : frame_meta_source_width);
+      const int src_h =
+        source_packet_matches_source_geometry
+          ? result.source_packet->height()
+          : (config.pre_mux_resize ? config.source_height : frame_meta_source_height);
+      result.batch.letterbox =
+        make_letterbox_metadata(src_w, src_h, config.imgsz_width, config.imgsz_height);
+      result.batch.detections = parse_yolo_output_tensor(tensor_values.data(), output_shape,
+        config.imgsz_width, config.imgsz_height, std::max(1, num_classes), config.conf_threshold,
+        task_obb, end2end, export_includes_nms, &logger);
       const auto parse_done = std::chrono::steady_clock::now();
-      result.timings.parse_ms = std::chrono::duration<double, std::milli>(
-        parse_done - parse_start).count();
+      result.timings.parse_ms =
+        std::chrono::duration<double, std::milli>(parse_done - parse_start).count();
 
       callback(std::move(result));
     }
@@ -2078,11 +1758,8 @@ struct DeepStreamRuntime::Impl
 #endif
 };
 
-DeepStreamRuntime::DeepStreamRuntime(
-  rclcpp::Logger logger,
-  Config config,
-  ResultCallback callback)
-: impl_(std::make_unique<Impl>(std::move(logger), std::move(config), std::move(callback)))
+DeepStreamRuntime::DeepStreamRuntime(rclcpp::Logger logger, Config config, ResultCallback callback)
+    : impl_(std::make_unique<Impl>(std::move(logger), std::move(config), std::move(callback)))
 {
   try {
     impl_->start();
@@ -2095,7 +1772,7 @@ DeepStreamRuntime::DeepStreamRuntime(
 
 DeepStreamRuntime::~DeepStreamRuntime() = default;
 
-const std::string & DeepStreamRuntime::backend_name() const
+const std::string& DeepStreamRuntime::backend_name() const
 {
   return impl_->backend_name;
 }

@@ -1,10 +1,9 @@
 #ifndef YOLO_CPP__FRAME_PACKET_HPP_
 #define YOLO_CPP__FRAME_PACKET_HPP_
 
-#include <opencv2/core.hpp>
-
 #include <cstdint>
 #include <memory>
+#include <opencv2/core.hpp>
 #include <string>
 
 namespace yolo_cpp
@@ -45,13 +44,22 @@ struct FramePacket
   std::shared_ptr<void> owner;
 
   /// Return frame width in pixels.
-  int width() const {return frame.cols;}
+  int width() const
+  {
+    return frame.cols;
+  }
 
   /// Return frame height in pixels.
-  int height() const {return frame.rows;}
+  int height() const
+  {
+    return frame.rows;
+  }
 
   /// Return true when no frame data is attached.
-  bool empty() const {return frame.empty();}
+  bool empty() const
+  {
+    return frame.empty();
+  }
 };
 
 }  // namespace yolo_cpp

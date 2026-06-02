@@ -3,30 +3,26 @@
 
 #include "yolo_cpp/armor_detector_node.hpp"
 
-#include "cv_auto_aim_interfaces/msg/armor.hpp"
-
-#include <opencv2/highgui.hpp>
-#include <opencv2/imgcodecs.hpp>
-#include <opencv2/imgproc.hpp>
-#include <rclcpp_components/register_node_macro.hpp>
-#include <sensor_msgs/image_encodings.hpp>
-
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
-#include <cstring>
-#include <ctime>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <iomanip>
-#include <sstream>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 #include <optional>
+#include <rclcpp_components/register_node_macro.hpp>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
-#include <vector>
+
+#include "cv_auto_aim_interfaces/msg/armor.hpp"
+#include "vision_node_helpers.hpp"
 
 namespace yolo_cpp
 {
@@ -41,162 +37,11 @@ constexpr char kVisionLogDirName[] = "vision_logs";
 constexpr char kTargetFrameDirName[] = "pictures";
 constexpr double kPi = 3.14159265358979323846;
 
-/// Return local wall-clock time formatted for human-readable runtime logs.
-std::string timestamp_now_iso8601_ms()
-{
-  const auto now = std::chrono::system_clock::now();
-  const auto seconds = std::chrono::time_point_cast<std::chrono::seconds>(now);
-  const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
-    now - seconds).count();
-  const std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-  std::tm local_tm{};
-#ifdef _WIN32
-  localtime_s(&local_tm, &now_c);
-#else
-  localtime_r(&now_c, &local_tm);
-#endif
-
-  std::ostringstream out;
-  out << std::put_time(&local_tm, "%Y-%m-%dT%H:%M:%S")
-      << '.' << std::setw(3) << std::setfill('0') << milliseconds;
-  return out.str();
-}
-
-/// Return compact local wall-clock time suitable for log file names.
-std::string timestamp_now_compact()
-{
-  const auto now = std::chrono::system_clock::now();
-  const std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-  std::tm local_tm{};
-#ifdef _WIN32
-  localtime_s(&local_tm, &now_c);
-#else
-  localtime_r(&now_c, &local_tm);
-#endif
-
-  std::ostringstream out;
-  out << std::put_time(&local_tm, "%Y%m%d_%H%M%S");
-  return out.str();
-}
-
-/// Copy an internal BGR frame packet into a ROS Image message.
-sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
-  const FramePacket & packet, const rclcpp::Time & stamp)
-{
-  if (packet.empty()) {
-    return nullptr;
-  }
-
-  auto msg = std::make_unique<sensor_msgs::msg::Image>();
-  msg->header.stamp = stamp;
-  msg->header.frame_id = packet.source_id;
-  msg->height = static_cast<uint32_t>(packet.frame.rows);
-  msg->width = static_cast<uint32_t>(packet.frame.cols);
-  msg->encoding = sensor_msgs::image_encodings::BGR8;
-  msg->is_bigendian = false;
-  msg->step = static_cast<sensor_msgs::msg::Image::_step_type>(packet.frame.step);
-  const std::size_t byte_count = packet.frame.total() * packet.frame.elemSize();
-  msg->data.resize(byte_count);
-  std::memcpy(msg->data.data(), packet.frame.data, byte_count);
-  return msg;
-}
-
-double rect_iou_for_capture(const cv::Rect & lhs, const cv::Rect & rhs)
-{
-  const cv::Rect overlap = lhs & rhs;
-  if (overlap.empty()) {
-    return 0.0;
-  }
-  const double intersection = static_cast<double>(overlap.area());
-  const double union_area = static_cast<double>(lhs.area() + rhs.area()) - intersection;
-  return union_area > 0.0 ? intersection / union_area : 0.0;
-}
-
-cv::Rect scale_rect_to_preview(
-  const cv::Rect & rect,
-  double scale_x,
-  double scale_y,
-  const cv::Rect & image_rect)
-{
-  const int x = static_cast<int>(std::lround(static_cast<double>(rect.x) * scale_x));
-  const int y = static_cast<int>(std::lround(static_cast<double>(rect.y) * scale_y));
-  const int width = std::max(
-    1, static_cast<int>(std::lround(static_cast<double>(rect.width) * scale_x)));
-  const int height = std::max(
-    1, static_cast<int>(std::lround(static_cast<double>(rect.height) * scale_y)));
-  return cv::Rect(x, y, width, height) & image_rect;
-}
-
-cv::Point scale_point_to_preview(
-  const cv::Point2f & point,
-  double scale_x,
-  double scale_y,
-  const cv::Rect & image_rect)
-{
-  const int max_x = image_rect.x + std::max(0, image_rect.width - 1);
-  const int max_y = image_rect.y + std::max(0, image_rect.height - 1);
-  const int x = std::clamp(
-    static_cast<int>(std::lround(static_cast<double>(point.x) * scale_x)),
-    image_rect.x,
-    max_x);
-  const int y = std::clamp(
-    static_cast<int>(std::lround(static_cast<double>(point.y) * scale_y)),
-    image_rect.y,
-    max_y);
-  return cv::Point(x, y);
-}
-
-std::vector<cv::Point> scale_corners_to_preview(
-  const std::array<cv::Point2f, 4> & corners,
-  double scale_x,
-  double scale_y,
-  const cv::Rect & image_rect)
-{
-  std::vector<cv::Point> points;
-  if (image_rect.empty()) {
-    return points;
-  }
-  points.reserve(corners.size());
-  for (const auto & point : corners) {
-    points.push_back(scale_point_to_preview(point, scale_x, scale_y, image_rect));
-  }
-  return points;
-}
-
-cv::Rect draw_candidate_outline(
-  cv::Mat & preview,
-  const Candidate & candidate,
-  double scale_x,
-  double scale_y,
-  const cv::Rect & image_rect,
-  const cv::Scalar & color,
-  int thickness)
-{
-  if (candidate.has_corners) {
-    const auto points =
-      scale_corners_to_preview(candidate.corners_source, scale_x, scale_y, image_rect);
-    if (points.size() == candidate.corners_source.size()) {
-      const cv::Point * contour = points.data();
-      const int point_count = static_cast<int>(points.size());
-      cv::polylines(
-        preview, &contour, &point_count, 1, true, color, thickness, cv::LINE_AA);
-      return cv::boundingRect(points) & image_rect;
-    }
-  }
-
-  const cv::Rect preview_rect =
-    scale_rect_to_preview(candidate.bbox_source, scale_x, scale_y, image_rect);
-  if (!preview_rect.empty()) {
-    cv::rectangle(preview, preview_rect, color, thickness);
-  }
-  return preview_rect;
-}
-
 }  // namespace
 
 /// Declare parameters, choose the inference runtime, and start capture processing.
-ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
-: rclcpp::Node("armor_detector_node", options)
+ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
+    : rclcpp::Node("armor_detector_node", options)
 {
   camera_config_ = load_camera_config(*this);
 
@@ -256,8 +101,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   model_type_ = this->get_parameter("type").as_string();
   detector_backend_kind_ = this->get_parameter("detector_backend").as_string();
   deepstream_config_path_ = this->get_parameter("deepstream_config_path").as_string();
-  allow_native_tensorrt_fallback_ =
-    this->get_parameter("allow_native_tensorrt_fallback").as_bool();
+  allow_native_tensorrt_fallback_ = this->get_parameter("allow_native_tensorrt_fallback").as_bool();
   half_ = this->get_parameter("half").as_bool();
   imgsz_width_ = this->get_parameter("imgsz_width").as_int();
   imgsz_height_ = this->get_parameter("imgsz_height").as_int();
@@ -302,21 +146,19 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   target_frame_save_max_ =
     std::max(0, static_cast<int>(this->get_parameter("target_frame_save_max").as_int()));
   target_frame_jpeg_quality_ =
-    std::clamp(
-      static_cast<int>(this->get_parameter("target_frame_jpeg_quality").as_int()), 1, 100);
-  stage_log_interval_ = std::max(
-    1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
+    std::clamp(static_cast<int>(this->get_parameter("target_frame_jpeg_quality").as_int()), 1, 100);
+  stage_log_interval_ =
+    std::max(1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
   preview_max_fps_ = std::max(1.0, this->get_parameter("preview_max_fps").as_double());
 
   runtime_log_path_ =
-    (std::filesystem::path(resolve_runtime_log_dir()) /
-    ("vision_runtime_" + timestamp_now_compact() + ".log")).string();
+    (std::filesystem::path(resolve_runtime_log_dir())
+      / ("vision_runtime_" + vision_node_helpers::timestamp_now_compact() + ".log"))
+      .string();
   runtime_log_stream_.open(runtime_log_path_, std::ios::app);
   if (!runtime_log_stream_.is_open()) {
     RCLCPP_WARN(
-      this->get_logger(),
-      "Failed to open runtime vision log file: %s",
-      runtime_log_path_.c_str());
+      this->get_logger(), "Failed to open runtime vision log file: %s", runtime_log_path_.c_str());
   } else {
     RCLCPP_INFO(this->get_logger(), "Runtime logs: %s", runtime_log_path_.c_str());
   }
@@ -324,12 +166,12 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
     try {
       target_frame_save_dir_ = resolve_target_frame_save_dir();
       target_frame_index_path_ =
-        (std::filesystem::path(target_frame_save_dir_) /
-        ("target_frames_" + timestamp_now_compact() + ".csv")).string();
+        (std::filesystem::path(target_frame_save_dir_)
+          / ("target_frames_" + vision_node_helpers::timestamp_now_compact() + ".csv"))
+          .string();
       target_frame_index_stream_.open(target_frame_index_path_, std::ios::app);
       if (!target_frame_index_stream_.is_open()) {
-        RCLCPP_WARN(
-          this->get_logger(),
+        RCLCPP_WARN(this->get_logger(),
           "Failed to open target frame index: %s; disabling target frame capture",
           target_frame_index_path_.c_str());
         save_target_frames_ = false;
@@ -338,38 +180,29 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
           << "filename,stamp_ns,source_id,image_width,image_height,track_id,"
           << "has_tracker_target,class_id,confidence,is_enemy,x1,y1,x2,y2,"
           << "candidate_count,enemy_count\n";
-        RCLCPP_INFO(
-          this->get_logger(),
-          "Saving up to %d target frames as JPEG quality=%d in %s",
-          target_frame_save_max_,
-          target_frame_jpeg_quality_,
-          target_frame_save_dir_.c_str());
+        RCLCPP_INFO(this->get_logger(), "Saving up to %d target frames as JPEG quality=%d in %s",
+          target_frame_save_max_, target_frame_jpeg_quality_, target_frame_save_dir_.c_str());
       }
-    } catch (const std::exception & exc) {
-      RCLCPP_WARN(
-        this->get_logger(),
-        "Failed to initialize target frame capture: %s",
-        exc.what());
+    } catch (const std::exception& exc) {
+      RCLCPP_WARN(this->get_logger(), "Failed to initialize target frame capture: %s", exc.what());
       save_target_frames_ = false;
     }
   }
 
   target_class_ = (target_color_ == "red") ? RED_CLASS : BLUE_CLASS;
-  RCLCPP_INFO(
-    this->get_logger(),
-    "Default enemy target_color=%s class_id=%d; STM attitude_flags or robot_id can override when available",
-    target_color_.c_str(),
-    target_class_);
+  RCLCPP_INFO(this->get_logger(),
+    "Default enemy target_color=%s class_id=%d; STM attitude_flags or robot_id can "
+    "override when available",
+    target_color_.c_str(), target_class_);
 
-  robot_id_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
-    "robot_id", 10, std::bind(&ArmorDetectorNode::id_listener_callback, this, std::placeholders::_1));
-  attitude_flags_subscription_ = this->create_subscription<std_msgs::msg::Int32MultiArray>(
-    "attitude_flags", 10,
-    std::bind(&ArmorDetectorNode::handle_attitude_flags, this, std::placeholders::_1));
+  robot_id_subscription_ = this->create_subscription<std_msgs::msg::Int32>("robot_id", 10,
+    std::bind(&ArmorDetectorNode::id_listener_callback, this, std::placeholders::_1));
+  attitude_flags_subscription_ =
+    this->create_subscription<std_msgs::msg::Int32MultiArray>("attitude_flags", 10,
+      std::bind(&ArmorDetectorNode::handle_attitude_flags, this, std::placeholders::_1));
   preview_target_subscription_ =
-    this->create_subscription<cv_auto_aim_interfaces::msg::Target>(
-    preview_target_topic_, 10,
-    std::bind(&ArmorDetectorNode::handle_preview_target, this, std::placeholders::_1));
+    this->create_subscription<cv_auto_aim_interfaces::msg::Target>(preview_target_topic_, 10,
+      std::bind(&ArmorDetectorNode::handle_preview_target, this, std::placeholders::_1));
   if (enable_3d_pose_) {
     camera_info_subscription_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
       camera_info_topic_, rclcpp::SensorDataQoS(),
@@ -386,25 +219,26 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
   if (detector_backend_kind_ == "deepstream") {
     try {
       initialize_deepstream_runtime();
-    } catch (const std::exception & exc) {
+    } catch (const std::exception& exc) {
       if (!allow_native_tensorrt_fallback_) {
         throw;
       }
-      RCLCPP_WARN(
-        this->get_logger(),
-        "DeepStream startup failed (%s). Falling back to native TensorRT because allow_native_tensorrt_fallback=true.",
+      RCLCPP_WARN(this->get_logger(),
+        "DeepStream startup failed (%s). Falling back to native TensorRT because "
+        "allow_native_tensorrt_fallback=true.",
         exc.what());
       detector_backend_kind_ = "native_tensorrt";
       initialize_native_pipeline();
-    }
-    catch (...) {
+    } catch (...) {
       if (!allow_native_tensorrt_fallback_) {
         throw std::runtime_error(
-                "DeepStream startup failed with a non-std exception, likely from the Basler/Pylon GStreamer source");
+          "DeepStream startup failed with a non-std exception, likely from the "
+          "Basler/Pylon GStreamer source");
       }
-      RCLCPP_WARN(
-        this->get_logger(),
-        "DeepStream startup failed with a non-std exception, likely from the Basler/Pylon GStreamer source. Falling back to native TensorRT because allow_native_tensorrt_fallback=true.");
+      RCLCPP_WARN(this->get_logger(),
+        "DeepStream startup failed with a non-std exception, likely from the "
+        "Basler/Pylon GStreamer source. Falling back to native TensorRT because "
+        "allow_native_tensorrt_fallback=true.");
       detector_backend_kind_ = "native_tensorrt";
       initialize_native_pipeline();
     }
@@ -412,13 +246,10 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
     initialize_native_pipeline();
   }
 
-  RCLCPP_INFO(
-    this->get_logger(),
-    "Initialized ArmorDetectorNode camera=%s backend=%s fps=%.2f",
+  RCLCPP_INFO(this->get_logger(), "Initialized ArmorDetectorNode camera=%s backend=%s fps=%.2f",
     camera_config_.camera_type.c_str(),
-    deepstream_runtime_ != nullptr ?
-    deepstream_runtime_->backend_name().c_str() :
-    detector_backend_->backend_name().c_str(),
+    deepstream_runtime_ != nullptr ? deepstream_runtime_->backend_name().c_str()
+                                   : detector_backend_->backend_name().c_str(),
     fps_);
   log_runtime_note("INFO", "Initializing Modular YOLOv8 Node...");
   log_runtime_note("INFO", "Detector Initialized.");
@@ -475,11 +306,9 @@ void ArmorDetectorNode::handle_attitude_flags(const std_msgs::msg::Int32MultiArr
   }
 
   if (target_class_ != previous_target_class) {
-    const char * color_name = target_class_ == RED_CLASS ? "RED" : "BLUE";
-    log_runtime_note(
-      "INFO",
-      "attitude_flags enemy_color=" + std::to_string(enemy_color) +
-      " -> Targeting " + color_name + ".");
+    const char* color_name = target_class_ == RED_CLASS ? "RED" : "BLUE";
+    log_runtime_note("INFO", "attitude_flags enemy_color=" + std::to_string(enemy_color)
+                               + " -> Targeting " + color_name + ".");
   }
 }
 
@@ -499,17 +328,14 @@ void ArmorDetectorNode::handle_camera_info(const sensor_msgs::msg::CameraInfo::S
   }
 
   std::lock_guard<std::mutex> lock(state_mutex_);
-  camera_calibration_.model.camera_matrix = cv::Matx33d(
-    msg->k[0], msg->k[1], msg->k[2],
-    msg->k[3], msg->k[4], msg->k[5],
-    msg->k[6], msg->k[7], msg->k[8]);
+  camera_calibration_.model.camera_matrix = cv::Matx33d(msg->k[0], msg->k[1], msg->k[2], msg->k[3],
+    msg->k[4], msg->k[5], msg->k[6], msg->k[7], msg->k[8]);
   camera_calibration_.model.distortion_coefficients = msg->d;
   camera_calibration_.available = true;
   camera_calibration_.from_camera_info = true;
   camera_calibration_.image_width = static_cast<int>(msg->width);
   camera_calibration_.image_height = static_cast<int>(msg->height);
-  pnp_solver_.emplace(
-    camera_calibration_.model, small_armor_width_m_, small_armor_height_m_,
+  pnp_solver_.emplace(camera_calibration_.model, small_armor_width_m_, small_armor_height_m_,
     large_armor_width_m_, large_armor_height_m_);
 }
 
@@ -519,17 +345,15 @@ void ArmorDetectorNode::configure_static_camera_model()
     return;
   }
 
-  camera_calibration_.model.camera_matrix = cv::Matx33d(
-    camera_fx_, 0.0, camera_cx_ > 0.0 ? camera_cx_ : static_cast<double>(imgsz_width_) / 2.0,
-    0.0, camera_fy_, camera_cy_ > 0.0 ? camera_cy_ : static_cast<double>(imgsz_height_) / 2.0,
-    0.0, 0.0, 1.0);
+  camera_calibration_.model.camera_matrix = cv::Matx33d(camera_fx_, 0.0,
+    camera_cx_ > 0.0 ? camera_cx_ : static_cast<double>(imgsz_width_) / 2.0, 0.0, camera_fy_,
+    camera_cy_ > 0.0 ? camera_cy_ : static_cast<double>(imgsz_height_) / 2.0, 0.0, 0.0, 1.0);
   camera_calibration_.model.distortion_coefficients = camera_distortion_;
   camera_calibration_.available = true;
   camera_calibration_.from_camera_info = false;
   camera_calibration_.image_width = imgsz_width_;
   camera_calibration_.image_height = imgsz_height_;
-  pnp_solver_.emplace(
-    camera_calibration_.model, small_armor_width_m_, small_armor_height_m_,
+  pnp_solver_.emplace(camera_calibration_.model, small_armor_width_m_, small_armor_height_m_,
     large_armor_width_m_, large_armor_height_m_);
 }
 
@@ -538,26 +362,24 @@ PnPCameraModel ArmorDetectorNode::make_fov_camera_model(int image_width, int ima
   const double fx = static_cast<double>(image_width) / (2.0 * std::tan(hfov_rad_ / 2.0));
   const double fy = static_cast<double>(image_height) / (2.0 * std::tan(vfov_rad_ / 2.0));
   PnPCameraModel model;
-  model.camera_matrix = cv::Matx33d(
-    fx, 0.0, static_cast<double>(image_width) / 2.0,
-    0.0, fy, static_cast<double>(image_height) / 2.0,
-    0.0, 0.0, 1.0);
+  model.camera_matrix = cv::Matx33d(fx, 0.0, static_cast<double>(image_width) / 2.0, 0.0, fy,
+    static_cast<double>(image_height) / 2.0, 0.0, 0.0, 1.0);
   model.distortion_coefficients = {};
   return model;
 }
 
 std::optional<geometry_msgs::msg::Pose> ArmorDetectorNode::solve_candidate_pose(
-  const Candidate & candidate, int image_width, int image_height)
+  const Candidate& candidate, int image_width, int image_height)
 {
   if (!enable_3d_pose_ || !candidate.has_corners) {
     return std::nullopt;
   }
 
-  const double aspect = static_cast<double>(std::max(1, candidate.bbox_source.width)) /
-    static_cast<double>(std::max(1, candidate.bbox_source.height));
-  const int armor_type = aspect >= large_armor_min_aspect_ratio_ ?
-    cv_auto_aim_interfaces::msg::Armor::ARMOR_LARGE :
-    cv_auto_aim_interfaces::msg::Armor::ARMOR_SMALL;
+  const double aspect = static_cast<double>(std::max(1, candidate.bbox_source.width))
+                        / static_cast<double>(std::max(1, candidate.bbox_source.height));
+  const int armor_type = aspect >= large_armor_min_aspect_ratio_
+                           ? cv_auto_aim_interfaces::msg::Armor::ARMOR_LARGE
+                           : cv_auto_aim_interfaces::msg::Armor::ARMOR_SMALL;
 
   geometry_msgs::msg::Pose pose;
   if (pnp_solver_.has_value()) {
@@ -568,9 +390,8 @@ std::optional<geometry_msgs::msg::Pose> ArmorDetectorNode::solve_candidate_pose(
   }
 
   const auto fov_model = make_fov_camera_model(image_width, image_height);
-  ArmorPnPSolver solver(
-    fov_model, small_armor_width_m_, small_armor_height_m_, large_armor_width_m_,
-    large_armor_height_m_);
+  ArmorPnPSolver solver(fov_model, small_armor_width_m_, small_armor_height_m_,
+    large_armor_width_m_, large_armor_height_m_);
   if (solver.solve(candidate.corners_source, armor_type, pose)) {
     return pose;
   }
@@ -583,22 +404,19 @@ void ArmorDetectorNode::initialize_native_pipeline()
   camera_backend_->initialize();
   fps_ = camera_backend_->actual_fps() > 0.0 ? camera_backend_->actual_fps() : 60.0;
 
-  detector_backend_ = create_detector_backend(
-    detector_backend_kind_, model_path_, task_, model_type_, half_, conf_);
-  timer_ = this->create_wall_timer(
-    std::chrono::duration<double>(1.0 / std::max(1.0, fps_)),
+  detector_backend_ =
+    create_detector_backend(detector_backend_kind_, model_path_, task_, model_type_, half_, conf_);
+  timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / std::max(1.0, fps_)),
     std::bind(&ArmorDetectorNode::timer_callback, this));
 }
 
 void ArmorDetectorNode::initialize_deepstream_runtime()
 {
   if (camera_config_.camera_type != "basler") {
-    throw std::runtime_error(
-            "DeepStream runtime currently supports camera_type=basler only");
+    throw std::runtime_error("DeepStream runtime currently supports camera_type=basler only");
   }
   if (inference_mode_ != "predict") {
-    throw std::runtime_error(
-            "DeepStream runtime currently supports inference_mode=predict only");
+    throw std::runtime_error("DeepStream runtime currently supports inference_mode=predict only");
   }
 
   DeepStreamRuntime::Config config{};
@@ -607,12 +425,10 @@ void ArmorDetectorNode::initialize_deepstream_runtime()
   config.task = task_;
   config.imgsz_width = imgsz_width_;
   config.imgsz_height = imgsz_height_;
-  config.source_width = camera_config_.basler_use_full_sensor ?
-    camera_config_.basler_source_width :
-    imgsz_width_;
-  config.source_height = camera_config_.basler_use_full_sensor ?
-    camera_config_.basler_source_height :
-    imgsz_height_;
+  config.source_width =
+    camera_config_.basler_use_full_sensor ? camera_config_.basler_source_width : imgsz_width_;
+  config.source_height =
+    camera_config_.basler_use_full_sensor ? camera_config_.basler_source_height : imgsz_height_;
   config.source_fps = camera_config_.basler_fps;
   config.source_exposure_us = camera_config_.basler_exposure_us;
   config.source_gain_db = camera_config_.basler_gain_db;
@@ -633,14 +449,12 @@ void ArmorDetectorNode::initialize_deepstream_runtime()
   config.preview_frame = show_;
 
   deepstream_runtime_ = std::make_unique<DeepStreamRuntime>(
-    this->get_logger(),
-    config,
-    [this](DeepStreamRuntime::Result && result) {
+    this->get_logger(), config, [this](DeepStreamRuntime::Result&& result) {
       this->handle_deepstream_result(std::move(result));
     });
-  fps_ = deepstream_runtime_->source_actual_fps() > 0.0 ?
-    deepstream_runtime_->source_actual_fps() :
-    static_cast<double>(std::max(1, camera_config_.basler_fps));
+  fps_ = deepstream_runtime_->source_actual_fps() > 0.0
+           ? deepstream_runtime_->source_actual_fps()
+           : static_cast<double>(std::max(1, camera_config_.basler_fps));
 }
 
 void ArmorDetectorNode::timer_callback()
@@ -654,24 +468,18 @@ void ArmorDetectorNode::timer_callback()
 
   DetectorStageTimings detector_timings{};
   const auto batch = detector_backend_->infer(packet, this->get_logger(), &detector_timings);
-  process_detection_cycle(
-    batch,
-    &packet,
-    detector_timings,
+  process_detection_cycle(batch, &packet, detector_timings,
     std::chrono::duration<double, std::milli>(capture_done - capture_start).count());
 }
 
 void ArmorDetectorNode::handle_deepstream_result(DeepStreamRuntime::Result result)
 {
-  const FramePacket * packet = result.source_packet.has_value() ? &(*result.source_packet) : nullptr;
+  const FramePacket* packet = result.source_packet.has_value() ? &(*result.source_packet) : nullptr;
   process_detection_cycle(result.batch, packet, result.timings, result.capture_ms);
 }
 
-void ArmorDetectorNode::process_detection_cycle(
-  const DetectionBatch & batch,
-  const FramePacket * packet,
-  const DetectorStageTimings & detector_timings,
-  double capture_ms)
+void ArmorDetectorNode::process_detection_cycle(const DetectionBatch& batch,
+  const FramePacket* packet, const DetectorStageTimings& detector_timings, double capture_ms)
 {
   // This is the detector's central data boundary: model outputs become candidates,
   // optional debug images, runtime telemetry, and ROS interface messages.
@@ -696,36 +504,29 @@ void ArmorDetectorNode::process_detection_cycle(
   double color_ms = 0.0;
   const auto publish_start = std::chrono::steady_clock::now();
   auto candidates = extract_candidates(batch, packet, &color_ms);
-  const auto detected_opponent = std::find_if(
-    candidates.begin(), candidates.end(),
-    [](const Candidate & candidate) {return candidate.is_enemy;});
-  const auto enemy_count = static_cast<std::uint64_t>(
-    std::count_if(
-      candidates.begin(), candidates.end(),
-      [](const Candidate & candidate) {return candidate.is_enemy;}));
-  const auto class0_count = static_cast<std::uint64_t>(
-    std::count_if(
-      candidates.begin(), candidates.end(),
-      [](const Candidate & candidate) {return candidate.class_id == 0;}));
-  const auto class1_count = static_cast<std::uint64_t>(
-    std::count_if(
-      candidates.begin(), candidates.end(),
-      [](const Candidate & candidate) {return candidate.class_id == 1;}));
+  const auto detected_opponent = std::find_if(candidates.begin(), candidates.end(),
+    [](const Candidate& candidate) { return candidate.is_enemy; });
+  const auto enemy_count = static_cast<std::uint64_t>(std::count_if(candidates.begin(),
+    candidates.end(), [](const Candidate& candidate) { return candidate.is_enemy; }));
+  const auto class0_count = static_cast<std::uint64_t>(std::count_if(candidates.begin(),
+    candidates.end(), [](const Candidate& candidate) { return candidate.class_id == 0; }));
+  const auto class1_count = static_cast<std::uint64_t>(std::count_if(candidates.begin(),
+    candidates.end(), [](const Candidate& candidate) { return candidate.class_id == 1; }));
   const auto other_class_count =
     static_cast<std::uint64_t>(candidates.size()) - class0_count - class1_count;
   if (packet != nullptr && !packet->empty()) {
     save_target_frame_if_needed(*packet, candidates, stamp);
   }
-  const std::string source_id = packet != nullptr && !packet->source_id.empty() ?
-    packet->source_id :
-    camera_config_.camera_type;
+  const std::string source_id = packet != nullptr && !packet->source_id.empty()
+                                  ? packet->source_id
+                                  : camera_config_.camera_type;
   const std::string frame_id = camera_frame_id_.empty() ? source_id : camera_frame_id_;
-  const int image_width = batch.letterbox.src_w > 0 ?
-    batch.letterbox.src_w :
-    (packet != nullptr ? packet->width() : imgsz_width_);
-  const int image_height = batch.letterbox.src_h > 0 ?
-    batch.letterbox.src_h :
-    (packet != nullptr ? packet->height() : imgsz_height_);
+  const int image_width = batch.letterbox.src_w > 0
+                            ? batch.letterbox.src_w
+                            : (packet != nullptr ? packet->width() : imgsz_width_);
+  const int image_height = batch.letterbox.src_h > 0
+                             ? batch.letterbox.src_h
+                             : (packet != nullptr ? packet->height() : imgsz_height_);
   publish_armors(candidates, frame_id, stamp, image_width, image_height);
   const auto publish_done = std::chrono::steady_clock::now();
 
@@ -733,9 +534,9 @@ void ArmorDetectorNode::process_detection_cycle(
     const auto now = std::chrono::steady_clock::now();
     const double min_interval_ms = 1000.0 / std::max(1.0, preview_max_fps_);
     const bool should_render_preview =
-      !have_last_preview_render_time_ ||
-      std::chrono::duration<double, std::milli>(now - last_preview_render_time_).count() >=
-      min_interval_ms;
+      !have_last_preview_render_time_
+      || std::chrono::duration<double, std::milli>(now - last_preview_render_time_).count()
+           >= min_interval_ms;
     if (should_render_preview) {
       render_preview(*packet, candidates, batch.letterbox);
       last_preview_render_time_ = now;
@@ -745,13 +546,11 @@ void ArmorDetectorNode::process_detection_cycle(
 
   log_runtime_fps_once_per_second();
   if (detected_opponent != candidates.end()) {
-    log_runtime_opponent_event(
-      *detected_opponent,
-      true,
-      capture_ms + detector_timings.preprocess_ms + detector_timings.upload_ms +
-      detector_timings.inference_ms + detector_timings.download_ms +
-      detector_timings.parse_ms + color_ms +
-      std::chrono::duration<double, std::milli>(publish_done - publish_start).count());
+    log_runtime_opponent_event(*detected_opponent, true,
+      capture_ms + detector_timings.preprocess_ms + detector_timings.upload_ms
+        + detector_timings.inference_ms + detector_timings.download_ms + detector_timings.parse_ms
+        + color_ms
+        + std::chrono::duration<double, std::milli>(publish_done - publish_start).count());
   }
 
   ++frame_count_;
@@ -768,31 +567,25 @@ void ArmorDetectorNode::process_detection_cycle(
   stage_totals_.download_ms += detector_timings.download_ms;
   stage_totals_.parse_ms += detector_timings.parse_ms;
   stage_totals_.color_ms += color_ms;
-  stage_totals_.publish_ms += std::chrono::duration<double, std::milli>(
-    publish_done - publish_start).count();
+  stage_totals_.publish_ms +=
+    std::chrono::duration<double, std::milli>(publish_done - publish_start).count();
 
   if (frame_count_ % stage_log_interval_ == 0) {
     log_stage_timing();
   }
 }
 
-void ArmorDetectorNode::publish_armors(
-  const std::vector<Candidate> & candidates,
-  const std::string & source_id,
-  const rclcpp::Time & stamp,
-  int image_width,
-  int image_height)
+void ArmorDetectorNode::publish_armors(const std::vector<Candidate>& candidates,
+  const std::string& source_id, const rclcpp::Time& stamp, int image_width, int image_height)
 {
   cv_auto_aim_interfaces::msg::Armors msg;
   msg.header.stamp = stamp;
   msg.header.frame_id = source_id;
   msg.source_id = source_id;
   msg.armors.reserve(candidates.size());
-  for (const auto & candidate : candidates) {
+  for (const auto& candidate : candidates) {
     cv_auto_aim_interfaces::msg::Armor armor;
-    armor.bbox_xyxy = {
-      candidate.bbox_source.x,
-      candidate.bbox_source.y,
+    armor.bbox_xyxy = {candidate.bbox_source.x, candidate.bbox_source.y,
       candidate.bbox_source.x + candidate.bbox_source.width,
       candidate.bbox_source.y + candidate.bbox_source.height};
     armor.center_x = candidate.center_source.x;
@@ -812,21 +605,21 @@ void ArmorDetectorNode::publish_armors(
         armor.corners[i].z = 0.0F;
       }
     }
-    const double aspect = static_cast<double>(std::max(1, candidate.bbox_source.width)) /
-      static_cast<double>(std::max(1, candidate.bbox_source.height));
-    armor.armor_type = aspect >= large_armor_min_aspect_ratio_ ?
-      cv_auto_aim_interfaces::msg::Armor::ARMOR_LARGE :
-      cv_auto_aim_interfaces::msg::Armor::ARMOR_SMALL;
+    const double aspect = static_cast<double>(std::max(1, candidate.bbox_source.width))
+                          / static_cast<double>(std::max(1, candidate.bbox_source.height));
+    armor.armor_type = aspect >= large_armor_min_aspect_ratio_
+                         ? cv_auto_aim_interfaces::msg::Armor::ARMOR_LARGE
+                         : cv_auto_aim_interfaces::msg::Armor::ARMOR_SMALL;
     armor.armor_number = -1;
-    const double principal_x = camera_calibration_.available ?
-      camera_calibration_.model.camera_matrix(0, 2) :
-      static_cast<double>(image_width) / 2.0;
-    const double principal_y = camera_calibration_.available ?
-      camera_calibration_.model.camera_matrix(1, 2) :
-      static_cast<double>(image_height) / 2.0;
-    armor.distance_to_image_center = static_cast<float>(std::hypot(
-      static_cast<double>(candidate.center_source.x) - principal_x,
-      static_cast<double>(candidate.center_source.y) - principal_y));
+    const double principal_x = camera_calibration_.available
+                                 ? camera_calibration_.model.camera_matrix(0, 2)
+                                 : static_cast<double>(image_width) / 2.0;
+    const double principal_y = camera_calibration_.available
+                                 ? camera_calibration_.model.camera_matrix(1, 2)
+                                 : static_cast<double>(image_height) / 2.0;
+    armor.distance_to_image_center =
+      static_cast<float>(std::hypot(static_cast<double>(candidate.center_source.x) - principal_x,
+        static_cast<double>(candidate.center_source.y) - principal_y));
     if (const auto pose = solve_candidate_pose(candidate, image_width, image_height)) {
       armor.has_pose = true;
       armor.pose_camera = *pose;
@@ -836,21 +629,19 @@ void ArmorDetectorNode::publish_armors(
   armors_publisher_->publish(std::move(msg));
 }
 
-void ArmorDetectorNode::publish_debug_image(const FramePacket & packet, const rclcpp::Time & stamp)
+void ArmorDetectorNode::publish_debug_image(const FramePacket& packet, const rclcpp::Time& stamp)
 {
   if (!debug_image_publisher_) {
     return;
   }
-  auto msg = frame_to_image_message(packet, stamp);
+  auto msg = vision_node_helpers::frame_to_image_message(packet, stamp);
   if (msg) {
     debug_image_publisher_->publish(std::move(msg));
   }
 }
 
-void ArmorDetectorNode::render_preview(
-  const FramePacket & packet,
-  const std::vector<Candidate> & candidates,
-  const LetterboxMetadata & source_geometry)
+void ArmorDetectorNode::render_preview(const FramePacket& packet,
+  const std::vector<Candidate>& candidates, const LetterboxMetadata& source_geometry)
 {
   if (preview_failed_) {
     return;
@@ -863,26 +654,18 @@ void ArmorDetectorNode::render_preview(
     const double scale_x = static_cast<double>(preview.cols) / static_cast<double>(source_width);
     const double scale_y = static_cast<double>(preview.rows) / static_cast<double>(source_height);
     const cv::Rect image_rect(0, 0, preview.cols, preview.rows);
-    for (const auto & candidate : candidates) {
-      const cv::Scalar color = candidate.is_enemy ?
-        cv::Scalar(0, 255, 0) :
-        cv::Scalar(0, 165, 255);
-      const cv::Rect preview_rect =
-        draw_candidate_outline(preview, candidate, scale_x, scale_y, image_rect, color, 2);
+    for (const auto& candidate : candidates) {
+      const cv::Scalar color = candidate.is_enemy ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 165, 255);
+      const cv::Rect preview_rect = vision_node_helpers::scale_rect_to_preview(
+        candidate.bbox_source, scale_x, scale_y, image_rect);
       if (preview_rect.empty()) {
         continue;
       }
+      cv::rectangle(preview, preview_rect, color, 2);
       const std::string label =
         std::to_string(candidate.class_id) + " " + cv::format("%.2f", candidate.confidence);
-      cv::putText(
-        preview,
-        label,
-        cv::Point(preview_rect.x, std::max(16, preview_rect.y - 4)),
-        cv::FONT_HERSHEY_SIMPLEX,
-        0.5,
-        color,
-        1,
-        cv::LINE_AA);
+      cv::putText(preview, label, cv::Point(preview_rect.x, std::max(16, preview_rect.y - 4)),
+        cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv::LINE_AA);
     }
 
     if (preview_has_target_) {
@@ -890,90 +673,48 @@ void ArmorDetectorNode::render_preview(
       const int y1 = preview_target_bbox_xyxy_[1];
       const int x2 = preview_target_bbox_xyxy_[2];
       const int y2 = preview_target_bbox_xyxy_[3];
-      const cv::Rect target_source_rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1));
-      const Candidate * target_candidate = nullptr;
-      double best_iou = 0.0;
-      for (const auto & candidate : candidates) {
-        const double iou = rect_iou_for_capture(target_source_rect, candidate.bbox_source);
-        if (iou > best_iou) {
-          best_iou = iou;
-          target_candidate = &candidate;
-        }
-      }
-      const cv::Scalar target_color(0, 0, 255);
-      const cv::Rect target_rect = target_candidate != nullptr && best_iou > 0.0 ?
-        draw_candidate_outline(
-          preview, *target_candidate, scale_x, scale_y, image_rect, target_color, 4) :
-        scale_rect_to_preview(target_source_rect, scale_x, scale_y, image_rect);
+      const cv::Rect target_rect = vision_node_helpers::scale_rect_to_preview(
+        cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)), scale_x, scale_y, image_rect);
       if (target_rect.width > 0 && target_rect.height > 0) {
-        if (target_candidate == nullptr || best_iou <= 0.0) {
-          cv::rectangle(preview, target_rect, target_color, 4);
-        }
-        const cv::Point target_center = target_candidate != nullptr && best_iou > 0.0 ?
-          scale_point_to_preview(target_candidate->center_source, scale_x, scale_y, image_rect) :
-          cv::Point(target_rect.x + target_rect.width / 2, target_rect.y + target_rect.height / 2);
-        cv::circle(
-          preview,
-          target_center,
-          5,
-          target_color,
-          -1,
-          cv::LINE_AA);
-        const std::string label = preview_target_track_id_ >= 0 ?
-          "TARGET #" + std::to_string(preview_target_track_id_) :
-          "TARGET";
+        const cv::Scalar target_color(0, 0, 255);
+        cv::rectangle(preview, target_rect, target_color, 4);
+        cv::circle(preview,
+          cv::Point(target_rect.x + target_rect.width / 2, target_rect.y + target_rect.height / 2),
+          5, target_color, -1, cv::LINE_AA);
+        const std::string label = preview_target_track_id_ >= 0
+                                    ? "TARGET #" + std::to_string(preview_target_track_id_)
+                                    : "TARGET";
         const cv::Point label_origin(target_rect.x, std::max(22, target_rect.y - 8));
-        cv::putText(
-          preview,
-          label,
-          label_origin,
-          cv::FONT_HERSHEY_SIMPLEX,
-          0.7,
-          target_color,
-          2,
+        cv::putText(preview, label, label_origin, cv::FONT_HERSHEY_SIMPLEX, 0.7, target_color, 2,
           cv::LINE_AA);
       }
     }
 
-    cv::putText(
-      preview,
-      "FPS " + cv::format("%.1f", preview_fps_),
-      cv::Point(12, 28),
-      cv::FONT_HERSHEY_SIMPLEX,
-      0.8,
-      cv::Scalar(255, 255, 255),
-      2,
-      cv::LINE_AA);
+    cv::putText(preview, "FPS " + cv::format("%.1f", preview_fps_), cv::Point(12, 28),
+      cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
 
-    const double scale = std::min(
-      1.0,
-      std::min(
-        static_cast<double>(kPreviewMaxWidth) / std::max(1, preview.cols),
-        static_cast<double>(kPreviewMaxHeight) / std::max(1, preview.rows)));
+    const double scale =
+      std::min(1.0, std::min(static_cast<double>(kPreviewMaxWidth) / std::max(1, preview.cols),
+                      static_cast<double>(kPreviewMaxHeight) / std::max(1, preview.rows)));
     if (scale < 1.0) {
       cv::resize(preview, preview, cv::Size(), scale, scale, cv::INTER_AREA);
     }
 
     cv::imshow(vis_window_name_, preview);
     cv::waitKey(1);
-  } catch (const cv::Exception & exc) {
+  } catch (const cv::Exception& exc) {
     preview_failed_ = true;
-    RCLCPP_WARN(
-      this->get_logger(),
-      "Disabling detector preview after OpenCV display failure: %s",
+    RCLCPP_WARN(this->get_logger(), "Disabling detector preview after OpenCV display failure: %s",
       exc.what());
   }
 }
 
 void ArmorDetectorNode::save_target_frame_if_needed(
-  const FramePacket & packet,
-  const std::vector<Candidate> & candidates,
-  const rclcpp::Time & stamp)
+  const FramePacket& packet, const std::vector<Candidate>& candidates, const rclcpp::Time& stamp)
 {
-  if (
-    !save_target_frames_ || target_frame_save_max_ <= 0 ||
-    target_frame_save_count_ >= target_frame_save_max_ ||
-    !target_frame_index_stream_.is_open())
+  if (!save_target_frames_ || target_frame_save_max_ <= 0
+      || target_frame_save_count_ >= target_frame_save_max_
+      || !target_frame_index_stream_.is_open())
   {
     return;
   }
@@ -982,7 +723,7 @@ void ArmorDetectorNode::save_target_frame_if_needed(
   bool has_tracker_target = false;
   int track_id = -1;
   cv::Rect target_rect;
-  const Candidate * target_candidate = nullptr;
+  const Candidate* target_candidate = nullptr;
 
   if (preview_has_target_) {
     const int x1 = preview_target_bbox_xyxy_[0];
@@ -994,9 +735,9 @@ void ArmorDetectorNode::save_target_frame_if_needed(
       has_tracker_target = true;
       track_id = preview_target_track_id_;
       double best_iou = 0.0;
-      for (const auto & candidate : candidates) {
+      for (const auto& candidate : candidates) {
         const auto clipped = candidate.bbox_source & image_rect;
-        const double iou = rect_iou_for_capture(target_rect, clipped);
+        const double iou = vision_node_helpers::rect_iou(target_rect, clipped);
         if (iou > best_iou) {
           best_iou = iou;
           target_candidate = &candidate;
@@ -1030,88 +771,69 @@ void ArmorDetectorNode::save_target_frame_if_needed(
 
   const int image_index = target_frame_save_count_ + 1;
   std::ostringstream filename;
-  filename << "target_" << std::setw(6) << std::setfill('0') << image_index
-           << '_' << stamp.nanoseconds() << ".jpg";
+  filename << "target_" << std::setw(6) << std::setfill('0') << image_index << '_'
+           << stamp.nanoseconds() << ".jpg";
   const auto image_path = std::filesystem::path(target_frame_save_dir_) / filename.str();
 
   try {
     const std::vector<int> params{cv::IMWRITE_JPEG_QUALITY, target_frame_jpeg_quality_};
     if (!cv::imwrite(image_path.string(), packet.frame, params)) {
-      RCLCPP_WARN(
-        this->get_logger(),
+      RCLCPP_WARN(this->get_logger(),
         "Failed to write target frame %s; disabling target frame capture",
         image_path.string().c_str());
       save_target_frames_ = false;
       return;
     }
-  } catch (const std::exception & exc) {
-    RCLCPP_WARN(
-      this->get_logger(),
+  } catch (const std::exception& exc) {
+    RCLCPP_WARN(this->get_logger(),
       "Failed to write target frame %s: %s; disabling target frame capture",
-      image_path.string().c_str(),
-      exc.what());
+      image_path.string().c_str(), exc.what());
     save_target_frames_ = false;
     return;
   }
 
   ++target_frame_save_count_;
-  const auto enemy_count = std::count_if(
-    candidates.begin(), candidates.end(), [](const Candidate & candidate) {
-      return candidate.is_enemy;
-    });
-  target_frame_index_stream_
-    << filename.str() << ','
-    << stamp.nanoseconds() << ','
-    << packet.source_id << ','
-    << packet.width() << ','
-    << packet.height() << ','
-    << track_id << ','
-    << (has_tracker_target ? 1 : 0) << ','
-    << (target_candidate != nullptr ? target_candidate->class_id : -1) << ','
-    << (target_candidate != nullptr ? target_candidate->confidence : 0.0F) << ','
-    << (target_candidate != nullptr && target_candidate->is_enemy ? 1 : 0) << ','
-    << target_rect.x << ','
-    << target_rect.y << ','
-    << target_rect.x + target_rect.width << ','
-    << target_rect.y + target_rect.height << ','
-    << candidates.size() << ','
-    << enemy_count << '\n';
+  const auto enemy_count = std::count_if(candidates.begin(), candidates.end(),
+    [](const Candidate& candidate) { return candidate.is_enemy; });
+  target_frame_index_stream_ << filename.str() << ',' << stamp.nanoseconds() << ','
+                             << packet.source_id << ',' << packet.width() << ',' << packet.height()
+                             << ',' << track_id << ',' << (has_tracker_target ? 1 : 0) << ','
+                             << (target_candidate != nullptr ? target_candidate->class_id : -1)
+                             << ','
+                             << (target_candidate != nullptr ? target_candidate->confidence : 0.0F)
+                             << ','
+                             << (target_candidate != nullptr && target_candidate->is_enemy ? 1 : 0)
+                             << ',' << target_rect.x << ',' << target_rect.y << ','
+                             << target_rect.x + target_rect.width << ','
+                             << target_rect.y + target_rect.height << ',' << candidates.size()
+                             << ',' << enemy_count << '\n';
   target_frame_index_stream_.flush();
 
   if (target_frame_save_count_ == target_frame_save_max_) {
-    RCLCPP_INFO(
-      this->get_logger(),
+    RCLCPP_INFO(this->get_logger(),
       "Target frame capture reached max=%d; no more images will be saved this run",
       target_frame_save_max_);
   }
 }
 
 std::vector<Candidate> ArmorDetectorNode::extract_candidates(
-  const DetectionBatch & batch, const FramePacket * packet, double * color_ms) const
+  const DetectionBatch& batch, const FramePacket* packet, double* color_ms) const
 {
   // Rebuild source coordinates before color checks so downstream nodes never need to know
   // the model letterbox transform.
   std::vector<Candidate> candidates;
   candidates.reserve(batch.detections.size());
-  for (const auto & detection : batch.detections) {
+  for (const auto& detection : batch.detections) {
     const auto source_rect = unletterbox_rect(detection.bbox_model, batch.letterbox);
     const cv::Point2f center_source(
       static_cast<float>(source_rect.x) + static_cast<float>(source_rect.width) / 2.0F,
       static_cast<float>(source_rect.y) + static_cast<float>(source_rect.height) / 2.0F);
 
-    candidates.push_back(Candidate{
-      detection.bbox_model,
-      source_rect,
-      center_source,
-      detection.confidence,
-      detection.class_id,
-      detection.track_id,
-      true,
-      detection.obb_angle,
-      detection.has_corners,
-      {}});
+    candidates.push_back(Candidate{detection.bbox_model, source_rect, center_source,
+      detection.confidence, detection.class_id, detection.track_id, true, detection.obb_angle,
+      detection.has_corners, {}});
     if (detection.has_corners) {
-      auto & candidate = candidates.back();
+      auto& candidate = candidates.back();
       for (std::size_t i = 0; i < detection.corners_model.size(); ++i) {
         candidate.corners_source[i] =
           unletterbox_point(detection.corners_model[i], batch.letterbox);
@@ -1120,7 +842,7 @@ std::vector<Candidate> ArmorDetectorNode::extract_candidates(
   }
 
   if (use_model_color_classes_) {
-    for (auto & candidate : candidates) {
+    for (auto& candidate : candidates) {
       candidate.is_enemy = class_id_matches_target_color(candidate.class_id, target_class_);
     }
     return candidates;
@@ -1130,15 +852,15 @@ std::vector<Candidate> ArmorDetectorNode::extract_candidates(
     return candidates;
   }
 
-  std::sort(
-    candidates.begin(), candidates.end(),
-    [](const Candidate & lhs, const Candidate & rhs) {return lhs.confidence > rhs.confidence;});
+  std::sort(candidates.begin(), candidates.end(),
+    [](const Candidate& lhs, const Candidate& rhs) { return lhs.confidence > rhs.confidence; });
+  const int candidate_count = static_cast<int>(candidates.size());
   const auto check_count =
-    static_cast<std::size_t>(std::min<int>(max_hsv_candidates_, static_cast<int>(candidates.size())));
+    static_cast<std::size_t>(std::min<int>(max_hsv_candidates_, candidate_count));
 
   const auto color_start = std::chrono::steady_clock::now();
   for (std::size_t i = 0; i < candidates.size(); ++i) {
-    auto & candidate = candidates[i];
+    auto& candidate = candidates[i];
     if (i >= check_count) {
       candidate.is_enemy = false;
       continue;
@@ -1162,28 +884,25 @@ std::vector<Candidate> ArmorDetectorNode::extract_candidates(
 
 std::string ArmorDetectorNode::resolve_default_model_path() const
 {
-  const auto cwd_candidate =
-    std::filesystem::current_path() / "yolo_cpp" / "models" /
-    "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
+  const auto cwd_candidate = std::filesystem::current_path() / "model_test"
+                             / "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
   if (std::filesystem::exists(cwd_candidate)) {
     return cwd_candidate.string();
   }
-  return "/home/ultraviolet/CV_Detection/yolo_cpp/models/"
+  return "/home/ultraviolet/CV_Detection/model_test/"
          "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
 }
 
 std::string ArmorDetectorNode::resolve_default_deepstream_config_path() const
 {
   const auto cwd_candidate =
-    std::filesystem::current_path() / "yolo_cpp" / "config" /
-    "deepstream_bestmerge_nvinfer.txt";
+    std::filesystem::current_path() / "yolo_cpp" / "config" / "deepstream_bestmerge_nvinfer.txt";
   if (std::filesystem::exists(cwd_candidate)) {
     return cwd_candidate.string();
   }
 
-  const auto package_candidate =
-    std::filesystem::path(__FILE__).parent_path().parent_path() / "config" /
-    "deepstream_bestmerge_nvinfer.txt";
+  const auto package_candidate = std::filesystem::path(__FILE__).parent_path().parent_path()
+                                 / "config" / "deepstream_bestmerge_nvinfer.txt";
   if (std::filesystem::exists(package_candidate)) {
     return package_candidate.string();
   }
@@ -1196,7 +915,7 @@ std::string ArmorDetectorNode::resolve_runtime_log_dir() const
     std::filesystem::create_directories(runtime_log_dir_);
     return runtime_log_dir_;
   }
-  if (const char * env_dir = std::getenv("VISION_LOG_DIR")) {
+  if (const char* env_dir = std::getenv("VISION_LOG_DIR")) {
     const std::string value(env_dir);
     if (!value.empty()) {
       std::filesystem::create_directories(value);
@@ -1225,16 +944,17 @@ std::string ArmorDetectorNode::resolve_target_frame_save_dir() const
   return picture_dir.string();
 }
 
-void ArmorDetectorNode::write_runtime_log_line(const std::string & line)
+void ArmorDetectorNode::write_runtime_log_line(const std::string& line)
 {
   if (!runtime_log_stream_.is_open()) {
     return;
   }
-  runtime_log_stream_ << "ts=" << timestamp_now_iso8601_ms() << ' ' << line << '\n';
+  runtime_log_stream_ << "ts=" << vision_node_helpers::timestamp_now_iso8601_ms() << ' ' << line
+                      << '\n';
   runtime_log_stream_.flush();
 }
 
-void ArmorDetectorNode::log_runtime_note(const std::string & level, const std::string & message)
+void ArmorDetectorNode::log_runtime_note(const std::string& level, const std::string& message)
 {
   write_runtime_log_line("level=" + level + " msg=" + message);
 }
@@ -1261,7 +981,7 @@ void ArmorDetectorNode::log_runtime_fps_once_per_second()
 }
 
 void ArmorDetectorNode::log_runtime_opponent_event(
-  const Candidate & target, bool color_pass, double latency_ms)
+  const Candidate& target, bool color_pass, double latency_ms)
 {
   const int x1 = target.bbox_source.x;
   const int y1 = target.bbox_source.y;
@@ -1272,16 +992,13 @@ void ArmorDetectorNode::log_runtime_opponent_event(
   line << std::fixed << std::setprecision(2)
        << "fps_scope=" << (deepstream_runtime_ != nullptr ? "deepstream_result" : "frame")
        << ' '
-       << "fps=" << preview_fps_ << ' '
-       << "bbox=" << x1 << ',' << y1 << ',' << x2 << ',' << y2 << ' ';
-  line << std::setprecision(3)
-       << "conf=" << target.confidence << ' '
+       << "fps=" << preview_fps_ << ' ' << "bbox=" << x1 << ',' << y1 << ',' << x2 << ','
+       << y2 << ' ';
+  line << std::setprecision(3) << "conf=" << target.confidence << ' '
        << "color_pass=" << (color_pass ? 1 : 0) << ' ';
   line << "latency_scope="
-       << (deepstream_runtime_ != nullptr ? "post_infer" : "capture_to_publish")
-       << ' ';
-  line << std::setprecision(2)
-       << "latency_ms=" << latency_ms;
+       << (deepstream_runtime_ != nullptr ? "post_infer" : "capture_to_publish") << ' ';
+  line << std::setprecision(2) << "latency_ms=" << latency_ms;
   write_runtime_log_line(line.str());
 }
 
@@ -1299,19 +1016,13 @@ void ArmorDetectorNode::log_stage_timing()
   last_stage_log_wall_time_ = now;
   have_last_stage_log_wall_time_ = true;
   if (deepstream_runtime_ != nullptr) {
-    RCLCPP_INFO(
-      this->get_logger(),
+    RCLCPP_INFO(this->get_logger(),
       "Detector DeepStream result timing mean over %d results: result_fps=%.1f parse=%.2fms "
       "color=%.2fms publish=%.2fms raw_det=%.2f candidates=%.2f enemy=%.2f class0=%.2f "
       "class1=%.2f class_other=%.2f note=preprocess/upload/inference/download_unavailable",
-      stage_log_interval_,
-      avg_fps,
-      stage_totals_.parse_ms / n,
-      stage_totals_.color_ms / n,
-      stage_totals_.publish_ms / n,
-      static_cast<double>(stage_raw_detections_) / n,
-      static_cast<double>(stage_candidates_) / n,
-      static_cast<double>(stage_enemy_candidates_) / n,
+      stage_log_interval_, avg_fps, stage_totals_.parse_ms / n, stage_totals_.color_ms / n,
+      stage_totals_.publish_ms / n, static_cast<double>(stage_raw_detections_) / n,
+      static_cast<double>(stage_candidates_) / n, static_cast<double>(stage_enemy_candidates_) / n,
       static_cast<double>(stage_class0_candidates_) / n,
       static_cast<double>(stage_class1_candidates_) / n,
       static_cast<double>(stage_other_class_candidates_) / n);
@@ -1325,23 +1036,14 @@ void ArmorDetectorNode::log_stage_timing()
     return;
   }
 
-  RCLCPP_INFO(
-    this->get_logger(),
+  RCLCPP_INFO(this->get_logger(),
     "Detector timing mean over %d frames: fps=%.1f capture=%.2fms preprocess=%.2fms "
     "upload=%.2fms inference=%.2fms download=%.2fms parse=%.2fms color=%.2fms publish=%.2fms "
     "raw_det=%.2f candidates=%.2f enemy=%.2f class0=%.2f class1=%.2f class_other=%.2f",
-    stage_log_interval_,
-    avg_fps,
-    stage_totals_.capture_ms / n,
-    stage_totals_.preprocess_ms / n,
-    stage_totals_.upload_ms / n,
-    stage_totals_.inference_ms / n,
-    stage_totals_.download_ms / n,
-    stage_totals_.parse_ms / n,
-    stage_totals_.color_ms / n,
-    stage_totals_.publish_ms / n,
-    static_cast<double>(stage_raw_detections_) / n,
-    static_cast<double>(stage_candidates_) / n,
+    stage_log_interval_, avg_fps, stage_totals_.capture_ms / n, stage_totals_.preprocess_ms / n,
+    stage_totals_.upload_ms / n, stage_totals_.inference_ms / n, stage_totals_.download_ms / n,
+    stage_totals_.parse_ms / n, stage_totals_.color_ms / n, stage_totals_.publish_ms / n,
+    static_cast<double>(stage_raw_detections_) / n, static_cast<double>(stage_candidates_) / n,
     static_cast<double>(stage_enemy_candidates_) / n,
     static_cast<double>(stage_class0_candidates_) / n,
     static_cast<double>(stage_class1_candidates_) / n,

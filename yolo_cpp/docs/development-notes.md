@@ -47,7 +47,7 @@ The observed `a2A1920-160ucBAS` / serial `41923000` GenICam node map did not exp
 For stage timing around the remaining conversion path, enable the DeepStream pad profiler for a short run:
 
 ```bash
-./services/fps-benchmark.sh --mode deepstream --duration 10 --warmup 2 --basler-fps 160 --deepstream-profile-stages true
+./services/fps-benchmark.sh --mode deepstream --duration 10 --warmup 2 --pre-mux-resize true --basler-fps 110 --bayer-conversion-backend cuda --deepstream-profile-stages true
 ```
 
 The profile log reports average milliseconds for source-to-Bayer conversion, queue handoff, `videoconvert`, `nvvideoconvert`, streammux handoff, and `nvinfer`. A successful CUDA Bayer run logs `Using CUDA Bayer resize backend`; otherwise the runtime logs why it fell back to CPU `bayer2rgb`.

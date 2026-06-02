@@ -1,17 +1,16 @@
 #ifndef YOLO_CPP__STM32_SERIAL_BRIDGE_NODE_HPP_
 #define YOLO_CPP__STM32_SERIAL_BRIDGE_NODE_HPP_
 
-#include "yolo_cpp/visibility_control.hpp"
-
+#include <fstream>
+#include <memory>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/int32_multi_array.hpp>
-
-#include <memory>
 #include <string>
 #include <vector>
-#include <fstream>
+
+#include "yolo_cpp/visibility_control.hpp"
 
 namespace yolo_cpp
 {
@@ -23,7 +22,7 @@ class YOLO_CPP_PUBLIC STM32SerialBridgeNode : public rclcpp::Node
 {
 public:
   /// Open serial transport, subscriptions, publishers, and RX polling timer.
-  explicit STM32SerialBridgeNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+  explicit STM32SerialBridgeNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
 
   /// Flush logs and close serial transport.
   ~STM32SerialBridgeNode() override;
@@ -48,15 +47,14 @@ private:
   std::string resolve_runtime_log_dir() const;
 
   /// Append one line to the serial runtime log.
-  void write_runtime_log_line(const std::string & line);
+  void write_runtime_log_line(const std::string& line);
 
   /// Log one transmitted command event.
   void log_tx_event(float yaw, float pitch, bool success, int fire_mode);
 
   /// Log one received attitude/status frame.
-  void log_rx_event(
-    float yaw, float pitch, float roll, int enemy_color, int work_mode, int bullet_speed,
-    int flags_register, int command_id);
+  void log_rx_event(float yaw, float pitch, float roll, int enemy_color, int work_mode,
+    int bullet_speed, int flags_register, int command_id);
 
   std::unique_ptr<SerialTransport> transport_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr override_subscription_;
@@ -70,7 +68,7 @@ private:
   bool serial_verbose_{false};
   bool has_target_{false};
   bool suggest_fire_{false};
-  bool transmit_angles_in_degrees_{true};
+  bool transmit_angles_in_degrees_{false};
   std::string runtime_log_dir_;
   std::string runtime_log_path_;
   int fire_mode_{0};

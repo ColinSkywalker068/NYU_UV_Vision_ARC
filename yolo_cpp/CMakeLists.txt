@@ -126,12 +126,16 @@ endif()
 set(YOLO_CPP_COMPONENT_SOURCES
   src/utils.cpp
   src/pnp_solver.cpp
+  src/tracking_math.cpp
   src/tracker.cpp
   src/camera_backend.cpp
+  src/model_metadata.cpp
   src/detection_postprocess.cpp
   src/detector_backend.cpp
   src/deepstream_detector.cpp
+  src/deepstream_runtime_helpers.cpp
   src/deepstream_runtime.cpp
+  src/vision_node_helpers.cpp
   src/gst_cuda_bayer_resize.cpp
   src/armor_detector_node.cpp
   src/armor_tracker_node.cpp
@@ -281,7 +285,10 @@ add_executable(aim_solver_node src/aim_solver_node_main.cpp)
 target_link_libraries(aim_solver_node yolo_cpp_components)
 ament_target_dependencies(aim_solver_node cv_auto_aim_interfaces rclcpp std_msgs)
 
-add_executable(fps_benchmark src/fps_benchmark.cpp)
+add_executable(fps_benchmark
+  src/fps_benchmark_support.cpp
+  src/fps_benchmark.cpp
+)
 target_link_libraries(fps_benchmark yolo_cpp_components ${OpenCV_LIBS})
 ament_target_dependencies(fps_benchmark rclcpp)
 
@@ -296,6 +303,15 @@ target_include_directories(stm32_serial_bridge PUBLIC
 )
 ament_target_dependencies(stm32_serial_bridge rclcpp std_msgs)
 
+add_executable(stm32_yaw_packet_test
+  test/stm32_yaw_packet_test.cpp
+  src/seasky_protocol.cpp
+)
+target_include_directories(stm32_yaw_packet_test PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
 install(
   DIRECTORY include/
   DESTINATION include
@@ -304,7 +320,7 @@ install(
 install(
   TARGETS yolo_cpp_components camera_node yolo_modular_node perception_node
     armor_detector_node armor_tracker_node armor_processor_node aim_solver_node fps_benchmark
-    stm32_serial_bridge
+    stm32_serial_bridge stm32_yaw_packet_test
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -321,19 +337,19 @@ install(
 )
 
 install(
-  DIRECTORY models
-  DESTINATION share/${PROJECT_NAME}
-)
-
-install(
   DIRECTORY docs
   DESTINATION share/${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)
+  find_package(ament_cmake_clang_format REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
+
+  ament_clang_format(CONFIG_FILE ${CMAKE_CURRENT_SOURCE_DIR}/../.clang-format)
+
   ament_add_gtest(test_detection_postprocess
     test/test_detection_postprocess.cpp
+    src/model_metadata.cpp
     src/detection_postprocess.cpp
   )
   if(TARGET test_detection_postprocess)
@@ -347,6 +363,7 @@ if(BUILD_TESTING)
   endif()
   ament_add_gtest(test_tracking_core
     test/test_tracking_core.cpp
+    src/tracking_math.cpp
     src/tracker.cpp
     src/utils.cpp
   )

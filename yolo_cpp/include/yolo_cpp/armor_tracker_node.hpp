@@ -1,21 +1,20 @@
 #ifndef YOLO_CPP__ARMOR_TRACKER_NODE_HPP_
 #define YOLO_CPP__ARMOR_TRACKER_NODE_HPP_
 
+#include <chrono>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/int32_multi_array.hpp>
+
 #include "cv_auto_aim_interfaces/msg/armors.hpp"
 #include "cv_auto_aim_interfaces/msg/target.hpp"
 #include "cv_auto_aim_interfaces/msg/tracked_armors.hpp"
 #include "yolo_cpp/tracker.hpp"
 #include "yolo_cpp/utils.hpp"
 #include "yolo_cpp/visibility_control.hpp"
-
-#include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/int32.hpp>
-#include <std_msgs/msg/int32_multi_array.hpp>
-
-#include <chrono>
-#include <memory>
-#include <mutex>
-#include <optional>
 
 namespace yolo_cpp
 {
@@ -25,7 +24,7 @@ class YOLO_CPP_PUBLIC ArmorTrackerNode : public rclcpp::Node
 {
 public:
   /// Create subscriptions, publishers, and configure the track manager.
-  explicit ArmorTrackerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+  explicit ArmorTrackerNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
   ~ArmorTrackerNode() override = default;
 
 private:
@@ -46,19 +45,18 @@ private:
 
   /// Publish every active track for downstream processor/debug consumers.
   void publish_tracked_armors(
-    const cv_auto_aim_interfaces::msg::Armors & source_msg,
-    const TrackingFrameResult & result);
+    const cv_auto_aim_interfaces::msg::Armors& source_msg, const TrackingFrameResult& result);
   /// Publish the currently selected 2D target, or an empty target message.
-  void publish_target(
-    const cv_auto_aim_interfaces::msg::Armors & source_msg,
-    const std::optional<TrackSnapshot> & target);
+  void publish_target(const cv_auto_aim_interfaces::msg::Armors& source_msg,
+    const std::optional<TrackSnapshot>& target);
   /// Periodically log tracking and publish timings.
   void log_stage_timing();
 
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::Armors>::SharedPtr armors_subscription_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr robot_id_subscription_;
   rclcpp::Subscription<std_msgs::msg::Int32MultiArray>::SharedPtr attitude_flags_subscription_;
-  rclcpp::Publisher<cv_auto_aim_interfaces::msg::TrackedArmors>::SharedPtr tracked_armors_publisher_;
+  rclcpp::Publisher<cv_auto_aim_interfaces::msg::TrackedArmors>::SharedPtr
+    tracked_armors_publisher_;
   rclcpp::Publisher<cv_auto_aim_interfaces::msg::Target>::SharedPtr target_publisher_;
 
   TrackManager track_manager_;

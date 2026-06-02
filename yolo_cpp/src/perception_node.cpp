@@ -3,29 +3,26 @@
 
 #include "yolo_cpp/perception_node.hpp"
 
-#include <opencv2/highgui.hpp>
-#include <opencv2/imgproc.hpp>
-#include <rclcpp_components/register_node_macro.hpp>
-#include <sensor_msgs/image_encodings.hpp>
-
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
-#include <cstring>
-#include <ctime>
 #include <cstdlib>
 #include <filesystem>
-#include <functional>
 #include <fstream>
+#include <functional>
 #include <iomanip>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
 #include <optional>
-#include <sstream>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "vision_node_helpers.hpp"
 
 namespace yolo_cpp
 {
@@ -40,151 +37,11 @@ constexpr int kPreviewMaxWidth = 1280;
 constexpr int kPreviewMaxHeight = 720;
 constexpr char kVisionLogDirName[] = "vision_logs";
 
-/// Return local wall-clock time formatted for human-readable runtime logs.
-std::string timestamp_now_iso8601_ms()
-{
-  const auto now = std::chrono::system_clock::now();
-  const auto seconds = std::chrono::time_point_cast<std::chrono::seconds>(now);
-  const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
-    now - seconds).count();
-  const std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-  std::tm local_tm{};
-#ifdef _WIN32
-  localtime_s(&local_tm, &now_c);
-#else
-  localtime_r(&now_c, &local_tm);
-#endif
-
-  std::ostringstream out;
-  out << std::put_time(&local_tm, "%Y-%m-%dT%H:%M:%S")
-      << '.' << std::setw(3) << std::setfill('0') << milliseconds;
-  return out.str();
-}
-
-/// Return compact local wall-clock time suitable for log file names.
-std::string timestamp_now_compact()
-{
-  const auto now = std::chrono::system_clock::now();
-  const std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-  std::tm local_tm{};
-#ifdef _WIN32
-  localtime_s(&local_tm, &now_c);
-#else
-  localtime_r(&now_c, &local_tm);
-#endif
-
-  std::ostringstream out;
-  out << std::put_time(&local_tm, "%Y%m%d_%H%M%S");
-  return out.str();
-}
-
-/// Copy an internal BGR frame packet into a ROS Image message.
-sensor_msgs::msg::Image::UniquePtr frame_to_image_message(
-  const FramePacket & packet, const rclcpp::Time & stamp)
-{
-  if (packet.empty()) {
-    return nullptr;
-  }
-
-  auto msg = std::make_unique<sensor_msgs::msg::Image>();
-  msg->header.stamp = stamp;
-  msg->header.frame_id = packet.source_id;
-  msg->height = static_cast<uint32_t>(packet.frame.rows);
-  msg->width = static_cast<uint32_t>(packet.frame.cols);
-  msg->encoding = sensor_msgs::image_encodings::BGR8;
-  msg->is_bigendian = false;
-  msg->step = static_cast<sensor_msgs::msg::Image::_step_type>(packet.frame.step);
-  const std::size_t byte_count = packet.frame.total() * packet.frame.elemSize();
-  msg->data.resize(byte_count);
-  std::memcpy(msg->data.data(), packet.frame.data, byte_count);
-  return msg;
-}
-
-cv::Rect scale_rect_to_preview(
-  const cv::Rect & rect,
-  double scale_x,
-  double scale_y,
-  const cv::Rect & image_rect)
-{
-  const int x = static_cast<int>(std::lround(static_cast<double>(rect.x) * scale_x));
-  const int y = static_cast<int>(std::lround(static_cast<double>(rect.y) * scale_y));
-  const int width = std::max(
-    1, static_cast<int>(std::lround(static_cast<double>(rect.width) * scale_x)));
-  const int height = std::max(
-    1, static_cast<int>(std::lround(static_cast<double>(rect.height) * scale_y)));
-  return cv::Rect(x, y, width, height) & image_rect;
-}
-
-cv::Point scale_point_to_preview(
-  const cv::Point2f & point,
-  double scale_x,
-  double scale_y,
-  const cv::Rect & image_rect)
-{
-  const int max_x = image_rect.x + std::max(0, image_rect.width - 1);
-  const int max_y = image_rect.y + std::max(0, image_rect.height - 1);
-  const int x = std::clamp(
-    static_cast<int>(std::lround(static_cast<double>(point.x) * scale_x)),
-    image_rect.x,
-    max_x);
-  const int y = std::clamp(
-    static_cast<int>(std::lround(static_cast<double>(point.y) * scale_y)),
-    image_rect.y,
-    max_y);
-  return cv::Point(x, y);
-}
-
-std::vector<cv::Point> scale_corners_to_preview(
-  const std::array<cv::Point2f, 4> & corners,
-  double scale_x,
-  double scale_y,
-  const cv::Rect & image_rect)
-{
-  std::vector<cv::Point> points;
-  if (image_rect.empty()) {
-    return points;
-  }
-  points.reserve(corners.size());
-  for (const auto & point : corners) {
-    points.push_back(scale_point_to_preview(point, scale_x, scale_y, image_rect));
-  }
-  return points;
-}
-
-cv::Rect draw_candidate_outline(
-  cv::Mat & preview,
-  const Candidate & candidate,
-  double scale_x,
-  double scale_y,
-  const cv::Rect & image_rect,
-  const cv::Scalar & color,
-  int thickness)
-{
-  if (candidate.has_corners) {
-    const auto points =
-      scale_corners_to_preview(candidate.corners_source, scale_x, scale_y, image_rect);
-    if (points.size() == candidate.corners_source.size()) {
-      const cv::Point * contour = points.data();
-      const int point_count = static_cast<int>(points.size());
-      cv::polylines(
-        preview, &contour, &point_count, 1, true, color, thickness, cv::LINE_AA);
-      return cv::boundingRect(points) & image_rect;
-    }
-  }
-
-  const cv::Rect preview_rect =
-    scale_rect_to_preview(candidate.bbox_source, scale_x, scale_y, image_rect);
-  if (!preview_rect.empty()) {
-    cv::rectangle(preview, preview_rect, color, thickness);
-  }
-  return preview_rect;
-}
-
 }  // namespace
 
 /// Declare parameters and start the combined legacy perception pipeline.
-PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
-: rclcpp::Node("perception_node", options)
+PerceptionNode::PerceptionNode(const rclcpp::NodeOptions& options)
+    : rclcpp::Node("perception_node", options)
 {
   camera_config_ = load_camera_config(*this);
 
@@ -231,8 +88,7 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   model_type_ = this->get_parameter("type").as_string();
   detector_backend_kind_ = this->get_parameter("detector_backend").as_string();
   deepstream_config_path_ = this->get_parameter("deepstream_config_path").as_string();
-  allow_native_tensorrt_fallback_ =
-    this->get_parameter("allow_native_tensorrt_fallback").as_bool();
+  allow_native_tensorrt_fallback_ = this->get_parameter("allow_native_tensorrt_fallback").as_bool();
   half_ = this->get_parameter("half").as_bool();
   imgsz_width_ = this->get_parameter("imgsz_width").as_int();
   imgsz_height_ = this->get_parameter("imgsz_height").as_int();
@@ -253,10 +109,8 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   max_hsv_candidates_ = this->get_parameter("max_hsv_candidates").as_int();
   max_coast_frames_ = this->get_parameter("max_coast_frames").as_int();
   runtime_log_dir_ = this->get_parameter("runtime_log_dir").as_string();
-  hfov_rad_ = static_cast<float>(
-    this->get_parameter("hfov_degrees").as_double() * kPi / 180.0);
-  vfov_rad_ = static_cast<float>(
-    this->get_parameter("vfov_degrees").as_double() * kPi / 180.0);
+  hfov_rad_ = static_cast<float>(this->get_parameter("hfov_degrees").as_double() * kPi / 180.0);
+  vfov_rad_ = static_cast<float>(this->get_parameter("vfov_degrees").as_double() * kPi / 180.0);
   vis_window_name_ = this->get_parameter("vis_window_name").as_string();
   debug_publish_image_raw_ = this->get_parameter("debug_publish_image_raw").as_bool();
   pre_mux_resize_ = this->get_parameter("pre_mux_resize").as_bool();
@@ -266,19 +120,18 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   deepstream_profile_stage_interval_ = std::max(
     1, static_cast<int>(this->get_parameter("deepstream_profile_stage_interval").as_int()));
   bayer_conversion_backend_ = this->get_parameter("bayer_conversion_backend").as_string();
-  stage_log_interval_ = std::max(
-    1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
+  stage_log_interval_ =
+    std::max(1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
   preview_max_fps_ = std::max(1.0, this->get_parameter("preview_max_fps").as_double());
 
   runtime_log_path_ =
-    (std::filesystem::path(resolve_runtime_log_dir()) /
-    ("vision_runtime_" + timestamp_now_compact() + ".log")).string();
+    (std::filesystem::path(resolve_runtime_log_dir())
+      / ("vision_runtime_" + vision_node_helpers::timestamp_now_compact() + ".log"))
+      .string();
   runtime_log_stream_.open(runtime_log_path_, std::ios::app);
   if (!runtime_log_stream_.is_open()) {
     RCLCPP_WARN(
-      this->get_logger(),
-      "Failed to open runtime vision log file: %s",
-      runtime_log_path_.c_str());
+      this->get_logger(), "Failed to open runtime vision log file: %s", runtime_log_path_.c_str());
   } else {
     RCLCPP_INFO(this->get_logger(), "Runtime logs: %s", runtime_log_path_.c_str());
   }
@@ -287,16 +140,14 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
 
   robot_id_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
     "robot_id", 10, std::bind(&PerceptionNode::id_listener_callback, this, std::placeholders::_1));
-  attitude_flags_subscription_ = this->create_subscription<std_msgs::msg::Int32MultiArray>(
-    "attitude_flags", 10,
-    std::bind(&PerceptionNode::handle_attitude_flags, this, std::placeholders::_1));
-  bbox_publisher_ =
-    this->create_publisher<std_msgs::msg::Int32MultiArray>("bounding_box", 10);
+  attitude_flags_subscription_ =
+    this->create_subscription<std_msgs::msg::Int32MultiArray>("attitude_flags", 10,
+      std::bind(&PerceptionNode::handle_attitude_flags, this, std::placeholders::_1));
+  bbox_publisher_ = this->create_publisher<std_msgs::msg::Int32MultiArray>("bounding_box", 10);
   override_publisher_ = this->create_publisher<std_msgs::msg::Bool>("override", 10);
   angle_publisher_ =
     this->create_publisher<std_msgs::msg::Float32MultiArray>("bounding_box_angles", 10);
-  obb_angle_publisher_ =
-    this->create_publisher<std_msgs::msg::Float32>("obb_angle", 10);
+  obb_angle_publisher_ = this->create_publisher<std_msgs::msg::Float32>("obb_angle", 10);
   if (debug_publish_image_raw_) {
     auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort().durability_volatile();
     debug_image_publisher_ = this->create_publisher<sensor_msgs::msg::Image>("image_raw", qos);
@@ -305,25 +156,26 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   if (detector_backend_kind_ == "deepstream") {
     try {
       initialize_deepstream_runtime();
-    } catch (const std::exception & exc) {
+    } catch (const std::exception& exc) {
       if (!allow_native_tensorrt_fallback_) {
         throw;
       }
-      RCLCPP_WARN(
-        this->get_logger(),
-        "DeepStream startup failed (%s). Falling back to native TensorRT because allow_native_tensorrt_fallback=true.",
+      RCLCPP_WARN(this->get_logger(),
+        "DeepStream startup failed (%s). Falling back to native TensorRT because "
+        "allow_native_tensorrt_fallback=true.",
         exc.what());
       detector_backend_kind_ = "native_tensorrt";
       initialize_native_pipeline();
-    }
-    catch (...) {
+    } catch (...) {
       if (!allow_native_tensorrt_fallback_) {
         throw std::runtime_error(
-                "DeepStream startup failed with a non-std exception, likely from the Basler/Pylon GStreamer source");
+          "DeepStream startup failed with a non-std exception, likely from the "
+          "Basler/Pylon GStreamer source");
       }
-      RCLCPP_WARN(
-        this->get_logger(),
-        "DeepStream startup failed with a non-std exception, likely from the Basler/Pylon GStreamer source. Falling back to native TensorRT because allow_native_tensorrt_fallback=true.");
+      RCLCPP_WARN(this->get_logger(),
+        "DeepStream startup failed with a non-std exception, likely from the "
+        "Basler/Pylon GStreamer source. Falling back to native TensorRT because "
+        "allow_native_tensorrt_fallback=true.");
       detector_backend_kind_ = "native_tensorrt";
       initialize_native_pipeline();
     }
@@ -331,15 +183,12 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
     initialize_native_pipeline();
   }
 
-  RCLCPP_INFO(
-    this->get_logger(),
+  RCLCPP_INFO(this->get_logger(),
     "Initialized PerceptionNode camera=%s backend=%s fps=%.2f debug_image_raw=%s",
     camera_config_.camera_type.c_str(),
-    deepstream_runtime_ != nullptr ?
-    deepstream_runtime_->backend_name().c_str() :
-    detector_backend_->backend_name().c_str(),
-    fps_,
-    debug_publish_image_raw_ ? "true" : "false");
+    deepstream_runtime_ != nullptr ? deepstream_runtime_->backend_name().c_str()
+                                   : detector_backend_->backend_name().c_str(),
+    fps_, debug_publish_image_raw_ ? "true" : "false");
   log_runtime_note("INFO", "Initializing Modular YOLOv8 Node...");
   log_runtime_note("INFO", "Detector Initialized.");
   (void)show_;
@@ -398,11 +247,9 @@ void PerceptionNode::handle_attitude_flags(const std_msgs::msg::Int32MultiArray:
   }
 
   if (target_class_ != previous_target_class) {
-    const char * color_name = target_class_ == RED_CLASS ? "RED" : "BLUE";
-    log_runtime_note(
-      "INFO",
-      "attitude_flags enemy_color=" + std::to_string(enemy_color) +
-      " -> Targeting " + color_name + ".");
+    const char* color_name = target_class_ == RED_CLASS ? "RED" : "BLUE";
+    log_runtime_note("INFO", "attitude_flags enemy_color=" + std::to_string(enemy_color)
+                               + " -> Targeting " + color_name + ".");
   }
 }
 
@@ -412,22 +259,19 @@ void PerceptionNode::initialize_native_pipeline()
   camera_backend_->initialize();
   fps_ = camera_backend_->actual_fps() > 0.0 ? camera_backend_->actual_fps() : 60.0;
 
-  detector_backend_ = create_detector_backend(
-    detector_backend_kind_, model_path_, task_, model_type_, half_, conf_);
-  timer_ = this->create_wall_timer(
-    std::chrono::duration<double>(1.0 / std::max(1.0, fps_)),
+  detector_backend_ =
+    create_detector_backend(detector_backend_kind_, model_path_, task_, model_type_, half_, conf_);
+  timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / std::max(1.0, fps_)),
     std::bind(&PerceptionNode::timer_callback, this));
 }
 
 void PerceptionNode::initialize_deepstream_runtime()
 {
   if (camera_config_.camera_type != "basler") {
-    throw std::runtime_error(
-            "DeepStream runtime currently supports camera_type=basler only");
+    throw std::runtime_error("DeepStream runtime currently supports camera_type=basler only");
   }
   if (inference_mode_ != "predict") {
-    throw std::runtime_error(
-            "DeepStream runtime currently supports inference_mode=predict only");
+    throw std::runtime_error("DeepStream runtime currently supports inference_mode=predict only");
   }
 
   DeepStreamRuntime::Config config{};
@@ -436,12 +280,10 @@ void PerceptionNode::initialize_deepstream_runtime()
   config.task = task_;
   config.imgsz_width = imgsz_width_;
   config.imgsz_height = imgsz_height_;
-  config.source_width = camera_config_.basler_use_full_sensor ?
-    camera_config_.basler_source_width :
-    imgsz_width_;
-  config.source_height = camera_config_.basler_use_full_sensor ?
-    camera_config_.basler_source_height :
-    imgsz_height_;
+  config.source_width =
+    camera_config_.basler_use_full_sensor ? camera_config_.basler_source_width : imgsz_width_;
+  config.source_height =
+    camera_config_.basler_use_full_sensor ? camera_config_.basler_source_height : imgsz_height_;
   config.source_fps = camera_config_.basler_fps;
   config.source_exposure_us = camera_config_.basler_exposure_us;
   config.source_gain_db = camera_config_.basler_gain_db;
@@ -462,14 +304,12 @@ void PerceptionNode::initialize_deepstream_runtime()
   config.preview_frame = show_;
 
   deepstream_runtime_ = std::make_unique<DeepStreamRuntime>(
-    this->get_logger(),
-    config,
-    [this](DeepStreamRuntime::Result && result) {
+    this->get_logger(), config, [this](DeepStreamRuntime::Result&& result) {
       this->handle_deepstream_result(std::move(result));
     });
-  fps_ = deepstream_runtime_->source_actual_fps() > 0.0 ?
-    deepstream_runtime_->source_actual_fps() :
-    static_cast<double>(std::max(1, camera_config_.basler_fps));
+  fps_ = deepstream_runtime_->source_actual_fps() > 0.0
+           ? deepstream_runtime_->source_actual_fps()
+           : static_cast<double>(std::max(1, camera_config_.basler_fps));
 }
 
 void PerceptionNode::timer_callback()
@@ -483,24 +323,18 @@ void PerceptionNode::timer_callback()
 
   DetectorStageTimings detector_timings{};
   const auto batch = detector_backend_->infer(packet, this->get_logger(), &detector_timings);
-  process_detection_cycle(
-    batch,
-    &packet,
-    detector_timings,
+  process_detection_cycle(batch, &packet, detector_timings,
     std::chrono::duration<double, std::milli>(capture_done - capture_start).count());
 }
 
 void PerceptionNode::handle_deepstream_result(DeepStreamRuntime::Result result)
 {
-  const FramePacket * packet = result.source_packet.has_value() ? &(*result.source_packet) : nullptr;
+  const FramePacket* packet = result.source_packet.has_value() ? &(*result.source_packet) : nullptr;
   process_detection_cycle(result.batch, packet, result.timings, result.capture_ms);
 }
 
-void PerceptionNode::process_detection_cycle(
-  const DetectionBatch & batch,
-  const FramePacket * packet,
-  const DetectorStageTimings & detector_timings,
-  double capture_ms)
+void PerceptionNode::process_detection_cycle(const DetectionBatch& batch, const FramePacket* packet,
+  const DetectorStageTimings& detector_timings, double capture_ms)
 {
   // The combined node keeps direct command topics alive while the modular stack evolves.
   std::lock_guard<std::mutex> lock(state_mutex_);
@@ -542,12 +376,12 @@ void PerceptionNode::process_detection_cycle(
 
   const auto publish_start = std::chrono::steady_clock::now();
   if (!published) {
-    const int src_w = batch.letterbox.src_w > 0 ?
-      batch.letterbox.src_w :
-      (packet != nullptr ? packet->width() : imgsz_width_);
-    const int src_h = batch.letterbox.src_h > 0 ?
-      batch.letterbox.src_h :
-      (packet != nullptr ? packet->height() : imgsz_height_);
+    const int src_w = batch.letterbox.src_w > 0
+                        ? batch.letterbox.src_w
+                        : (packet != nullptr ? packet->width() : imgsz_width_);
+    const int src_h = batch.letterbox.src_h > 0
+                        ? batch.letterbox.src_h
+                        : (packet != nullptr ? packet->height() : imgsz_height_);
     publish_no_target(src_w, src_h);
   }
   const auto publish_done = std::chrono::steady_clock::now();
@@ -556,9 +390,9 @@ void PerceptionNode::process_detection_cycle(
     const auto preview_now = std::chrono::steady_clock::now();
     const double min_interval_ms = 1000.0 / std::max(1.0, preview_max_fps_);
     const bool should_render_preview =
-      !have_last_preview_render_time_ ||
-      std::chrono::duration<double, std::milli>(
-      preview_now - last_preview_render_time_).count() >= min_interval_ms;
+      !have_last_preview_render_time_
+      || std::chrono::duration<double, std::milli>(preview_now - last_preview_render_time_).count()
+           >= min_interval_ms;
     if (should_render_preview) {
       render_preview(*packet, candidates, selected_target, batch.letterbox);
       last_preview_render_time_ = preview_now;
@@ -568,11 +402,16 @@ void PerceptionNode::process_detection_cycle(
 
   log_runtime_fps_once_per_second();
   if (detected_opponent.has_value() && detected_opponent->is_enemy) {
-    log_runtime_opponent_event(*detected_opponent, true, capture_ms + detector_timings.preprocess_ms +
-      detector_timings.upload_ms + detector_timings.inference_ms + detector_timings.download_ms +
-      detector_timings.parse_ms + std::chrono::duration<double, std::milli>(
-      tracking_done - tracking_start).count() +
-      std::chrono::duration<double, std::milli>(publish_done - publish_start).count());
+    const double detector_latency_ms = detector_timings.preprocess_ms + detector_timings.upload_ms
+                                       + detector_timings.inference_ms
+                                       + detector_timings.download_ms + detector_timings.parse_ms;
+    const double tracking_latency_ms =
+      std::chrono::duration<double, std::milli>(tracking_done - tracking_start).count();
+    const double publish_latency_ms =
+      std::chrono::duration<double, std::milli>(publish_done - publish_start).count();
+    const double total_latency_ms =
+      capture_ms + detector_latency_ms + tracking_latency_ms + publish_latency_ms;
+    log_runtime_opponent_event(*detected_opponent, true, total_latency_ms);
   }
 
   ++frame_count_;
@@ -582,33 +421,31 @@ void PerceptionNode::process_detection_cycle(
   stage_totals_.inference_ms += detector_timings.inference_ms;
   stage_totals_.download_ms += detector_timings.download_ms;
   stage_totals_.parse_ms += detector_timings.parse_ms;
-  stage_totals_.tracking_ms += std::chrono::duration<double, std::milli>(
-    tracking_done - tracking_start).count();
+  stage_totals_.tracking_ms +=
+    std::chrono::duration<double, std::milli>(tracking_done - tracking_start).count();
   stage_totals_.color_ms += color_ms;
-  stage_totals_.publish_ms += std::chrono::duration<double, std::milli>(
-    publish_done - publish_start).count();
+  stage_totals_.publish_ms +=
+    std::chrono::duration<double, std::milli>(publish_done - publish_start).count();
 
   if (frame_count_ % stage_log_interval_ == 0) {
     log_stage_timing();
   }
 }
 
-void PerceptionNode::publish_debug_image(const FramePacket & packet)
+void PerceptionNode::publish_debug_image(const FramePacket& packet)
 {
   if (!debug_image_publisher_) {
     return;
   }
-  auto msg = frame_to_image_message(packet, this->now());
+  auto msg = vision_node_helpers::frame_to_image_message(packet, this->now());
   if (msg) {
     debug_image_publisher_->publish(std::move(msg));
   }
 }
 
-void PerceptionNode::render_preview(
-  const FramePacket & packet,
-  const std::vector<Candidate> & candidates,
-  const std::optional<Candidate> & target,
-  const LetterboxMetadata & source_geometry)
+void PerceptionNode::render_preview(const FramePacket& packet,
+  const std::vector<Candidate>& candidates, const std::optional<Candidate>& target,
+  const LetterboxMetadata& source_geometry)
 {
   if (preview_failed_) {
     return;
@@ -621,80 +458,54 @@ void PerceptionNode::render_preview(
     const double scale_x = static_cast<double>(preview.cols) / static_cast<double>(source_width);
     const double scale_y = static_cast<double>(preview.rows) / static_cast<double>(source_height);
     const cv::Rect image_rect(0, 0, preview.cols, preview.rows);
-    for (const auto & candidate : candidates) {
-      const cv::Scalar color = candidate.is_enemy ?
-        cv::Scalar(0, 255, 0) :
-        cv::Scalar(0, 165, 255);
-      const cv::Rect preview_rect =
-        draw_candidate_outline(preview, candidate, scale_x, scale_y, image_rect, color, 2);
+    for (const auto& candidate : candidates) {
+      const cv::Scalar color = candidate.is_enemy ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 165, 255);
+      const cv::Rect preview_rect = vision_node_helpers::scale_rect_to_preview(
+        candidate.bbox_source, scale_x, scale_y, image_rect);
       if (preview_rect.empty()) {
         continue;
       }
+      cv::rectangle(preview, preview_rect, color, 2);
       const std::string label =
         std::to_string(candidate.class_id) + " " + cv::format("%.2f", candidate.confidence);
-      cv::putText(
-        preview,
-        label,
-        cv::Point(preview_rect.x, std::max(16, preview_rect.y - 4)),
-        cv::FONT_HERSHEY_SIMPLEX,
-        0.5,
-        color,
-        1,
-        cv::LINE_AA);
+      cv::putText(preview, label, cv::Point(preview_rect.x, std::max(16, preview_rect.y - 4)),
+        cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv::LINE_AA);
     }
 
     if (target.has_value()) {
-      const cv::Rect target_rect =
-        draw_candidate_outline(
-          preview, *target, scale_x, scale_y, image_rect, cv::Scalar(0, 0, 255), 3);
+      const cv::Rect target_rect = vision_node_helpers::scale_rect_to_preview(
+        target->bbox_source, scale_x, scale_y, image_rect);
       if (!target_rect.empty()) {
-        cv::circle(
-          preview,
-          scale_point_to_preview(target->center_source, scale_x, scale_y, image_rect),
-          5,
-          cv::Scalar(0, 0, 255),
-          -1,
-          cv::LINE_AA);
+        cv::rectangle(preview, target_rect, cv::Scalar(0, 0, 255), 3);
       }
     }
 
-    cv::putText(
-      preview,
-      "FPS " + cv::format("%.1f", preview_fps_),
-      cv::Point(12, 28),
-      cv::FONT_HERSHEY_SIMPLEX,
-      0.8,
-      cv::Scalar(255, 255, 255),
-      2,
-      cv::LINE_AA);
+    cv::putText(preview, "FPS " + cv::format("%.1f", preview_fps_), cv::Point(12, 28),
+      cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
 
-    const double scale = std::min(
-      1.0,
-      std::min(
-        static_cast<double>(kPreviewMaxWidth) / std::max(1, preview.cols),
-        static_cast<double>(kPreviewMaxHeight) / std::max(1, preview.rows)));
+    const double scale =
+      std::min(1.0, std::min(static_cast<double>(kPreviewMaxWidth) / std::max(1, preview.cols),
+                      static_cast<double>(kPreviewMaxHeight) / std::max(1, preview.rows)));
     if (scale < 1.0) {
       cv::resize(preview, preview, cv::Size(), scale, scale, cv::INTER_AREA);
     }
 
     cv::imshow(vis_window_name_, preview);
     cv::waitKey(1);
-  } catch (const cv::Exception & exc) {
+  } catch (const cv::Exception& exc) {
     preview_failed_ = true;
     RCLCPP_WARN(
-      this->get_logger(),
-      "Disabling show preview after OpenCV display failure: %s",
-      exc.what());
+      this->get_logger(), "Disabling show preview after OpenCV display failure: %s", exc.what());
   }
 }
 
 std::vector<Candidate> PerceptionNode::extract_candidates(
-  const DetectionBatch & batch, const FramePacket * packet, double * color_ms) const
+  const DetectionBatch& batch, const FramePacket* packet, double* color_ms) const
 {
   // Convert model-space detections back to source pixels before ranking and optional tracking.
   std::vector<Candidate> candidates;
   candidates.reserve(batch.detections.size());
-  for (const auto & detection : batch.detections) {
+  for (const auto& detection : batch.detections) {
     auto track_id = detection.track_id;
     if (use_kalman_ && !track_id.has_value()) {
       if (!candidates.empty()) {
@@ -707,28 +518,12 @@ std::vector<Candidate> PerceptionNode::extract_candidates(
       static_cast<float>(source_rect.x) + static_cast<float>(source_rect.width) / 2.0F,
       static_cast<float>(source_rect.y) + static_cast<float>(source_rect.height) / 2.0F);
 
-    candidates.push_back(Candidate{
-      detection.bbox_model,
-      source_rect,
-      center_source,
-      detection.confidence,
-      detection.class_id,
-      track_id,
-      true,
-      detection.obb_angle,
-      detection.has_corners,
-      {}});
-    if (detection.has_corners) {
-      auto & candidate = candidates.back();
-      for (std::size_t i = 0; i < detection.corners_model.size(); ++i) {
-        candidate.corners_source[i] =
-          unletterbox_point(detection.corners_model[i], batch.letterbox);
-      }
-    }
+    candidates.push_back(Candidate{detection.bbox_model, source_rect, center_source,
+      detection.confidence, detection.class_id, track_id, true, detection.obb_angle});
   }
 
   if (use_model_color_classes_) {
-    for (auto & candidate : candidates) {
+    for (auto& candidate : candidates) {
       candidate.is_enemy = class_id_matches_target_color(candidate.class_id, target_class_);
     }
     return candidates;
@@ -738,15 +533,15 @@ std::vector<Candidate> PerceptionNode::extract_candidates(
     return candidates;
   }
 
-  std::sort(
-    candidates.begin(), candidates.end(),
-    [](const Candidate & lhs, const Candidate & rhs) {return lhs.confidence > rhs.confidence;});
+  std::sort(candidates.begin(), candidates.end(),
+    [](const Candidate& lhs, const Candidate& rhs) { return lhs.confidence > rhs.confidence; });
+  const int candidate_count = static_cast<int>(candidates.size());
   const auto check_count =
-    static_cast<std::size_t>(std::min<int>(max_hsv_candidates_, static_cast<int>(candidates.size())));
+    static_cast<std::size_t>(std::min<int>(max_hsv_candidates_, candidate_count));
 
   const auto color_start = std::chrono::steady_clock::now();
   for (std::size_t i = 0; i < candidates.size(); ++i) {
-    auto & candidate = candidates[i];
+    auto& candidate = candidates[i];
     if (i >= check_count) {
       candidate.is_enemy = false;
       continue;
@@ -771,8 +566,7 @@ std::vector<Candidate> PerceptionNode::extract_candidates(
 std::vector<Candidate> PerceptionNode::rank_candidates(std::vector<Candidate> candidates) const
 {
   std::sort(
-    candidates.begin(), candidates.end(),
-    [this](const Candidate & lhs, const Candidate & rhs) {
+    candidates.begin(), candidates.end(), [this](const Candidate& lhs, const Candidate& rhs) {
       const double lhs_dist = std::hypot(
         static_cast<double>(lhs.center_source.x) - static_cast<double>(imgsz_width_) / 2.0,
         static_cast<double>(lhs.center_source.y) - static_cast<double>(imgsz_height_) / 2.0);
@@ -790,9 +584,10 @@ std::vector<Candidate> PerceptionNode::rank_candidates(std::vector<Candidate> ca
   return candidates;
 }
 
-std::optional<Candidate> PerceptionNode::select_target(const std::vector<Candidate> & candidates) const
+std::optional<Candidate> PerceptionNode::select_target(
+  const std::vector<Candidate>& candidates) const
 {
-  for (const auto & candidate : candidates) {
+  for (const auto& candidate : candidates) {
     if (candidate.is_enemy) {
       return candidate;
     }
@@ -800,18 +595,17 @@ std::optional<Candidate> PerceptionNode::select_target(const std::vector<Candida
   return std::nullopt;
 }
 
-void PerceptionNode::publish_target(const Candidate & target, const LetterboxMetadata & lb)
+void PerceptionNode::publish_target(const Candidate& target, const LetterboxMetadata& lb)
 {
-  bbox_msg_.data = {
-    target.bbox_source.x,
-    target.bbox_source.y,
+  bbox_msg_.data = {target.bbox_source.x, target.bbox_source.y,
     target.bbox_source.x + target.bbox_source.width,
     target.bbox_source.y + target.bbox_source.height};
   override_msg_.data = true;
   bbox_publisher_->publish(bbox_msg_);
   override_publisher_->publish(override_msg_);
 
-  auto [yaw, pitch] = calculate_angles(target.bbox_source, lb.src_w, lb.src_h, hfov_rad_, vfov_rad_);
+  auto [yaw, pitch] =
+    calculate_angles(target.bbox_source, lb.src_w, lb.src_h, hfov_rad_, vfov_rad_);
   angle_msg_.data = {yaw, pitch};
   angle_publisher_->publish(angle_msg_);
 
@@ -834,9 +628,8 @@ void PerceptionNode::publish_no_target(int src_w, int src_h)
   obb_angle_publisher_->publish(obb_angle_msg_);
 }
 
-bool PerceptionNode::publish_kalman_target(
-  double xf, double yf, double width, double height, const LetterboxMetadata & lb,
-  const std::optional<float> & obb_angle)
+bool PerceptionNode::publish_kalman_target(double xf, double yf, double width, double height,
+  const LetterboxMetadata& lb, const std::optional<float>& obb_angle)
 {
   const int bx1 = std::max(0, std::min(static_cast<int>(xf - width / 2.0), imgsz_width_ - 1));
   const int by1 = std::max(0, std::min(static_cast<int>(yf - height / 2.0), imgsz_height_ - 1));
@@ -855,29 +648,29 @@ bool PerceptionNode::publish_kalman_target(
 }
 
 bool PerceptionNode::run_kalman_pipeline(
-  const std::vector<Candidate> & candidates, double dt, const LetterboxMetadata & lb)
+  const std::vector<Candidate>& candidates, double dt, const LetterboxMetadata& lb)
 {
   std::set<int> current_ids;
   bool published = false;
 
-  for (const auto & candidate : candidates) {
+  for (const auto& candidate : candidates) {
     if (!candidate.is_enemy || !candidate.track_id.has_value()) {
       continue;
     }
     current_ids.insert(*candidate.track_id);
-    const double cx =
-      static_cast<double>(candidate.bbox_model.x) +
-      (static_cast<double>(candidate.bbox_model.width) / 2.0);
-    const double cy =
-      static_cast<double>(candidate.bbox_model.y) +
-      (static_cast<double>(candidate.bbox_model.height) / 2.0);
+    const double cx = static_cast<double>(candidate.bbox_model.x)
+                      + (static_cast<double>(candidate.bbox_model.width) / 2.0);
+    const double cy = static_cast<double>(candidate.bbox_model.y)
+                      + (static_cast<double>(candidate.bbox_model.height) / 2.0);
     const double width = static_cast<double>(candidate.bbox_model.width);
     const double height = static_cast<double>(candidate.bbox_model.height);
 
     auto tracker_it = active_trackers_.find(*candidate.track_id);
     if (tracker_it == active_trackers_.end()) {
-      tracker_it = active_trackers_.emplace(
-        *candidate.track_id, TrackerWrapper(ArmorPlateTracker(cx, cy, width, height))).first;
+      tracker_it =
+        active_trackers_
+          .emplace(*candidate.track_id, TrackerWrapper(ArmorPlateTracker(cx, cy, width, height)))
+          .first;
     } else {
       tracker_it->second.tracker.predict(dt);
       tracker_it->second.tracker.update(cx, cy, width, height);
@@ -888,7 +681,7 @@ bool PerceptionNode::run_kalman_pipeline(
   }
 
   std::vector<int> ids_to_remove;
-  for (auto & [track_id, wrapper] : active_trackers_) {
+  for (auto& [track_id, wrapper] : active_trackers_) {
     if (current_ids.count(track_id) == 0) {
       ++wrapper.lost_frames;
     }
@@ -898,12 +691,12 @@ bool PerceptionNode::run_kalman_pipeline(
     }
 
     if (!published && wrapper.lost_frames <= max_coast_frames_) {
-      const auto & state = wrapper.tracker.state();
+      const auto& state = wrapper.tracker.state();
       const double t_look = static_cast<double>(lookahead_steps_) * dt;
       const double xf = state[0] + (state[2] * t_look) + (0.5 * state[4] * t_look * t_look);
       const double yf = state[1] + (state[3] * t_look) + (0.5 * state[5] * t_look * t_look);
       if (publish_kalman_target(
-          xf, yf, wrapper.tracker.width(), wrapper.tracker.height(), lb, wrapper.obb_angle))
+            xf, yf, wrapper.tracker.width(), wrapper.tracker.height(), lb, wrapper.obb_angle))
       {
         published = true;
       }
@@ -918,28 +711,25 @@ bool PerceptionNode::run_kalman_pipeline(
 
 std::string PerceptionNode::resolve_default_model_path() const
 {
-  const auto cwd_candidate =
-    std::filesystem::current_path() / "yolo_cpp" / "models" /
-    "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
+  const auto cwd_candidate = std::filesystem::current_path() / "model_test"
+                             / "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
   if (std::filesystem::exists(cwd_candidate)) {
     return cwd_candidate.string();
   }
-  return "/home/ultraviolet/CV_Detection/yolo_cpp/models/"
+  return "/home/ultraviolet/CV_Detection/model_test/"
          "best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine";
 }
 
 std::string PerceptionNode::resolve_default_deepstream_config_path() const
 {
   const auto cwd_candidate =
-    std::filesystem::current_path() / "yolo_cpp" / "config" /
-    "deepstream_bestmerge_nvinfer.txt";
+    std::filesystem::current_path() / "yolo_cpp" / "config" / "deepstream_bestmerge_nvinfer.txt";
   if (std::filesystem::exists(cwd_candidate)) {
     return cwd_candidate.string();
   }
 
-  const auto package_candidate =
-    std::filesystem::path(__FILE__).parent_path().parent_path() / "config" /
-    "deepstream_bestmerge_nvinfer.txt";
+  const auto package_candidate = std::filesystem::path(__FILE__).parent_path().parent_path()
+                                 / "config" / "deepstream_bestmerge_nvinfer.txt";
   if (std::filesystem::exists(package_candidate)) {
     return package_candidate.string();
   }
@@ -952,7 +742,7 @@ std::string PerceptionNode::resolve_runtime_log_dir() const
     std::filesystem::create_directories(runtime_log_dir_);
     return runtime_log_dir_;
   }
-  if (const char * env_dir = std::getenv("VISION_LOG_DIR")) {
+  if (const char* env_dir = std::getenv("VISION_LOG_DIR")) {
     const std::string value(env_dir);
     if (!value.empty()) {
       std::filesystem::create_directories(value);
@@ -964,16 +754,17 @@ std::string PerceptionNode::resolve_runtime_log_dir() const
   return log_dir.string();
 }
 
-void PerceptionNode::write_runtime_log_line(const std::string & line)
+void PerceptionNode::write_runtime_log_line(const std::string& line)
 {
   if (!runtime_log_stream_.is_open()) {
     return;
   }
-  runtime_log_stream_ << "ts=" << timestamp_now_iso8601_ms() << ' ' << line << '\n';
+  runtime_log_stream_ << "ts=" << vision_node_helpers::timestamp_now_iso8601_ms() << ' ' << line
+                      << '\n';
   runtime_log_stream_.flush();
 }
 
-void PerceptionNode::log_runtime_note(const std::string & level, const std::string & message)
+void PerceptionNode::log_runtime_note(const std::string& level, const std::string& message)
 {
   write_runtime_log_line("level=" + level + " msg=" + message);
 }
@@ -982,7 +773,8 @@ void PerceptionNode::log_runtime_fps_once_per_second()
 {
   const auto now = std::chrono::steady_clock::now();
   if (have_last_runtime_fps_log_time_) {
-    const double elapsed_s = std::chrono::duration<double>(now - last_runtime_fps_log_time_).count();
+    const double elapsed_s =
+      std::chrono::duration<double>(now - last_runtime_fps_log_time_).count();
     if (elapsed_s < 1.0) {
       return;
     }
@@ -999,7 +791,7 @@ void PerceptionNode::log_runtime_fps_once_per_second()
 }
 
 void PerceptionNode::log_runtime_opponent_event(
-  const Candidate & target, bool color_pass, double latency_ms)
+  const Candidate& target, bool color_pass, double latency_ms)
 {
   const int x1 = target.bbox_source.x;
   const int y1 = target.bbox_source.y;
@@ -1010,16 +802,13 @@ void PerceptionNode::log_runtime_opponent_event(
   line << std::fixed << std::setprecision(2)
        << "fps_scope=" << (deepstream_runtime_ != nullptr ? "deepstream_result" : "frame")
        << ' '
-       << "fps=" << preview_fps_ << ' '
-       << "bbox=" << x1 << ',' << y1 << ',' << x2 << ',' << y2 << ' ';
-  line << std::setprecision(3)
-       << "conf=" << target.confidence << ' '
+       << "fps=" << preview_fps_ << ' ' << "bbox=" << x1 << ',' << y1 << ',' << x2 << ','
+       << y2 << ' ';
+  line << std::setprecision(3) << "conf=" << target.confidence << ' '
        << "color_pass=" << (color_pass ? 1 : 0) << ' ';
   line << "latency_scope="
-       << (deepstream_runtime_ != nullptr ? "post_infer" : "capture_to_publish")
-       << ' ';
-  line << std::setprecision(2)
-       << "latency_ms=" << latency_ms;
+       << (deepstream_runtime_ != nullptr ? "post_infer" : "capture_to_publish") << ' ';
+  line << std::setprecision(2) << "latency_ms=" << latency_ms;
   write_runtime_log_line(line.str());
 }
 
@@ -1037,35 +826,22 @@ void PerceptionNode::log_stage_timing()
   last_stage_log_wall_time_ = now;
   have_last_stage_log_wall_time_ = true;
   if (deepstream_runtime_ != nullptr) {
-    RCLCPP_INFO(
-      this->get_logger(),
+    RCLCPP_INFO(this->get_logger(),
       "DeepStream result timing mean over %d results: result_fps=%.1f parse=%.2fms "
       "tracking=%.2fms color=%.2fms publish=%.2fms "
       "note=capture/preprocess/upload/inference/download_unavailable",
-      stage_log_interval_,
-      avg_fps,
-      stage_totals_.parse_ms / n,
-      stage_totals_.tracking_ms / n,
-      stage_totals_.color_ms / n,
-      stage_totals_.publish_ms / n);
+      stage_log_interval_, avg_fps, stage_totals_.parse_ms / n, stage_totals_.tracking_ms / n,
+      stage_totals_.color_ms / n, stage_totals_.publish_ms / n);
     stage_totals_ = StageTotals{};
     return;
   }
 
-  RCLCPP_INFO(
-    this->get_logger(),
+  RCLCPP_INFO(this->get_logger(),
     "Stage timing mean over %d frames: fps=%.1f capture=%.2fms preprocess=%.2fms upload=%.2fms "
     "inference=%.2fms download=%.2fms parse=%.2fms tracking=%.2fms color=%.2fms publish=%.2fms",
-    stage_log_interval_,
-    avg_fps,
-    stage_totals_.capture_ms / n,
-    stage_totals_.preprocess_ms / n,
-    stage_totals_.upload_ms / n,
-    stage_totals_.inference_ms / n,
-    stage_totals_.download_ms / n,
-    stage_totals_.parse_ms / n,
-    stage_totals_.tracking_ms / n,
-    stage_totals_.color_ms / n,
+    stage_log_interval_, avg_fps, stage_totals_.capture_ms / n, stage_totals_.preprocess_ms / n,
+    stage_totals_.upload_ms / n, stage_totals_.inference_ms / n, stage_totals_.download_ms / n,
+    stage_totals_.parse_ms / n, stage_totals_.tracking_ms / n, stage_totals_.color_ms / n,
     stage_totals_.publish_ms / n);
   stage_totals_ = StageTotals{};
 }

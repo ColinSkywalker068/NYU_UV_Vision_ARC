@@ -3,10 +3,9 @@
 
 #include "yolo_cpp/utils.hpp"
 
-#include <opencv2/imgproc.hpp>
-
 #include <algorithm>
 #include <cmath>
+#include <opencv2/imgproc.hpp>
 
 namespace yolo_cpp
 {
@@ -39,8 +38,8 @@ int compute_min_value(double mean_value_channel)
 }
 
 /// Return true when a robot id appears in a fixed team-id array.
-template<typename ArrayT>
-bool contains_id(const ArrayT & ids, int robot_id)
+template <typename ArrayT>
+bool contains_id(const ArrayT& ids, int robot_id)
 {
   for (const auto id : ids) {
     if (id == robot_id) {
@@ -79,8 +78,7 @@ LetterboxMetadata make_letterbox_metadata(int src_w, int src_h, int target_w, in
     return LetterboxMetadata{cv::Mat(), 1.0, 0, 0, src_w, src_h, target_w, target_h};
   }
 
-  const double scale = std::min(
-    static_cast<double>(target_w) / static_cast<double>(src_w),
+  const double scale = std::min(static_cast<double>(target_w) / static_cast<double>(src_w),
     static_cast<double>(target_h) / static_cast<double>(src_h));
   const int new_w = static_cast<int>(src_w * scale);
   const int new_h = static_cast<int>(src_h * scale);
@@ -92,7 +90,7 @@ LetterboxMetadata make_letterbox_metadata(int src_w, int src_h, int target_w, in
   return LetterboxMetadata{cv::Mat(), scale, left, top, src_w, src_h, target_w, target_h};
 }
 
-LetterboxFrameResult letterbox_frame(const cv::Mat & frame, int target_w, int target_h)
+LetterboxFrameResult letterbox_frame(const cv::Mat& frame, int target_w, int target_h)
 {
   const auto metadata = make_letterbox_metadata(frame.cols, frame.rows, target_w, target_h);
 
@@ -123,7 +121,7 @@ LetterboxFrameResult letterbox_frame(const cv::Mat & frame, int target_w, int ta
   return result;
 }
 
-cv::Rect unletterbox_rect(const cv::Rect & rect, const LetterboxResult & lb)
+cv::Rect unletterbox_rect(const cv::Rect& rect, const LetterboxResult& lb)
 {
   if (lb.scale <= 0.0) {
     return rect;
@@ -132,12 +130,11 @@ cv::Rect unletterbox_rect(const cv::Rect & rect, const LetterboxResult & lb)
   const int x = std::max(0, static_cast<int>((rect.x - lb.pad_x) / lb.scale));
   const int y = std::max(0, static_cast<int>((rect.y - lb.pad_y) / lb.scale));
   const int x2 = std::min(lb.src_w, static_cast<int>((rect.x + rect.width - lb.pad_x) / lb.scale));
-  const int y2 =
-    std::min(lb.src_h, static_cast<int>((rect.y + rect.height - lb.pad_y) / lb.scale));
+  const int y2 = std::min(lb.src_h, static_cast<int>((rect.y + rect.height - lb.pad_y) / lb.scale));
   return cv::Rect(x, y, std::max(0, x2 - x), std::max(0, y2 - y));
 }
 
-cv::Point2f unletterbox_point(const cv::Point2f & point, const LetterboxMetadata & lb)
+cv::Point2f unletterbox_point(const cv::Point2f& point, const LetterboxMetadata& lb)
 {
   if (lb.scale <= 0.0) {
     return point;
@@ -145,28 +142,27 @@ cv::Point2f unletterbox_point(const cv::Point2f & point, const LetterboxMetadata
 
   const float x = static_cast<float>((static_cast<double>(point.x) - lb.pad_x) / lb.scale);
   const float y = static_cast<float>((static_cast<double>(point.y) - lb.pad_y) / lb.scale);
-  return cv::Point2f(
-    std::clamp(x, 0.0F, static_cast<float>(std::max(0, lb.src_w - 1))),
+  return cv::Point2f(std::clamp(x, 0.0F, static_cast<float>(std::max(0, lb.src_w - 1))),
     std::clamp(y, 0.0F, static_cast<float>(std::max(0, lb.src_h - 1))));
 }
 
 std::pair<float, float> calculate_angles(
-  const cv::Rect & bbox, int img_w, int img_h, float hfov_rad, float vfov_rad)
+  const cv::Rect& bbox, int img_w, int img_h, float hfov_rad, float vfov_rad)
 {
   const float center_x = static_cast<float>(bbox.x) + static_cast<float>(bbox.width) / 2.0F;
   const float center_y = static_cast<float>(bbox.y) + static_cast<float>(bbox.height) / 2.0F;
 
-  const float pixel_offset_x = (center_x - static_cast<float>(img_w) / 2.0F) /
-    (static_cast<float>(img_w) / 2.0F);
-  const float pixel_offset_y = (center_y - static_cast<float>(img_h) / 2.0F) /
-    (static_cast<float>(img_h) / 2.0F);
+  const float pixel_offset_x =
+    (center_x - static_cast<float>(img_w) / 2.0F) / (static_cast<float>(img_w) / 2.0F);
+  const float pixel_offset_y =
+    (center_y - static_cast<float>(img_h) / 2.0F) / (static_cast<float>(img_h) / 2.0F);
 
   const float yaw = -std::atan(pixel_offset_x * std::tan(hfov_rad / 2.0F));
   const float pitch = std::atan(pixel_offset_y * std::tan(vfov_rad / 2.0F));
   return {yaw, pitch};
 }
 
-std::pair<bool, int> check_enemy(const cv::Mat & roi_image, int target_class)
+std::pair<bool, int> check_enemy(const cv::Mat& roi_image, int target_class)
 {
   // HSV masks are a fallback when model classes are not trusted for team color.
   if (roi_image.empty()) {
@@ -190,8 +186,7 @@ std::pair<bool, int> check_enemy(const cv::Mat & roi_image, int target_class)
     cv::Mat high_red_mask;
     cv::inRange(
       hsv_roi, cv::Scalar(0, min_saturation, min_value), cv::Scalar(12, 255, 255), low_red_mask);
-    cv::inRange(
-      hsv_roi, cv::Scalar(168, min_saturation, min_value), cv::Scalar(180, 255, 255),
+    cv::inRange(hsv_roi, cv::Scalar(168, min_saturation, min_value), cv::Scalar(180, 255, 255),
       high_red_mask);
     cv::bitwise_or(low_red_mask, high_red_mask, final_mask);
   }

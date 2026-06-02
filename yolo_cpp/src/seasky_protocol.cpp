@@ -18,11 +18,11 @@ constexpr uint16_t FLAG_TARGET_STATE_MASK = 0x0003;
 constexpr uint16_t FLAG_TARGET_STATE_SHIFT = 2;
 constexpr uint16_t FLAG_TARGET_TYPE_MASK = 0x000F;
 constexpr uint16_t FLAG_TARGET_TYPE_SHIFT = 4;
-constexpr uint16_t FLAG_ENEMY_COLOR_MASK = 0x0003;
+constexpr uint16_t FLAG_ENEMY_COLOR_MASK = 0x0001;
 constexpr uint16_t FLAG_WORK_MODE_MASK = 0x0003;
-constexpr uint16_t FLAG_WORK_MODE_SHIFT = 2;
+constexpr uint16_t FLAG_WORK_MODE_SHIFT = 1;
 constexpr uint16_t FLAG_BULLET_SPEED_MASK = 0x00FF;
-constexpr uint16_t FLAG_BULLET_SPEED_SHIFT = 4;
+constexpr uint16_t FLAG_BULLET_SPEED_SHIFT = 8;
 constexpr uint8_t SEASKY_CRC8_INIT = 0xFF;
 constexpr uint8_t SEASKY_CRC8_POLY = 0x31;
 constexpr uint16_t SEASKY_CRC16_INIT = 0xFFFF;
@@ -31,19 +31,19 @@ constexpr int SEASKY_HEADER_SIZE_BYTES = 4;
 constexpr int SEASKY_TAIL_SIZE_BYTES = 2;
 constexpr int SEASKY_MIN_DATA_LENGTH = 4;
 constexpr int SEASKY_MAX_DATA_LENGTH = 128;
+constexpr float DEG_TO_RAD = 0.017453292519943295F;
 
 /// Append a little-endian uint16 field to a byte vector.
-void append_u16(std::vector<uint8_t> & data, uint16_t value)
+void append_u16(std::vector<uint8_t>& data, uint16_t value)
 {
   data.push_back(static_cast<uint8_t>(value & 0xFF));
   data.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
 }
 
 /// Read a little-endian uint16 field from a byte vector.
-uint16_t read_u16(const std::vector<uint8_t> & data, std::size_t offset)
+uint16_t read_u16(const std::vector<uint8_t>& data, std::size_t offset)
 {
-  return static_cast<uint16_t>(data[offset]) |
-         (static_cast<uint16_t>(data[offset + 1]) << 8);
+  return static_cast<uint16_t>(data[offset]) | (static_cast<uint16_t>(data[offset + 1]) << 8);
 }
 
 /// Decode enemy color, work mode, and bullet speed from an attitude flags register.
@@ -57,7 +57,7 @@ std::tuple<int, int, int> parse_attitude_flags(uint16_t flags_register)
 
 }  // namespace
 
-uint8_t compute_crc8(const std::vector<uint8_t> & data)
+uint8_t compute_crc8(const std::vector<uint8_t>& data)
 {
   uint8_t crc = SEASKY_CRC8_INIT;
   for (const auto byte_value : data) {
@@ -73,7 +73,7 @@ uint8_t compute_crc8(const std::vector<uint8_t> & data)
   return crc;
 }
 
-uint16_t compute_crc16(const std::vector<uint8_t> & data)
+uint16_t compute_crc16(const std::vector<uint8_t>& data)
 {
   uint16_t crc = SEASKY_CRC16_INIT;
   for (const auto byte_value : data) {
@@ -92,27 +92,24 @@ uint16_t compute_crc16(const std::vector<uint8_t> & data)
 uint16_t build_vision_flags(int fire_mode, int target_state, int target_type)
 {
   return static_cast<uint16_t>(
-    (fire_mode & FLAG_FIRE_MODE_MASK) |
-    ((target_state & FLAG_TARGET_STATE_MASK) << FLAG_TARGET_STATE_SHIFT) |
-    ((target_type & FLAG_TARGET_TYPE_MASK) << FLAG_TARGET_TYPE_SHIFT));
+    (fire_mode & FLAG_FIRE_MODE_MASK)
+    | ((target_state & FLAG_TARGET_STATE_MASK) << FLAG_TARGET_STATE_SHIFT)
+    | ((target_type & FLAG_TARGET_TYPE_MASK) << FLAG_TARGET_TYPE_SHIFT));
 }
 
 std::vector<uint8_t> build_seasky_frame(
-  uint16_t command_id, uint16_t flags_register, const std::vector<float> & float_payload)
+  uint16_t command_id, uint16_t flags_register, const std::vector<float>& float_payload)
 {
   std::vector<uint8_t> payload_bytes;
   payload_bytes.reserve(float_payload.size() * sizeof(float));
   for (const auto value : float_payload) {
-    const auto * raw = reinterpret_cast<const uint8_t *>(&value);
+    const auto* raw = reinterpret_cast<const uint8_t*>(&value);
     payload_bytes.insert(payload_bytes.end(), raw, raw + sizeof(float));
   }
 
-  const uint16_t data_length =
-    static_cast<uint16_t>(2 + 2 + payload_bytes.size());
+  const uint16_t data_length = static_cast<uint16_t>(2 + 2 + payload_bytes.size());
 
-  std::vector<uint8_t> header_without_crc{
-    SEASKY_SOF,
-    static_cast<uint8_t>(data_length & 0xFF),
+  std::vector<uint8_t> header_without_crc{SEASKY_SOF, static_cast<uint8_t>(data_length & 0xFF),
     static_cast<uint8_t>((data_length >> 8) & 0xFF)};
 
   std::vector<uint8_t> frame = header_without_crc;
@@ -124,7 +121,7 @@ std::vector<uint8_t> build_seasky_frame(
   return frame;
 }
 
-std::vector<AttitudeFrame> parse_attitude_frames(std::vector<uint8_t> & rx_buffer)
+std::vector<AttitudeFrame> parse_attitude_frames(std::vector<uint8_t>& rx_buffer)
 {
   // Keep incomplete trailing bytes in rx_buffer so the next serial read can complete a frame.
   std::vector<AttitudeFrame> parsed_frames;
@@ -179,6 +176,9 @@ std::vector<AttitudeFrame> parse_attitude_frames(std::vector<uint8_t> & rx_buffe
         std::memcpy(&parsed.pitch, frame.data() + payload_offset + sizeof(float), sizeof(float));
         std::memcpy(
           &parsed.roll, frame.data() + payload_offset + (2 * sizeof(float)), sizeof(float));
+        parsed.yaw *= DEG_TO_RAD;
+        parsed.pitch *= DEG_TO_RAD;
+        parsed.roll *= DEG_TO_RAD;
         auto [enemy_color, work_mode, bullet_speed] = parse_attitude_flags(flags_register);
         parsed.enemy_color = enemy_color;
         parsed.work_mode = work_mode;

@@ -1,12 +1,11 @@
 #ifndef YOLO_CPP__CAMERA_BACKEND_HPP_
 #define YOLO_CPP__CAMERA_BACKEND_HPP_
 
-#include "yolo_cpp/frame_packet.hpp"
-
-#include <rclcpp/logger.hpp>
-
 #include <memory>
+#include <rclcpp/logger.hpp>
 #include <string>
+
+#include "yolo_cpp/frame_packet.hpp"
 
 namespace rclcpp
 {
@@ -24,7 +23,7 @@ struct CameraConfig
   int imgsz_height{640};
   double basler_exposure_us{5000.0};
   double basler_gain_db{5.0};
-  int basler_fps{160};
+  int basler_fps{110};
   bool basler_uncapped_fps{true};
   std::string basler_pixel_format{"bayer_rggb8"};
   int basler_source_width{1920};
@@ -57,7 +56,7 @@ public:
   ///
   /// Returns:
   ///   True when packet contains a usable frame.
-  virtual bool capture(FramePacket & packet) = 0;
+  virtual bool capture(FramePacket& packet) = 0;
 
   /// Release device resources.
   virtual void release() = 0;
@@ -66,15 +65,15 @@ public:
   virtual double actual_fps() const = 0;
 
   /// Return a stable source id such as "basler" or "realsense".
-  virtual const std::string & source_id() const = 0;
+  virtual const std::string& source_id() const = 0;
 };
 
 /// Create the configured camera backend.
 std::shared_ptr<CameraBackend> create_camera_backend(
-  const CameraConfig & config, const rclcpp::Logger & logger);
+  const CameraConfig& config, const rclcpp::Logger& logger);
 
 /// Load camera-related ROS parameters from a node into CameraConfig.
-CameraConfig load_camera_config(rclcpp::Node & node);
+CameraConfig load_camera_config(rclcpp::Node& node);
 
 }  // namespace yolo_cpp
 

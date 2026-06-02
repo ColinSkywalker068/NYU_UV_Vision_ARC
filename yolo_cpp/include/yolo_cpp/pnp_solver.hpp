@@ -1,10 +1,9 @@
 #ifndef YOLO_CPP__PNP_SOLVER_HPP_
 #define YOLO_CPP__PNP_SOLVER_HPP_
 
+#include <array>
 #include <geometry_msgs/msg/pose.hpp>
 #include <opencv2/core.hpp>
-
-#include <array>
 #include <vector>
 
 namespace yolo_cpp
@@ -25,9 +24,8 @@ public:
   ArmorPnPSolver() = default;
 
   /// Build object-point templates for small and large armor plates.
-  ArmorPnPSolver(
-    PnPCameraModel camera_model, double small_armor_width_m, double small_armor_height_m,
-    double large_armor_width_m, double large_armor_height_m);
+  ArmorPnPSolver(PnPCameraModel camera_model, double small_armor_width_m,
+    double small_armor_height_m, double large_armor_width_m, double large_armor_height_m);
 
   /// Estimate the 3D pose for one observed armor.
   ///
@@ -38,9 +36,8 @@ public:
   ///
   /// Returns:
   ///   True when OpenCV solvePnP produced a finite pose.
-  bool solve(
-    const std::array<cv::Point2f, 4> & image_points, int armor_type,
-    geometry_msgs::msg::Pose & pose) const;
+  bool solve(const std::array<cv::Point2f, 4>& image_points, int armor_type,
+    geometry_msgs::msg::Pose& pose) const;
 
 private:
   PnPCameraModel camera_model_;
