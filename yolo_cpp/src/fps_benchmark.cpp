@@ -521,6 +521,17 @@ void print_detector_stage_summary(const std::vector<TimedSample> & samples)
     detections += sample.detections;
   }
   const double n = static_cast<double>(samples.size());
+  const bool has_core_detector_timings =
+    totals.preprocess_ms > 0.0 || totals.upload_ms > 0.0 ||
+    totals.inference_ms > 0.0 || totals.download_ms > 0.0;
+  if (!has_core_detector_timings) {
+    std::cout << std::fixed << std::setprecision(3)
+              << "  result_avg_ms parse=" << totals.parse_ms / n
+              << " detections_per_result=" << static_cast<double>(detections) / n
+              << " note=preprocess/upload/infer/download_unavailable" << '\n';
+    return;
+  }
+
   std::cout << std::fixed << std::setprecision(3)
             << "  stage_avg_ms preprocess=" << totals.preprocess_ms / n
             << " upload=" << totals.upload_ms / n
@@ -816,7 +827,7 @@ BenchmarkResult run_deepstream_mode(
     });
 
   std::cout << "[deepstream] backend=" << runtime->backend_name()
-            << " source_reported_fps=" << runtime->source_actual_fps()
+            << " source_reported_or_config_fps=" << runtime->source_actual_fps()
             << " deepstream_config=" << options.deepstream_config_path << '\n';
   measure_start = Clock::now() + seconds_duration(options.warmup_s);
   measure_end = measure_start + seconds_duration(options.duration_s);
@@ -835,6 +846,8 @@ BenchmarkResult run_deepstream_mode(
     std::vector<TimedSample> interval_samples(samples.begin() + 1, samples.end());
     print_sample_summary("callback_interval", interval_samples);
   }
+  std::cout << "  timing_scope=deepstream_result_callback "
+            << "use_deepstream_profile_stages_for_gstreamer_stage_averages\n";
   print_detector_stage_summary(samples);
   write_csv(options.csv_path, "deepstream", samples, csv_append);
 

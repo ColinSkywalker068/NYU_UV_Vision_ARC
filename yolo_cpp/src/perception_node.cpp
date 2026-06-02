@@ -991,7 +991,10 @@ void PerceptionNode::log_runtime_fps_once_per_second()
   last_runtime_fps_log_time_ = now;
 
   std::ostringstream line;
-  line << std::fixed << std::setprecision(2) << "fps=" << preview_fps_;
+  line << std::fixed << std::setprecision(2)
+       << "fps_scope=" << (deepstream_runtime_ != nullptr ? "deepstream_result" : "frame")
+       << ' '
+       << "fps=" << preview_fps_;
   write_runtime_log_line(line.str());
 }
 
@@ -1005,11 +1008,16 @@ void PerceptionNode::log_runtime_opponent_event(
 
   std::ostringstream line;
   line << std::fixed << std::setprecision(2)
+       << "fps_scope=" << (deepstream_runtime_ != nullptr ? "deepstream_result" : "frame")
+       << ' '
        << "fps=" << preview_fps_ << ' '
        << "bbox=" << x1 << ',' << y1 << ',' << x2 << ',' << y2 << ' ';
   line << std::setprecision(3)
        << "conf=" << target.confidence << ' '
        << "color_pass=" << (color_pass ? 1 : 0) << ' ';
+  line << "latency_scope="
+       << (deepstream_runtime_ != nullptr ? "post_infer" : "capture_to_publish")
+       << ' ';
   line << std::setprecision(2)
        << "latency_ms=" << latency_ms;
   write_runtime_log_line(line.str());
@@ -1028,6 +1036,22 @@ void PerceptionNode::log_stage_timing()
   }
   last_stage_log_wall_time_ = now;
   have_last_stage_log_wall_time_ = true;
+  if (deepstream_runtime_ != nullptr) {
+    RCLCPP_INFO(
+      this->get_logger(),
+      "DeepStream result timing mean over %d results: result_fps=%.1f parse=%.2fms "
+      "tracking=%.2fms color=%.2fms publish=%.2fms "
+      "note=capture/preprocess/upload/inference/download_unavailable",
+      stage_log_interval_,
+      avg_fps,
+      stage_totals_.parse_ms / n,
+      stage_totals_.tracking_ms / n,
+      stage_totals_.color_ms / n,
+      stage_totals_.publish_ms / n);
+    stage_totals_ = StageTotals{};
+    return;
+  }
+
   RCLCPP_INFO(
     this->get_logger(),
     "Stage timing mean over %d frames: fps=%.1f capture=%.2fms preprocess=%.2fms upload=%.2fms "
