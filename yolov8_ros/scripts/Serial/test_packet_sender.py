@@ -183,9 +183,7 @@ def drain_attitude_frames(
         if len(payload) != expected:
             continue
         yaw, pitch, roll = struct.unpack("<fff", payload)
-        yaw, pitch, roll = convert_attitude_triplet_degrees_to_radians(
-            yaw, pitch, roll
-        )
+        yaw, pitch, roll = convert_attitude_triplet_degrees_to_radians(yaw, pitch, roll)
         enemy_color, work_mode, bullet_speed = parse_attitude_flags(flags_register)
         rx_count[0] += 1
         LOGGER.info(
