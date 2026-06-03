@@ -49,7 +49,7 @@ NYU Robomaster ROS 2 C++ auto-aim vision pipeline for camera capture, YOLO/Tenso
 | Documentation | Link to canonical docs instead of duplicating long implementation detail. | Documentation and agent-instruction edits. |
 | Testing | Run the narrowest meaningful build or test for the touched area; use `colcon test --packages-select yolo_cpp` for C++ tests when available. | Before calling code changes complete. |
 | Formatting | Use existing project tooling and pre-commit hooks for mechanical formatting. | Before committing broad text or script changes. |
-| Safety | Do not transmit controller-facing assumptions to STM32 without checking unit conventions; ROS aim angles are radians, STM TX converts to degrees by default. | Solver, serial bridge, and protocol work. |
+| Safety | Do not transmit controller-facing assumptions to STM32 without checking unit conventions; current controls firmware expects CV->STM pitch/yaw as radians, so `transmit_angles_in_degrees` defaults false. | Solver, serial bridge, and protocol work. |
 
 ### Key Principles
 

@@ -73,6 +73,6 @@ For a camera-only throughput probe on the robot, launch with `basler_uncapped_fp
 
 ## Which Launch Should I Use?
 
-Use `basler.launch.py` when you want the real field-facing Basler stack with controller integration. Its default solver mode is `absolute`, so STM RX yaw/pitch radians are added to the solved aim offsets, then the bridge converts the outgoing yaw/pitch to degrees for STM TX. `stm.launch.py` remains available only as a compatibility alias.
+Use `basler.launch.py` when you want the real field-facing Basler stack with controller integration. Its default solver mode is `absolute`, so STM RX yaw/pitch radians are added to the solved aim offsets, then the bridge sends outgoing yaw/pitch radians to STM because the current controls firmware expects radians. `stm.launch.py` remains available only as a compatibility alias.
 
 Use `realsense.launch.py` when you want a smaller RealSense loop for camera, native TensorRT inference, tracking, 3D processor tuning, and aiming without serial transport in the way. Its default solver mode is `offset`, since there may be no STM attitude feedback.

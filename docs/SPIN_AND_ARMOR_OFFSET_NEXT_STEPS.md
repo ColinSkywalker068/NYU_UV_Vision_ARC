@@ -272,12 +272,12 @@ Solver should:
 
 STM bridge should:
 - keep receiving radians from ROS
-- keep converting TX yaw/pitch to degrees when `transmit_angles_in_degrees=true`
+- keep TX yaw/pitch in radians for the current controls firmware, with degree conversion only as an opt-in alternate contract
 - use `suggest_fire` to choose fire vs hold-fire mode
 
 Exit criteria:
 - No STM protocol shape change.
-- No unit regression: ROS yaw/pitch radians, STM TX degrees.
+- No unit regression: ROS yaw/pitch radians, STM TX radians for current controls firmware.
 
 ## Phase 7: Tests and Tuning
 
@@ -338,5 +338,5 @@ This work is done when:
 - The system identifies high vs low armor slots well enough to apply the right `1 inch` correction.
 - During beyblading, aim does not snap to every visible armor jump.
 - `suggest_fire` blocks bad spin phases.
-- Solver and STM units stay unchanged: ROS radians, STM TX degrees.
+- Solver and STM units stay unchanged: ROS radians, STM TX radians for current controls firmware.
 - The old 2D fallback still works when 3D pose or slot confidence is missing.

@@ -262,7 +262,7 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         (
             "transmit_angles_in_degrees",
             "false",
-            "Convert solver radians to degrees before STM TX",
+            "Optionally convert solver radians to degrees before STM TX",
         ),
         (
             "hold_fire_mode",

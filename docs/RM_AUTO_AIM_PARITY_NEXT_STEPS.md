@@ -9,7 +9,7 @@ Current state:
 - The tracker can associate and predict in 3D when pose exists, with 2D fallback.
 - `armor_processor_node` transforms, filters, and fire-gates selected targets, including a small-gyro observer.
 - `aim_solver_node` can solve from 3D pose / velocity with bullet speed, latency, and gravity compensation, while preserving 2D fallback and STM compatibility outputs.
-- STM RX yaw/pitch feedback is treated as radians in ROS; STM TX yaw/pitch is converted to degrees by default in the serial bridge.
+- STM RX yaw/pitch feedback is treated as radians in ROS; STM TX yaw/pitch is sent as radians by default for the current controls firmware.
 
 Use this file as the validation checklist and tuning handoff after the 3D path compiles on the ROS/container target.
 
