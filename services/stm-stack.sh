@@ -83,6 +83,9 @@ CV_STM_LAUNCH_PROFILE=basler
 # CV_STM_SERIAL_PORT=/dev/ttyUSB0
 # CV_STM_REQUIRE_SERIAL=true
 CV_STM_PREVIEW_MAX_FPS=60.0
+# Toggle the OpenCV preview window for detector frames. The preview state is
+# applied at startup, so use './services/stm-stack.sh preview-on/off'.
+CV_STM_SHOW=false
 # Save up to 100 compressed target frames in pictures/ next to vision_logs/.
 # CV_STM_SAVE_TARGET_FRAMES=false
 # CV_STM_TARGET_FRAME_SAVE_DIR=
@@ -130,6 +133,48 @@ install_service() {
 
 systemctl_action() {
   run_sudo systemctl "$1" "$SERVICE_NAME"
+}
+
+set_env_value() {
+  local key="$1"
+  local value="$2"
+  local tmp
+  tmp="$(mktemp)"
+
+  run_sudo install -d -m 0755 "$ENV_DIR"
+  if [ -f "$ENV_FILE" ]; then
+    awk -v key="$key" -v value="$value" '
+      BEGIN { found = 0 }
+      $0 ~ "^[[:space:]]*" key "=" {
+        print key "=" value
+        found = 1
+        next
+      }
+      { print }
+      END {
+        if (!found) {
+          print key "=" value
+        }
+      }
+    ' "$ENV_FILE" > "$tmp"
+  else
+    {
+      printf '# Optional overrides for stm-stack.service and services/stm-stack.sh.\n'
+      printf '%s=%s\n' "$key" "$value"
+    } > "$tmp"
+  fi
+
+  run_sudo install -m 0644 "$tmp" "$ENV_FILE"
+  rm -f "$tmp"
+}
+
+set_preview() {
+  local show_value="$1"
+  local state_label="$2"
+  set_env_value CV_STM_SHOW "$show_value"
+  log "Set CV_STM_SHOW=${show_value} in ${ENV_FILE}"
+  log "Restarting ${SERVICE_NAME} so preview ${state_label} takes effect"
+  systemctl_action restart
 }
 
 show_status() {
@@ -200,6 +245,9 @@ Commands:
   start      Start ${SERVICE_NAME}.
   stop       Stop ${SERVICE_NAME}.
   restart    Restart ${SERVICE_NAME}.
+  preview-on Persist CV_STM_SHOW=true and restart ${SERVICE_NAME}.
+  preview-off
+             Persist CV_STM_SHOW=false and restart ${SERVICE_NAME}.
   status     Show systemd status.
   logs       Follow systemd logs.
   preflight  Validate image, ROS package, model, and selected profile prerequisites.
@@ -216,6 +264,8 @@ main() {
     start) systemctl_action start ;;
     stop) systemctl_action stop ;;
     restart) systemctl_action restart ;;
+    preview-on) set_preview true on ;;
+    preview-off) set_preview false off ;;
     status) show_status ;;
     logs) show_logs ;;
     preflight) run_preflight ;;

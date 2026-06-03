@@ -75,6 +75,7 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `CV_STM_TARGET_COLOR` | Default enemy color before STM or robot-id feedback arrives | `blue`; set `red` when testing red armor without STM feedback | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_USE_MODEL_COLOR_CLASSES` | Whether model class ids decide enemy color | `true`; set `false` with `CV_STM_ENABLE_COLOR_VERIFICATION=false` to accept both colors during bring-up | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_ENABLE_COLOR_VERIFICATION` | Whether HSV color checks run when model color classes are disabled | `false`; keep disabled while trusting model color classes | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
+| `CV_STM_SHOW` | Whether the service launch opens the OpenCV detector preview window | `false`; use `./services/stm-stack.sh preview-on` or `preview-off` to persist and restart | `services/stm-stack.sh`, `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_SAVE_TARGET_FRAMES` | Optional target-frame JPEG capture for visual checks and heatmaps | `false`; set `true` to save up to `CV_STM_TARGET_FRAME_SAVE_MAX` images under `pictures/` next to `vision_logs/` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_TARGET_FRAME_SAVE_DIR` | Optional override for target-frame output directory | Empty by default; unset saves under `pictures/` next to `vision_logs/` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_TARGET_FRAME_SAVE_MAX` | Maximum target-frame images saved per run | `100` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
@@ -217,6 +218,15 @@ Restart the service:
 ```bash
 ./services/stm-stack.sh restart
 ```
+
+Show or hide the detector preview window on the next service run:
+
+```bash
+./services/stm-stack.sh preview-on
+./services/stm-stack.sh preview-off
+```
+
+These commands persist `CV_STM_SHOW` in `/etc/cv-detection/stm-stack.env` and restart the service. The preview window still needs normal X11 display access from the service container.
 
 Follow live logs:
 

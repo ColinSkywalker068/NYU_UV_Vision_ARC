@@ -93,6 +93,7 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 | Install competition service | `./services/stm-stack.sh install` | Installs and enables the headless STM systemd service without starting it. |
 | Competition preflight | `./services/stm-stack.sh preflight` | Checks image, package, model, DeepStream/Pylon plugins, and serial path before startup. |
 | Restart competition stack | `./services/stm-stack.sh restart` | Restarts the `cv-stm-stack` service container through systemd. |
+| Toggle service preview | `./services/stm-stack.sh preview-on` / `./services/stm-stack.sh preview-off` | Persists `CV_STM_SHOW` and restarts the service to show or hide the OpenCV frame window. |
 | Competition logs and health | `./services/stm-stack.sh logs` / `./services/stm-stack.sh health` | Follows service logs or checks expected ROS nodes and topics. |
 | Jetson FPS isolation benchmark | `./services/fps-benchmark.sh --mode all` | Measures synthetic TensorRT inference, camera capture-only, and Basler+DeepStream result FPS using STM defaults. |
 | Native build | `colcon build --packages-select cv_auto_aim_interfaces yolo_cpp --symlink-install --cmake-args -DBUILD_TESTING=OFF` | Use in an environment with ROS 2 Humble and dependencies installed. |
