@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 SERVICE_NAME="${CV_STM_SERVICE_NAME:-stm-stack.service}"
@@ -11,6 +17,8 @@ ENV_DIR="${CV_STM_ENV_DIR:-/etc/cv-detection}"
 ENV_FILE="${CV_STM_ENV_FILE:-${ENV_DIR}/stm-stack.env}"
 DEFAULT_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"
 LEGACY_CPLUSPLUS_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus"
+NANO_MODEL_RELATIVE="yolo_cpp/models/best-roboflow-nitish-obb.orin-nano_b1_gpu0_fp16.engine"
+AGX_MODEL_RELATIVE="yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine"
 
 if [ -f "$ENV_FILE" ]; then
   set -a
@@ -184,6 +192,16 @@ set_preview() {
   systemctl_action restart
 }
 
+set_model() {
+  local label="$1"
+  local relative_path="$2"
+  local model_path="${CV_STM_REPO_ROOT%/}/${relative_path}"
+  set_env_value CV_STM_MODEL_PATH "$model_path"
+  log "Set CV_STM_MODEL_PATH=${model_path} in ${ENV_FILE}"
+  log "Restarting ${SERVICE_NAME} with ${label} model"
+  systemctl_action restart
+}
+
 show_status() {
   systemctl status "$SERVICE_NAME" --no-pager
 }
@@ -255,6 +273,8 @@ Commands:
   preview-on Persist CV_STM_SHOW=true and restart ${SERVICE_NAME}.
   preview-off
              Persist CV_STM_SHOW=false and restart ${SERVICE_NAME}.
+  model-nano  Persist the Orin Nano TensorRT engine path and restart ${SERVICE_NAME}.
+  model-agx   Persist the AGX TensorRT engine path and restart ${SERVICE_NAME}.
   status     Show systemd status.
   logs       Follow systemd logs.
   preflight  Validate image, ROS package, model, and selected profile prerequisites.
@@ -273,6 +293,8 @@ main() {
     restart) systemctl_action restart ;;
     preview-on) set_preview true on ;;
     preview-off) set_preview false off ;;
+    model-nano) set_model "Orin Nano" "$NANO_MODEL_RELATIVE" ;;
+    model-agx) set_model "AGX" "$AGX_MODEL_RELATIVE" ;;
     status) show_status ;;
     logs) show_logs ;;
     preflight) run_preflight ;;

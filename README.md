@@ -16,32 +16,48 @@ The 2026 runtime is centered on:
 
 ## Quick Start
 
-Use the `uv` wrapper from the repo root.
+On the robot, use the `cv` operator command for the headless Basler + DeepStream + STM32 service.
+Install or refresh the shortcut once:
 
 ```bash
-uv docker
-uv build yolo_cpp
+sudo ln -sf /home/ultraviolet/CV_Detection/services/stm-stack.sh /usr/local/bin/cv
 ```
 
-Launch the full Basler + DeepStream + STM32 field stack:
+Run the competition stack:
 
 ```bash
-uv run yolo_cpp basler.launch.py
+cv install
+cv preflight
+cv restart
+cv logs
 ```
 
-Launch the RealSense bring-up stack:
+Common operator commands:
 
 ```bash
-uv run yolo_cpp realsense.launch.py
+cv status
+cv health
+cv preview-off
+cv model-nano
+cv model-agx
 ```
 
-For the headless STM service:
+If the `cv` symlink is not installed yet, use the helper directly from the repo root:
 
 ```bash
 ./services/stm-stack.sh install
 ./services/stm-stack.sh preflight
 ./services/stm-stack.sh restart
 ./services/stm-stack.sh logs
+```
+
+For development shells and manual ROS launches, use the `uv` wrapper from the repo root:
+
+```bash
+uv docker
+uv build yolo_cpp
+uv run yolo_cpp basler.launch.py
+uv run yolo_cpp realsense.launch.py
 ```
 
 The robot-local fallback model path is configured at:
