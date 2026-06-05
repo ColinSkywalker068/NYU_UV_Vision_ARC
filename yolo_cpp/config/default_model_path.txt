@@ -1,2 +1,2 @@
 # Robot-local fallback model path used when model_path and CV_STM_MODEL_PATH are empty.
-../models/best-roboflow-nitish-obb.engine
+../models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine
