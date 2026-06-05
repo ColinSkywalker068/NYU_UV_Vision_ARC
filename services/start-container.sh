@@ -1,11 +1,32 @@
 #!/usr/bin/env bash
 # Wrapper script for 'docker run': https://docs.docker.com/engine/reference/commandline/run/
 
-# Get the absolute path of this script
-ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 REPO_ROOT="$(cd "$ROOT/.." >/dev/null 2>&1 && pwd)"
+
+if [ $# -lt 1 ] || [ -z "${1:-}" ]; then
+	echo "Usage: services/start-container.sh <image> [command...]" >&2
+	return 2 2>/dev/null || exit 2
+fi
+
 IMAGE_NAME="$1"
 CMD_ARGS=("${@:2}")
+CONTAINER_NAME=""
+RUN_ARGS=()
+DOCKER_CMD=(docker)
+
+is_dry_run() {
+	case "${CV_DOCKER_DRY_RUN:-}" in
+		1|true|True|TRUE|yes|Yes|YES|on|On|ON) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+print_command() {
+	printf '[start-container] dry-run:'
+	printf ' %q' "$@"
+	printf '\n'
+}
 
 sanitize_name() {
 	echo "$1" | tr '/:@' '-' | tr -cd '[:alnum:]_.-'
@@ -13,49 +34,124 @@ sanitize_name() {
 
 get_container_name() {
 	local image_name="$1"
-	if [ -n "$UV_CONTAINER_NAME" ]; then
+	if [ -n "${UV_CONTAINER_NAME:-}" ]; then
 		echo "$UV_CONTAINER_NAME"
 	else
 		echo "uv-$(sanitize_name "$image_name")"
 	fi
 }
 
+select_jetson_docker_cmd() {
+	local current_user="${USER:-}"
+	if [ -z "$current_user" ]; then
+		current_user="$(id -un 2>/dev/null || true)"
+	fi
+
+	if [ "$(id -u)" -eq 0 ] || { [ -n "$current_user" ] && id -nG "$current_user" 2>/dev/null | grep -qw "docker"; }; then
+		DOCKER_CMD=(docker)
+	else
+		DOCKER_CMD=(sudo docker)
+	fi
+}
+
 container_exists() {
-	local docker_cmd="$1"
-	local container_name="$2"
-	$docker_cmd container inspect "$container_name" >/dev/null 2>&1
+	local container_name="$1"
+	"${DOCKER_CMD[@]}" container inspect "$container_name" >/dev/null 2>&1
 }
 
 container_running() {
-	local docker_cmd="$1"
-	local container_name="$2"
-	[ "$($docker_cmd inspect -f '{{.State.Running}}' "$container_name" 2>/dev/null)" = "true" ]
+	local container_name="$1"
+	[ "$("${DOCKER_CMD[@]}" inspect -f '{{.State.Running}}' "$container_name" 2>/dev/null)" = "true" ]
+}
+
+start_existing_container() {
+	local container_name="$1"
+
+	if container_running "$container_name"; then
+		return 0
+	fi
+
+	if ! "${DOCKER_CMD[@]}" start "$container_name" >/dev/null; then
+		echo "Failed to start existing container: ${container_name}" >&2
+		echo "If this container is stale, remove it with: docker rm ${container_name}" >&2
+		return 1
+	fi
+
+	if ! container_running "$container_name"; then
+		echo "Container ${container_name} exited immediately after docker start." >&2
+		echo "Its original command may have completed. Remove it with: docker rm ${container_name}" >&2
+		echo "Then rerun uv docker to create a fresh container." >&2
+		return 1
+	fi
 }
 
 reuse_container() {
-	local docker_cmd="$1"
-	local container_name="$2"
-	shift 2
+	local container_name="$1"
+	shift
 	local exec_cmd=("$@")
+	local -a exec_flags=()
+
+	if [ -z "${INVOCATION_ID:-}" ]; then
+		exec_flags=(-it)
+	fi
+
+	start_existing_container "$container_name" || return $?
 
 	if [ ${#exec_cmd[@]} -eq 0 ]; then
-		if container_running "$docker_cmd" "$container_name"; then
-			$docker_cmd exec -it "$container_name" bash
-		else
-			$docker_cmd start -ai "$container_name"
-		fi
+		"${DOCKER_CMD[@]}" exec "${exec_flags[@]}" "$container_name" bash
 	else
-		if ! container_running "$docker_cmd" "$container_name"; then
-			$docker_cmd start "$container_name" >/dev/null
-		fi
-		$docker_cmd exec -it "$container_name" "${exec_cmd[@]}"
+		"${DOCKER_CMD[@]}" exec "${exec_flags[@]}" "$container_name" "${exec_cmd[@]}"
 	fi
 }
 
-get_pylon_mount_arg() {
-	if [ -d "/opt/pylon" ]; then
-		echo "--volume /opt/pylon:/opt/pylon:ro"
+reset_run_args() {
+	RUN_ARGS=(--name "$CONTAINER_NAME" --privileged --network host)
+}
+
+add_interactive_arg() {
+	if [ -z "${INVOCATION_ID:-}" ]; then
+		RUN_ARGS+=(-it)
 	fi
+}
+
+add_volume_if_exists() {
+	local source_path="$1"
+	local target_path="$2"
+	local mode="${3:-}"
+
+	if [ ! -e "$source_path" ]; then
+		return
+	fi
+
+	if [ -n "$mode" ]; then
+		RUN_ARGS+=(--volume "${source_path}:${target_path}:${mode}")
+	else
+		RUN_ARGS+=(--volume "${source_path}:${target_path}")
+	fi
+}
+
+add_device_if_exists() {
+	local device_path="$1"
+	if [ -e "$device_path" ]; then
+		RUN_ARGS+=(--device "$device_path")
+	fi
+}
+
+add_env_value() {
+	local name="$1"
+	local value="$2"
+	RUN_ARGS+=(--env "${name}=${value}")
+}
+
+add_env_if_set() {
+	local name="$1"
+	if [ -n "${!name+x}" ]; then
+		RUN_ARGS+=(--env "$name")
+	fi
+}
+
+add_pylon_mount_if_available() {
+	add_volume_if_exists /opt/pylon /opt/pylon ro
 }
 
 is_cplusplus_context() {
@@ -69,17 +165,24 @@ is_cplusplus_context() {
 	return 1
 }
 
-get_cplusplus_env_args() {
+add_cplusplus_env_args() {
 	local image_name="$1"
 	if ! is_cplusplus_context "$image_name"; then
 		return
 	fi
+
 	local gst_plugin_path="/opt/nvidia/deepstream/deepstream-6.4/lib/gst-plugins:/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins"
 	local ld_library_path="/opt/nvidia/deepstream/deepstream-6.4/lib:/opt/nvidia/deepstream/deepstream/lib:/usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/nvidia:/opt/pylon/lib:/usr/local/cuda/lib64:/usr/local/cuda/compat:/usr/lib/aarch64-linux-gnu"
-	echo "--env CV_CPLUSPLUS_GST_PLUGIN_PATH=$gst_plugin_path --env CV_CPLUSPLUS_LD_LIBRARY_PATH=$ld_library_path --env GST_PLUGIN_PATH=$gst_plugin_path --env GST_PLUGIN_PATH_1_0=$gst_plugin_path --env LD_LIBRARY_PATH=$ld_library_path --env GST_REGISTRY=/tmp/gst-registry-deepstream.bin"
+
+	add_env_value CV_CPLUSPLUS_GST_PLUGIN_PATH "$gst_plugin_path"
+	add_env_value CV_CPLUSPLUS_LD_LIBRARY_PATH "$ld_library_path"
+	add_env_value GST_PLUGIN_PATH "$gst_plugin_path"
+	add_env_value GST_PLUGIN_PATH_1_0 "$gst_plugin_path"
+	add_env_value LD_LIBRARY_PATH "$ld_library_path"
+	add_env_value GST_REGISTRY /tmp/gst-registry-deepstream.bin
 }
 
-get_cv_stm_env_args() {
+add_cv_stm_env_args() {
 	local env_names=(
 		CV_STM_REPO_ROOT
 		CV_STM_IMAGE
@@ -128,9 +231,7 @@ get_cv_stm_env_args() {
 	)
 	local name
 	for name in "${env_names[@]}"; do
-		if [ -n "${!name+x}" ]; then
-			printf -- "--env %s " "$name"
-		fi
+		add_env_if_set "$name"
 	done
 }
 
@@ -139,11 +240,13 @@ prepare_cplusplus_command() {
 	if ! is_cplusplus_context "$image_name"; then
 		return
 	fi
+
+	local env_setup='export GST_PLUGIN_PATH="$CV_CPLUSPLUS_GST_PLUGIN_PATH"; export GST_PLUGIN_PATH_1_0="$GST_PLUGIN_PATH"; export LD_LIBRARY_PATH="$CV_CPLUSPLUS_LD_LIBRARY_PATH:${LD_LIBRARY_PATH:-}"; export GST_REGISTRY=/tmp/gst-registry-deepstream.bin; rm -rf /root/.cache/gstreamer-1.0'
+
 	if [[ ${#CMD_ARGS[@]} -eq 0 || (${#CMD_ARGS[@]} -eq 1 && "${CMD_ARGS[0]}" == "bash") ]]; then
-		CMD_ARGS=(bash -lc 'export GST_PLUGIN_PATH="$CV_CPLUSPLUS_GST_PLUGIN_PATH"; export GST_PLUGIN_PATH_1_0="$GST_PLUGIN_PATH"; export LD_LIBRARY_PATH="$CV_CPLUSPLUS_LD_LIBRARY_PATH:${LD_LIBRARY_PATH:-}"; export GST_REGISTRY=/tmp/gst-registry-deepstream.bin; rm -rf /root/.cache/gstreamer-1.0; exec bash -i')
-	elif [[ ${#CMD_ARGS[@]} -ge 2 && "${CMD_ARGS[0]}" == "bash" && "${CMD_ARGS[1]}" == "-lc" ]]; then
-		local user_cmd="${CMD_ARGS[*]:2}"
-		CMD_ARGS=(bash -lc "export GST_PLUGIN_PATH=\"\$CV_CPLUSPLUS_GST_PLUGIN_PATH\"; export GST_PLUGIN_PATH_1_0=\"\$GST_PLUGIN_PATH\"; export LD_LIBRARY_PATH=\"\$CV_CPLUSPLUS_LD_LIBRARY_PATH:\${LD_LIBRARY_PATH:-}\"; export GST_REGISTRY=/tmp/gst-registry-deepstream.bin; rm -rf /root/.cache/gstreamer-1.0; $user_cmd")
+		CMD_ARGS=(bash -lc "${env_setup}; exec bash -i")
+	elif [[ ${#CMD_ARGS[@]} -ge 3 && "${CMD_ARGS[0]}" == "bash" && "${CMD_ARGS[1]}" == "-lc" ]]; then
+		CMD_ARGS=(bash -lc "${env_setup}; ${CMD_ARGS[2]}" "${CMD_ARGS[@]:3}")
 	fi
 }
 
@@ -157,150 +260,138 @@ run_power_script_if_needed() {
 	if ! should_run_power_script "$image_name"; then
 		return
 	fi
+
 	local power_script="$REPO_ROOT/services/power.sh"
 	if [ ! -f "$power_script" ]; then
 		echo "services/power.sh not found at $power_script, skipping power setup"
 		return
 	fi
+
 	echo "Running services/power.sh before starting CV RealSense container..."
 	bash "$power_script"
 }
 
-# Jetson
-grep -aq "NVIDIA" /proc/device-tree/model 2>/dev/null
-if [ $? -eq 0 ]; then
-	run_power_script_if_needed "$IMAGE_NAME"
-	prepare_cplusplus_command "$IMAGE_NAME"
-	CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
-	# Check for V4L2 camera devices
-	V4L2_DEVICES=""
-	for i in {0..9}
-	do
-		if [ -a "/dev/video$i" ]; then
-			V4L2_DEVICES="$V4L2_DEVICES --device /dev/video$i "
-		fi
-	done
+write_jetson_model_file() {
+	local model_file="/tmp/cv_detection_nv_jetson_model"
+	rm -rf "$model_file" 2>/dev/null || true
+	if cat /proc/device-tree/model > "$model_file" 2>/dev/null; then
+		printf '%s' "$model_file"
+	else
+		echo "Unable to write $model_file; continuing without Jetson model bind mount" >&2
+		rm -f "$model_file" 2>/dev/null || true
+	fi
+}
 
-	# Check for display monitor
-	DISPLAY_DEVICE=""
-	if [ -n "$DISPLAY" ]; then
-		# give docker root user X11 permissions
+add_display_args() {
+	if [ -z "${DISPLAY:-}" ]; then
+		return
+	fi
+
+	if ! is_dry_run; then
 		sudo xhost +si:localuser:root
-
-		# enable SSH X11 forwarding inside container (https://stackoverflow.com/q/48235040)
-		XAUTH=/tmp/.docker.xauth
-		DISPLAY_DEVICE="-e DISPLAY=$DISPLAY -v /tmp/.X11-unix/:/tmp/.X11-unix -v $XAUTH:$XAUTH -e XAUTHORITY=$XAUTH"
 	fi
 
-	# Add Hugging Face token if it exists in the environment
-	HUGGINGFACE=""
-	if [ -n "$HUGGINGFACE_TOKEN" ]; then
-		HUGGINGFACE="$HUGGINGFACE --env HUGGINGFACE_TOKEN=$HUGGINGFACE_TOKEN"
+	local xauth="/tmp/.docker.xauth"
+	add_env_value DISPLAY "$DISPLAY"
+	add_volume_if_exists /tmp/.X11-unix /tmp/.X11-unix
+	add_volume_if_exists "$xauth" "$xauth"
+	add_env_value XAUTHORITY "$xauth"
+}
+
+start_or_reuse_container() {
+	if is_dry_run; then
+		print_command "${DOCKER_CMD[@]}" run "${RUN_ARGS[@]}" "$IMAGE_NAME" "${CMD_ARGS[@]}"
+		return 0
 	fi
 
-	# Add interactive flag if this is not ran by a systemd service
-	if [ -z "$INVOCATION_ID" ]; then
-		INTERACTIVE="-it"
+	if container_exists "$CONTAINER_NAME"; then
+		reuse_container "$CONTAINER_NAME" "${CMD_ARGS[@]}"
 	else
-		INTERACTIVE=""
+		"${DOCKER_CMD[@]}" run "${RUN_ARGS[@]}" "$IMAGE_NAME" "${CMD_ARGS[@]}"
 	fi
+}
 
-	# Check if sudo is needed
-	if [ $(id -u) -eq 0 ] || id -nG "$USER" | grep -qw "docker"; then
-		SUDO=""
-	else
-		SUDO="sudo"
-	fi
-	DOCKER_CMD="${SUDO:+$SUDO }docker"
-	PYLON_MOUNT="$(get_pylon_mount_arg)"
-	CPP_ENV="$(get_cplusplus_env_args "$IMAGE_NAME")"
-	CV_STM_ENV="$(get_cv_stm_env_args)"
+configure_common_unix_args() {
+	reset_run_args
+	add_interactive_arg
+	add_cplusplus_env_args "$IMAGE_NAME"
+	add_cv_stm_env_args
+}
 
-	# This file shows what Jetson board is running
-	# /proc or /sys files aren't mountable into docker
-	JETSON_MODEL_FILE="/tmp/cv_detection_nv_jetson_model"
-	rm -rf "$JETSON_MODEL_FILE" 2>/dev/null || true
-	if ! cat /proc/device-tree/model > "$JETSON_MODEL_FILE" 2>/dev/null; then
-		echo "Unable to write $JETSON_MODEL_FILE; continuing without Jetson model bind mount" >&2
-		rm -f "$JETSON_MODEL_FILE" 2>/dev/null || true
-	fi
+configure_jetson_args() {
+	local jetson_model_file=""
 
-	if container_exists "$DOCKER_CMD" "$CONTAINER_NAME"; then
-		reuse_container "$DOCKER_CMD" "$CONTAINER_NAME" "${CMD_ARGS[@]}"
-	else
-		$DOCKER_CMD run --name "$CONTAINER_NAME" --runtime nvidia --privileged --network host \
-			--volume /tmp/argus_socket:/tmp/argus_socket \
-			--volume /etc/enctune.conf:/etc/enctune.conf \
-			--volume /etc/nv_tegra_release:/etc/nv_tegra_release \
-			--volume "$JETSON_MODEL_FILE":/tmp/nv_jetson_model \
-			--volume /var/run/dbus:/var/run/dbus \
-			--volume /var/run/avahi-daemon/socket:/var/run/avahi-daemon/socket \
-			--volume /var/run/docker.sock:/var/run/docker.sock \
-			--volume $ROOT/data:/data \
-			--volume $ROOT/../../.ssh:/root/.ssh \
-			--volume /home:/home \
-			--volume /usr/local/bin:/usr/local/bin \
-			--volume /dev:/dev \
-			--device /dev/snd \
-			--device /dev/bus/usb \
-			--env RMW_IMPLEMENTATION=rmw_fastrtps_cpp \
-			$INTERACTIVE \
-			$DATA_VOLUME \
-			$DISPLAY_DEVICE \
-			$V4L2_DEVICES \
-			$HUGGINGFACE \
-			$PYLON_MOUNT \
-			$CPP_ENV \
-			$CV_STM_ENV \
-			"$IMAGE_NAME" "${CMD_ARGS[@]}"
+	select_jetson_docker_cmd
+	configure_common_unix_args
+
+	RUN_ARGS+=(--runtime nvidia)
+	add_volume_if_exists /tmp/argus_socket /tmp/argus_socket
+	add_volume_if_exists /etc/enctune.conf /etc/enctune.conf ro
+	add_volume_if_exists /etc/nv_tegra_release /etc/nv_tegra_release ro
+	if ! is_dry_run; then
+		jetson_model_file="$(write_jetson_model_file)"
+		add_volume_if_exists "$jetson_model_file" /tmp/nv_jetson_model ro
 	fi
-# Generic Linux (KR260, Ubuntu, etc.)
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-	prepare_cplusplus_command "$IMAGE_NAME"
-	CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
-	PYLON_MOUNT="$(get_pylon_mount_arg)"
-	CPP_ENV="$(get_cplusplus_env_args "$IMAGE_NAME")"
-	CV_STM_ENV="$(get_cv_stm_env_args)"
-	if container_exists "docker" "$CONTAINER_NAME"; then
-		reuse_container "docker" "$CONTAINER_NAME" "${CMD_ARGS[@]}"
-	else
-		docker run -it --name "$CONTAINER_NAME" --privileged --network host \
-			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
-			--volume /dev:/dev \
-			--volume /home:/home \
-			$PYLON_MOUNT \
-			$CPP_ENV \
-			$CV_STM_ENV \
-			"$IMAGE_NAME" "${CMD_ARGS[@]}"
-	fi
-# MacOS
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-	prepare_cplusplus_command "$IMAGE_NAME"
-	CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
-	CPP_ENV="$(get_cplusplus_env_args "$IMAGE_NAME")"
-	CV_STM_ENV="$(get_cv_stm_env_args)"
-	if container_exists "docker" "$CONTAINER_NAME"; then
-		reuse_container "docker" "$CONTAINER_NAME" "${CMD_ARGS[@]}"
-	else
-		docker run -it --name "$CONTAINER_NAME" --privileged --network host \
-			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
-			--env DISPLAY=host.docker.internal:0.0 \
-			$CPP_ENV \
-			$CV_STM_ENV \
-			"$IMAGE_NAME" "${CMD_ARGS[@]}"
-	fi
-# Fallback (Windows)
-else
-	CV_STM_ENV="$(get_cv_stm_env_args)"
+	add_volume_if_exists /var/run/dbus /var/run/dbus
+	add_volume_if_exists /var/run/avahi-daemon/socket /var/run/avahi-daemon/socket
+	add_volume_if_exists /var/run/docker.sock /var/run/docker.sock
+	add_volume_if_exists "$REPO_ROOT/data" /data
+	add_volume_if_exists "$REPO_ROOT/../.ssh" /root/.ssh
+	add_volume_if_exists /home /home
+	add_volume_if_exists /usr/local/bin /usr/local/bin
+	add_volume_if_exists /dev /dev
+	add_device_if_exists /dev/snd
+	for device in /dev/video{0..9}; do
+		add_device_if_exists "$device"
+	done
+	add_env_value RMW_IMPLEMENTATION rmw_fastrtps_cpp
+	add_env_if_set HUGGINGFACE_TOKEN
+	add_pylon_mount_if_available
+	add_display_args
+}
+
+configure_generic_linux_args() {
+	DOCKER_CMD=(docker)
+	configure_common_unix_args
+	add_volume_if_exists "$REPO_ROOT" /home/ultraviolet/CV_Detection
+	add_volume_if_exists /dev /dev
+	add_volume_if_exists /home /home
+	add_pylon_mount_if_available
+}
+
+configure_macos_args() {
+	DOCKER_CMD=(docker)
+	configure_common_unix_args
+	add_volume_if_exists "$REPO_ROOT" /home/ultraviolet/CV_Detection
+	add_env_value DISPLAY host.docker.internal:0.0
+}
+
+configure_windows_args() {
 	if command -v winpty >/dev/null 2>&1; then
-		winpty docker run -it --name "$(get_container_name "$IMAGE_NAME")" --privileged --network host \
-			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
-			$CV_STM_ENV \
-			"$IMAGE_NAME" "${CMD_ARGS[@]}"
+		DOCKER_CMD=(winpty docker)
 	else
-		docker run -it --name "$(get_container_name "$IMAGE_NAME")" --privileged --network host \
-			--volume "$REPO_ROOT":/home/ultraviolet/CV_Detection \
-			$CV_STM_ENV \
-			"$IMAGE_NAME" "${CMD_ARGS[@]}"
+		DOCKER_CMD=(docker)
 	fi
+	reset_run_args
+	add_interactive_arg
+	add_cv_stm_env_args
+	add_volume_if_exists "$REPO_ROOT" /home/ultraviolet/CV_Detection
+}
+
+CONTAINER_NAME="$(get_container_name "$IMAGE_NAME")"
+prepare_cplusplus_command "$IMAGE_NAME"
+
+if grep -aq "NVIDIA" /proc/device-tree/model 2>/dev/null; then
+	if ! is_dry_run; then
+		run_power_script_if_needed "$IMAGE_NAME"
+	fi
+	configure_jetson_args
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+	configure_generic_linux_args
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+	configure_macos_args
+else
+	configure_windows_args
 fi
+
+start_or_reuse_container

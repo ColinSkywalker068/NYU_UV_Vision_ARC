@@ -13,7 +13,8 @@ SCRIPTS_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
 
 # Check if the script is running in the background
 IS_BACKGROUND=false
-if [[ $(ps -o stat= -p $$) != *+* ]]; then
+PROCESS_STAT="$(ps -o stat= -p $$ 2>/dev/null || true)"
+if [[ $PROCESS_STAT != *+* ]]; then
   IS_BACKGROUND=true
 fi
 
@@ -28,7 +29,10 @@ if [[ ($1 == "run" && $# -ge 3) || $1 == "build" || $1 == "topic" || $1 == "exec
   # Start Docker container if the host does not have ROS2 installed
   source /opt/ros/humble/setup.bash 2> /dev/null || source /opt/ros/humble/install/setup.bash 2> /dev/null
   if [[ $? != 0 ]]; then
-    source $SCRIPTS_DIR/start-container.sh "$CV_IMAGE" bash -c "cd $(pwd); uv $*; exec bash"
+    printf -v current_dir '%q' "$(pwd)"
+    forwarded_uv=(uv "$@")
+    printf -v forwarded_cmd ' %q' "${forwarded_uv[@]}"
+    source "$SCRIPTS_DIR/start-container.sh" "$CV_IMAGE" bash -lc "cd ${current_dir};${forwarded_cmd}; exec bash"
     exit 0
   fi
 fi
@@ -80,7 +84,7 @@ case $1 in
     else
       shift 2
     fi
-    source $SCRIPTS_DIR/start-container.sh $image $@
+    source "$SCRIPTS_DIR/start-container.sh" "$image" "$@"
     ;;
   # Run/Launch ROS2 nodes
   "run")

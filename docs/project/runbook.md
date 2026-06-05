@@ -8,7 +8,7 @@
 <!-- PRIMARY_SOURCES: Docker/docker-compose.yml, Docker/Dockerfile.run-cv, Docker/Dockerfile.cplusplus, Docker/build_cplusplus.sh, services/uv.sh, services/start-container.sh, services/stm-stack.service, services/stm-stack.sh, services/stm-stack-entrypoint.sh, services/setup-stm-stack.sh, CPP_CONTAINER_RUNBOOK.md -->
 
 > **Status:** Current operational guide
-> **Last Updated:** 2026-05-30
+> **Last Updated:** 2026-06-05
 
 ## Quick Navigation
 
@@ -110,6 +110,7 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `GST_PLUGIN_PATH_1_0` | GStreamer 1.0 plugin discovery | Same path set as `GST_PLUGIN_PATH` | `Docker/Dockerfile.cplusplus`, `services/start-container.sh` |
 | `LD_LIBRARY_PATH` | DeepStream, CUDA, NVIDIA, and Pylon library discovery | DeepStream, Tegra, CUDA, Pylon library paths | `Docker/Dockerfile.cplusplus`, `services/start-container.sh` |
 | `GST_REGISTRY` | Runtime GStreamer registry cache | `/tmp/gst-registry-deepstream.bin` | `services/start-container.sh` |
+| `CV_DOCKER_DRY_RUN` | Debugging `uv docker` startup without launching Docker | Set to `1` to print the resolved `docker run` command and exit | `services/start-container.sh` |
 
 ## 5. Local Development Setup
 
@@ -474,9 +475,10 @@ docker ps -a
 
 Resolution:
 
-1. Set `UV_CONTAINER_NAME` to create a separate container for the session.
-2. Stop the old container with `docker stop` when it is no longer needed.
-3. Remove the old container with `docker rm` only after confirming it is not the active robot runtime.
+1. Run `CV_DOCKER_DRY_RUN=1 ./services/start-container.sh nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` to inspect the command that `uv docker` would use.
+2. Set `UV_CONTAINER_NAME` to create a separate container for the session.
+3. Stop the old container with `docker stop` when it is no longer needed.
+4. Remove the old container with `docker rm` only after confirming it is not the active robot runtime. If the wrapper says the old container exited immediately after `docker start`, remove that stale container and rerun `uv docker`.
 
 ## 12. Recovery Procedures
 
