@@ -340,7 +340,7 @@ public:
         read_resulting_fps(camera_.GetNodeMap()).value_or(static_cast<double>(config_.basler_fps));
       converter_.OutputPixelFormat = Pylon::PixelType_BGR8packed;
       converter_.OutputBitAlignment = Pylon::OutputBitAlignment_MsbAligned;
-      camera_.StartGrabbing(Pylon::GrabStrategy_LatestImageOnly, Pylon::GrabLoop_ProvidedByUser);
+      start_grabbing_locked();
 #ifdef HAVE_PYLON
     } catch (const Pylon::GenericException& exc) {
       release();
@@ -374,6 +374,7 @@ public:
     } catch (const Pylon::GenericException& exc) {
       RCLCPP_WARN_THROTTLE(
         logger_, steady_clock_, 2000, "Basler RetrieveResult failed: %s", exc.what());
+      recover_grab_loop_if_waiter_exists(exc.what());
       return false;
 #endif
     } catch (const std::exception& exc) {
@@ -426,9 +427,7 @@ public:
   void release() override
   {
     std::lock_guard<std::mutex> grab_lock(grab_mutex_);
-    if (camera_.IsGrabbing()) {
-      camera_.StopGrabbing();
-    }
+    stop_grabbing_locked();
     if (camera_.IsOpen()) {
       camera_.Close();
     }
@@ -445,6 +444,42 @@ public:
   }
 
 private:
+  void start_grabbing_locked()
+  {
+    camera_.StartGrabbing(Pylon::GrabStrategy_LatestImageOnly, Pylon::GrabLoop_ProvidedByUser);
+  }
+
+  void stop_grabbing_locked()
+  {
+    if (camera_.IsGrabbing()) {
+      camera_.StopGrabbing();
+    }
+  }
+
+  void recover_grab_loop_if_waiter_exists(const std::string& message)
+  {
+    if (message.find("already a thread waiting") == std::string::npos) {
+      return;
+    }
+    try {
+      stop_grabbing_locked();
+      start_grabbing_locked();
+      RCLCPP_WARN_THROTTLE(
+        logger_, steady_clock_, 2000, "Recovered Basler grab loop after stale RetrieveResult waiter");
+#ifdef HAVE_PYLON
+    } catch (const Pylon::GenericException& exc) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, steady_clock_, 2000, "Failed to recover Basler grab loop: %s", exc.what());
+#endif
+    } catch (const std::exception& exc) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, steady_clock_, 2000, "Failed to recover Basler grab loop: %s", exc.what());
+    } catch (...) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, steady_clock_, 2000, "Failed to recover Basler grab loop with unknown error");
+    }
+  }
+
   template <typename NodeT, typename ValueT>
   void set_if_writable(GenApi::INodeMap& node_map, const char* name, const ValueT& value)
   {
@@ -465,15 +500,29 @@ private:
       if (!node || !GenApi::IsWritable(node)) {
         return;
       }
-      GenApi::CEnumEntryPtr entry(node->GetEntryByName(value));
-      if (entry && GenApi::IsReadable(entry)) {
-        node->SetIntValue(entry->GetValue());
-      } else {
-        RCLCPP_WARN(logger_, "Basler %s does not expose enum value %s", name, value);
+      for (const auto* candidate : enum_value_candidates(value)) {
+        GenApi::CEnumEntryPtr entry(node->GetEntryByName(candidate));
+        if (entry && GenApi::IsReadable(entry)) {
+          node->SetIntValue(entry->GetValue());
+          if (std::string(candidate) != value) {
+            RCLCPP_INFO(logger_, "Basler %s using enum value %s for requested %s", name, candidate,
+              value);
+          }
+          return;
+        }
       }
+      RCLCPP_WARN(logger_, "Basler %s does not expose enum value %s", name, value);
     } catch (const std::exception& exc) {
       RCLCPP_WARN(logger_, "Could not set Basler %s=%s: %s", name, value, exc.what());
     }
+  }
+
+  std::vector<const char*> enum_value_candidates(const char* value) const
+  {
+    if (std::string(value) == "YUV422Packed") {
+      return {"YUV422Packed", "YCbCr422_8", "YCbCr422_8_YY_CbCr", "YCbCr422_8_CbYCrY"};
+    }
+    return {value};
   }
 
   std::optional<double> read_float_if_readable(GenApi::INodeMap& node_map, const char* name) const
