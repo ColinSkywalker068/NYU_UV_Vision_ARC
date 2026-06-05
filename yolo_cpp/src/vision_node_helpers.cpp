@@ -3,6 +3,8 @@
 
 #include "vision_node_helpers.hpp"
 
+#include <ament_index_cpp/get_package_share_directory.hpp>
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -11,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -27,6 +30,7 @@ namespace
 
 constexpr char kModelPathEnv[] = "CV_STM_MODEL_PATH";
 constexpr char kDefaultModelPathFile[] = "default_model_path.txt";
+constexpr char kPackageName[] = "yolo_cpp";
 
 std::optional<std::string> non_empty_env(const char* name)
 {
@@ -47,6 +51,16 @@ std::string trim_ascii(std::string value)
   return value.substr(first, last - first + 1);
 }
 
+std::string resolve_default_entry(
+  const std::filesystem::path& default_file_path, const std::string& entry)
+{
+  const std::filesystem::path model_path(entry);
+  if (model_path.is_absolute()) {
+    return model_path.string();
+  }
+  return (default_file_path.parent_path() / model_path).lexically_normal().string();
+}
+
 std::optional<std::string> read_default_model_path_file(const std::filesystem::path& path)
 {
   std::ifstream stream(path);
@@ -58,7 +72,7 @@ std::optional<std::string> read_default_model_path_file(const std::filesystem::p
   while (std::getline(stream, line)) {
     const auto trimmed = trim_ascii(line);
     if (!trimmed.empty() && trimmed.front() != '#') {
-      return trimmed;
+      return resolve_default_entry(path, trimmed);
     }
   }
   return std::nullopt;
@@ -70,6 +84,16 @@ std::optional<std::string> default_model_path_from_file()
     std::filesystem::current_path() / "yolo_cpp" / "config" / kDefaultModelPathFile;
   if (const auto path = read_default_model_path_file(cwd_candidate)) {
     return path;
+  }
+
+  try {
+    const std::filesystem::path share_candidate =
+      std::filesystem::path(ament_index_cpp::get_package_share_directory(kPackageName)) / "config"
+      / kDefaultModelPathFile;
+    if (const auto path = read_default_model_path_file(share_candidate)) {
+      return path;
+    }
+  } catch (const std::exception&) {
   }
 
   const std::filesystem::path source_candidate =

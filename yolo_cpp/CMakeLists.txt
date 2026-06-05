@@ -22,6 +22,7 @@ endif()
 list(REMOVE_DUPLICATES PYLON_SEARCH_ROOTS)
 
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(cv_auto_aim_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
@@ -184,6 +185,7 @@ endif()
 
 ament_target_dependencies(yolo_cpp_components
   cv_auto_aim_interfaces
+  ament_index_cpp
   rclcpp
   rclcpp_components
   geometry_msgs
@@ -331,6 +333,11 @@ install(
 
 install(
   DIRECTORY config
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY models
   DESTINATION share/${PROJECT_NAME}
 )
 
