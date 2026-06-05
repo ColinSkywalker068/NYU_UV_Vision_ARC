@@ -129,10 +129,14 @@ EOF
 Enable it for the current user:
 
 ```bash
+ls -l /etc/systemd/system/x11vnc@.service
+echo "$USER"
 sudo systemctl daemon-reload
-sudo systemctl enable --now x11vnc@$USER.service
-systemctl status x11vnc@$USER.service --no-pager
+sudo systemctl enable --now "x11vnc@${USER}.service"
+systemctl status "x11vnc@${USER}.service" --no-pager
 ```
+
+The template filename is `x11vnc@.service`. The enabled instance is `x11vnc@<user>.service`, for example `x11vnc@ultraviolet.service`. If `echo "$USER"` prints `root`, replace `${USER}` with the normal desktop user, such as `ultraviolet`.
 
 The service listens on VNC port `5900`. It is intentionally host-level operator access; it is not part of the ROS 2 runtime or Docker service.
 
@@ -231,6 +235,7 @@ The Docker paths use host networking. Avoid assigning VNC-related port changes i
 | Problem | Check | Fix |
 |---------|-------|-----|
 | `.local` hostname does not work | `systemctl status avahi-daemon --no-pager` on the Jetson | Use the IP from `hostname -I`, restart Avahi, or check whether the client OS supports mDNS. |
+| `Unit x11vnc@...service could not be found` | `ls -l /etc/systemd/system/x11vnc@.service` | Recreate the template from section 3.4, run `sudo systemctl daemon-reload`, and check that the unit name ends in `.service`, not `.sevice` or `.servcice`. |
 | Client cannot connect | `ss -ltnp | grep 5900` on the Jetson | Start `x11vnc@$USER.service`, verify the Jetson IP, or use SSH tunnel mode. |
 | Connection times out on Wi-Fi | Ping and SSH also fail | The network may block peer devices; use a robot router, hotspot, or Ethernet. |
 | Password fails | `ls -l ~/.vnc/passwd` | Rerun `x11vnc -storepasswd ~/.vnc/passwd` as the desktop user. |
