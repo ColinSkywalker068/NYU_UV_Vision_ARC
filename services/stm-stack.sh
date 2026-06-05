@@ -10,6 +10,7 @@ SERVICE_DEST="/etc/systemd/system/${SERVICE_NAME}"
 ENV_DIR="${CV_STM_ENV_DIR:-/etc/cv-detection}"
 ENV_FILE="${CV_STM_ENV_FILE:-${ENV_DIR}/stm-stack.env}"
 DEFAULT_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"
+LEGACY_CPLUSPLUS_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus"
 
 if [ -f "$ENV_FILE" ]; then
   set -a
@@ -19,6 +20,9 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 CV_STM_IMAGE="${CV_STM_IMAGE:-${DEFAULT_IMAGE}}"
+if [ "$CV_STM_IMAGE" = "$LEGACY_CPLUSPLUS_IMAGE" ]; then
+  CV_STM_IMAGE="$DEFAULT_IMAGE"
+fi
 CV_STM_REPO_ROOT="${CV_STM_REPO_ROOT:-/home/ultraviolet/CV_Detection}"
 UV_CONTAINER_NAME="${UV_CONTAINER_NAME:-cv-stm-stack}"
 
@@ -121,6 +125,10 @@ install_service() {
     write_default_env_file
     log "Created ${ENV_FILE}"
   else
+    if grep -q "^CV_STM_IMAGE=${LEGACY_CPLUSPLUS_IMAGE}$" "$ENV_FILE"; then
+      set_env_value CV_STM_IMAGE "$DEFAULT_IMAGE"
+      log "Updated stale CV_STM_IMAGE in ${ENV_FILE} to ${DEFAULT_IMAGE}"
+    fi
     log "Keeping existing ${ENV_FILE}"
   fi
 
