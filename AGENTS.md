@@ -18,6 +18,7 @@ NYU Robomaster ROS 2 C++ auto-aim vision pipeline for camera capture, YOLO/Tenso
 | Project architecture | [docs/project/architecture.md](docs/project/architecture.md) |
 | Tech stack | [docs/project/tech_stack.md](docs/project/tech_stack.md) |
 | Operations runbook | [docs/project/runbook.md](docs/project/runbook.md) |
+| Jetson VNC access | [docs/project/jetson-vnc.md](docs/project/jetson-vnc.md) |
 | Documentation standards | [docs/documentation_standards.md](docs/documentation_standards.md) |
 | Development principles | [docs/principles.md](docs/principles.md) |
 | Active C++ runtime overview | [yolo_cpp/docs/overview.md](yolo_cpp/docs/overview.md) |
@@ -69,6 +70,7 @@ NYU Robomaster ROS 2 C++ auto-aim vision pipeline for camera capture, YOLO/Tenso
 | Project architecture | [docs/project/architecture.md](docs/project/architecture.md) |
 | Tech stack and dependencies | [docs/project/tech_stack.md](docs/project/tech_stack.md) |
 | Infrastructure and operations | [docs/project/infrastructure.md](docs/project/infrastructure.md) and [docs/project/runbook.md](docs/project/runbook.md) |
+| Jetson remote desktop | [docs/project/jetson-vnc.md](docs/project/jetson-vnc.md) |
 | Active runtime shape | [yolo_cpp/docs/overview.md](yolo_cpp/docs/overview.md) |
 | Stage-by-stage data flow | [yolo_cpp/docs/pipeline.md](yolo_cpp/docs/pipeline.md) |
 | Node responsibilities | [yolo_cpp/docs/nodes.md](yolo_cpp/docs/nodes.md) |
