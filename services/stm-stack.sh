@@ -105,16 +105,11 @@ CV_STM_SHOW=false
 # RealSense profile skips Basler/DeepStream/Pylon checks and serial by default:
 # CV_STM_LAUNCH_PROFILE=realsense
 # CV_STM_REQUIRE_SERIAL=false
-CV_STM_BASLER_PIXEL_FORMAT=bayer_rggb8
+# Field service defaults intentionally request a deterministic 160 FPS Basler cap
+# while keeping preview off. Other Basler launch knobs stay on launch defaults.
 CV_STM_BASLER_FPS=160
-CV_STM_BASLER_SOURCE_WIDTH=1920
-CV_STM_BASLER_SOURCE_HEIGHT=1200
-CV_STM_DEEPSTREAM_PRE_MUX_RESIZE=true
-CV_STM_DEEPSTREAM_PRE_MUX_WIDTH=0
-CV_STM_DEEPSTREAM_PRE_MUX_HEIGHT=0
-CV_STM_DEEPSTREAM_PROFILE_STAGES=true
-# CV_STM_DEEPSTREAM_PROFILE_STAGE_INTERVAL=300
-CV_STM_DEEPSTREAM_BAYER_CONVERSION_BACKEND=cuda
+CV_STM_BASLER_UNCAPPED_FPS=false
+# CV_STM_DEEPSTREAM_PROFILE_STAGES=false
 # CV_STM_EXTRA_LAUNCH_ARGS="basler_exposure_us:=5000.0 basler_gain_db:=5.0"
 # CV_STM_REALSENSE_WIDTH=640
 # CV_STM_REALSENSE_HEIGHT=480
@@ -183,12 +178,65 @@ set_env_value() {
   rm -f "$tmp"
 }
 
+unset_env_values() {
+  local tmp
+  tmp="$(mktemp)"
+  local keys="$*"
+
+  run_sudo install -d -m 0755 "$ENV_DIR"
+  if [ -f "$ENV_FILE" ]; then
+    awk -v keys="$keys" '
+      BEGIN {
+        split(keys, key_list, " ")
+        for (i in key_list) {
+          remove[key_list[i]] = 1
+        }
+      }
+      {
+        line = $0
+        sub(/^[[:space:]]*/, "", line)
+        split(line, parts, "=")
+        if (!(parts[1] in remove)) {
+          print
+        }
+      }
+    ' "$ENV_FILE" > "$tmp"
+  else
+    printf '# Optional overrides for stm-stack.service and services/stm-stack.sh.\n' > "$tmp"
+  fi
+
+  run_sudo install -m 0644 "$tmp" "$ENV_FILE"
+  rm -f "$tmp"
+}
+
 set_preview() {
   local show_value="$1"
   local state_label="$2"
   set_env_value CV_STM_SHOW "$show_value"
   log "Set CV_STM_SHOW=${show_value} in ${ENV_FILE}"
   log "Restarting ${SERVICE_NAME} so preview ${state_label} takes effect"
+  systemctl_action restart
+}
+
+restore_basler_launch_defaults() {
+  unset_env_values \
+    CV_STM_BASLER_PIXEL_FORMAT \
+    CV_STM_BASLER_SOURCE_WIDTH \
+    CV_STM_BASLER_SOURCE_HEIGHT \
+    CV_STM_BASLER_USE_FULL_SENSOR \
+    CV_STM_BASLER_FLIP \
+    CV_STM_DEEPSTREAM_PRE_MUX_RESIZE \
+    CV_STM_DEEPSTREAM_PRE_MUX_WIDTH \
+    CV_STM_DEEPSTREAM_PRE_MUX_HEIGHT \
+    CV_STM_DEEPSTREAM_PROFILE_STAGES \
+    CV_STM_DEEPSTREAM_PROFILE_STAGE_INTERVAL \
+    CV_STM_DEEPSTREAM_BAYER_CONVERSION_BACKEND
+  set_env_value CV_STM_BASLER_FPS 160
+  set_env_value CV_STM_BASLER_UNCAPPED_FPS false
+  set_env_value CV_STM_SHOW false
+  set_env_value CV_STM_LAUNCH_PROFILE basler
+  log "Restored field Basler defaults in ${ENV_FILE}"
+  log "Restarting ${SERVICE_NAME} with basler_fps=160, basler_uncapped_fps=false, and show=false"
   systemctl_action restart
 }
 
@@ -273,6 +321,8 @@ Commands:
   preview-on Persist CV_STM_SHOW=true and restart ${SERVICE_NAME}.
   preview-off
              Persist CV_STM_SHOW=false and restart ${SERVICE_NAME}.
+  basler-defaults
+             Restore field Basler defaults and restart with basler_fps=160, basler_uncapped_fps=false, show=false.
   model-nano  Persist the Orin Nano TensorRT engine path and restart ${SERVICE_NAME}.
   model-agx   Persist the AGX TensorRT engine path and restart ${SERVICE_NAME}.
   status     Show systemd status.
@@ -293,6 +343,7 @@ main() {
     restart) systemctl_action restart ;;
     preview-on) set_preview true on ;;
     preview-off) set_preview false off ;;
+    basler-defaults) restore_basler_launch_defaults ;;
     model-nano) set_model "Orin Nano" "$NANO_MODEL_RELATIVE" ;;
     model-agx) set_model "AGX" "$AGX_MODEL_RELATIVE" ;;
     status) show_status ;;

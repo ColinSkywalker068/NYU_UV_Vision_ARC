@@ -38,6 +38,7 @@ Common operator commands:
 cv status
 cv health
 cv preview-off
+cv basler-defaults
 cv model-nano
 cv model-agx
 ```

@@ -57,11 +57,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ("serial_verbose", "false", "Enable verbose serial logging"),
         ("basler_width", "640", "Basler frame width"),
         ("basler_height", "640", "Basler frame height"),
-        ("basler_fps", "110", "Basler frames per second"),
+        ("basler_fps", "160", "Basler frames per second"),
         (
             "basler_uncapped_fps",
-            "true",
-            "Disable Basler frame-rate limiting and let exposure set camera speed",
+            "false",
+            "When true, disable Basler frame-rate limiting and let exposure set camera speed",
         ),
         (
             "basler_pixel_format",
