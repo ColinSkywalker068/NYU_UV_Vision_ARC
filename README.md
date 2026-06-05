@@ -44,6 +44,15 @@ For the headless STM service:
 ./services/stm-stack.sh logs
 ```
 
+On the robot, you can symlink the helper as `cv` for shorter operator commands:
+
+```bash
+sudo ln -sf /home/ultraviolet/CV_Detection/services/stm-stack.sh /usr/local/bin/cv
+cv preflight
+cv restart
+cv logs
+```
+
 The robot-local fallback model path is configured at:
 
 ```text

@@ -197,6 +197,18 @@ The declared boot service is `services/stm-stack.service`. It runs from `/home/u
 
 The service uses the Pylon-enabled C++ image `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon` and reads optional overrides from `/etc/cv-detection/stm-stack.env`. Startup is intentionally prebuilt: it fails when `install/setup.bash` is missing instead of running `uv build` during match bring-up.
 
+Optional operator shortcut: symlink the STM helper as `cv` on the robot host so match commands are shorter:
+
+```bash
+sudo ln -sf /home/ultraviolet/CV_Detection/services/stm-stack.sh /usr/local/bin/cv
+```
+
+After that, `cv preflight`, `cv restart`, `cv logs`, `cv status`, `cv health`, and `cv preview-off` are equivalent to the matching `./services/stm-stack.sh ...` commands. If the repository is not at `/home/ultraviolet/CV_Detection`, run this from the repository root instead:
+
+```bash
+sudo ln -sf "$(pwd)/services/stm-stack.sh" /usr/local/bin/cv
+```
+
 Install or refresh the service on the robot host without starting it:
 
 ```bash
