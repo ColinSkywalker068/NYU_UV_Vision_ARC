@@ -39,7 +39,7 @@ cv status
 cv health
 cv preview-off
 cv basler-defaults
-cv model-nano
+cv model-orin
 cv model-agx
 ```
 
@@ -67,7 +67,7 @@ The robot-local fallback model path is configured at:
 yolo_cpp/config/default_model_path.txt
 ```
 
-Override it with `CV_STM_MODEL_PATH` or a launch `model_path:=...` argument.
+Override it with `CV_STM_MODEL_PATH` or a launch `model_path:=...` argument. The `model-nano` shortcut remains available as a backward-compatible alias for `model-orin`.
 
 ## Documentation
 
