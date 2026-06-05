@@ -33,6 +33,8 @@ if [ "$CV_STM_IMAGE" = "$LEGACY_CPLUSPLUS_IMAGE" ]; then
 fi
 CV_STM_REPO_ROOT="${CV_STM_REPO_ROOT:-/home/ultraviolet/CV_Detection}"
 UV_CONTAINER_NAME="${UV_CONTAINER_NAME:-cv-stm-stack}"
+export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-37}"
+export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-1}"
 
 DOCKER_CMD=(docker)
 
@@ -84,6 +86,10 @@ CV_STM_IMAGE=${DEFAULT_IMAGE}
 # CV_STM_IMAGE=cv-detection-cplusplus-pylon:local
 UV_CONTAINER_NAME=cv-stm-stack
 CV_STM_LAUNCH_PROFILE=basler
+# Keep the competition graph local to this robot by default. Override these
+# when intentionally using remote ROS tools across machines.
+ROS_DOMAIN_ID=37
+ROS_LOCALHOST_ONLY=1
 # Optional. When unset, yolo_cpp/config/default_model_path.txt supplies the robot-local fallback.
 # CV_STM_MODEL_PATH=/path/to/model.engine
 # CV_STM_TARGET_COLOR=blue
