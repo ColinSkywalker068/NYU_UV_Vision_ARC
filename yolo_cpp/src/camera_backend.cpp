@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <opencv2/imgproc.hpp>
 #include <optional>
 #include <rclcpp/clock.hpp>
@@ -339,8 +340,7 @@ public:
         read_resulting_fps(camera_.GetNodeMap()).value_or(static_cast<double>(config_.basler_fps));
       converter_.OutputPixelFormat = Pylon::PixelType_BGR8packed;
       converter_.OutputBitAlignment = Pylon::OutputBitAlignment_MsbAligned;
-      camera_.StartGrabbing(
-        Pylon::GrabStrategy_LatestImageOnly, Pylon::GrabLoop_ProvidedByInstantCamera);
+      camera_.StartGrabbing(Pylon::GrabStrategy_LatestImageOnly, Pylon::GrabLoop_ProvidedByUser);
 #ifdef HAVE_PYLON
     } catch (const Pylon::GenericException& exc) {
       release();
@@ -357,13 +357,19 @@ public:
 
   bool capture(FramePacket& packet) override
   {
+    std::unique_lock<std::mutex> grab_lock(grab_mutex_, std::try_to_lock);
+    if (!grab_lock.owns_lock()) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, steady_clock_, 2000, "Basler capture skipped because previous grab is pending");
+      return false;
+    }
     if (!camera_.IsGrabbing()) {
       return false;
     }
 
     Pylon::CGrabResultPtr result;
     try {
-      camera_.RetrieveResult(1000, result, Pylon::TimeoutHandling_Return);
+      camera_.RetrieveResult(50, result, Pylon::TimeoutHandling_Return);
 #ifdef HAVE_PYLON
     } catch (const Pylon::GenericException& exc) {
       RCLCPP_WARN_THROTTLE(
@@ -419,6 +425,7 @@ public:
 
   void release() override
   {
+    std::lock_guard<std::mutex> grab_lock(grab_mutex_);
     if (camera_.IsGrabbing()) {
       camera_.StopGrabbing();
     }
@@ -594,6 +601,7 @@ private:
   CameraConfig config_;
   rclcpp::Logger logger_;
   rclcpp::Clock steady_clock_{RCL_STEADY_TIME};
+  std::mutex grab_mutex_;
   const std::string source_id_{"basler"};
   double actual_fps_{0.0};
   Pylon::CInstantCamera camera_;
