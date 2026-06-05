@@ -275,13 +275,19 @@ GstFlowReturn gst_yolo_cuda_bayer_resize_transform(
   }
 
   GstMemory* input_memory = gst_buffer_peek_memory(inbuf, 0);
-  const char* input_allocator = "none";
+  std::string input_allocator{"none"};
   guint input_memory_flags = 0U;
   if (input_memory != nullptr) {
     input_memory_flags = static_cast<guint>(GST_MINI_OBJECT_FLAGS(input_memory));
     if (input_memory->allocator != nullptr) {
-      const char* memory_type = gst_allocator_get_memory_type(input_memory->allocator);
-      input_allocator = memory_type != nullptr ? memory_type : "unknown";
+      const char* allocator_type = G_OBJECT_TYPE_NAME(input_memory->allocator);
+      const char* allocator_name = GST_OBJECT_NAME(input_memory->allocator);
+      if (allocator_name != nullptr && allocator_name[0] != '\0') {
+        input_allocator = std::string(allocator_type != nullptr ? allocator_type : "unknown")
+                          + ":" + allocator_name;
+      } else {
+        input_allocator = allocator_type != nullptr ? allocator_type : "unknown";
+      }
     } else {
       input_allocator = "null-allocator";
     }
@@ -291,7 +297,7 @@ GstFlowReturn gst_yolo_cuda_bayer_resize_transform(
       "CUDA Bayer frame=%" G_GUINT64_FORMAT
       " input_allocator=%s input_flags=0x%x input_size=%" G_GSIZE_FORMAT
       " output_size=%" G_GSIZE_FORMAT " sync_memcpy=%s",
-      frame_id, input_allocator, input_memory_flags, in_map.size, out_map.size,
+      frame_id, input_allocator.c_str(), input_memory_flags, in_map.size, out_map.size,
       g_getenv("YOLO_CUDA_BAYER_SYNC_MEMCPY") != nullptr ? g_getenv("YOLO_CUDA_BAYER_SYNC_MEMCPY")
                                                          : "false");
     self->logged_input_memory = TRUE;
@@ -361,7 +367,7 @@ GstFlowReturn gst_yolo_cuda_bayer_resize_transform(
       ("CUDA Bayer frame=%" G_GUINT64_FORMAT
        " failed: %s input_allocator=%s input_flags=0x%x input_stride=%d output_stride=%d "
        "input=%dx%d output=%dx%d",
-        frame_id, error_message.data(), input_allocator, input_memory_flags, input_stride,
+        frame_id, error_message.data(), input_allocator.c_str(), input_memory_flags, input_stride,
         output_stride, self->input_width, self->input_height, self->output_width,
         self->output_height),
       (nullptr));
