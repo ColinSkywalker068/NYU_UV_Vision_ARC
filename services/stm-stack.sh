@@ -248,13 +248,39 @@ restore_basler_launch_defaults() {
   systemctl_action restart
 }
 
-set_model() {
-  local label="$1"
-  local relative_path="$2"
-  local model_path="${CV_STM_REPO_ROOT%/}/${relative_path}"
+set_orin_profile() {
+  local model_path="${CV_STM_REPO_ROOT%/}/${ORIN_MODEL_RELATIVE}"
   set_env_value CV_STM_MODEL_PATH "$model_path"
-  log "Set CV_STM_MODEL_PATH=${model_path} in ${ENV_FILE}"
-  log "Restarting ${SERVICE_NAME} with ${label} model"
+  set_env_value CV_STM_DETECTOR_BACKEND native_tensorrt
+  set_env_value CV_STM_BASLER_PIXEL_FORMAT bayer_rggb8
+  set_env_value CV_STM_BASLER_FPS 160
+  set_env_value CV_STM_BASLER_EXPOSURE_US 3000.0
+  set_env_value CV_STM_BASLER_USE_FULL_SENSOR true
+  set_env_value CV_STM_BASLER_SOURCE_WIDTH 1920
+  set_env_value CV_STM_BASLER_SOURCE_HEIGHT 1200
+  set_env_value CV_STM_SHOW false
+  set_env_value CV_STM_LAUNCH_PROFILE basler
+  log "Set Orin native TensorRT + full-sensor Bayer profile in ${ENV_FILE}"
+  log "Restarting ${SERVICE_NAME} with Orin model and stable native Basler defaults"
+  systemctl_action restart
+}
+
+set_agx_profile() {
+  local model_path="${CV_STM_REPO_ROOT%/}/${AGX_MODEL_RELATIVE}"
+  set_env_value CV_STM_MODEL_PATH "$model_path"
+  unset_env_values \
+    CV_STM_DETECTOR_BACKEND \
+    CV_STM_BASLER_PIXEL_FORMAT \
+    CV_STM_BASLER_EXPOSURE_US \
+    CV_STM_BASLER_USE_FULL_SENSOR \
+    CV_STM_BASLER_SOURCE_WIDTH \
+    CV_STM_BASLER_SOURCE_HEIGHT
+  set_env_value CV_STM_BASLER_FPS 160
+  set_env_value CV_STM_BASLER_UNCAPPED_FPS false
+  set_env_value CV_STM_SHOW false
+  set_env_value CV_STM_LAUNCH_PROFILE basler
+  log "Set AGX DeepStream profile in ${ENV_FILE}"
+  log "Restarting ${SERVICE_NAME} with AGX model"
   systemctl_action restart
 }
 
@@ -331,9 +357,9 @@ Commands:
              Persist CV_STM_SHOW=false and restart ${SERVICE_NAME}.
   basler-defaults
              Restore field Basler defaults and restart with basler_fps=160, basler_uncapped_fps=false, show=false.
-  model-orin  Persist the Orin TensorRT engine path and restart ${SERVICE_NAME}.
+  model-orin  Persist the Orin model and native TensorRT + full-sensor Bayer defaults, then restart ${SERVICE_NAME}.
   model-nano  Legacy alias for model-orin.
-  model-agx   Persist the AGX TensorRT engine path and restart ${SERVICE_NAME}.
+  model-agx   Persist the AGX model and DeepStream defaults, then restart ${SERVICE_NAME}.
   status     Show systemd status.
   logs       Follow systemd logs.
   preflight  Validate image, ROS package, model, and selected profile prerequisites.
@@ -353,8 +379,8 @@ main() {
     preview-on) set_preview true on ;;
     preview-off) set_preview false off ;;
     basler-defaults) restore_basler_launch_defaults ;;
-    model-orin|model-nano) set_model "Orin" "$ORIN_MODEL_RELATIVE" ;;
-    model-agx) set_model "AGX" "$AGX_MODEL_RELATIVE" ;;
+    model-orin|model-nano) set_orin_profile ;;
+    model-agx) set_agx_profile ;;
     status) show_status ;;
     logs) show_logs ;;
     preflight) run_preflight ;;
