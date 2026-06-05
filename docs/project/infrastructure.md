@@ -51,16 +51,16 @@ No domain, DNS, reverse proxy, TLS, or public ingress configuration is declared 
 
 | Service | Runtime Path | Image Or Build Source | GPU | Devices And Host Access | Startup Behavior |
 |---------|--------------|-----------------------|-----|-------------------------|------------------|
-| `cv-container` | `Docker/docker-compose.yml` | Builds `Docker/Dockerfile.run-cv` with `BASE_IMAGE=${CV_BASE_IMAGE:-nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus}` | `runtime: nvidia` | `/dev/video0`, `/dev/bus/usb`, `/tmp/argus_socket`, `/dev`, X11 socket, D-Bus, Avahi, Docker socket, Jetson release files, `/home/ultraviolet` | `Docker/Dockerfile.run-cv` sources `install/setup.bash` if present, runs `uv clean`, runs `uv build`, then launches `uv run yolo_cpp realsense.launch.py show:=false`. |
-| `stm-stack.service` | `services/stm-stack.service` | Runs `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` through `services/start-container.sh` and `services/stm-stack-entrypoint.sh` | Uses `--runtime nvidia` on Jetson hosts | Host network, privileged mode, `/tmp/argus_socket`, `/dev`, `/dev/bus/usb`, D-Bus, Avahi, Docker socket, `/home`, optional `/opt/pylon` | Removes the previous `cv-stm-stack` container, validates the prebuilt workspace/model/profile prerequisites, starts headless `basler.launch.py` by default, can run `realsense.launch.py` with `CV_STM_LAUNCH_PROFILE=realsense`, and restarts every 5 seconds on failure. |
+| `cv-container` | `Docker/docker-compose.yml` | Builds `Docker/Dockerfile.run-cv` with `BASE_IMAGE=${CV_BASE_IMAGE:-nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon}` | `runtime: nvidia` | `/dev/video0`, `/dev/bus/usb`, `/tmp/argus_socket`, `/dev`, X11 socket, D-Bus, Avahi, Docker socket, Jetson release files, `/home/ultraviolet` | `Docker/Dockerfile.run-cv` sources `install/setup.bash` if present, runs `uv clean`, runs `uv build`, then launches `uv run yolo_cpp realsense.launch.py show:=false`. |
+| `stm-stack.service` | `services/stm-stack.service` | Runs `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon` through `services/start-container.sh` and `services/stm-stack-entrypoint.sh` | Uses `--runtime nvidia` on Jetson hosts | Host network, privileged mode, `/tmp/argus_socket`, `/dev`, `/dev/bus/usb`, D-Bus, Avahi, Docker socket, `/home`, optional `/opt/pylon` | Removes the previous `cv-stm-stack` container, validates the prebuilt workspace/model/profile prerequisites, starts headless `basler.launch.py` by default, can run `realsense.launch.py` with `CV_STM_LAUNCH_PROFILE=realsense`, and restarts every 5 seconds on failure. |
 
 ## 5. Artifact Repository
 
 | Artifact | Declared Reference | Source |
 |----------|--------------------|--------|
-| C++ CV Docker image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` | `services/uv.sh`, `services/run-cplusplus.sh`, `Docker/docker-compose.yml`, `Docker/Dockerfile.run-cv` |
+| C++ CV Docker image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon` | `services/uv.sh`, `services/run-cplusplus.sh`, `Docker/docker-compose.yml`, `Docker/Dockerfile.run-cv` |
 | Python legacy RealSense wrapper image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra` | `services/uv.sh`, `Docker/Dockerfile.cplusplus`, `Docker/build_cplusplus.sh` |
-| Systemd STM stack image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` | `services/stm-stack.service`, `services/stm-stack.sh`, `services/setup-orin-nano.sh` |
+| Systemd STM stack image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon` | `services/stm-stack.service`, `services/stm-stack.sh`, `services/setup-orin-nano.sh` |
 | Navigation ARM64 image | `nyuultraviolet/cv-dockerfile:nav-arm64` | `services/uv.sh`, `services/setup-orin-nano.sh` |
 
 No credentials, private registry URL, or artifact retention policy is declared in the repository.
@@ -84,7 +84,7 @@ No CI deploy job for the robot host is declared in the repository.
 | GPU stack | `Docker/Dockerfile.cplusplus` | C++ DeepStream image installs DeepStream 6.4, CUDA-adjacent runtime libraries, TensorRT-dependent detector support, and GStreamer plugins. |
 | Camera and USB devices | `Docker/docker-compose.yml`, `services/start-container.sh` | Compose mounts `/dev/video0`, `/dev/bus/usb`, `/tmp/argus_socket`, and `/dev`; the script discovers `/dev/video0` through `/dev/video9` on Jetson. |
 | STM32 serial | `yolo_cpp/launch/basler.launch.py`, `yolo_cpp/src/stm32_serial_bridge_node.cpp` | Basler field stack defaults to `/dev/ttyUSB0` at `115200` baud; the RealSense service profile does not require serial by default. |
-| Basler Pylon SDK | `Docker/Dockerfile.cplusplus`, `Docker/build_cplusplus.sh`, `Docker/bake_cplusplus_pylon_image.sh`, `services/start-container.sh` | Basler service support expects `pylonsrc`; either bake a known-good `uv docker` Pylon install into `cv-detection-cplusplus-pylon:local`, mount `/opt/pylon`, or build with `PYLON_PACKAGE` and `PYLON_GSTREAMER_PACKAGE` under `Docker/pylon/`. |
+| Basler Pylon SDK | `Docker/Dockerfile.cplusplus`, `Docker/build_cplusplus.sh`, `Docker/bake_cplusplus_pylon_image.sh`, `services/start-container.sh` | Basler service support expects `pylonsrc`; the default runtime image is the pushed Pylon-enabled C++ image, while local validation can still use `cv-detection-cplusplus-pylon:local`, a mounted `/opt/pylon`, or a build with `PYLON_PACKAGE` and `PYLON_GSTREAMER_PACKAGE` under `Docker/pylon/`. |
 | Display access | `Docker/docker-compose.yml`, `services/start-container.sh` | GUI/debug display paths use `DISPLAY`, `/tmp/.X11-unix`, `/tmp/.docker.xauth`, and `XAUTHORITY`. |
 | Repository location | `services/stm-stack.service`, `Docker/Dockerfile.run-cv` | Runtime commands assume `/home/ultraviolet/CV_Detection`. |
 

@@ -40,5 +40,5 @@ sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 # Pull Docker images
-sudo docker pull nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus
+sudo docker pull nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon
 sudo docker pull nyuultraviolet/cv-dockerfile:nav-arm64

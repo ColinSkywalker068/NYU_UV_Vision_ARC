@@ -220,7 +220,7 @@ If VNC client scaling and clipboard behavior remain frustrating on macOS, use th
 | `x11vnc` cannot open display | Desktop is Wayland or no X server exists | Jetson desktop images usually use Xorg; if not, switch the login session to Xorg before relying on `x11vnc`. |
 | VNC works only after local login | Display manager does not start the user session | Enable automatic login only on trusted lab robots, or use SSH plus command-line setup instead. |
 
-When the active display is not `:0`, find it with:
+After rebooting, switching monitors, or changing headless display state, re-check the active display before assuming it is still `:0` or `:1`:
 
 ```bash
 ls /tmp/.X11-unix/
@@ -232,6 +232,8 @@ If the socket is `X1` and Xorg was launched with `/run/user/1000/gdm/Xauthority`
 ```ini
 ExecStart=/usr/bin/x11vnc -display :1 -auth /run/user/1000/gdm/Xauthority -forever -loop -noxdamage -repeat -shared -rfbauth /home/%i/.vnc/passwd -rfbport 5900
 ```
+
+If the socket is `X0`, change `-display :1` to `-display :0`. If Xorg shows a different `-auth` path, use that path in the service instead of the example.
 
 For purely headless administration, SSH is usually better than VNC. For visual camera setup or GUI debugging, a dummy HDMI plug is often the least fragile Jetson option.
 

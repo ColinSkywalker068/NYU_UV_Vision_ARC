@@ -1,5 +1,5 @@
 HOME_DIR=$HOME
-CV_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus"
+CV_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"
 CV_PYTHON_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra"
 
 # Resolve symlink to find the actual scripts directory

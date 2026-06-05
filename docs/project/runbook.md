@@ -69,8 +69,8 @@ No `.env.example` file exists in the current repository. The operational variabl
 
 | Variable | Required For | Default Or Example | Source |
 |----------|--------------|--------------------|--------|
-| `CV_BASE_IMAGE` | Docker Compose build base image override | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` | `Docker/docker-compose.yml` |
-| `CV_STM_IMAGE` | Competition STM service Docker image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus`; use `cv-detection-cplusplus-pylon:local` after baking Pylon locally | `services/stm-stack.service`, `services/stm-stack.sh`, `Docker/bake_cplusplus_pylon_image.sh` |
+| `CV_BASE_IMAGE` | Docker Compose build base image override | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon` | `Docker/docker-compose.yml` |
+| `CV_STM_IMAGE` | Competition STM service Docker image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon`; use `cv-detection-cplusplus-pylon:local` while validating a local bake before pushing | `services/stm-stack.service`, `services/stm-stack.sh`, `Docker/bake_cplusplus_pylon_image.sh` |
 | `CV_STM_REPO_ROOT` | Repository path inside the service container | `/home/ultraviolet/CV_Detection` | `services/stm-stack.service`, `services/stm-stack-entrypoint.sh` |
 | `CV_STM_LAUNCH_PROFILE` | Service launch profile | `basler`; set `realsense` for RealSense + native TensorRT bring-up | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_TARGET_COLOR` | Default enemy color before STM or robot-id feedback arrives | `blue`; set `red` when testing red armor without STM feedback | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
@@ -99,7 +99,7 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `V4L2_DEVICES` | Camera device forwarding | Auto-assembled `/dev/video0` through `/dev/video9` flags on Jetson | `Docker/docker-compose.yml`, `services/start-container.sh` |
 | `NUMBA_THREADING_LAYER` | Python legacy runtime compatibility | `omp` | `Docker/docker-compose.yml` |
 | `XAUTHORITY` | X11 auth inside container | `/tmp/.docker.xauth` | `Docker/docker-compose.yml`, `services/start-container.sh` |
-| `IMAGE` | `services/run-cplusplus.sh` image override | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` | `services/run-cplusplus.sh` |
+| `IMAGE` | `services/run-cplusplus.sh` image override | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon` | `services/run-cplusplus.sh` |
 | `UV_CONTAINER_NAME` | Stable or custom Docker container name | Competition service uses `cv-stm-stack`; otherwise unset uses `uv-` plus sanitized image name | `services/start-container.sh`, `services/stm-stack.service` |
 | `HUGGINGFACE_TOKEN` | Optional model/token pass-through | Host value when present | `services/start-container.sh` |
 | `RMW_IMPLEMENTATION` | ROS 2 middleware in Jetson container path | `rmw_fastrtps_cpp` | `services/start-container.sh` |
@@ -195,7 +195,7 @@ docker compose -f Docker/docker-compose.yml down
 
 The declared boot service is `services/stm-stack.service`. It runs from `/home/ultraviolet/CV_Detection`, requires `docker.service`, removes the previous `cv-stm-stack` container, and launches the selected `CV_STM_LAUNCH_PROFILE` through `services/stm-stack-entrypoint.sh`. The default profile is the full Basler + DeepStream + STM32 `basler.launch.py` stack; `CV_STM_LAUNCH_PROFILE=realsense` launches the RealSense + native TensorRT bring-up stack without requiring serial by default.
 
-The service uses the C++ image `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` and reads optional overrides from `/etc/cv-detection/stm-stack.env`. Startup is intentionally prebuilt: it fails when `install/setup.bash` is missing instead of running `uv build` during match bring-up.
+The service uses the Pylon-enabled C++ image `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon` and reads optional overrides from `/etc/cv-detection/stm-stack.env`. Startup is intentionally prebuilt: it fails when `install/setup.bash` is missing instead of running `uv build` during match bring-up.
 
 Install or refresh the service on the robot host without starting it:
 
@@ -267,7 +267,7 @@ cd ..
 CV_STM_REQUIRE_SERIAL=false ./services/stm-stack.sh preflight
 ```
 
-This creates `cv-detection-cplusplus-pylon:local`, verifies `gst-inspect-1.0 pylonsrc`, and writes `CV_STM_IMAGE=cv-detection-cplusplus-pylon:local` to `/etc/cv-detection/stm-stack.env`.
+This creates `cv-detection-cplusplus-pylon:local`, verifies `gst-inspect-1.0 pylonsrc`, and writes `CV_STM_IMAGE=cv-detection-cplusplus-pylon:local` to `/etc/cv-detection/stm-stack.env`. After validation, tag and push that local image as `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon` for normal runtime use.
 
 Build the C++ DeepStream image with the default tags:
 
@@ -475,7 +475,7 @@ docker ps -a
 
 Resolution:
 
-1. Run `CV_DOCKER_DRY_RUN=1 ./services/start-container.sh nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus` to inspect the command that `uv docker` would use.
+1. Run `CV_DOCKER_DRY_RUN=1 ./services/start-container.sh nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon` to inspect the command that `uv docker` would use.
 2. Set `UV_CONTAINER_NAME` to create a separate container for the session.
 3. Stop the old container with `docker stop` when it is no longer needed.
 4. Remove the old container with `docker rm` only after confirming it is not the active robot runtime. If the wrapper says the old container exited immediately after `docker start`, remove that stale container and rerun `uv docker`.

@@ -9,7 +9,7 @@ SERVICE_SRC="${SCRIPT_DIR}/${SERVICE_NAME}"
 SERVICE_DEST="/etc/systemd/system/${SERVICE_NAME}"
 ENV_DIR="${CV_STM_ENV_DIR:-/etc/cv-detection}"
 ENV_FILE="${CV_STM_ENV_FILE:-${ENV_DIR}/stm-stack.env}"
-DEFAULT_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus"
+DEFAULT_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"
 
 if [ -f "$ENV_FILE" ]; then
   set -a
@@ -68,8 +68,7 @@ write_default_env_file() {
 # Optional overrides for stm-stack.service and services/stm-stack.sh.
 # Keep startup prebuilt and deterministic; build explicitly with 'uv build yolo_cpp'.
 CV_STM_IMAGE=${DEFAULT_IMAGE}
-# For Basler service startup, prefer a Pylon-enabled local image created with:
-#   UPDATE_STM_ENV=1 ./Docker/bake_cplusplus_pylon_image.sh
+# To test a locally baked Pylon image before pushing:
 # CV_STM_IMAGE=cv-detection-cplusplus-pylon:local
 UV_CONTAINER_NAME=cv-stm-stack
 CV_STM_LAUNCH_PROFILE=basler

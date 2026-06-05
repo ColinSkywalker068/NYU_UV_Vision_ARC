@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 HOST_REPO_ROOT="$(cd "${SCRIPT_DIR}/.." >/dev/null 2>&1 && pwd)"
 DEFAULT_REPO_ROOT="/home/ultraviolet/CV_Detection"
-DEFAULT_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus"
+DEFAULT_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"
 
 REPO_ROOT="${CV_STM_REPO_ROOT:-${HOST_REPO_ROOT}}"
 
