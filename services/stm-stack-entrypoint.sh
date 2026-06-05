@@ -105,6 +105,31 @@ check_ros_package() {
   ros2 pkg prefix yolo_cpp >/dev/null 2>&1 || die "ROS package 'yolo_cpp' is not available from the sourced workspace"
 }
 
+resolve_relative_default_model_path() {
+  local entry="$1"
+  if [[ "$entry" = /* ]]; then
+    printf '%s\n' "$entry"
+    return
+  fi
+
+  local default_model_path_file="${REPO_ROOT}/${DEFAULT_MODEL_PATH_FILE_RELATIVE}"
+  local default_model_path_dir
+  default_model_path_dir="$(cd "$(dirname "$default_model_path_file")" && pwd -P)"
+
+  local entry_dir
+  entry_dir="$(dirname "$entry")"
+  local entry_base
+  entry_base="$(basename "$entry")"
+
+  (
+    cd "$default_model_path_dir"
+    if [ "$entry_dir" != "." ]; then
+      cd "$entry_dir"
+    fi
+    printf '%s/%s\n' "$(pwd -P)" "$entry_base"
+  )
+}
+
 model_path() {
   if [ -n "${CV_STM_MODEL_PATH:-}" ]; then
     printf '%s' "${CV_STM_MODEL_PATH}"
@@ -116,7 +141,7 @@ model_path() {
   local resolved_model_path
   resolved_model_path="$(awk 'NF && $1 !~ /^#/ { print; exit }' "$default_model_path_file")"
   [ -n "$resolved_model_path" ] || die "No default model path is configured in ${default_model_path_file}"
-  printf '%s' "$resolved_model_path"
+  resolve_relative_default_model_path "$resolved_model_path"
 }
 
 launch_profile() {
