@@ -166,8 +166,8 @@ This starts the active C++ runtime path.
 ```bash
 source /opt/ros/humble/setup.bash
 source /home/ultraviolet/CV_Detection/install/setup.bash
-ros2 node list
-ros2 topic list
+ROS_DISABLE_ROS_DAEMON=1 ros2 node list
+ROS_DISABLE_ROS_DAEMON=1 ros2 topic list
 ros2 topic hz /image_raw
 ```
 

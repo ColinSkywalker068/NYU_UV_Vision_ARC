@@ -344,8 +344,8 @@ check_graph_once() {
   if [ "$(launch_profile)" != "realsense" ]; then
     expected_nodes+=(/stm32_serial_bridge_node)
   fi
-  nodes="$(ros2 node list 2>/dev/null || true)"
-  topics="$(ros2 topic list 2>/dev/null || true)"
+  nodes="$(ROS_DISABLE_ROS_DAEMON=1 ros2 node list 2>/dev/null || true)"
+  topics="$(ROS_DISABLE_ROS_DAEMON=1 ros2 topic list 2>/dev/null || true)"
 
   for node in "${expected_nodes[@]}"; do
     if ! graph_has_line "$nodes" "$node"; then

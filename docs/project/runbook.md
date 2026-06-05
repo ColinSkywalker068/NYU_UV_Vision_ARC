@@ -210,14 +210,14 @@ After that, `cv preflight`, `cv restart`, `cv logs`, `cv status`, `cv health`, a
 sudo ln -sf "$(pwd)/services/stm-stack.sh" /usr/local/bin/cv
 ```
 
-The default model path targets the Orin Nano engine. To switch the systemd service between host-specific TensorRT engines without editing `/etc/cv-detection/stm-stack.env` by hand, use:
+The default model path targets the Orin engine. To switch the systemd service between host-specific TensorRT engines without editing `/etc/cv-detection/stm-stack.env` by hand, use:
 
 ```bash
-cv model-nano
+cv model-orin
 cv model-agx
 ```
 
-These commands persist `CV_STM_MODEL_PATH` and restart the service. `model-nano` selects `yolo_cpp/models/best-roboflow-nitish-obb.orin-nano_b1_gpu0_fp16.engine`; `model-agx` selects `yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine`.
+These commands persist `CV_STM_MODEL_PATH` and restart the service. `model-orin` selects `yolo_cpp/models/nitish-orin.engine`; `model-agx` selects `yolo_cpp/models/nitish-agx.engine`. The older `model-nano` shortcut remains available as a backward-compatible alias for `model-orin`.
 
 To remove stale service-side Basler launch overrides and return to field service defaults with `basler_fps=160`, `basler_uncapped_fps=false`, and preview off, run:
 
@@ -367,9 +367,11 @@ Check ROS graph after sourcing the workspace in a container shell:
 ```bash
 source /opt/ros/humble/setup.bash
 source /home/ultraviolet/CV_Detection/install/setup.bash
-ros2 node list
-ros2 topic list
+ROS_DISABLE_ROS_DAEMON=1 ros2 node list
+ROS_DISABLE_ROS_DAEMON=1 ros2 topic list
 ```
+
+Use `ROS_DISABLE_ROS_DAEMON=1` for duplicate-node diagnostics so the check reads the live DDS graph instead of a stale ROS daemon cache.
 
 Check image stream rate when the camera stack is running:
 
@@ -467,7 +469,7 @@ Diagnosis:
 
 ```bash
 ls -l /dev/ttyUSB0
-ros2 node list
+ROS_DISABLE_ROS_DAEMON=1 ros2 node list
 ```
 
 Resolution:

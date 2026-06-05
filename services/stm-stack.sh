@@ -17,8 +17,8 @@ ENV_DIR="${CV_STM_ENV_DIR:-/etc/cv-detection}"
 ENV_FILE="${CV_STM_ENV_FILE:-${ENV_DIR}/stm-stack.env}"
 DEFAULT_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"
 LEGACY_CPLUSPLUS_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus"
-NANO_MODEL_RELATIVE="yolo_cpp/models/best-roboflow-nitish-obb.orin-nano_b1_gpu0_fp16.engine"
-AGX_MODEL_RELATIVE="yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine"
+ORIN_MODEL_RELATIVE="yolo_cpp/models/nitish-orin.engine"
+AGX_MODEL_RELATIVE="yolo_cpp/models/nitish-agx.engine"
 
 if [ -f "$ENV_FILE" ]; then
   set -a
@@ -325,7 +325,8 @@ Commands:
              Persist CV_STM_SHOW=false and restart ${SERVICE_NAME}.
   basler-defaults
              Restore field Basler defaults and restart with basler_fps=160, basler_uncapped_fps=false, show=false.
-  model-nano  Persist the Orin Nano TensorRT engine path and restart ${SERVICE_NAME}.
+  model-orin  Persist the Orin TensorRT engine path and restart ${SERVICE_NAME}.
+  model-nano  Legacy alias for model-orin.
   model-agx   Persist the AGX TensorRT engine path and restart ${SERVICE_NAME}.
   status     Show systemd status.
   logs       Follow systemd logs.
@@ -346,7 +347,7 @@ main() {
     preview-on) set_preview true on ;;
     preview-off) set_preview false off ;;
     basler-defaults) restore_basler_launch_defaults ;;
-    model-nano) set_model "Orin Nano" "$NANO_MODEL_RELATIVE" ;;
+    model-orin|model-nano) set_model "Orin" "$ORIN_MODEL_RELATIVE" ;;
     model-agx) set_model "AGX" "$AGX_MODEL_RELATIVE" ;;
     status) show_status ;;
     logs) show_logs ;;
