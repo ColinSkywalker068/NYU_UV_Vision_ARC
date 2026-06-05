@@ -209,6 +209,15 @@ After that, `cv preflight`, `cv restart`, `cv logs`, `cv status`, `cv health`, a
 sudo ln -sf "$(pwd)/services/stm-stack.sh" /usr/local/bin/cv
 ```
 
+The default model path targets the Orin Nano engine. To switch the systemd service between host-specific TensorRT engines without editing `/etc/cv-detection/stm-stack.env` by hand, use:
+
+```bash
+cv model-nano
+cv model-agx
+```
+
+These commands persist `CV_STM_MODEL_PATH` and restart the service. `model-nano` selects `yolo_cpp/models/best-roboflow-nitish-obb.orin-nano_b1_gpu0_fp16.engine`; `model-agx` selects `yolo_cpp/models/best-roboflow-nitish-obb.onnx_b1_gpu0_fp16.engine`.
+
 Install or refresh the service on the robot host without starting it:
 
 ```bash
