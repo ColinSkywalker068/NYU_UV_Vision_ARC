@@ -456,14 +456,19 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger& logger)
     end2end_ ? "true" : "false", static_cast<int>(impl_->input_dtype),
     static_cast<int>(impl_->output_dtype));
 #else
-  if (!warned_unavailable_) {
-    RCLCPP_WARN(logger,
-      "TensorRT headers/libs were not available at build time. Detector will stay in stub mode.");
-    warned_unavailable_ = true;
-  }
+  (void)warned_unavailable_;
+  throw std::runtime_error(
+    "Native TensorRT backend requested, but this yolo_cpp build did not find TensorRT/CUDA "
+    "headers and libraries. Rebuild after CMake reports 'TensorRT found. Native TensorRT "
+    "backend enabled.'");
 #endif
 
   initialized_ = true;
+}
+
+void NativeTensorRTBackend::prepare(const rclcpp::Logger& logger)
+{
+  ensure_initialized(logger);
 }
 
 DetectionBatch NativeTensorRTBackend::infer(
@@ -582,6 +587,11 @@ DetectionBatch DeepStreamBackend::infer(
     warned_ = true;
   }
   return fallback_.infer(packet, logger, timings);
+}
+
+void DeepStreamBackend::prepare(const rclcpp::Logger& logger)
+{
+  fallback_.prepare(logger);
 }
 
 const std::string& DeepStreamBackend::backend_name() const

@@ -401,12 +401,13 @@ std::optional<geometry_msgs::msg::Pose> ArmorDetectorNode::solve_candidate_pose(
 
 void ArmorDetectorNode::initialize_native_pipeline()
 {
+  detector_backend_ =
+    create_detector_backend(detector_backend_kind_, model_path_, task_, model_type_, half_, conf_);
+  detector_backend_->prepare(this->get_logger());
+
   camera_backend_ = create_camera_backend(camera_config_, this->get_logger());
   camera_backend_->initialize();
   fps_ = camera_backend_->actual_fps() > 0.0 ? camera_backend_->actual_fps() : 60.0;
-
-  detector_backend_ =
-    create_detector_backend(detector_backend_kind_, model_path_, task_, model_type_, half_, conf_);
   timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / std::max(1.0, fps_)),
     std::bind(&ArmorDetectorNode::timer_callback, this));
 }

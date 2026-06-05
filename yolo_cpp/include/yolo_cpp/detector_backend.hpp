@@ -68,6 +68,9 @@ public:
   virtual DetectionBatch infer(const FramePacket& packet, const rclcpp::Logger& logger,
     DetectorStageTimings* timings = nullptr) = 0;
 
+  /// Prepare resources before the first frame so startup fails on build/load issues.
+  virtual void prepare(const rclcpp::Logger& logger) = 0;
+
   /// Return a stable backend name for logs and debug output.
   virtual const std::string& backend_name() const = 0;
 };
@@ -83,6 +86,7 @@ public:
 
   DetectionBatch infer(const FramePacket& packet, const rclcpp::Logger& logger,
     DetectorStageTimings* timings = nullptr) override;
+  void prepare(const rclcpp::Logger& logger) override;
   const std::string& backend_name() const override;
 
 private:
@@ -116,6 +120,7 @@ public:
 
   DetectionBatch infer(const FramePacket& packet, const rclcpp::Logger& logger,
     DetectorStageTimings* timings = nullptr) override;
+  void prepare(const rclcpp::Logger& logger) override;
   const std::string& backend_name() const override;
 
 private:

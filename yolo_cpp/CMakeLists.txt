@@ -54,13 +54,25 @@ if(LIBREALSENSE2_INCLUDE_DIR AND LIBREALSENSE2_LIBRARY)
   set(HAVE_LIBREALSENSE2 TRUE)
 endif()
 
+set(TENSORRT_SEARCH_ROOTS
+  /usr
+  /usr/local
+  /usr/src/tensorrt
+  /usr/local/tensorrt)
+if(DEFINED ENV{TENSORRT_ROOT} AND NOT "$ENV{TENSORRT_ROOT}" STREQUAL "")
+  list(PREPEND TENSORRT_SEARCH_ROOTS "$ENV{TENSORRT_ROOT}")
+endif()
+list(REMOVE_DUPLICATES TENSORRT_SEARCH_ROOTS)
+
 find_path(TENSORRT_INCLUDE_DIR NvInfer.h
   PATHS
+    ${TENSORRT_SEARCH_ROOTS}
     /usr/include
     /usr/include/x86_64-linux-gnu
     /usr/include/aarch64-linux-gnu
     /usr/local/include
-    /usr/src/tensorrt/include)
+    /usr/src/tensorrt/include
+  PATH_SUFFIXES include include/x86_64-linux-gnu include/aarch64-linux-gnu)
 find_path(CUDART_INCLUDE_DIR cuda_runtime_api.h
   PATHS
     /usr/local/cuda/include
@@ -71,11 +83,13 @@ find_path(CUDART_INCLUDE_DIR cuda_runtime_api.h
     /usr/include/aarch64-linux-gnu)
 find_library(TENSORRT_LIBRARY NAMES nvinfer
   PATHS
+    ${TENSORRT_SEARCH_ROOTS}
     /usr/lib
     /usr/lib/x86_64-linux-gnu
     /usr/lib/aarch64-linux-gnu
     /usr/local/lib
-    /usr/src/tensorrt/lib)
+    /usr/src/tensorrt/lib
+  PATH_SUFFIXES lib lib64 lib/x86_64-linux-gnu lib/aarch64-linux-gnu)
 find_library(CUDART_LIBRARY NAMES cudart
   PATHS
     /usr/local/cuda/lib64
@@ -85,6 +99,19 @@ find_library(CUDART_LIBRARY NAMES cudart
     /usr/lib/aarch64-linux-gnu)
 if(TENSORRT_INCLUDE_DIR AND CUDART_INCLUDE_DIR AND TENSORRT_LIBRARY AND CUDART_LIBRARY)
   set(HAVE_TENSORRT TRUE)
+  message(STATUS "TensorRT found. Native TensorRT backend enabled.")
+  message(STATUS "  TENSORRT_INCLUDE_DIR=${TENSORRT_INCLUDE_DIR}")
+  message(STATUS "  TENSORRT_LIBRARY=${TENSORRT_LIBRARY}")
+  message(STATUS "  CUDART_INCLUDE_DIR=${CUDART_INCLUDE_DIR}")
+  message(STATUS "  CUDART_LIBRARY=${CUDART_LIBRARY}")
+else()
+  message(WARNING
+    "TensorRT native backend disabled. Missing one or more dependencies:\n"
+    "  TENSORRT_INCLUDE_DIR=${TENSORRT_INCLUDE_DIR}\n"
+    "  TENSORRT_LIBRARY=${TENSORRT_LIBRARY}\n"
+    "  CUDART_INCLUDE_DIR=${CUDART_INCLUDE_DIR}\n"
+    "  CUDART_LIBRARY=${CUDART_LIBRARY}\n"
+    "Rebuild after installing TensorRT/CUDA headers and libraries, or set TENSORRT_ROOT.")
 endif()
 
 include(CheckLanguage)
