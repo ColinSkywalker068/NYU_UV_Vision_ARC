@@ -228,6 +228,7 @@ add_cv_stm_env_args() {
 		CV_STM_REALSENSE_USE_POLL
 		CV_STM_REALSENSE_USE_MAX_NATIVE_FPS
 		CV_STM_HEALTH_TIMEOUT_S
+		YOLO_CUDA_BAYER_SYNC_MEMCPY
 	)
 	local name
 	for name in "${env_names[@]}"; do

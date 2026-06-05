@@ -110,6 +110,8 @@ CV_STM_SHOW=false
 CV_STM_BASLER_FPS=160
 CV_STM_BASLER_UNCAPPED_FPS=false
 # CV_STM_DEEPSTREAM_PROFILE_STAGES=false
+# Diagnostic A/B for Nano CUDA Bayer crashes; keeps CUDA Bayer but uses synchronous copies.
+# YOLO_CUDA_BAYER_SYNC_MEMCPY=1
 # CV_STM_EXTRA_LAUNCH_ARGS="basler_exposure_us:=5000.0 basler_gain_db:=5.0"
 # CV_STM_REALSENSE_WIDTH=640
 # CV_STM_REALSENSE_HEIGHT=480

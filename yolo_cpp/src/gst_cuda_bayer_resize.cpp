@@ -6,6 +6,8 @@
 #endif
 
 #if defined(HAVE_GSTREAMER) && defined(HAVE_YOLO_CUDA_BAYER_RESIZE)
+#include <cuda_runtime_api.h>
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -44,6 +46,8 @@ struct _GstYoloCudaBayerResize
   gint output_stride;
   BayerPattern pattern;
   void* cuda_context;
+  guint64 frame_count;
+  gboolean logged_input_memory;
 };
 
 struct _GstYoloCudaBayerResizeClass
@@ -240,6 +244,13 @@ GstFlowReturn gst_yolo_cuda_bayer_resize_transform(
   GstBaseTransform* transform, GstBuffer* inbuf, GstBuffer* outbuf)
 {
   auto* self = reinterpret_cast<GstYoloCudaBayerResize*>(transform);
+  const guint64 frame_id = ++self->frame_count;
+  const cudaError_t prior_cuda_error = cudaGetLastError();
+  if (prior_cuda_error != cudaSuccess) {
+    GST_WARNING_OBJECT(self, "CUDA Bayer frame=%" G_GUINT64_FORMAT
+                             " prior CUDA error before transform: %s",
+      frame_id, cudaGetErrorString(prior_cuda_error));
+  }
   if (self->cuda_context == nullptr) {
     self->cuda_context = yolo_cuda_bayer_resize_create();
   }
@@ -261,6 +272,29 @@ GstFlowReturn gst_yolo_cuda_bayer_resize_transform(
     GST_ELEMENT_ERROR(
       GST_ELEMENT(self), RESOURCE, WRITE, ("Failed to map RGBA output buffer"), (nullptr));
     return GST_FLOW_ERROR;
+  }
+
+  GstMemory* input_memory = gst_buffer_peek_memory(inbuf, 0);
+  const char* input_allocator = "none";
+  guint input_memory_flags = 0U;
+  if (input_memory != nullptr) {
+    input_memory_flags = static_cast<guint>(GST_MINI_OBJECT_FLAGS(input_memory));
+    if (input_memory->allocator != nullptr) {
+      const char* memory_type = gst_allocator_get_memory_type(input_memory->allocator);
+      input_allocator = memory_type != nullptr ? memory_type : "unknown";
+    } else {
+      input_allocator = "null-allocator";
+    }
+  }
+  if (!self->logged_input_memory || frame_id <= 3U || frame_id % 300U == 0U) {
+    GST_WARNING_OBJECT(self,
+      "CUDA Bayer frame=%" G_GUINT64_FORMAT
+      " input_allocator=%s input_flags=0x%x input_size=%" G_GSIZE_FORMAT
+      " output_size=%" G_GSIZE_FORMAT " sync_memcpy=%s",
+      frame_id, input_allocator, input_memory_flags, in_map.size, out_map.size,
+      g_getenv("YOLO_CUDA_BAYER_SYNC_MEMCPY") != nullptr ? g_getenv("YOLO_CUDA_BAYER_SYNC_MEMCPY")
+                                                         : "false");
+    self->logged_input_memory = TRUE;
   }
 
   std::array<char, 256> error_message{};
@@ -323,7 +357,14 @@ GstFlowReturn gst_yolo_cuda_bayer_resize_transform(
   gst_buffer_unmap(outbuf, &out_map);
   gst_buffer_unmap(inbuf, &in_map);
   if (!ok) {
-    GST_ELEMENT_ERROR(GST_ELEMENT(self), RESOURCE, FAILED, ("%s", error_message.data()), (nullptr));
+    GST_ELEMENT_ERROR(GST_ELEMENT(self), RESOURCE, FAILED,
+      ("CUDA Bayer frame=%" G_GUINT64_FORMAT
+       " failed: %s input_allocator=%s input_flags=0x%x input_stride=%d output_stride=%d "
+       "input=%dx%d output=%dx%d",
+        frame_id, error_message.data(), input_allocator, input_memory_flags, input_stride,
+        output_stride, self->input_width, self->input_height, self->output_width,
+        self->output_height),
+      (nullptr));
     return GST_FLOW_ERROR;
   }
   return GST_FLOW_OK;
@@ -386,6 +427,8 @@ void gst_yolo_cuda_bayer_resize_init(GstYoloCudaBayerResize* self)
   self->output_stride = 0;
   self->pattern = kRggb;
   self->cuda_context = nullptr;
+  self->frame_count = 0U;
+  self->logged_input_memory = FALSE;
   gst_base_transform_set_in_place(GST_BASE_TRANSFORM(self), FALSE);
   gst_base_transform_set_passthrough(GST_BASE_TRANSFORM(self), FALSE);
 }

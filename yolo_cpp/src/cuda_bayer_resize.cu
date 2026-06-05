@@ -1,6 +1,7 @@
 #include <cuda_runtime_api.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 
@@ -24,6 +25,7 @@ struct CudaBayerResizeContext
   std::size_t input_bytes{0};
   std::size_t output_bytes{0};
   cudaStream_t stream{};
+  bool sync_memcpy{false};
 };
 
 void set_error(char* message, std::size_t size, const char* prefix, cudaError_t status)
@@ -52,6 +54,18 @@ bool ensure_device_buffer(std::uint8_t** buffer, std::size_t* current_size,
   }
   *current_size = required_size;
   return true;
+}
+
+bool env_flag_enabled(const char* name)
+{
+  const char* value = std::getenv(name);
+  if (value == nullptr) {
+    return false;
+  }
+  return std::strcmp(value, "1") == 0 || std::strcmp(value, "true") == 0
+         || std::strcmp(value, "TRUE") == 0 || std::strcmp(value, "on") == 0
+         || std::strcmp(value, "ON") == 0 || std::strcmp(value, "yes") == 0
+         || std::strcmp(value, "YES") == 0;
 }
 
 __device__ int clamp_int(int value, int low, int high)
@@ -155,6 +169,7 @@ __global__ void bayer_resize_rgba_kernel(const std::uint8_t* input, int input_wi
 extern "C" void* yolo_cuda_bayer_resize_create()
 {
   auto* context = new CudaBayerResizeContext();
+  context->sync_memcpy = env_flag_enabled("YOLO_CUDA_BAYER_SYNC_MEMCPY");
   if (cudaStreamCreateWithFlags(&context->stream, cudaStreamNonBlocking) != cudaSuccess) {
     delete context;
     return nullptr;
@@ -215,10 +230,14 @@ extern "C" bool yolo_cuda_bayer_resize_rgba(void* raw_context, const std::uint8_
     return false;
   }
 
-  cudaError_t status = cudaMemcpyAsync(
-    context->device_input, input, input_bytes, cudaMemcpyHostToDevice, context->stream);
+  cudaError_t status =
+    context->sync_memcpy
+      ? cudaMemcpy(context->device_input, input, input_bytes, cudaMemcpyHostToDevice)
+      : cudaMemcpyAsync(
+          context->device_input, input, input_bytes, cudaMemcpyHostToDevice, context->stream);
   if (status != cudaSuccess) {
-    set_error(error_message, error_message_size, "cudaMemcpyAsync input failed", status);
+    set_error(error_message, error_message_size,
+      context->sync_memcpy ? "cudaMemcpy input failed" : "cudaMemcpyAsync input failed", status);
     return false;
   }
 
@@ -234,10 +253,14 @@ extern "C" bool yolo_cuda_bayer_resize_rgba(void* raw_context, const std::uint8_
     return false;
   }
 
-  status = cudaMemcpyAsync(
-    output, context->device_output, output_bytes, cudaMemcpyDeviceToHost, context->stream);
+  status =
+    context->sync_memcpy
+      ? cudaMemcpy(output, context->device_output, output_bytes, cudaMemcpyDeviceToHost)
+      : cudaMemcpyAsync(
+          output, context->device_output, output_bytes, cudaMemcpyDeviceToHost, context->stream);
   if (status != cudaSuccess) {
-    set_error(error_message, error_message_size, "cudaMemcpyAsync output failed", status);
+    set_error(error_message, error_message_size,
+      context->sync_memcpy ? "cudaMemcpy output failed" : "cudaMemcpyAsync output failed", status);
     return false;
   }
 
