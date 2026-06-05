@@ -264,6 +264,34 @@ GstFlowReturn gst_yolo_cuda_bayer_resize_transform(
   }
 
   std::array<char, 256> error_message{};
+  if (self->input_width <= 0 || self->input_height <= 0 || self->output_width <= 0
+      || self->output_height <= 0)
+  {
+    gst_buffer_unmap(outbuf, &out_map);
+    gst_buffer_unmap(inbuf, &in_map);
+    GST_ELEMENT_ERROR(GST_ELEMENT(self), RESOURCE, FAILED,
+      ("Invalid CUDA Bayer resize caps input=%dx%d output=%dx%d", self->input_width,
+        self->input_height, self->output_width, self->output_height),
+      (nullptr));
+    return GST_FLOW_ERROR;
+  }
+
+  const gsize minimum_input_size =
+    static_cast<gsize>(self->input_width) * static_cast<gsize>(self->input_height);
+  const gsize minimum_output_size = static_cast<gsize>(self->output_width)
+                                    * static_cast<gsize>(self->output_height) * 4U;
+  if (in_map.size < minimum_input_size || out_map.size < minimum_output_size) {
+    gst_buffer_unmap(outbuf, &out_map);
+    gst_buffer_unmap(inbuf, &in_map);
+    GST_ELEMENT_ERROR(GST_ELEMENT(self), RESOURCE, FAILED,
+      ("CUDA Bayer resize buffer too small: input_size=%" G_GSIZE_FORMAT
+       " required_input=%" G_GSIZE_FORMAT " output_size=%" G_GSIZE_FORMAT
+       " required_output=%" G_GSIZE_FORMAT,
+        in_map.size, minimum_input_size, out_map.size, minimum_output_size),
+      (nullptr));
+    return GST_FLOW_ERROR;
+  }
+
   const int input_stride = std::max(self->input_width,
     self->input_height > 0 ? static_cast<int>(in_map.size / static_cast<gsize>(self->input_height))
                            : self->input_width);
@@ -271,6 +299,23 @@ GstFlowReturn gst_yolo_cuda_bayer_resize_transform(
     self->output_height > 0
       ? static_cast<int>(out_map.size / static_cast<gsize>(self->output_height))
       : self->output_stride);
+  const gsize required_input_size =
+    static_cast<gsize>(input_stride) * static_cast<gsize>(self->input_height);
+  const gsize required_output_size =
+    static_cast<gsize>(output_stride) * static_cast<gsize>(self->output_height);
+  if (required_input_size > in_map.size || required_output_size > out_map.size) {
+    gst_buffer_unmap(outbuf, &out_map);
+    gst_buffer_unmap(inbuf, &in_map);
+    GST_ELEMENT_ERROR(GST_ELEMENT(self), RESOURCE, FAILED,
+      ("CUDA Bayer resize stride exceeds mapped buffer: input_stride=%d input_size=%"
+       G_GSIZE_FORMAT " required_input=%" G_GSIZE_FORMAT
+       " output_stride=%d output_size=%" G_GSIZE_FORMAT " required_output=%" G_GSIZE_FORMAT,
+        input_stride, in_map.size, required_input_size, output_stride, out_map.size,
+        required_output_size),
+      (nullptr));
+    return GST_FLOW_ERROR;
+  }
+
   const bool ok = yolo_cuda_bayer_resize_rgba(self->cuda_context, in_map.data, self->input_width,
     self->input_height, input_stride, out_map.data, self->output_width, self->output_height,
     output_stride, static_cast<int>(self->pattern), self->flip_method, error_message.data(),

@@ -194,6 +194,14 @@ extern "C" bool yolo_cuda_bayer_resize_rgba(void* raw_context, const std::uint8_
     }
     return false;
   }
+  if (input_stride < input_width || output_stride < output_width * 4) {
+    if (error_message != nullptr && error_message_size > 0U) {
+      std::snprintf(error_message, error_message_size,
+        "invalid CUDA Bayer resize stride input=%d width=%d output=%d required_output=%d",
+        input_stride, input_width, output_stride, output_width * 4);
+    }
+    return false;
+  }
 
   const std::size_t input_bytes =
     static_cast<std::size_t>(input_stride) * static_cast<std::size_t>(input_height);
