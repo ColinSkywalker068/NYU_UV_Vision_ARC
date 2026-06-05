@@ -11,6 +11,8 @@ WorkingDirectory=/home/ultraviolet/CV_Detection
 TimeoutStopSec=20
 Environment=CV_STM_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon
 Environment=UV_CONTAINER_NAME=cv-stm-stack
+Environment=ROS_DOMAIN_ID=37
+Environment=ROS_LOCALHOST_ONLY=1
 EnvironmentFile=-/etc/cv-detection/stm-stack.env
 # Ensure startup always uses the latest mounted workspace and env file.
 ExecStartPre=-/bin/bash -lc '/usr/bin/docker rm -f "${UV_CONTAINER_NAME:-cv-stm-stack}"'

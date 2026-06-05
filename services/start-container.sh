@@ -228,6 +228,8 @@ add_cv_stm_env_args() {
 		CV_STM_REALSENSE_USE_POLL
 		CV_STM_REALSENSE_USE_MAX_NATIVE_FPS
 		CV_STM_HEALTH_TIMEOUT_S
+		ROS_DOMAIN_ID
+		ROS_LOCALHOST_ONLY
 		YOLO_CUDA_BAYER_SYNC_MEMCPY
 	)
 	local name
@@ -345,7 +347,7 @@ configure_jetson_args() {
 	for device in /dev/video{0..9}; do
 		add_device_if_exists "$device"
 	done
-	add_env_value RMW_IMPLEMENTATION rmw_fastrtps_cpp
+	add_env_value RMW_IMPLEMENTATION "${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 	add_env_if_set HUGGINGFACE_TOKEN
 	add_pylon_mount_if_available
 	add_display_args
