@@ -103,6 +103,8 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `IMAGE` | `services/run-cplusplus.sh` image override | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon` | `services/run-cplusplus.sh` |
 | `UV_CONTAINER_NAME` | Stable or custom Docker container name | Competition service uses `cv-stm-stack`; otherwise unset uses `uv-` plus sanitized image name | `services/start-container.sh`, `services/stm-stack.service` |
 | `HUGGINGFACE_TOKEN` | Optional model/token pass-through | Host value when present | `services/start-container.sh` |
+| `ROS_DOMAIN_ID` | Optional DDS graph isolation between robots or test containers | Unset by default; set per robot when duplicate endpoints appear from another participant | `services/start-container.sh` |
+| `ROS_LOCALHOST_ONLY` | Optional DDS network isolation for local-only debugging | Unset by default | `services/start-container.sh` |
 | `RMW_IMPLEMENTATION` | ROS 2 middleware in Jetson container path | `rmw_fastrtps_cpp` | `services/start-container.sh` |
 | `PYLON_ROOT` | Basler Pylon install root | `/opt/pylon` | `Docker/Dockerfile.cplusplus`, `CPP_CONTAINER_RUNBOOK.md` |
 | `PYLON_PACKAGE` | Build-time Basler SDK package under `Docker/pylon/` | Unset by default | `Docker/Dockerfile.cplusplus`, `Docker/build_cplusplus.sh` |
