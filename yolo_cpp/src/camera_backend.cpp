@@ -10,6 +10,8 @@
 #include <memory>
 #include <opencv2/imgproc.hpp>
 #include <optional>
+#include <rclcpp/clock.hpp>
+#include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 #include <stdexcept>
 #include <string>
@@ -315,7 +317,8 @@ std::string genicam_pixel_format_for_config(const std::string& value)
 class BaslerBackend final : public CameraBackend
 {
 public:
-  explicit BaslerBackend(const CameraConfig& config) : config_(config)
+  BaslerBackend(const CameraConfig& config, rclcpp::Logger logger)
+      : config_(config), logger_(std::move(logger))
   {
     Pylon::PylonInitialize();
   }
@@ -328,15 +331,28 @@ public:
 
   void initialize() override
   {
-    camera_.Attach(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
-    camera_.Open();
-    configure_camera();
-    actual_fps_ =
-      read_resulting_fps(camera_.GetNodeMap()).value_or(static_cast<double>(config_.basler_fps));
-    converter_.OutputPixelFormat = Pylon::PixelType_BGR8packed;
-    converter_.OutputBitAlignment = Pylon::OutputBitAlignment_MsbAligned;
-    camera_.StartGrabbing(
-      Pylon::GrabStrategy_LatestImageOnly, Pylon::GrabLoop_ProvidedByInstantCamera);
+    try {
+      camera_.Attach(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
+      camera_.Open();
+      configure_camera();
+      actual_fps_ =
+        read_resulting_fps(camera_.GetNodeMap()).value_or(static_cast<double>(config_.basler_fps));
+      converter_.OutputPixelFormat = Pylon::PixelType_BGR8packed;
+      converter_.OutputBitAlignment = Pylon::OutputBitAlignment_MsbAligned;
+      camera_.StartGrabbing(
+        Pylon::GrabStrategy_LatestImageOnly, Pylon::GrabLoop_ProvidedByInstantCamera);
+#ifdef HAVE_PYLON
+    } catch (const Pylon::GenericException& exc) {
+      release();
+      throw std::runtime_error(std::string("Failed to initialize Basler camera: ") + exc.what());
+#endif
+    } catch (const std::exception& exc) {
+      release();
+      throw std::runtime_error(std::string("Failed to initialize Basler camera: ") + exc.what());
+    } catch (...) {
+      release();
+      throw std::runtime_error("Failed to initialize Basler camera: unknown Pylon/GenICam error");
+    }
   }
 
   bool capture(FramePacket& packet) override
@@ -346,13 +362,45 @@ public:
     }
 
     Pylon::CGrabResultPtr result;
-    camera_.RetrieveResult(1000, result, Pylon::TimeoutHandling_Return);
+    try {
+      camera_.RetrieveResult(1000, result, Pylon::TimeoutHandling_Return);
+#ifdef HAVE_PYLON
+    } catch (const Pylon::GenericException& exc) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, steady_clock_, 2000, "Basler RetrieveResult failed: %s", exc.what());
+      return false;
+#endif
+    } catch (const std::exception& exc) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, steady_clock_, 2000, "Basler RetrieveResult failed: %s", exc.what());
+      return false;
+    } catch (...) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, steady_clock_, 2000, "Basler RetrieveResult failed with unknown error");
+      return false;
+    }
     if (!result || !result->GrabSucceeded()) {
       return false;
     }
 
     auto image = std::make_shared<Pylon::CPylonImage>();
-    converter_.Convert(*image, result);
+    try {
+      converter_.Convert(*image, result);
+#ifdef HAVE_PYLON
+    } catch (const Pylon::GenericException& exc) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, steady_clock_, 2000, "Basler image conversion failed: %s", exc.what());
+      return false;
+#endif
+    } catch (const std::exception& exc) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, steady_clock_, 2000, "Basler image conversion failed: %s", exc.what());
+      return false;
+    } catch (...) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, steady_clock_, 2000, "Basler image conversion failed with unknown error");
+      return false;
+    }
     packet.frame = cv::Mat(static_cast<int>(result->GetHeight()),
       static_cast<int>(result->GetWidth()), CV_8UC3, image->GetBuffer());
     packet.pixel_format = PixelFormat::kBgr8;
@@ -393,21 +441,31 @@ private:
   template <typename NodeT, typename ValueT>
   void set_if_writable(GenApi::INodeMap& node_map, const char* name, const ValueT& value)
   {
-    NodeT node(node_map.GetNode(name));
-    if (node && GenApi::IsWritable(node)) {
-      node->SetValue(value);
+    try {
+      NodeT node(node_map.GetNode(name));
+      if (node && GenApi::IsWritable(node)) {
+        node->SetValue(value);
+      }
+    } catch (const std::exception& exc) {
+      RCLCPP_WARN(logger_, "Could not set Basler %s: %s", name, exc.what());
     }
   }
 
   void set_enum_if_writable(GenApi::INodeMap& node_map, const char* name, const char* value)
   {
-    GenApi::CEnumerationPtr node(node_map.GetNode(name));
-    if (!node || !GenApi::IsWritable(node)) {
-      return;
-    }
-    GenApi::CEnumEntryPtr entry(node->GetEntryByName(value));
-    if (entry && GenApi::IsReadable(entry)) {
-      node->SetIntValue(entry->GetValue());
+    try {
+      GenApi::CEnumerationPtr node(node_map.GetNode(name));
+      if (!node || !GenApi::IsWritable(node)) {
+        return;
+      }
+      GenApi::CEnumEntryPtr entry(node->GetEntryByName(value));
+      if (entry && GenApi::IsReadable(entry)) {
+        node->SetIntValue(entry->GetValue());
+      } else {
+        RCLCPP_WARN(logger_, "Basler %s does not expose enum value %s", name, value);
+      }
+    } catch (const std::exception& exc) {
+      RCLCPP_WARN(logger_, "Could not set Basler %s=%s: %s", name, value, exc.what());
     }
   }
 
@@ -450,9 +508,33 @@ private:
   void set_integer_node_if_writable(
     GenApi::INodeMap& node_map, const char* name, int requested) const
   {
-    GenApi::CIntegerPtr node(node_map.GetNode(name));
-    if (node && GenApi::IsWritable(node)) {
-      node->SetValue(clamp_integer_node_value(node, requested));
+    try {
+      GenApi::CIntegerPtr node(node_map.GetNode(name));
+      if (node && GenApi::IsWritable(node)) {
+        node->SetValue(clamp_integer_node_value(node, requested));
+      }
+    } catch (const std::exception& exc) {
+      RCLCPP_WARN(logger_, "Could not set Basler %s=%d: %s", name, requested, exc.what());
+    }
+  }
+
+  void set_integer_value_if_writable(
+    GenApi::INodeMap& node_map, const char* name, int64_t requested) const
+  {
+    try {
+      GenApi::CIntegerPtr node(node_map.GetNode(name));
+      if (!node || !GenApi::IsWritable(node)) {
+        return;
+      }
+      int64_t value = std::max(node->GetMin(), std::min(node->GetMax(), requested));
+      const int64_t increment = std::max<int64_t>(1, node->GetInc());
+      if (increment > 1) {
+        value = node->GetMin() + (((value - node->GetMin()) / increment) * increment);
+      }
+      node->SetValue(std::max(node->GetMin(), std::min(node->GetMax(), value)));
+    } catch (const std::exception& exc) {
+      RCLCPP_WARN(logger_, "Could not set Basler %s=%ld: %s", name, static_cast<long>(requested),
+        exc.what());
     }
   }
 
@@ -474,6 +556,9 @@ private:
     set_enum_if_writable(node_map, "GainSelector", "All");
     set_if_writable<GenApi::CFloatPtr>(node_map, "Gain", config_.basler_gain_db);
 
+    set_integer_value_if_writable(node_map, "OffsetX", 0);
+    set_integer_value_if_writable(node_map, "OffsetY", 0);
+
     const int requested_width =
       config_.basler_use_full_sensor ? config_.basler_source_width : config_.imgsz_width;
     const int requested_height =
@@ -482,6 +567,13 @@ private:
     set_integer_node_if_writable(node_map, "Height", requested_height);
 
     if (!config_.basler_use_full_sensor && config_.basler_centered_roi) {
+      apply_centered_roi(node_map);
+    }
+  }
+
+  void apply_centered_roi(GenApi::INodeMap& node_map)
+  {
+    try {
       GenApi::CIntegerPtr width_node(node_map.GetNode("Width"));
       GenApi::CIntegerPtr height_node(node_map.GetNode("Height"));
       GenApi::CIntegerPtr offset_x(node_map.GetNode("OffsetX"));
@@ -491,17 +583,17 @@ private:
           std::max<int64_t>(0, (width_node->GetMax() - width_node->GetValue()) / 2);
         const int64_t centered_y =
           std::max<int64_t>(0, (height_node->GetMax() - height_node->GetValue()) / 2);
-        if (GenApi::IsWritable(offset_x)) {
-          offset_x->SetValue(centered_x);
-        }
-        if (GenApi::IsWritable(offset_y)) {
-          offset_y->SetValue(centered_y);
-        }
+        set_integer_value_if_writable(node_map, "OffsetX", centered_x);
+        set_integer_value_if_writable(node_map, "OffsetY", centered_y);
       }
+    } catch (const std::exception& exc) {
+      RCLCPP_WARN(logger_, "Could not center Basler ROI: %s", exc.what());
     }
   }
 
   CameraConfig config_;
+  rclcpp::Logger logger_;
+  rclcpp::Clock steady_clock_{RCL_STEADY_TIME};
   const std::string source_id_{"basler"};
   double actual_fps_{0.0};
   Pylon::CInstantCamera camera_;
@@ -567,11 +659,11 @@ CameraConfig load_camera_config(rclcpp::Node& node)
 }
 
 std::shared_ptr<CameraBackend> create_camera_backend(
-  const CameraConfig& config, const rclcpp::Logger&)
+  const CameraConfig& config, const rclcpp::Logger& logger)
 {
   if (config.camera_type == "basler") {
 #ifdef HAVE_PYLON
-    return std::make_shared<BaslerBackend>(config);
+    return std::make_shared<BaslerBackend>(config, logger);
 #else
     return std::make_shared<UnsupportedCameraBackend>(
       "Basler backend requested but Pylon SDK headers/libs were not available at build time.",

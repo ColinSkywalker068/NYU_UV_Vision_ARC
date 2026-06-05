@@ -169,7 +169,7 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "blue",
             "Enemy armor color used until STM or robot_id feedback overrides it: blue or red",
         ),
-        ("show", "true", "Show OpenCV visualization window"),
+        ("show", "false", "Show OpenCV visualization window"),
         (
             "preview_max_fps",
             "60.0",

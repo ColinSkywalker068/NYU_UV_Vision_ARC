@@ -55,7 +55,12 @@ if(LIBREALSENSE2_INCLUDE_DIR AND LIBREALSENSE2_LIBRARY)
 endif()
 
 find_path(TENSORRT_INCLUDE_DIR NvInfer.h
-  PATHS /usr/include /usr/include/x86_64-linux-gnu /usr/include/aarch64-linux-gnu /usr/local/include)
+  PATHS
+    /usr/include
+    /usr/include/x86_64-linux-gnu
+    /usr/include/aarch64-linux-gnu
+    /usr/local/include
+    /usr/src/tensorrt/include)
 find_path(CUDART_INCLUDE_DIR cuda_runtime_api.h
   PATHS
     /usr/local/cuda/include
@@ -64,8 +69,20 @@ find_path(CUDART_INCLUDE_DIR cuda_runtime_api.h
     /usr/include
     /usr/include/x86_64-linux-gnu
     /usr/include/aarch64-linux-gnu)
-find_library(TENSORRT_LIBRARY NAMES nvinfer PATHS /usr/lib /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/local/lib)
-find_library(CUDART_LIBRARY NAMES cudart PATHS /usr/local/cuda/lib64 /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu)
+find_library(TENSORRT_LIBRARY NAMES nvinfer
+  PATHS
+    /usr/lib
+    /usr/lib/x86_64-linux-gnu
+    /usr/lib/aarch64-linux-gnu
+    /usr/local/lib
+    /usr/src/tensorrt/lib)
+find_library(CUDART_LIBRARY NAMES cudart
+  PATHS
+    /usr/local/cuda/lib64
+    /usr/local/cuda/targets/x86_64-linux/lib
+    /usr/local/cuda/targets/aarch64-linux/lib
+    /usr/lib/x86_64-linux-gnu
+    /usr/lib/aarch64-linux-gnu)
 if(TENSORRT_INCLUDE_DIR AND CUDART_INCLUDE_DIR AND TENSORRT_LIBRARY AND CUDART_LIBRARY)
   set(HAVE_TENSORRT TRUE)
 endif()

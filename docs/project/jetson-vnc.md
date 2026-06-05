@@ -20,7 +20,8 @@
 | Configure multiple Jetsons | [5. Multi-Jetson Naming And Ports](#5-multi-jetson-naming-and-ports) |
 | Safer SSH tunnel mode | [6. SSH Tunnel Mode](#6-ssh-tunnel-mode) |
 | Headless or black-screen fixes | [7. Headless And Display Notes](#7-headless-and-display-notes) |
-| Troubleshooting | [9. Troubleshooting](#9-troubleshooting) |
+| Persistent headless display | [8. Persistent Headless Display](#8-persistent-headless-display) |
+| Troubleshooting | [10. Troubleshooting](#10-troubleshooting) |
 
 ## Agent Entry
 
@@ -237,7 +238,74 @@ If the socket is `X0`, change `-display :1` to `-display :0`. If Xorg shows a di
 
 For purely headless administration, SSH is usually better than VNC. For visual camera setup or GUI debugging, a dummy HDMI plug is often the least fragile Jetson option.
 
-## 8. Relation To CV Detection Runtime
+## 8. Persistent Headless Display
+
+When DisplayPort or HDMI is unplugged, Jetson Xorg can lose the monitor EDID, fall back to a tiny or stale display, show only the NVIDIA logo, or move the active display/auth path. The most reliable fix is a dummy HDMI or DisplayPort plug left in the robot.
+
+For a software-only fallback, force the NVIDIA X driver to create a display even when no monitor is attached. Keep SSH open while testing so the config can be reverted if Xorg fails to start.
+
+Check for a root-level config first:
+
+```bash
+ls -l /etc/X11/xorg.conf
+```
+
+If `/etc/X11/xorg.conf` exists, back it up before using `/etc/X11/xorg.conf.d/` drop-ins:
+
+```bash
+sudo cp /etc/X11/xorg.conf /etc/X11/xorg.conf.backup
+```
+
+Create a headless NVIDIA display config:
+
+```bash
+sudo mkdir -p /etc/X11/xorg.conf.d
+sudo nano /etc/X11/xorg.conf.d/10-nvidia-headless.conf
+```
+
+Use modelines that match the operator laptop and VNC client:
+
+```ini
+Section "Device"
+    Identifier "NVIDIA"
+    Driver "nvidia"
+    Option "UseDisplayDevice" "DFP-0"
+    Option "ConnectedMonitor" "DFP-0"
+    Option "AllowEmptyInitialConfiguration" "true"
+    Option "ModeValidation" "NoEdidModes, NoMaxPClkCheck, NoHorizSyncCheck, NoVertRefreshCheck"
+EndSection
+
+Section "Monitor"
+    Identifier "Monitor0"
+    Modeline "1920x1080" 173.00 1920 2048 2248 2576 1080 1083 1088 1120 -hsync +vsync
+    Modeline "1600x900" 118.25 1600 1696 1856 2112 900 903 908 934 -hsync +vsync
+    Modeline "1280x720" 74.25 1280 1390 1430 1650 720 725 730 750 +hsync +vsync
+EndSection
+
+Section "Screen"
+    Identifier "Screen0"
+    Device "NVIDIA"
+    Monitor "Monitor0"
+    DefaultDepth 24
+    SubSection "Display"
+        Depth 24
+        Modes "1920x1080" "1600x900" "1280x720"
+    EndSubSection
+EndSection
+```
+
+Restart the display manager or reboot, then re-check the active display and auth path:
+
+```bash
+sudo systemctl restart gdm3
+ls /tmp/.X11-unix/
+ps -ef | grep -E 'Xorg|Xwayland'
+DISPLAY=:0 xrandr
+```
+
+Update `x11vnc@.service` to match the active display and `-auth` path reported by Xorg. If Xorg uses a GDM auth path such as `/run/user/128/gdm/Xauthority`, remove `User=%i` so `x11vnc` can read it as root while still using `/home/%i/.vnc/passwd`.
+
+## 9. Relation To CV Detection Runtime
 
 VNC is for operator access only. It does not replace the competition service or ROS launch flow.
 
@@ -251,7 +319,7 @@ VNC is for operator access only. It does not replace the competition service or 
 
 The Docker paths use host networking. Avoid assigning VNC-related port changes inside containers unless a future service explicitly owns that behavior.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 | Problem | Check | Fix |
 |---------|-------|-----|
@@ -261,17 +329,20 @@ The Docker paths use host networking. Avoid assigning VNC-related port changes i
 | Client cannot connect | `ss -ltnp | grep 5900` on the Jetson | Start `x11vnc@$USER.service`, verify the Jetson IP, or use SSH tunnel mode. |
 | Service is active but `ss -ltnp | grep 5900` is empty | `journalctl -u x11vnc@$USER.service -n 80 --no-pager` | Remove invalid options such as `-localhost no`, then verify the active display and auth file. |
 | Connection times out on Wi-Fi | Ping and SSH also fail | The network may block peer devices; use a robot router, hotspot, or Ethernet. |
+| VNC freezes, shows only the NVIDIA logo, or stops refreshing after unplugging monitor | Xorg has no valid headless display/EDID | Use a dummy plug, or configure a persistent headless NVIDIA display in section 8. |
 | macOS Screen Sharing opens a stale target | `nc -vz <jetson-name>.local 5900` succeeds, but Screen Sharing still fails | Quit Screen Sharing, reconnect by exact `.local:5900` or IP target, or use TigerVNC with `host::5900`. |
 | Clipboard paste does not work | VNC connects but clipboard does not sync | Use TurboVNC or TigerVNC instead of macOS Screen Sharing. In Ubuntu Terminal, paste with `Ctrl+Shift+V`; plain `Ctrl+V` is not terminal paste. Do not add `-clipboard` unless `x11vnc -opts` confirms support; on `x11vnc` 0.9.16 it can be an invalid option that prevents port `5900` from opening. |
 | Password fails | `ls -l ~/.vnc/passwd` | Rerun `x11vnc -storepasswd ~/.vnc/passwd` as the desktop user. |
 | Viewer connects but cannot control | Viewer is in view-only mode or desktop permissions block input | Disable view-only mode in the client and restart `x11vnc`. |
 | Desktop feels slow | Weak Wi-Fi or high display resolution | Use 5 GHz Wi-Fi or Ethernet, reduce desktop resolution, or prefer SSH for non-visual work. |
 
-## 10. External References
+## 11. External References
 
 | Source | Use |
 |--------|-----|
 | [NVIDIA Jetson VNC setup](https://developer.nvidia.com/embedded/learn/tutorials/vnc-setup) | Confirms same-network Jetson VNC workflow and Jetson display-session caveat. |
+| [NVIDIA Jetson X Window System guide](https://docs.nvidia.com/jetson/archives/r36.4.4/DeveloperGuide/SD/WindowingSystems/XWindowSystem.html) | Official `nvidia-xconfig`, custom EDID, and mode configuration reference. |
+| [NVIDIA forum: Headless Setup for Jetson Orin Nano](https://forums.developer.nvidia.com/t/headless-setup-for-jetson-orin-nano/264222) | Documents the no-monitor VNC symptom and NVIDIA guidance to configure VNC without a monitor. |
 | [TigerVNC viewer manual](https://tigervnc.org/doc/vncviewer.html) | Client address syntax such as `host::port`. |
 | [x11vnc manual](https://man.archlinux.org/man/x11vnc.1) | Server options such as `-auth guess`, `-forever`, and `-shared`. |
 | [TurboVNC documentation](https://turbovnc.org/Documentation/Documentation) | Official Mac viewer package and viewer option reference. |
