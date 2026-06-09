@@ -21,26 +21,27 @@
 #include "yolo_cpp/camera_backend.hpp"
 #include "yolo_cpp/deepstream_runtime.hpp"
 #include "yolo_cpp/detector_backend.hpp"
+#include "yolo_cpp/mjpeg_preview_server.hpp"
 #include "yolo_cpp/pnp_solver.hpp"
 #include "yolo_cpp/utils.hpp"
 #include "yolo_cpp/visibility_control.hpp"
 
-namespace yolo_cpp
-{
+namespace yolo_cpp {
 
-/// Captures camera frames, runs armor detection, validates color, and publishes candidates.
-class YOLO_CPP_PUBLIC ArmorDetectorNode : public rclcpp::Node
-{
+/// Captures camera frames, runs armor detection, validates color, and publishes
+/// candidates.
+class YOLO_CPP_PUBLIC ArmorDetectorNode : public rclcpp::Node {
 public:
-  /// Create the detector node and initialize the configured camera/inference pipeline.
-  explicit ArmorDetectorNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
+  /// Create the detector node and initialize the configured camera/inference
+  /// pipeline.
+  explicit ArmorDetectorNode(
+      const rclcpp::NodeOptions &options = rclcpp::NodeOptions());
 
   /// Release camera, detector, DeepStream, and log resources.
   ~ArmorDetectorNode() override;
 
 private:
-  struct StageTotals
-  {
+  struct StageTotals {
     double capture_ms{0.0};
     double preprocess_ms{0.0};
     double upload_ms{0.0};
@@ -51,8 +52,7 @@ private:
     double publish_ms{0.0};
   };
 
-  struct CameraCalibration
-  {
+  struct CameraCalibration {
     PnPCameraModel model;
     bool available{false};
     bool from_camera_info{false};
@@ -64,10 +64,12 @@ private:
   void id_listener_callback(const std_msgs::msg::Int32::SharedPtr msg);
 
   /// Update controller-provided targeting flags such as enemy color lock.
-  void handle_attitude_flags(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
+  void
+  handle_attitude_flags(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
 
   /// Cache the selected target for the optional OpenCV preview overlay.
-  void handle_preview_target(const cv_auto_aim_interfaces::msg::Target::SharedPtr msg);
+  void handle_preview_target(
+      const cv_auto_aim_interfaces::msg::Target::SharedPtr msg);
 
   /// Cache calibrated camera intrinsics for PnP pose solving.
   void handle_camera_info(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
@@ -84,35 +86,57 @@ private:
   /// Create and start the DeepStream runtime.
   void initialize_deepstream_runtime();
 
-  /// Convert detections into candidates, publish messages, previews, and timing logs.
-  void process_detection_cycle(const DetectionBatch& batch, const FramePacket* packet,
-    const DetectorStageTimings& detector_timings, double capture_ms);
+  /// Convert detections into candidates, publish messages, previews, and timing
+  /// logs.
+  void process_detection_cycle(const DetectionBatch &batch,
+                               const FramePacket *packet,
+                               const DetectorStageTimings &detector_timings,
+                               double capture_ms);
   /// Publish a cv_auto_aim_interfaces/Armors message for detector output.
-  void publish_armors(const std::vector<Candidate>& candidates, const std::string& source_id,
-    const rclcpp::Time& stamp, int image_width, int image_height);
-  /// Solve a camera-frame pose for a candidate when corners and intrinsics are available.
-  std::optional<geometry_msgs::msg::Pose> solve_candidate_pose(
-    const Candidate& candidate, int image_width, int image_height);
-  /// Build PnP calibration from static parameters when CameraInfo is unavailable.
+  void publish_armors(const std::vector<Candidate> &candidates,
+                      const std::string &source_id, const rclcpp::Time &stamp,
+                      int image_width, int image_height);
+  /// Solve a camera-frame pose for a candidate when corners and intrinsics are
+  /// available.
+  std::optional<geometry_msgs::msg::Pose>
+  solve_candidate_pose(const Candidate &candidate, int image_width,
+                       int image_height);
+  /// Build PnP calibration from static parameters when CameraInfo is
+  /// unavailable.
   void configure_static_camera_model();
 
   /// Create a pinhole camera model from configured horizontal/vertical FOV.
   PnPCameraModel make_fov_camera_model(int image_width, int image_height) const;
 
   /// Publish a ROS debug image for downstream visualization.
-  void publish_debug_image(const FramePacket& packet, const rclcpp::Time& stamp);
+  void publish_debug_image(const FramePacket &packet,
+                           const rclcpp::Time &stamp);
 
   /// Render the optional OpenCV preview window.
-  void render_preview(const FramePacket& packet, const std::vector<Candidate>& candidates,
-    const LetterboxMetadata& source_geometry);
+  void render_preview(const FramePacket &packet,
+                      const std::vector<Candidate> &candidates,
+                      const LetterboxMetadata &source_geometry,
+                      const std::string &stats_json);
 
-  /// Save a bounded set of target frames for offline visual inspection and heatmaps.
-  void save_target_frame_if_needed(
-    const FramePacket& packet, const std::vector<Candidate>& candidates, const rclcpp::Time& stamp);
+  /// Create the browser preview server when the preview path is enabled.
+  void initialize_preview_server();
+
+  /// Build JSON shown by the browser preview side panel.
+  std::string build_preview_stats_json(const std::string &source_id,
+                                       int image_width, int image_height,
+                                       const std::vector<Candidate> &candidates,
+                                       double latency_ms) const;
+
+  /// Save a bounded set of target frames for offline visual inspection and
+  /// heatmaps.
+  void save_target_frame_if_needed(const FramePacket &packet,
+                                   const std::vector<Candidate> &candidates,
+                                   const rclcpp::Time &stamp);
 
   /// Apply letterbox reversal, color filtering, and candidate shaping.
-  std::vector<Candidate> extract_candidates(
-    const DetectionBatch& batch, const FramePacket* packet, double* color_ms) const;
+  std::vector<Candidate> extract_candidates(const DetectionBatch &batch,
+                                            const FramePacket *packet,
+                                            double *color_ms) const;
   /// Resolve the default model path from package/runtime conventions.
   std::string resolve_default_model_path() const;
 
@@ -126,16 +150,17 @@ private:
   std::string resolve_target_frame_save_dir() const;
 
   /// Append one line to the runtime log when logging is configured.
-  void write_runtime_log_line(const std::string& line);
+  void write_runtime_log_line(const std::string &line);
 
   /// Write a structured runtime note to ROS logs and the runtime log file.
-  void log_runtime_note(const std::string& level, const std::string& message);
+  void log_runtime_note(const std::string &level, const std::string &message);
 
   /// Emit an FPS log once per wall-clock second.
   void log_runtime_fps_once_per_second();
 
   /// Log a target/color-verification event for offline tuning.
-  void log_runtime_opponent_event(const Candidate& target, bool color_pass, double latency_ms);
+  void log_runtime_opponent_event(const Candidate &target, bool color_pass,
+                                  double latency_ms);
 
   /// Periodically log accumulated stage timings.
   void log_stage_timing();
@@ -143,12 +168,17 @@ private:
   std::shared_ptr<CameraBackend> camera_backend_;
   std::unique_ptr<DetectorBackend> detector_backend_;
   std::unique_ptr<DeepStreamRuntime> deepstream_runtime_;
+  std::unique_ptr<MjpegPreviewServer> preview_server_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr robot_id_subscription_;
-  rclcpp::Subscription<std_msgs::msg::Int32MultiArray>::SharedPtr attitude_flags_subscription_;
-  rclcpp::Subscription<cv_auto_aim_interfaces::msg::Target>::SharedPtr preview_target_subscription_;
-  rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_subscription_;
-  rclcpp::Publisher<cv_auto_aim_interfaces::msg::Armors>::SharedPtr armors_publisher_;
+  rclcpp::Subscription<std_msgs::msg::Int32MultiArray>::SharedPtr
+      attitude_flags_subscription_;
+  rclcpp::Subscription<cv_auto_aim_interfaces::msg::Target>::SharedPtr
+      preview_target_subscription_;
+  rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr
+      camera_info_subscription_;
+  rclcpp::Publisher<cv_auto_aim_interfaces::msg::Armors>::SharedPtr
+      armors_publisher_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debug_image_publisher_;
 
   rclcpp::Time last_frame_time_;
@@ -178,9 +208,11 @@ private:
   std::string camera_frame_id_;
   std::string camera_info_topic_;
   std::string bayer_conversion_backend_;
+  std::string preview_http_bind_address_;
   bool allow_native_tensorrt_fallback_{false};
   bool half_{true};
   bool show_{false};
+  bool preview_http_enabled_{true};
   bool enable_color_verification_{true};
   bool use_model_color_classes_{true};
   bool use_robot_id_targeting_{false};
@@ -204,6 +236,8 @@ private:
   int target_frame_save_count_{0};
   int target_frame_save_max_{100};
   int target_frame_jpeg_quality_{85};
+  int preview_http_port_{8080};
+  int preview_http_jpeg_quality_{80};
   std::uint64_t stage_raw_detections_{0};
   std::uint64_t stage_candidates_{0};
   std::uint64_t stage_enemy_candidates_{0};
@@ -237,6 +271,6 @@ private:
   std::ofstream target_frame_index_stream_;
 };
 
-}  // namespace yolo_cpp
+} // namespace yolo_cpp
 
 #endif

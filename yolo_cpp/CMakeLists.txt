@@ -186,6 +186,7 @@ set(YOLO_CPP_COMPONENT_SOURCES
   src/detector_backend.cpp
   src/deepstream_runtime_helpers.cpp
   src/deepstream_runtime.cpp
+  src/mjpeg_preview_server.cpp
   src/vision_node_helpers.cpp
   src/gst_cuda_bayer_resize.cpp
   src/armor_detector_node.cpp

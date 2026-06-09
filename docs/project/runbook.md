@@ -13,6 +13,7 @@
 ## Quick Navigation
 
 - [Infrastructure](infrastructure.md)
+- [Jetson Orin Nano Reflash](jetson-reflash.md)
 - [Jetson VNC Access](jetson-vnc.md)
 - [Setup Guide](../Setup/Setup.md)
 - [Software Install Guide](../Install_Software/Install_Software.md)

@@ -6,6 +6,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import EnvironmentVariable, LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def launch_config(name: str) -> LaunchConfiguration:
@@ -54,6 +55,23 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Enemy armor color used until robot_id feedback overrides it: blue or red",
         ),
         ("show", "false", "OpenCV debug window"),
+        (
+            "preview_max_fps",
+            "60.0",
+            "Maximum preview render FPS when show is enabled",
+        ),
+        (
+            "preview_http_enabled",
+            "true",
+            "Serve the same preview frame over HTTP when show is enabled",
+        ),
+        (
+            "preview_http_bind_address",
+            "0.0.0.0",
+            "Preview HTTP bind address; 0.0.0.0 allows other devices on the robot LAN",
+        ),
+        ("preview_http_port", "8080", "Preview HTTP port"),
+        ("preview_http_jpeg_quality", "80", "Preview HTTP JPEG quality 1-100"),
         (
             "debug_publish_image_raw",
             "false",
@@ -178,6 +196,14 @@ def make_detector_node() -> Node:
                 "enable_color_verification": launch_config("enable_color_verification"),
                 "target_color": launch_config("target_color"),
                 "show": launch_config("show"),
+                "preview_max_fps": ParameterValue(
+                    launch_config("preview_max_fps"),
+                    value_type=float,
+                ),
+                "preview_http_enabled": launch_config("preview_http_enabled"),
+                "preview_http_bind_address": launch_config("preview_http_bind_address"),
+                "preview_http_port": launch_config("preview_http_port"),
+                "preview_http_jpeg_quality": launch_config("preview_http_jpeg_quality"),
                 "debug_publish_image_raw": launch_config("debug_publish_image_raw"),
                 "save_target_frames": launch_config("save_target_frames"),
                 "target_frame_save_dir": launch_config("target_frame_save_dir"),

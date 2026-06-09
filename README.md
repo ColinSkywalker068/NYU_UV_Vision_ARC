@@ -4,9 +4,13 @@
 
 NYU Robomaster ROS 2 C++ auto-aim vision pipeline for camera capture, YOLO/TensorRT/DeepStream armor detection, temporal tracking, 3D target processing, ballistic aim solving, and STM32 serial output.
 
+## For Readers
+
+Several repository docs start with machine-readable metadata and navigation tables because agents use them to route work safely. If you are reading manually, use each doc's `Quick Navigation` table and skip past `SCOPE`, `DOC_KIND`, `Agent Entry`, and maintenance blocks. The fastest human paths are [Quick Start](#quick-start), [Project runbook](docs/project/runbook.md), [Jetson reflash guide](docs/project/jetson-reflash.md), and [Launch and config](yolo_cpp/docs/launch-and-config.md).
+
 ## Active Runtime
 
-The 2026 runtime is centered on:
+The runtime is centered on:
 
 - `yolo_cpp/`: C++ ROS 2 nodes, launch files, DeepStream config, tests, package docs, and active model assets.
 - `cv_auto_aim_interfaces/`: custom ROS 2 messages shared by detector, tracker, processor, solver, and STM bridge.

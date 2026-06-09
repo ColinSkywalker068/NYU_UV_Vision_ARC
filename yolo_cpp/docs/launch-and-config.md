@@ -43,7 +43,8 @@ The launch files expose the settings that matter most during bring-up:
 - default enemy color through `target_color` until STM or robot-id feedback overrides it
 - color filtering through `use_model_color_classes` and `enable_color_verification`; defaults trust model class colors and keep HSV disabled
 - target-frame capture through `save_target_frames`, `target_frame_save_max`, and `target_frame_jpeg_quality`; saved JPEGs and a CSV index go under `pictures/` next to `vision_logs/` by default
-- OpenCV preview through `show` and `preview_max_fps`; plain preview uses the downscaled DeepStream frame so it can stay on the CUDA Bayer path
+- preview through `show` and `preview_max_fps`; when `show:=true`, the detector renders the annotated preview frame for the local OpenCV window and serves the same frame through HTTP by default
+- browser preview through `preview_http_enabled`, `preview_http_bind_address`, `preview_http_port`, and `preview_http_jpeg_quality`; open `http://<robot-host>:8080/`, `/stream.mjpg`, `/snapshot.jpg`, or `/stats.json` from any same-network laptop without ROS
 - tracker tuning such as `track_min_hits`, `track_max_coast_frames`, and `track_drop_frames`; defaults favor fast armor-plate switching during spin
 - 3D pose through `enable_3d_pose`, `camera_info_topic`, `camera_frame_id`, and optional static `camera_fx/fy/cx/cy`
 - tracker 3D gating through `association_max_3d_distance_m`
@@ -70,6 +71,31 @@ Useful source-format choices:
 - `mono8`: raw grayscale path for camera-only throughput tests when color is not needed.
 
 For a camera-only throughput probe on the robot, launch with `basler_uncapped_fps:=true` and compare the startup log lines for requested caps, negotiated caps, pixel format, and `BslResultingAcquisitionFrameRate`.
+
+## Browser Preview
+
+Set `show:=true` to render the annotated detector preview. The same preview frame is exposed over HTTP when `preview_http_enabled:=true`:
+
+```bash
+uv run yolo_cpp basler.launch.py show:=true
+```
+
+Open the preview from a same-network laptop:
+
+```text
+http://rm-standard.local:8080/
+```
+
+The preview server exposes:
+
+- `/`: browser page with the MJPEG stream and detector statistics
+- `/stream.mjpg`: raw MJPEG stream for tools or dashboards
+- `/snapshot.jpg`: latest rendered preview frame
+- `/stats.json`: latest FPS, backend, camera, candidate count, target state, and detector latency
+
+Use `preview_http_port:=<port>` if another service already owns `8080`. Keep `preview_http_bind_address:=0.0.0.0` for robot-LAN viewing; use `127.0.0.1` only for local-only testing.
+
+The HTTP preview is fed before the local `cv::imshow` call. On a headless Jetson, the OpenCV window may disable itself after a display error while the browser stream continues serving frames.
 
 ## Which Launch Should I Use?
 

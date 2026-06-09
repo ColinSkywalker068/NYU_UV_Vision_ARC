@@ -88,7 +88,7 @@ hostname -I
 
 ```bash
 sudo apt update
-sudo apt install -y openssh-server avahi-daemon x11vnc
+sudo apt install -y openssh-server avahi-daemon x11vnc x11-xserver-utils
 sudo systemctl enable --now ssh avahi-daemon
 ```
 
@@ -240,7 +240,7 @@ For purely headless administration, SSH is usually better than VNC. For visual c
 
 ## 8. Persistent Headless Display
 
-When DisplayPort or HDMI is unplugged, Jetson Xorg can lose the monitor EDID, fall back to a tiny or stale display, show only the NVIDIA logo, or move the active display/auth path. The most reliable fix is a dummy HDMI or DisplayPort plug left in the robot.
+When DisplayPort or HDMI is unplugged, Jetson Xorg can lose the monitor EDID, fall back to a tiny or stale display, show only the NVIDIA logo, or move the active display/auth path. The most reliable fix is a dummy HDMI or DisplayPort EDID emulator plug left in the robot. A passive adapter is not enough unless it presents monitor EDID to the Jetson, and some DisplayPort dummy plugs do not work on Jetson DP outputs. Verify the plug with `xrandr`; it must show the output as `connected` with usable modes.
 
 For a software-only fallback, force the NVIDIA X driver to create a display even when no monitor is attached. Keep SSH open while testing so the config can be reverted if Xorg fails to start.
 
@@ -315,6 +315,7 @@ VNC is for operator access only. It does not replace the competition service or 
 | Start or restart the robot vision stack | [runbook.md](runbook.md) and `./services/stm-stack.sh restart` |
 | Inspect service logs | `./services/stm-stack.sh logs` |
 | Validate ROS nodes and topics | `./services/stm-stack.sh health` |
+| View detector camera frames from a laptop | Prefer the browser preview in [`yolo_cpp/docs/launch-and-config.md`](../../yolo_cpp/docs/launch-and-config.md#browser-preview): launch with `show:=true` and open `http://rm-standard.local:8080/` from any same-network device. |
 | Run OpenCV preview windows | VNC can display the host desktop when `CV_STM_SHOW=true`, but match runs should usually keep preview off. |
 
 The Docker paths use host networking. Avoid assigning VNC-related port changes inside containers unless a future service explicitly owns that behavior.
@@ -329,7 +330,8 @@ The Docker paths use host networking. Avoid assigning VNC-related port changes i
 | Client cannot connect | `ss -ltnp | grep 5900` on the Jetson | Start `x11vnc@$USER.service`, verify the Jetson IP, or use SSH tunnel mode. |
 | Service is active but `ss -ltnp | grep 5900` is empty | `journalctl -u x11vnc@$USER.service -n 80 --no-pager` | Remove invalid options such as `-localhost no`, then verify the active display and auth file. |
 | Connection times out on Wi-Fi | Ping and SSH also fail | The network may block peer devices; use a robot router, hotspot, or Ethernet. |
-| VNC freezes, shows only the NVIDIA logo, or stops refreshing after unplugging monitor | Xorg has no valid headless display/EDID | Use a dummy plug, or configure a persistent headless NVIDIA display in section 8. |
+| VNC freezes, shows only the NVIDIA logo, or stops refreshing after unplugging monitor | Xorg has no valid headless display/EDID | Use a dummy HDMI or DisplayPort EDID emulator plug, not just a passive adapter, or configure a persistent headless NVIDIA display in section 8. |
+| Dummy DisplayPort adapter does not fix headless VNC | `xrandr` still shows no connected output or no useful modes | Use a proven EDID emulator, prefer HDMI dummy plugs when the board supports HDMI, or switch to a virtual remote desktop path such as NoMachine or a TigerVNC virtual session. |
 | macOS Screen Sharing opens a stale target | `nc -vz <jetson-name>.local 5900` succeeds, but Screen Sharing still fails | Quit Screen Sharing, reconnect by exact `.local:5900` or IP target, or use TigerVNC with `host::5900`. |
 | Clipboard paste does not work | VNC connects but clipboard does not sync | Use TurboVNC or TigerVNC instead of macOS Screen Sharing. In Ubuntu Terminal, paste with `Ctrl+Shift+V`; plain `Ctrl+V` is not terminal paste. Do not add `-clipboard` unless `x11vnc -opts` confirms support; on `x11vnc` 0.9.16 it can be an invalid option that prevents port `5900` from opening. |
 | Password fails | `ls -l ~/.vnc/passwd` | Rerun `x11vnc -storepasswd ~/.vnc/passwd` as the desktop user. |
