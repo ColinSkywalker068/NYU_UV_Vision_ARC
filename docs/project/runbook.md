@@ -266,6 +266,7 @@ Show or hide the detector preview window on the next service run:
 ```
 
 These commands persist `CV_STM_SHOW` in `/etc/cv-detection/stm-stack.env` and restart the service. The preview window still needs normal X11 display access from the service container.
+`preview-on` also persists `DISPLAY=${DISPLAY:-:0}` and runs `xhost +si:localuser:root` from the operator shell before restarting. If OpenCV still logs `Can't initialize GTK backend`, run the command from the robot's graphical desktop session or use the browser preview at `http://<robot-host>:8080/`.
 
 Follow live logs:
 

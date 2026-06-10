@@ -222,6 +222,20 @@ set_preview() {
   local state_label="$2"
   set_env_value CV_STM_SHOW "$show_value"
   log "Set CV_STM_SHOW=${show_value} in ${ENV_FILE}"
+  if [ "$show_value" = "true" ]; then
+    local display_value="${DISPLAY:-:0}"
+    set_env_value DISPLAY "$display_value"
+    log "Set DISPLAY=${display_value} in ${ENV_FILE}"
+    if command -v xhost >/dev/null 2>&1; then
+      if DISPLAY="$display_value" xhost +si:localuser:root >/dev/null; then
+        log "Allowed local root X11 access for the service container"
+      else
+        log "Warning: xhost could not allow local root X11 access; the browser preview at http://<robot-host>:8080/ may still work"
+      fi
+    else
+      log "Warning: xhost is not installed; the browser preview at http://<robot-host>:8080/ may still work"
+    fi
+  fi
   log "Restarting ${SERVICE_NAME} so preview ${state_label} takes effect"
   systemctl_action restart
 }
