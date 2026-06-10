@@ -28,7 +28,7 @@ struct Options
   std::string port{"/dev/ttyUSB0"};
   int baudrate{115200};
   float yaw_rad{0.05F};
-  int count{1};
+  int count{20};
   int interval_ms{50};
   int fire_mode{yolo_cpp::DEFAULT_FIRE_MODE};
   int target_state{yolo_cpp::TARGET_STATE_CONVERGING};
@@ -48,7 +48,7 @@ void print_usage(const char * program)
     << "  --port PATH           Serial device path (default: /dev/ttyUSB0)\n"
     << "  --baud RATE           Baud rate (default: 115200)\n"
     << "  --yaw-rad VALUE       Yaw error in radians; positive turns one direction (default: 0.05)\n"
-    << "  --count N             Number of packets to send (default: 1)\n"
+    << "  --count N             Number of packets to send (default: 20)\n"
     << "  --interval-ms N       Delay between packets when count > 1 (default: 50)\n"
     << "  --target-state N      1=converging, 2=ready-to-fire (default: 1)\n"
     << "  --target-type N       Controls target type enum value (default: 0 unknown)\n"

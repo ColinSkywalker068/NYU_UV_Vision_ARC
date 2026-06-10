@@ -353,7 +353,7 @@ run_yaw_smoke() {
 
   local serial_port="${CV_STM_SERIAL_PORT:-/dev/ttyUSB0}"
   local yaw_rad="${CV_STM_YAW_SMOKE_RAD:-0.05}"
-  local count="${CV_STM_YAW_SMOKE_COUNT:-1}"
+  local count="${CV_STM_YAW_SMOKE_COUNT:-20}"
   local interval_ms="${CV_STM_YAW_SMOKE_INTERVAL_MS:-50}"
   local baud="${CV_STM_YAW_SMOKE_BAUD:-115200}"
   local -a docker_args=(

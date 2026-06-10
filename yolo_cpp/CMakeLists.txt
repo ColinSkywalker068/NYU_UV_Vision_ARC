@@ -145,9 +145,10 @@ if(DEEPSTREAM_INCLUDE_DIR AND DEEPSTREAM_META_LIBRARY AND DEEPSTREAM_GST_META_LI
   set(HAVE_DEEPSTREAM TRUE)
 endif()
 
-find_path(PYLON_INCLUDE_DIR pylon/PylonIncludes.h
+find_path(PYLON_INCLUDE_DIR
+  NAMES pylon/PylonIncludes.h PylonIncludes.h
   PATHS ${PYLON_SEARCH_ROOTS}
-  PATH_SUFFIXES include)
+  PATH_SUFFIXES include include/pylon)
 find_library(PYLON_BASE_LIBRARY NAMES pylonbase
   PATHS ${PYLON_SEARCH_ROOTS}
   PATH_SUFFIXES lib lib64)

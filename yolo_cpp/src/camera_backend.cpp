@@ -24,7 +24,13 @@
 #endif
 
 #ifdef HAVE_PYLON
+#if __has_include(<pylon/PylonIncludes.h>)
 #include <pylon/PylonIncludes.h>
+#elif __has_include(<PylonIncludes.h>)
+#include <PylonIncludes.h>
+#else
+#error "HAVE_PYLON is set, but PylonIncludes.h is not reachable from the configured include path"
+#endif
 #endif
 
 namespace yolo_cpp

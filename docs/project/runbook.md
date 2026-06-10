@@ -235,7 +235,7 @@ cv stop
 cv yaw-smoke
 ```
 
-The default is `--port /dev/ttyUSB0 --baud 115200 --yaw-rad 0.05 --count 1`. Override any smoke-tool option after the command, for example:
+The default is `--port /dev/ttyUSB0 --baud 115200 --yaw-rad 0.05 --count 20`. Override any smoke-tool option after the command, for example:
 
 ```bash
 cv yaw-smoke --yaw-rad -0.05 --count 3
