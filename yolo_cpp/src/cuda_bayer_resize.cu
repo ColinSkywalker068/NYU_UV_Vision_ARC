@@ -1,4 +1,5 @@
 #include <cuda_runtime_api.h>
+#include <cuda_fp16.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -16,6 +17,12 @@ enum BayerPattern
   kBggr = 1,
   kGrbg = 2,
   kGbrg = 3,
+};
+
+enum CudaPreprocessOutputType
+{
+  kOutputFloat32 = 0,
+  kOutputFloat16 = 1,
 };
 
 struct CudaBayerResizeContext
@@ -164,6 +171,80 @@ __global__ void bayer_resize_rgba_kernel(const std::uint8_t* input, int input_wi
   pixel[3] = 255U;
 }
 
+template <typename OutputT>
+__device__ void write_normalized(OutputT* output, int offset, float value);
+
+template <>
+__device__ void write_normalized<float>(float* output, int offset, float value)
+{
+  output[offset] = value;
+}
+
+template <>
+__device__ void write_normalized<__half>(__half* output, int offset, float value)
+{
+  output[offset] = __float2half(value);
+}
+
+template <typename OutputT>
+__global__ void bayer_resize_chw_kernel(const std::uint8_t* input, int input_width,
+  int input_height, int input_stride, OutputT* output, int output_width, int output_height,
+  int pattern, int flip_method)
+{
+  const int ox = (blockIdx.x * blockDim.x) + threadIdx.x;
+  const int oy = (blockIdx.y * blockDim.y) + threadIdx.y;
+  if (ox >= output_width || oy >= output_height) {
+    return;
+  }
+
+  const float scale =
+    fminf(static_cast<float>(output_width) / static_cast<float>(input_width),
+      static_cast<float>(output_height) / static_cast<float>(input_height));
+  const int resized_width =
+    max(1, min(output_width, static_cast<int>(static_cast<float>(input_width) * scale)));
+  const int resized_height =
+    max(1, min(output_height, static_cast<int>(static_cast<float>(input_height) * scale)));
+  const int pad_x = (output_width - resized_width) / 2;
+  const int pad_y = (output_height - resized_height) / 2;
+  const int plane = output_width * output_height;
+  const int output_offset = (oy * output_width) + ox;
+
+  if (ox < pad_x || ox >= pad_x + resized_width || oy < pad_y || oy >= pad_y + resized_height) {
+    constexpr float kPadValue = 114.0F / 255.0F;
+    write_normalized(output, output_offset, kPadValue);
+    write_normalized(output, plane + output_offset, kPadValue);
+    write_normalized(output, (2 * plane) + output_offset, kPadValue);
+    return;
+  }
+
+  const int resized_x = ox - pad_x;
+  const int resized_y = oy - pad_y;
+  const int logical_x = flip_method == 2 ? resized_width - 1 - resized_x : resized_x;
+  const int logical_y = flip_method == 2 ? resized_height - 1 - resized_y : resized_y;
+  const float scale_x = static_cast<float>(input_width) / static_cast<float>(resized_width);
+  const float scale_y = static_cast<float>(input_height) / static_cast<float>(resized_height);
+  const int sx = clamp_int(
+    static_cast<int>((static_cast<float>(logical_x) + 0.5F) * scale_x), 0, input_width - 1);
+  const int sy = clamp_int(
+    static_cast<int>((static_cast<float>(logical_y) + 0.5F) * scale_y), 0, input_height - 1);
+
+  const float red = static_cast<float>(
+                      sample_channel(input, input_width, input_height, input_stride, sx, sy,
+                        pattern, 0))
+                    / 255.0F;
+  const float green = static_cast<float>(
+                        sample_channel(input, input_width, input_height, input_stride, sx, sy,
+                          pattern, 1))
+                      / 255.0F;
+  const float blue = static_cast<float>(
+                       sample_channel(input, input_width, input_height, input_stride, sx, sy,
+                         pattern, 2))
+                     / 255.0F;
+  write_normalized(output, output_offset, red);
+  write_normalized(output, plane + output_offset, green);
+  write_normalized(output, (2 * plane) + output_offset, blue);
+}
+
 }  // namespace
 
 extern "C" void* yolo_cuda_bayer_resize_create()
@@ -267,6 +348,75 @@ extern "C" bool yolo_cuda_bayer_resize_rgba(void* raw_context, const std::uint8_
   status = cudaStreamSynchronize(context->stream);
   if (status != cudaSuccess) {
     set_error(error_message, error_message_size, "cudaStreamSynchronize failed", status);
+    return false;
+  }
+  return true;
+}
+
+extern "C" bool yolo_cuda_bayer_resize_chw(void* raw_context, const std::uint8_t* input,
+  int input_width, int input_height, int input_stride, void* device_output, int output_width,
+  int output_height, int bayer_pattern, int flip_method, int output_data_type, char* error_message,
+  std::size_t error_message_size)
+{
+  auto* context = static_cast<CudaBayerResizeContext*>(raw_context);
+  if (context == nullptr || input == nullptr || device_output == nullptr || input_width <= 0
+      || input_height <= 0 || output_width <= 0 || output_height <= 0)
+  {
+    if (error_message != nullptr && error_message_size > 0U) {
+      std::snprintf(error_message, error_message_size, "invalid CUDA Bayer CHW arguments");
+    }
+    return false;
+  }
+  if (input_stride < input_width) {
+    if (error_message != nullptr && error_message_size > 0U) {
+      std::snprintf(error_message, error_message_size,
+        "invalid CUDA Bayer CHW input stride input=%d width=%d", input_stride, input_width);
+    }
+    return false;
+  }
+
+  const std::size_t input_bytes =
+    static_cast<std::size_t>(input_stride) * static_cast<std::size_t>(input_height);
+  if (!ensure_device_buffer(
+        &context->device_input, &context->input_bytes, input_bytes, error_message,
+        error_message_size))
+  {
+    return false;
+  }
+
+  cudaError_t status =
+    context->sync_memcpy
+      ? cudaMemcpy(context->device_input, input, input_bytes, cudaMemcpyHostToDevice)
+      : cudaMemcpyAsync(
+          context->device_input, input, input_bytes, cudaMemcpyHostToDevice, context->stream);
+  if (status != cudaSuccess) {
+    set_error(error_message, error_message_size,
+      context->sync_memcpy ? "cudaMemcpy CHW input failed" : "cudaMemcpyAsync CHW input failed",
+      status);
+    return false;
+  }
+
+  const dim3 block(16, 16);
+  const dim3 grid(static_cast<unsigned int>((output_width + block.x - 1) / block.x),
+    static_cast<unsigned int>((output_height + block.y - 1) / block.y));
+  if (output_data_type == kOutputFloat16) {
+    bayer_resize_chw_kernel<<<grid, block, 0, context->stream>>>(context->device_input,
+      input_width, input_height, input_stride, static_cast<__half*>(device_output), output_width,
+      output_height, bayer_pattern, flip_method);
+  } else {
+    bayer_resize_chw_kernel<<<grid, block, 0, context->stream>>>(context->device_input,
+      input_width, input_height, input_stride, static_cast<float*>(device_output), output_width,
+      output_height, bayer_pattern, flip_method);
+  }
+  status = cudaGetLastError();
+  if (status != cudaSuccess) {
+    set_error(error_message, error_message_size, "Bayer CHW kernel launch failed", status);
+    return false;
+  }
+
+  status = cudaStreamSynchronize(context->stream);
+  if (status != cudaSuccess) {
+    set_error(error_message, error_message_size, "cudaStreamSynchronize CHW failed", status);
     return false;
   }
   return true;

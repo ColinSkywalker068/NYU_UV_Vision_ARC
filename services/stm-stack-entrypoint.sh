@@ -295,6 +295,7 @@ run_launch() {
       append_optional_launch_arg CV_STM_BASLER_PIXEL_FORMAT basler_pixel_format
       append_optional_launch_arg CV_STM_BASLER_SOURCE_WIDTH basler_source_width
       append_optional_launch_arg CV_STM_BASLER_SOURCE_HEIGHT basler_source_height
+      append_optional_launch_arg CV_STM_NATIVE_TENSORRT_CUDA_BAYER_PREPROCESS native_tensorrt_cuda_bayer_preprocess
       append_optional_launch_arg CV_STM_DEEPSTREAM_PRE_MUX_RESIZE pre_mux_resize
       append_optional_launch_arg CV_STM_DEEPSTREAM_PRE_MUX_WIDTH pre_mux_width
       append_optional_launch_arg CV_STM_DEEPSTREAM_PRE_MUX_HEIGHT pre_mux_height

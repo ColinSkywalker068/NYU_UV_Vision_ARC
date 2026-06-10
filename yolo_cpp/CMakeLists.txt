@@ -115,7 +115,7 @@ else()
 endif()
 
 include(CheckLanguage)
-if(HAVE_GSTREAMER AND CUDART_INCLUDE_DIR AND CUDART_LIBRARY)
+if(CUDART_INCLUDE_DIR AND CUDART_LIBRARY)
   check_language(CUDA)
   if(CMAKE_CUDA_COMPILER)
     enable_language(CUDA)

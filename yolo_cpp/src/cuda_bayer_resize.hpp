@@ -15,6 +15,11 @@ bool yolo_cuda_bayer_resize_rgba(void* context, const std::uint8_t* input, int i
   int output_stride, int bayer_pattern, int flip_method, char* error_message,
   std::size_t error_message_size);
 
+bool yolo_cuda_bayer_resize_chw(void* context, const std::uint8_t* input, int input_width,
+  int input_height, int input_stride, void* device_output, int output_width, int output_height,
+  int bayer_pattern, int flip_method, int output_data_type, char* error_message,
+  std::size_t error_message_size);
+
 }  // extern "C"
 
 #endif

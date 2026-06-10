@@ -31,6 +31,7 @@ struct CameraConfig
   bool basler_flip{false};
   bool basler_use_full_sensor{true};
   bool basler_centered_roi{true};
+  bool basler_raw_bayer_capture{false};
   int realsense_width{640};
   int realsense_height{480};
   int realsense_fps{60};

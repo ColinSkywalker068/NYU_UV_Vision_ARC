@@ -18,5 +18,5 @@ output-tensor-meta=1
 
 [class-attrs-all]
 threshold=__CONF_THRESHOLD__
-nms-iou-threshold=0.4
+nms-iou-threshold=0.45
 topk=300

@@ -127,6 +127,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
   this->declare_parameter<bool>("debug_publish_image_raw", false);
   this->declare_parameter<bool>("save_target_frames", false);
   this->declare_parameter<bool>("pre_mux_resize", false);
+  this->declare_parameter<bool>("native_tensorrt_cuda_bayer_preprocess", false);
   this->declare_parameter<int>("pre_mux_width", 0);
   this->declare_parameter<int>("pre_mux_height", 0);
   this->declare_parameter<bool>("deepstream_profile_stages", false);
@@ -196,6 +197,8 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
       this->get_parameter("debug_publish_image_raw").as_bool();
   save_target_frames_ = this->get_parameter("save_target_frames").as_bool();
   pre_mux_resize_ = this->get_parameter("pre_mux_resize").as_bool();
+  native_tensorrt_cuda_bayer_preprocess_ =
+      this->get_parameter("native_tensorrt_cuda_bayer_preprocess").as_bool();
   pre_mux_width_ = this->get_parameter("pre_mux_width").as_int();
   pre_mux_height_ = this->get_parameter("pre_mux_height").as_int();
   deepstream_profile_stages_ =
@@ -314,6 +317,15 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
         this->create_publisher<sensor_msgs::msg::Image>("image_raw", qos);
   }
   initialize_preview_server();
+
+  if (detector_backend_kind_ == "native_tensorrt" &&
+      camera_config_.camera_type == "basler" &&
+      native_tensorrt_cuda_bayer_preprocess_) {
+    camera_config_.basler_raw_bayer_capture = true;
+    RCLCPP_INFO(this->get_logger(),
+                "Native TensorRT CUDA Bayer preprocessing enabled; Basler "
+                "frames will bypass Pylon BGR conversion");
+  }
 
   if (detector_backend_kind_ == "deepstream") {
     try {

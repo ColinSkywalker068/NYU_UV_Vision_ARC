@@ -84,6 +84,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Resize full-FOV Basler frames before nvstreammux pads them to the model input",
         ),
         (
+            "native_tensorrt_cuda_bayer_preprocess",
+            "false",
+            "Use raw Basler Bayer frames and CUDA preprocessing for native TensorRT",
+        ),
+        (
             "pre_mux_width",
             "0",
             "Optional pre-mux resize bounding width; 0 uses the model width",
@@ -316,6 +321,9 @@ def make_detector_node() -> Node:
                 "basler_source_width": launch_config("basler_source_width"),
                 "basler_source_height": launch_config("basler_source_height"),
                 "pre_mux_resize": launch_config("pre_mux_resize"),
+                "native_tensorrt_cuda_bayer_preprocess": launch_config(
+                    "native_tensorrt_cuda_bayer_preprocess"
+                ),
                 "pre_mux_width": launch_config("pre_mux_width"),
                 "pre_mux_height": launch_config("pre_mux_height"),
                 "deepstream_profile_stages": launch_config("deepstream_profile_stages"),

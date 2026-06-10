@@ -1,5 +1,6 @@
 /// @file detector_backend.cpp
-/// @brief Implements native TensorRT detector loading, preprocessing, inference, and fallback.
+/// @brief Implements native TensorRT detector loading, preprocessing,
+/// inference, and fallback.
 
 #include "yolo_cpp/detector_backend.hpp"
 
@@ -26,27 +27,56 @@
 #include <cuda_runtime_api.h>
 #endif
 
-namespace yolo_cpp
-{
+#ifdef HAVE_YOLO_CUDA_BAYER_RESIZE
+#include "cuda_bayer_resize.hpp"
+#endif
 
-namespace
-{
+namespace yolo_cpp {
+
+namespace {
 
 /// Clamp a value into an inclusive range.
-template <typename T>
-T clamp_value(T value, T lo, T hi)
-{
+template <typename T> T clamp_value(T value, T lo, T hi) {
   return std::max(lo, std::min(value, hi));
 }
 
-/// Convert float32 to IEEE 754 half bits for FP16 input buffers.
-std::uint16_t float_to_half_bits(float value)
+enum BayerPattern
 {
+  kBayerRggb = 0,
+  kBayerBggr = 1,
+  kBayerGrbg = 2,
+  kBayerGbrg = 3,
+};
+
+bool is_bayer_format(PixelFormat format)
+{
+  return format == PixelFormat::kBayerRggb8 || format == PixelFormat::kBayerBggr8
+         || format == PixelFormat::kBayerGrbg8 || format == PixelFormat::kBayerGbrg8;
+}
+
+int bayer_pattern_from_pixel_format(PixelFormat format)
+{
+  switch (format) {
+    case PixelFormat::kBayerBggr8:
+      return kBayerBggr;
+    case PixelFormat::kBayerGrbg8:
+      return kBayerGrbg;
+    case PixelFormat::kBayerGbrg8:
+      return kBayerGbrg;
+    case PixelFormat::kBayerRggb8:
+    default:
+      return kBayerRggb;
+  }
+}
+
+/// Convert float32 to IEEE 754 half bits for FP16 input buffers.
+std::uint16_t float_to_half_bits(float value) {
   std::uint32_t bits = 0;
   std::memcpy(&bits, &value, sizeof(bits));
 
   const std::uint32_t sign = (bits >> 16) & 0x8000U;
-  std::int32_t exponent = static_cast<std::int32_t>((bits >> 23) & 0xFFU) - 127 + 15;
+  std::int32_t exponent =
+      static_cast<std::int32_t>((bits >> 23) & 0xFFU) - 127 + 15;
   std::uint32_t mantissa = bits & 0x7FFFFFU;
 
   if (exponent <= 0) {
@@ -54,7 +84,8 @@ std::uint16_t float_to_half_bits(float value)
       return static_cast<std::uint16_t>(sign);
     }
     mantissa |= 0x800000U;
-    const std::uint32_t shifted = mantissa >> static_cast<std::uint32_t>(14 - exponent);
+    const std::uint32_t shifted =
+        mantissa >> static_cast<std::uint32_t>(14 - exponent);
     return static_cast<std::uint16_t>(sign | ((shifted + 1U) >> 1));
   }
 
@@ -63,13 +94,13 @@ std::uint16_t float_to_half_bits(float value)
   }
 
   return static_cast<std::uint16_t>(
-    sign | (static_cast<std::uint32_t>(exponent) << 10) | (mantissa >> 13));
+      sign | (static_cast<std::uint32_t>(exponent) << 10) | (mantissa >> 13));
 }
 
 /// Convert IEEE 754 half bits back to float32.
-float half_bits_to_float(std::uint16_t value)
-{
-  const std::uint32_t sign = (static_cast<std::uint32_t>(value & 0x8000U)) << 16;
+float half_bits_to_float(std::uint16_t value) {
+  const std::uint32_t sign = (static_cast<std::uint32_t>(value & 0x8000U))
+                             << 16;
   const std::uint32_t exponent = (value >> 10) & 0x1FU;
   const std::uint32_t mantissa = value & 0x03FFU;
   std::uint32_t bits = 0;
@@ -85,7 +116,8 @@ float half_bits_to_float(std::uint16_t value)
         --exp;
       }
       mant &= 0x03FFU;
-      bits = sign | (static_cast<std::uint32_t>(exp + 127) << 23) | (mant << 13);
+      bits =
+          sign | (static_cast<std::uint32_t>(exp + 127) << 23) | (mant << 13);
     }
   } else if (exponent == 0x1FU) {
     bits = sign | 0x7F800000U | (mantissa << 13);
@@ -98,58 +130,99 @@ float half_bits_to_float(std::uint16_t value)
   return result;
 }
 
-/// Letterbox, normalize, and pack a BGR frame into a TensorRT input buffer.
-void preprocess_bgr_frame(
-  const FramePacket& packet, float* host_input, int dst_w, int dst_h, LetterboxMetadata& metadata)
-{
-  if (packet.frame.empty() || packet.frame.type() != CV_8UC3) {
-    throw std::runtime_error("Expected non-empty BGR8 frame for TensorRT preprocessing");
-  }
-
-  metadata = make_letterbox_metadata(packet.width(), packet.height(), dst_w, dst_h);
-  const int resized_w = static_cast<int>(packet.width() * metadata.scale);
-  const int resized_h = static_cast<int>(packet.height() * metadata.scale);
-  cv::Mat resized;
-  cv::resize(packet.frame, resized, cv::Size(resized_w, resized_h), 0.0, 0.0, cv::INTER_LINEAR);
-
-  cv::Mat padded(dst_h, dst_w, CV_8UC3, cv::Scalar(114, 114, 114));
-  resized.copyTo(padded(cv::Rect(metadata.pad_x, metadata.pad_y, resized_w, resized_h)));
-
-  cv::Mat rgb;
-  cv::cvtColor(padded, rgb, cv::COLOR_BGR2RGB);
-
-  cv::Mat rgb_float;
-  rgb.convertTo(rgb_float, CV_32FC3, 1.0 / 255.0);
-
-  std::array<cv::Mat, 3> channels;
-  cv::split(rgb_float, channels.data());
-
-  const int plane = dst_w * dst_h;
+void fill_planes(float *host_input, int plane, float value) {
   for (int c = 0; c < 3; ++c) {
-    std::memcpy(host_input + (c * plane), channels[static_cast<std::size_t>(c)].ptr<float>(),
-      static_cast<std::size_t>(plane) * sizeof(float));
+    std::fill(host_input + (c * plane), host_input + ((c + 1) * plane), value);
   }
 }
 
-#ifdef HAVE_TENSORRT
-/// Deleter for TensorRT objects that are released with delete in this API version.
-template <typename T>
-struct TrtDeleter
-{
-  void operator()(T* ptr) const
-  {
-    delete ptr;
+void fill_planes(std::uint16_t *host_input, int plane, std::uint16_t value) {
+  for (int c = 0; c < 3; ++c) {
+    std::fill(host_input + (c * plane), host_input + ((c + 1) * plane), value);
   }
+}
+
+template <typename OutputT, typename ConvertT>
+void pack_resized_bgr_to_chw_rgb(const cv::Mat &resized, OutputT *host_input,
+                                 int dst_w, const LetterboxMetadata &metadata,
+                                 ConvertT convert) {
+  const int plane = metadata.target_w * metadata.target_h;
+  for (int y = 0; y < resized.rows; ++y) {
+    const auto *row = resized.ptr<cv::Vec3b>(y);
+    const int out_y = metadata.pad_y + y;
+    for (int x = 0; x < resized.cols; ++x) {
+      const int out_x = metadata.pad_x + x;
+      const int offset = (out_y * dst_w) + out_x;
+      const auto &bgr = row[x];
+      host_input[offset] = convert(bgr[2]);
+      host_input[plane + offset] = convert(bgr[1]);
+      host_input[(2 * plane) + offset] = convert(bgr[0]);
+    }
+  }
+}
+
+/// Letterbox, normalize, and pack a BGR frame into a TensorRT FP32 input
+/// buffer.
+void preprocess_bgr_frame_float(const FramePacket &packet, float *host_input,
+                                int dst_w, int dst_h,
+                                LetterboxMetadata &metadata, cv::Mat &resized) {
+  if (packet.frame.empty() || packet.frame.type() != CV_8UC3) {
+    throw std::runtime_error(
+        "Expected non-empty BGR8 frame for TensorRT preprocessing");
+  }
+
+  metadata =
+      make_letterbox_metadata(packet.width(), packet.height(), dst_w, dst_h);
+  const int resized_w = static_cast<int>(packet.width() * metadata.scale);
+  const int resized_h = static_cast<int>(packet.height() * metadata.scale);
+  cv::resize(packet.frame, resized, cv::Size(resized_w, resized_h), 0.0, 0.0,
+             cv::INTER_LINEAR);
+
+  const int plane = dst_w * dst_h;
+  fill_planes(host_input, plane, 114.0F / 255.0F);
+  pack_resized_bgr_to_chw_rgb(
+      resized, host_input, dst_w, metadata,
+      [](std::uint8_t value) { return static_cast<float>(value) / 255.0F; });
+}
+
+/// Letterbox, normalize, and pack a BGR frame directly into a TensorRT FP16
+/// input buffer.
+void preprocess_bgr_frame_half(const FramePacket &packet,
+                               std::uint16_t *host_input, int dst_w, int dst_h,
+                               LetterboxMetadata &metadata, cv::Mat &resized) {
+  if (packet.frame.empty() || packet.frame.type() != CV_8UC3) {
+    throw std::runtime_error(
+        "Expected non-empty BGR8 frame for TensorRT preprocessing");
+  }
+
+  metadata =
+      make_letterbox_metadata(packet.width(), packet.height(), dst_w, dst_h);
+  const int resized_w = static_cast<int>(packet.width() * metadata.scale);
+  const int resized_h = static_cast<int>(packet.height() * metadata.scale);
+  cv::resize(packet.frame, resized, cv::Size(resized_w, resized_h), 0.0, 0.0,
+             cv::INTER_LINEAR);
+
+  const int plane = dst_w * dst_h;
+  fill_planes(host_input, plane, float_to_half_bits(114.0F / 255.0F));
+  pack_resized_bgr_to_chw_rgb(
+      resized, host_input, dst_w, metadata, [](std::uint8_t value) {
+        return float_to_half_bits(static_cast<float>(value) / 255.0F);
+      });
+}
+
+#ifdef HAVE_TENSORRT
+/// Deleter for TensorRT objects that are released with delete in this API
+/// version.
+template <typename T> struct TrtDeleter {
+  void operator()(T *ptr) const { delete ptr; }
 };
 
 /// Bridges TensorRT logger callbacks into ROS logging.
-class TrtLogger : public nvinfer1::ILogger
-{
+class TrtLogger : public nvinfer1::ILogger {
 public:
   explicit TrtLogger(rclcpp::Logger logger) : logger_(logger) {}
 
-  void log(Severity severity, const char* msg) noexcept override
-  {
+  void log(Severity severity, const char *msg) noexcept override {
     if (severity == Severity::kERROR || severity == Severity::kINTERNAL_ERROR) {
       RCLCPP_ERROR(logger_, "TensorRT: %s", msg);
     } else if (severity == Severity::kWARNING) {
@@ -162,27 +235,31 @@ private:
 };
 
 /// Throw a runtime_error when a CUDA API call fails.
-void throw_if_cuda_failed(cudaError_t status, const char* what)
-{
+void throw_if_cuda_failed(cudaError_t status, const char *what) {
   if (status != cudaSuccess) {
-    throw std::runtime_error(std::string(what) + ": " + cudaGetErrorString(status));
+    throw std::runtime_error(std::string(what) + ": " +
+                             cudaGetErrorString(status));
   }
 }
 #endif
 
-}  // namespace
+} // namespace
 
-/// Optional TensorRT implementation state hidden from builds without TensorRT headers.
-struct NativeTensorRTBackend::Impl
-{
+/// Optional TensorRT implementation state hidden from builds without TensorRT
+/// headers.
+struct NativeTensorRTBackend::Impl {
 #ifdef HAVE_TENSORRT
-  explicit Impl(rclcpp::Logger logger_in) : logger(std::move(logger_in)), trt_logger(logger) {}
+  explicit Impl(rclcpp::Logger logger_in)
+      : logger(std::move(logger_in)), trt_logger(logger) {}
 
   rclcpp::Logger logger;
   TrtLogger trt_logger;
   std::unique_ptr<nvinfer1::IRuntime, TrtDeleter<nvinfer1::IRuntime>> runtime;
-  std::unique_ptr<nvinfer1::ICudaEngine, TrtDeleter<nvinfer1::ICudaEngine>> engine;
-  std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter<nvinfer1::IExecutionContext>> context;
+  std::unique_ptr<nvinfer1::ICudaEngine, TrtDeleter<nvinfer1::ICudaEngine>>
+      engine;
+  std::unique_ptr<nvinfer1::IExecutionContext,
+                  TrtDeleter<nvinfer1::IExecutionContext>>
+      context;
   cudaStream_t stream{};
   std::string input_name;
   std::string output_name;
@@ -192,15 +269,18 @@ struct NativeTensorRTBackend::Impl
   std::vector<int64_t> output_shape;
   std::vector<int64_t> runtime_input_shape;
   std::vector<int64_t> runtime_output_shape;
-  float* host_input{nullptr};
-  float* host_output{nullptr};
-  std::uint16_t* host_input_half{nullptr};
-  std::uint16_t* host_output_half{nullptr};
+  float *host_input{nullptr};
+  float *host_output{nullptr};
+  std::uint16_t *host_input_half{nullptr};
+  std::uint16_t *host_output_half{nullptr};
   std::vector<float> parsed_output;
+  std::vector<void *> bindings;
+  cv::Mat resized_input;
+  void* cuda_bayer_context{nullptr};
   std::size_t input_volume{0};
   std::size_t output_volume{0};
-  void* device_input{nullptr};
-  void* device_output{nullptr};
+  void *device_input{nullptr};
+  void *device_output{nullptr};
   nvinfer1::DataType input_dtype{nvinfer1::DataType::kFLOAT};
   nvinfer1::DataType output_dtype{nvinfer1::DataType::kFLOAT};
   int img_w{640};
@@ -210,8 +290,7 @@ struct NativeTensorRTBackend::Impl
   bool end2end{false};
   std::optional<bool> export_includes_nms;
 
-  ~Impl()
-  {
+  ~Impl() {
     if (device_input != nullptr) {
       cudaFree(device_input);
     }
@@ -233,17 +312,20 @@ struct NativeTensorRTBackend::Impl
     if (stream != nullptr) {
       cudaStreamDestroy(stream);
     }
+#ifdef HAVE_YOLO_CUDA_BAYER_RESIZE
+    if (cuda_bayer_context != nullptr) {
+      yolo_cuda_bayer_resize_destroy(cuda_bayer_context);
+    }
+#endif
   }
 #endif
 };
 
-namespace
-{
+namespace {
 
 #ifdef HAVE_TENSORRT
 /// Convert TensorRT dimensions into a standard vector.
-std::vector<int64_t> dims_to_vector(const nvinfer1::Dims& dims)
-{
+std::vector<int64_t> dims_to_vector(const nvinfer1::Dims &dims) {
   std::vector<int64_t> result;
   result.reserve(dims.nbDims);
   for (int i = 0; i < dims.nbDims; ++i) {
@@ -253,8 +335,7 @@ std::vector<int64_t> dims_to_vector(const nvinfer1::Dims& dims)
 }
 
 /// Return the element volume for a fully specified tensor shape.
-int64_t volume_of(const std::vector<int64_t>& shape)
-{
+int64_t volume_of(const std::vector<int64_t> &shape) {
   int64_t volume = 1;
   for (const auto dim : shape) {
     if (dim <= 0) {
@@ -265,9 +346,10 @@ int64_t volume_of(const std::vector<int64_t>& shape)
   return volume;
 }
 
-/// Resolve dynamic batch/spatial dimensions for this package's fixed-size inference path.
-std::vector<int64_t> resolve_runtime_shape(const std::vector<int64_t>& shape, int img_h, int img_w)
-{
+/// Resolve dynamic batch/spatial dimensions for this package's fixed-size
+/// inference path.
+std::vector<int64_t> resolve_runtime_shape(const std::vector<int64_t> &shape,
+                                           int img_h, int img_w) {
   auto resolved = shape;
   if (resolved.size() >= 4) {
     if (resolved[0] < 0) {
@@ -284,23 +366,21 @@ std::vector<int64_t> resolve_runtime_shape(const std::vector<int64_t>& shape, in
 }
 #endif
 
-}  // namespace
+} // namespace
 
-NativeTensorRTBackend::NativeTensorRTBackend(
-  std::string model_path, std::string task, std::string model_type, bool half, float conf_threshold)
-    : model_path_(std::move(model_path)),
-      task_(std::move(task)),
-      model_type_(std::move(model_type)),
-      half_(half),
-      conf_threshold_(conf_threshold)
-{
-}
+NativeTensorRTBackend::NativeTensorRTBackend(std::string model_path,
+                                             std::string task,
+                                             std::string model_type, bool half,
+                                             float conf_threshold)
+    : model_path_(std::move(model_path)), task_(std::move(task)),
+      model_type_(std::move(model_type)), half_(half),
+      conf_threshold_(conf_threshold) {}
 
 NativeTensorRTBackend::~NativeTensorRTBackend() = default;
 
-void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger& logger)
-{
-  // Metadata is read first so class count, task, and NMS behavior are known before allocation.
+void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger &logger) {
+  // Metadata is read first so class count, task, and NMS behavior are known
+  // before allocation.
   if (initialized_) {
     return;
   }
@@ -319,7 +399,7 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger& logger)
     if (class_names_.empty()) {
       class_names_.emplace(0, "plate");
     }
-  } catch (const std::exception& exc) {
+  } catch (const std::exception &exc) {
     RCLCPP_WARN(logger, "Failed reading engine metadata: %s", exc.what());
   }
 
@@ -335,8 +415,8 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger& logger)
   if (!impl_->runtime) {
     throw std::runtime_error("Failed to create TensorRT runtime");
   }
-  impl_->engine.reset(
-    impl_->runtime->deserializeCudaEngine(engine_bytes.data(), engine_bytes.size()));
+  impl_->engine.reset(impl_->runtime->deserializeCudaEngine(
+      engine_bytes.data(), engine_bytes.size()));
   if (!impl_->engine) {
     throw std::runtime_error("Failed to deserialize TensorRT engine");
   }
@@ -344,11 +424,12 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger& logger)
   if (!impl_->context) {
     throw std::runtime_error("Failed to create TensorRT execution context");
   }
-  throw_if_cuda_failed(cudaStreamCreate(&impl_->stream), "cudaStreamCreate failed");
+  throw_if_cuda_failed(cudaStreamCreate(&impl_->stream),
+                       "cudaStreamCreate failed");
 
   const int nb = impl_->engine->getNbBindings();
   for (int i = 0; i < nb; ++i) {
-    const char* name = impl_->engine->getBindingName(i);
+    const char *name = impl_->engine->getBindingName(i);
     const auto dims = dims_to_vector(impl_->engine->getBindingDimensions(i));
     if (impl_->engine->bindingIsInput(i)) {
       impl_->input_index = i;
@@ -376,7 +457,7 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger& logger)
   }
 
   impl_->runtime_input_shape =
-    resolve_runtime_shape(impl_->input_shape, impl_->img_h, impl_->img_w);
+      resolve_runtime_shape(impl_->input_shape, impl_->img_h, impl_->img_w);
   if (volume_of(impl_->runtime_input_shape) <= 0) {
     throw std::runtime_error("Unable to resolve TensorRT input dimensions");
   }
@@ -384,111 +465,139 @@ void NativeTensorRTBackend::ensure_initialized(const rclcpp::Logger& logger)
   nvinfer1::Dims input_dims{};
   input_dims.nbDims = static_cast<int>(impl_->runtime_input_shape.size());
   for (int i = 0; i < input_dims.nbDims; ++i) {
-    input_dims.d[i] = static_cast<int>(impl_->runtime_input_shape[static_cast<std::size_t>(i)]);
+    input_dims.d[i] = static_cast<int>(
+        impl_->runtime_input_shape[static_cast<std::size_t>(i)]);
   }
   if (!impl_->context->setBindingDimensions(impl_->input_index, input_dims)) {
     throw std::runtime_error("Failed to set TensorRT binding dimensions");
   }
 
   impl_->runtime_output_shape =
-    dims_to_vector(impl_->context->getBindingDimensions(impl_->output_index));
+      dims_to_vector(impl_->context->getBindingDimensions(impl_->output_index));
   if (volume_of(impl_->runtime_output_shape) <= 0) {
     throw std::runtime_error("Unable to resolve TensorRT output dimensions");
   }
 
-  if (impl_->input_dtype != nvinfer1::DataType::kFLOAT
-      && impl_->input_dtype != nvinfer1::DataType::kHALF)
-  {
-    throw std::runtime_error("TensorRT engine uses unsupported input I/O datatype. "
-                             "Ultralytics INT8 exports are supported when bindings stay FP32/FP16, "
-                             "but true INT8 input bindings are not yet handled by this runtime.");
+  if (impl_->input_dtype != nvinfer1::DataType::kFLOAT &&
+      impl_->input_dtype != nvinfer1::DataType::kHALF) {
+    throw std::runtime_error(
+        "TensorRT engine uses unsupported input I/O datatype. "
+        "Ultralytics INT8 exports are supported when bindings stay FP32/FP16, "
+        "but true INT8 input bindings are not yet handled by this runtime.");
   }
-  if (impl_->output_dtype != nvinfer1::DataType::kFLOAT
-      && impl_->output_dtype != nvinfer1::DataType::kHALF)
-  {
-    throw std::runtime_error("TensorRT engine uses unsupported output I/O datatype. "
-                             "Ultralytics INT8 exports are supported when bindings stay FP32/FP16, "
-                             "but true INT8 output bindings are not yet handled by this runtime.");
+  if (impl_->output_dtype != nvinfer1::DataType::kFLOAT &&
+      impl_->output_dtype != nvinfer1::DataType::kHALF) {
+    throw std::runtime_error(
+        "TensorRT engine uses unsupported output I/O datatype. "
+        "Ultralytics INT8 exports are supported when bindings stay FP32/FP16, "
+        "but true INT8 output bindings are not yet handled by this runtime.");
   }
 
-  impl_->input_volume = static_cast<std::size_t>(volume_of(impl_->runtime_input_shape));
-  impl_->output_volume = static_cast<std::size_t>(volume_of(impl_->runtime_output_shape));
+  impl_->input_volume =
+      static_cast<std::size_t>(volume_of(impl_->runtime_input_shape));
+  impl_->output_volume =
+      static_cast<std::size_t>(volume_of(impl_->runtime_output_shape));
   impl_->parsed_output.resize(impl_->output_volume);
 
-  throw_if_cuda_failed(cudaHostAlloc(reinterpret_cast<void**>(&impl_->host_input),
-                         impl_->input_volume * sizeof(float), cudaHostAllocPortable),
-    "cudaHostAlloc input buffer failed");
-  throw_if_cuda_failed(cudaHostAlloc(reinterpret_cast<void**>(&impl_->host_output),
-                         impl_->output_volume * sizeof(float), cudaHostAllocPortable),
-    "cudaHostAlloc output buffer failed");
+  if (impl_->input_dtype == nvinfer1::DataType::kFLOAT) {
+    throw_if_cuda_failed(
+        cudaHostAlloc(reinterpret_cast<void **>(&impl_->host_input),
+                      impl_->input_volume * sizeof(float),
+                      cudaHostAllocPortable),
+        "cudaHostAlloc input buffer failed");
+  }
+  throw_if_cuda_failed(
+      cudaHostAlloc(reinterpret_cast<void **>(&impl_->host_output),
+                    impl_->output_volume * sizeof(float),
+                    cudaHostAllocPortable),
+      "cudaHostAlloc output buffer failed");
 
   if (impl_->input_dtype == nvinfer1::DataType::kHALF) {
-    throw_if_cuda_failed(cudaHostAlloc(reinterpret_cast<void**>(&impl_->host_input_half),
-                           impl_->input_volume * sizeof(std::uint16_t), cudaHostAllocPortable),
-      "cudaHostAlloc FP16 input buffer failed");
+    throw_if_cuda_failed(
+        cudaHostAlloc(reinterpret_cast<void **>(&impl_->host_input_half),
+                      impl_->input_volume * sizeof(std::uint16_t),
+                      cudaHostAllocPortable),
+        "cudaHostAlloc FP16 input buffer failed");
   }
   if (impl_->output_dtype == nvinfer1::DataType::kHALF) {
-    throw_if_cuda_failed(cudaHostAlloc(reinterpret_cast<void**>(&impl_->host_output_half),
-                           impl_->output_volume * sizeof(std::uint16_t), cudaHostAllocPortable),
-      "cudaHostAlloc FP16 output buffer failed");
+    throw_if_cuda_failed(
+        cudaHostAlloc(reinterpret_cast<void **>(&impl_->host_output_half),
+                      impl_->output_volume * sizeof(std::uint16_t),
+                      cudaHostAllocPortable),
+        "cudaHostAlloc FP16 output buffer failed");
   }
 
   throw_if_cuda_failed(
-    cudaMalloc(&impl_->device_input,
-      impl_->input_volume
-        * ((impl_->input_dtype == nvinfer1::DataType::kHALF) ? sizeof(std::uint16_t)
-                                                             : sizeof(float))),
-    "cudaMalloc input buffer failed");
+      cudaMalloc(&impl_->device_input,
+                 impl_->input_volume *
+                     ((impl_->input_dtype == nvinfer1::DataType::kHALF)
+                          ? sizeof(std::uint16_t)
+                          : sizeof(float))),
+      "cudaMalloc input buffer failed");
   throw_if_cuda_failed(
-    cudaMalloc(&impl_->device_output,
-      impl_->output_volume
-        * ((impl_->output_dtype == nvinfer1::DataType::kHALF) ? sizeof(std::uint16_t)
-                                                              : sizeof(float))),
-    "cudaMalloc output buffer failed");
+      cudaMalloc(&impl_->device_output,
+                 impl_->output_volume *
+                     ((impl_->output_dtype == nvinfer1::DataType::kHALF)
+                          ? sizeof(std::uint16_t)
+                          : sizeof(float))),
+      "cudaMalloc output buffer failed");
+  impl_->bindings.assign(
+      static_cast<std::size_t>(impl_->engine->getNbBindings()), nullptr);
+  impl_->bindings[static_cast<std::size_t>(impl_->input_index)] =
+      impl_->device_input;
+  impl_->bindings[static_cast<std::size_t>(impl_->output_index)] =
+      impl_->device_output;
 
   backend_name_ = "native_tensorrt";
-  RCLCPP_INFO(logger,
-    "TensorRT engine ready: task=%s version=%s export_int8=%s export_nms=%s "
-    "end2end=%s input_dtype=%d output_dtype=%d",
-    task_.c_str(), engine_version_.empty() ? "unknown" : engine_version_.c_str(),
-    int8_export_ ? "true" : "false",
-    export_includes_nms_.has_value() ? (*export_includes_nms_ ? "true" : "false") : "unknown",
-    end2end_ ? "true" : "false", static_cast<int>(impl_->input_dtype),
-    static_cast<int>(impl_->output_dtype));
+  RCLCPP_INFO(
+      logger,
+      "TensorRT engine ready: task=%s version=%s export_int8=%s export_nms=%s "
+      "end2end=%s input_dtype=%d output_dtype=%d",
+      task_.c_str(),
+      engine_version_.empty() ? "unknown" : engine_version_.c_str(),
+      int8_export_ ? "true" : "false",
+      export_includes_nms_.has_value()
+          ? (*export_includes_nms_ ? "true" : "false")
+          : "unknown",
+      end2end_ ? "true" : "false", static_cast<int>(impl_->input_dtype),
+      static_cast<int>(impl_->output_dtype));
 #else
   (void)warned_unavailable_;
-  throw std::runtime_error(
-    "Native TensorRT backend requested, but this yolo_cpp build did not find TensorRT/CUDA "
-    "headers and libraries. Rebuild after CMake reports 'TensorRT found. Native TensorRT "
-    "backend enabled.'");
+  throw std::runtime_error("Native TensorRT backend requested, but this "
+                           "yolo_cpp build did not find TensorRT/CUDA "
+                           "headers and libraries. Rebuild after CMake reports "
+                           "'TensorRT found. Native TensorRT "
+                           "backend enabled.'");
 #endif
 
   initialized_ = true;
 }
 
-void NativeTensorRTBackend::prepare(const rclcpp::Logger& logger)
-{
+void NativeTensorRTBackend::prepare(const rclcpp::Logger &logger) {
   ensure_initialized(logger);
 }
 
-DetectionBatch NativeTensorRTBackend::infer(
-  const FramePacket& packet, const rclcpp::Logger& logger, DetectorStageTimings* timings)
-{
+DetectionBatch NativeTensorRTBackend::infer(const FramePacket &packet,
+                                            const rclcpp::Logger &logger,
+                                            DetectorStageTimings *timings) {
   ensure_initialized(logger);
 
   DetectionBatch batch{};
+  if (timings != nullptr) {
+    *timings = DetectorStageTimings{};
+  }
   if (packet.empty()) {
     return batch;
   }
 
 #ifndef HAVE_TENSORRT
   if (!warned_unavailable_) {
-    RCLCPP_WARN(
-      logger, "TensorRT inference unavailable in this build; detector returning no detections.");
+    RCLCPP_WARN(logger, "TensorRT inference unavailable in this build; "
+                        "detector returning no detections.");
     warned_unavailable_ = true;
   }
-  batch.letterbox =
-    make_letterbox_metadata(packet.width(), packet.height(), packet.width(), packet.height());
+  batch.letterbox = make_letterbox_metadata(packet.width(), packet.height(),
+                                            packet.width(), packet.height());
   return batch;
 #else
   if (!impl_) {
@@ -496,44 +605,81 @@ DetectionBatch NativeTensorRTBackend::infer(
   }
 
   const auto preprocess_start = std::chrono::steady_clock::now();
-  preprocess_bgr_frame(packet, impl_->host_input, impl_->img_w, impl_->img_h, batch.letterbox);
+  if (is_bayer_format(packet.pixel_format)) {
+    if (packet.frame.empty() || packet.frame.type() != CV_8UC1) {
+      throw std::runtime_error("Expected non-empty Bayer8 frame for TensorRT CUDA preprocessing");
+    }
+    batch.letterbox = make_letterbox_metadata(packet.width(), packet.height(), impl_->img_w,
+      impl_->img_h);
+#ifdef HAVE_YOLO_CUDA_BAYER_RESIZE
+    if (impl_->cuda_bayer_context == nullptr) {
+      impl_->cuda_bayer_context = yolo_cuda_bayer_resize_create();
+      if (impl_->cuda_bayer_context == nullptr) {
+        throw std::runtime_error("Failed to create native TensorRT CUDA Bayer preprocess context");
+      }
+    }
+    std::array<char, 256> error_message{};
+    const int output_data_type =
+      impl_->input_dtype == nvinfer1::DataType::kHALF ? 1 : 0;
+    const bool ok = yolo_cuda_bayer_resize_chw(impl_->cuda_bayer_context, packet.frame.ptr(),
+      packet.width(), packet.height(), static_cast<int>(packet.frame.step[0]), impl_->device_input,
+      impl_->img_w, impl_->img_h, bayer_pattern_from_pixel_format(packet.pixel_format),
+      packet.flip_180 ? 2 : 0, output_data_type, error_message.data(), error_message.size());
+    if (!ok) {
+      throw std::runtime_error(
+        std::string("Native TensorRT CUDA Bayer preprocessing failed: ") + error_message.data());
+    }
+#else
+    throw std::runtime_error(
+      "Native TensorRT received raw Bayer input, but this build does not include "
+      "HAVE_YOLO_CUDA_BAYER_RESIZE");
+#endif
+  } else {
+    const void* input_ptr = impl_->host_input;
+    std::size_t input_bytes = impl_->input_volume * sizeof(float);
+    if (impl_->input_dtype == nvinfer1::DataType::kHALF) {
+      preprocess_bgr_frame_half(packet, impl_->host_input_half, impl_->img_w,
+                                impl_->img_h, batch.letterbox,
+                                impl_->resized_input);
+      input_ptr = impl_->host_input_half;
+      input_bytes = impl_->input_volume * sizeof(std::uint16_t);
+    } else {
+      preprocess_bgr_frame_float(packet, impl_->host_input, impl_->img_w,
+                                 impl_->img_h, batch.letterbox,
+                                 impl_->resized_input);
+    }
+    const auto upload_start = std::chrono::steady_clock::now();
+    throw_if_cuda_failed(cudaMemcpyAsync(impl_->device_input, input_ptr,
+                           input_bytes, cudaMemcpyHostToDevice, impl_->stream),
+      "TensorRT input upload failed");
+    const auto upload_done = std::chrono::steady_clock::now();
+    if (timings != nullptr) {
+      timings->upload_ms =
+        std::chrono::duration<double, std::milli>(upload_done - upload_start).count();
+    }
+  }
   const auto preprocess_done = std::chrono::steady_clock::now();
 
-  const void* input_ptr = impl_->host_input;
-  std::size_t input_bytes = impl_->input_volume * sizeof(float);
-  if (impl_->input_dtype == nvinfer1::DataType::kHALF) {
-    for (std::size_t i = 0; i < impl_->input_volume; ++i) {
-      impl_->host_input_half[i] = float_to_half_bits(impl_->host_input[i]);
-    }
-    input_ptr = impl_->host_input_half;
-    input_bytes = impl_->input_volume * sizeof(std::uint16_t);
-  }
-  const auto upload_start = std::chrono::steady_clock::now();
-  throw_if_cuda_failed(cudaMemcpyAsync(impl_->device_input, input_ptr, input_bytes,
-                         cudaMemcpyHostToDevice, impl_->stream),
-    "TensorRT input upload failed");
-  const auto upload_done = std::chrono::steady_clock::now();
-
-  std::vector<void*> bindings(static_cast<std::size_t>(impl_->engine->getNbBindings()), nullptr);
-  bindings[static_cast<std::size_t>(impl_->input_index)] = impl_->device_input;
-  bindings[static_cast<std::size_t>(impl_->output_index)] = impl_->device_output;
   const auto inference_start = std::chrono::steady_clock::now();
-  if (!impl_->context->enqueueV2(bindings.data(), impl_->stream, nullptr)) {
+  if (!impl_->context->enqueueV2(impl_->bindings.data(), impl_->stream,
+                                 nullptr)) {
     throw std::runtime_error("TensorRT enqueue failed");
   }
   const auto inference_done = std::chrono::steady_clock::now();
 
-  void* output_ptr = impl_->host_output;
+  void *output_ptr = impl_->host_output;
   std::size_t output_bytes = impl_->output_volume * sizeof(float);
   if (impl_->output_dtype == nvinfer1::DataType::kHALF) {
     output_ptr = impl_->host_output_half;
     output_bytes = impl_->output_volume * sizeof(std::uint16_t);
   }
   const auto download_start = std::chrono::steady_clock::now();
-  throw_if_cuda_failed(cudaMemcpyAsync(output_ptr, impl_->device_output, output_bytes,
-                         cudaMemcpyDeviceToHost, impl_->stream),
-    "TensorRT output download failed");
-  throw_if_cuda_failed(cudaStreamSynchronize(impl_->stream), "TensorRT stream sync failed");
+  throw_if_cuda_failed(cudaMemcpyAsync(output_ptr, impl_->device_output,
+                                       output_bytes, cudaMemcpyDeviceToHost,
+                                       impl_->stream),
+                       "TensorRT output download failed");
+  throw_if_cuda_failed(cudaStreamSynchronize(impl_->stream),
+                       "TensorRT stream sync failed");
   const auto download_done = std::chrono::steady_clock::now();
 
   if (impl_->output_dtype == nvinfer1::DataType::kHALF) {
@@ -541,73 +687,76 @@ DetectionBatch NativeTensorRTBackend::infer(
       impl_->parsed_output[i] = half_bits_to_float(impl_->host_output_half[i]);
     }
   } else {
-    std::memcpy(
-      impl_->parsed_output.data(), impl_->host_output, impl_->output_volume * sizeof(float));
+    std::memcpy(impl_->parsed_output.data(), impl_->host_output,
+                impl_->output_volume * sizeof(float));
   }
 
   const auto parse_start = std::chrono::steady_clock::now();
-  batch.detections = parse_yolo_output_tensor(impl_->parsed_output.data(),
-    impl_->runtime_output_shape, impl_->img_w, impl_->img_h, impl_->nc, conf_threshold_,
-    impl_->task_obb, impl_->end2end, impl_->export_includes_nms, &logger);
+  batch.detections = parse_yolo_output_tensor(
+      impl_->parsed_output.data(), impl_->runtime_output_shape, impl_->img_w,
+      impl_->img_h, impl_->nc, conf_threshold_, impl_->task_obb, impl_->end2end,
+      impl_->export_includes_nms, &logger);
   const auto parse_done = std::chrono::steady_clock::now();
 
   if (timings != nullptr) {
-    timings->preprocess_ms =
-      std::chrono::duration<double, std::milli>(preprocess_done - preprocess_start).count();
-    timings->upload_ms =
-      std::chrono::duration<double, std::milli>(upload_done - upload_start).count();
-    timings->inference_ms =
-      std::chrono::duration<double, std::milli>(inference_done - inference_start).count();
-    timings->download_ms =
-      std::chrono::duration<double, std::milli>(download_done - download_start).count();
-    timings->parse_ms = std::chrono::duration<double, std::milli>(parse_done - parse_start).count();
+    timings->preprocess_ms = std::chrono::duration<double, std::milli>(
+                                 preprocess_done - preprocess_start)
+                                 .count();
+    timings->inference_ms = std::chrono::duration<double, std::milli>(
+                                inference_done - inference_start)
+                                .count();
+    timings->download_ms = std::chrono::duration<double, std::milli>(
+                               download_done - download_start)
+                               .count();
+    timings->parse_ms =
+        std::chrono::duration<double, std::milli>(parse_done - parse_start)
+            .count();
   }
 
   return batch;
 #endif
 }
 
-const std::string& NativeTensorRTBackend::backend_name() const
-{
+const std::string &NativeTensorRTBackend::backend_name() const {
   return backend_name_;
 }
 
-DeepStreamBackend::DeepStreamBackend(
-  std::string model_path, std::string task, std::string model_type, bool half, float conf_threshold)
-    : fallback_(std::move(model_path), std::move(task), std::move(model_type), half, conf_threshold)
-{
-}
+DeepStreamBackend::DeepStreamBackend(std::string model_path, std::string task,
+                                     std::string model_type, bool half,
+                                     float conf_threshold)
+    : fallback_(std::move(model_path), std::move(task), std::move(model_type),
+                half, conf_threshold) {}
 
-DetectionBatch DeepStreamBackend::infer(
-  const FramePacket& packet, const rclcpp::Logger& logger, DetectorStageTimings* timings)
-{
+DetectionBatch DeepStreamBackend::infer(const FramePacket &packet,
+                                        const rclcpp::Logger &logger,
+                                        DetectorStageTimings *timings) {
   if (!warned_) {
-    RCLCPP_WARN(logger,
-      "DeepStream backend is not implemented yet in yolo_cpp; falling back to native TensorRT.");
+    RCLCPP_WARN(logger, "DeepStream backend is not implemented yet in "
+                        "yolo_cpp; falling back to native TensorRT.");
     warned_ = true;
   }
   return fallback_.infer(packet, logger, timings);
 }
 
-void DeepStreamBackend::prepare(const rclcpp::Logger& logger)
-{
+void DeepStreamBackend::prepare(const rclcpp::Logger &logger) {
   fallback_.prepare(logger);
 }
 
-const std::string& DeepStreamBackend::backend_name() const
-{
+const std::string &DeepStreamBackend::backend_name() const {
   return backend_name_;
 }
 
-std::unique_ptr<DetectorBackend> create_detector_backend(const std::string& backend_kind,
-  const std::string& model_path, const std::string& task, const std::string& model_type, bool half,
-  float conf_threshold)
-{
+std::unique_ptr<DetectorBackend>
+create_detector_backend(const std::string &backend_kind,
+                        const std::string &model_path, const std::string &task,
+                        const std::string &model_type, bool half,
+                        float conf_threshold) {
   if (backend_kind == "deepstream") {
-    return std::make_unique<DeepStreamBackend>(model_path, task, model_type, half, conf_threshold);
+    return std::make_unique<DeepStreamBackend>(model_path, task, model_type,
+                                               half, conf_threshold);
   }
-  return std::make_unique<NativeTensorRTBackend>(
-    model_path, task, model_type, half, conf_threshold);
+  return std::make_unique<NativeTensorRTBackend>(model_path, task, model_type,
+                                                 half, conf_threshold);
 }
 
-}  // namespace yolo_cpp
+} // namespace yolo_cpp

@@ -319,6 +319,29 @@ std::string genicam_pixel_format_for_config(const std::string& value)
   return value;
 }
 
+PixelFormat pixel_format_for_basler_config(const std::string& value)
+{
+  const auto normalized = normalize_basler_pixel_format(value);
+  if (normalized == "bayerrggb8" || normalized == "rggb" || normalized == "bayerrg8") {
+    return PixelFormat::kBayerRggb8;
+  }
+  if (normalized == "bayerbggr8" || normalized == "bggr" || normalized == "bayerbg8") {
+    return PixelFormat::kBayerBggr8;
+  }
+  if (normalized == "bayergrbg8" || normalized == "grbg" || normalized == "bayergr8") {
+    return PixelFormat::kBayerGrbg8;
+  }
+  if (normalized == "bayergbrg8" || normalized == "gbrg" || normalized == "bayergb8") {
+    return PixelFormat::kBayerGbrg8;
+  }
+  return PixelFormat::kUnknown;
+}
+
+bool is_basler_raw_bayer_config(const std::string& value)
+{
+  return pixel_format_for_basler_config(value) != PixelFormat::kUnknown;
+}
+
 /// Basler Pylon backend that owns SDK initialization and BGR conversion.
 class BaslerBackend final : public CameraBackend
 {
@@ -343,8 +366,10 @@ public:
       configure_camera();
       actual_fps_ =
         read_resulting_fps(camera_.GetNodeMap()).value_or(static_cast<double>(config_.basler_fps));
-      converter_.OutputPixelFormat = Pylon::PixelType_BGR8packed;
-      converter_.OutputBitAlignment = Pylon::OutputBitAlignment_MsbAligned;
+      if (!uses_raw_bayer_capture()) {
+        converter_.OutputPixelFormat = Pylon::PixelType_BGR8packed;
+        converter_.OutputBitAlignment = Pylon::OutputBitAlignment_MsbAligned;
+      }
       start_grabbing_locked();
 #ifdef HAVE_PYLON
     } catch (const Pylon::GenericException& exc) {
@@ -393,6 +418,22 @@ public:
     }
     if (!result || !result->GrabSucceeded()) {
       return false;
+    }
+
+    if (uses_raw_bayer_capture()) {
+      auto owner = std::make_shared<Pylon::CGrabResultPtr>(result);
+      packet.frame = cv::Mat(static_cast<int>(result->GetHeight()),
+        static_cast<int>(result->GetWidth()), CV_8UC1, result->GetBuffer());
+      packet.pixel_format = pixel_format_for_basler_config(config_.basler_pixel_format);
+      packet.storage_kind = BackingStoreKind::kHost;
+      packet.capture_time_ns =
+        static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+            .count());
+      packet.source_id = source_id_;
+      packet.owner = owner;
+      packet.flip_180 = config_.basler_flip;
+      return true;
     }
 
     auto image = std::make_shared<Pylon::CPylonImage>();
@@ -660,6 +701,12 @@ private:
   double actual_fps_{0.0};
   Pylon::CInstantCamera camera_;
   Pylon::CImageFormatConverter converter_;
+
+  bool uses_raw_bayer_capture() const
+  {
+    return config_.basler_raw_bayer_capture
+           && is_basler_raw_bayer_config(config_.basler_pixel_format);
+  }
 };
 #endif
 
@@ -681,6 +728,7 @@ CameraConfig load_camera_config(rclcpp::Node& node)
   node.declare_parameter<bool>("basler_flip", config.basler_flip);
   node.declare_parameter<bool>("basler_use_full_sensor", config.basler_use_full_sensor);
   node.declare_parameter<bool>("basler_centered_roi", config.basler_centered_roi);
+  node.declare_parameter<bool>("basler_raw_bayer_capture", config.basler_raw_bayer_capture);
   node.declare_parameter<int>("realsense_width", config.realsense_width);
   node.declare_parameter<int>("realsense_height", config.realsense_height);
   node.declare_parameter<int>("realsense_fps", config.realsense_fps);
@@ -705,6 +753,7 @@ CameraConfig load_camera_config(rclcpp::Node& node)
   config.basler_flip = node.get_parameter("basler_flip").as_bool();
   config.basler_use_full_sensor = node.get_parameter("basler_use_full_sensor").as_bool();
   config.basler_centered_roi = node.get_parameter("basler_centered_roi").as_bool();
+  config.basler_raw_bayer_capture = node.get_parameter("basler_raw_bayer_capture").as_bool();
   config.realsense_width = node.get_parameter("realsense_width").as_int();
   config.realsense_height = node.get_parameter("realsense_height").as_int();
   config.realsense_fps = node.get_parameter("realsense_fps").as_int();

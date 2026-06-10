@@ -17,6 +17,11 @@ enum class PixelFormat
   kRgb8,
   /// Packed YUYV camera data.
   kYuyv,
+  /// 8-bit raw Bayer mosaic formats.
+  kBayerRggb8,
+  kBayerBggr8,
+  kBayerGrbg8,
+  kBayerGbrg8,
   /// Unknown or backend-specific format.
   kUnknown
 };
@@ -42,6 +47,7 @@ struct FramePacket
   std::int64_t capture_time_ns{0};
   std::string source_id;
   std::shared_ptr<void> owner;
+  bool flip_180{false};
 
   /// Return frame width in pixels.
   int width() const
