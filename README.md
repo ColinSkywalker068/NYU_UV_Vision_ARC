@@ -61,6 +61,7 @@ For development shells and manual ROS launches, use the `uv` wrapper from the re
 ```bash
 uv docker
 uv build yolo_cpp
+uv run yolo_cpp orin.launch.py
 uv run yolo_cpp basler.launch.py
 uv run yolo_cpp realsense.launch.py
 ```

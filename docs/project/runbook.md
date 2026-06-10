@@ -213,6 +213,12 @@ After that, `cv preflight`, `cv restart`, `cv logs`, `cv status`, `cv health`, a
 sudo ln -sf "$(pwd)/services/stm-stack.sh" /usr/local/bin/cv
 ```
 
+For direct Orin Nano visual bring-up without the service profile, use the native TensorRT + full-sensor Bayer launch:
+
+```bash
+uv run yolo_cpp orin.launch.py
+```
+
 The default model path targets the Orin engine. To switch the systemd service between host-specific TensorRT engines without editing `/etc/cv-detection/stm-stack.env` by hand, use:
 
 ```bash
