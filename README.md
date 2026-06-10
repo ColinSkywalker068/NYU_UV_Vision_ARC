@@ -45,6 +45,7 @@ cv preview-off
 cv basler-defaults
 cv model-orin
 cv model-agx
+cv yaw-smoke
 ```
 
 If the `cv` symlink is not installed yet, use the helper directly from the repo root:

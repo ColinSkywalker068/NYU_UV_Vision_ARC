@@ -347,6 +347,45 @@ run_health() {
     bash -lc "cd '${CV_STM_REPO_ROOT}' && exec ./services/stm-stack-entrypoint.sh health"
 }
 
+run_yaw_smoke() {
+  ensure_docker
+  docker_cmd image inspect "$CV_STM_IMAGE" >/dev/null 2>&1 || die "Docker image is missing: ${CV_STM_IMAGE}"
+
+  local serial_port="${CV_STM_SERIAL_PORT:-/dev/ttyUSB0}"
+  local yaw_rad="${CV_STM_YAW_SMOKE_RAD:-0.05}"
+  local count="${CV_STM_YAW_SMOKE_COUNT:-1}"
+  local interval_ms="${CV_STM_YAW_SMOKE_INTERVAL_MS:-50}"
+  local baud="${CV_STM_YAW_SMOKE_BAUD:-115200}"
+  local -a docker_args=(
+    run --rm --privileged --network host
+    --volume "${REPO_ROOT}:${CV_STM_REPO_ROOT}"
+    --volume /dev:/dev
+    --workdir "$CV_STM_REPO_ROOT"
+  )
+
+  log "Running yaw smoke test in ${CV_STM_IMAGE}"
+  log "Default packet: port=${serial_port}, baud=${baud}, yaw_rad=${yaw_rad}, count=${count}"
+  log "Use extra args to override, for example: cv yaw-smoke --yaw-rad -0.05 --count 3"
+  log "If the STM stack is running and owns the serial port, stop it first with: cv stop"
+
+  docker_cmd "${docker_args[@]}" "$CV_STM_IMAGE" bash -lc '
+    set -euo pipefail
+    smoke_bin=/tmp/stm32_yaw_packet_smoke
+    g++ -std=c++17 -O2 \
+      -I yolo_cpp/include \
+      yolo_cpp/tools/stm32_yaw_packet_smoke.cpp \
+      yolo_cpp/src/seasky_protocol.cpp \
+      -o "$smoke_bin"
+    exec "$smoke_bin" "$@"
+  ' bash \
+    --port "$serial_port" \
+    --baud "$baud" \
+    --yaw-rad "$yaw_rad" \
+    --count "$count" \
+    --interval-ms "$interval_ms" \
+    "$@"
+}
+
 open_shell() {
   ensure_docker
   if ! container_running; then
@@ -378,6 +417,7 @@ Commands:
   logs       Follow systemd logs.
   preflight  Validate image, ROS package, model, and selected profile prerequisites.
   health     Check selected-profile ROS nodes and topics inside ${UV_CONTAINER_NAME}.
+  yaw-smoke  Compile and send one yaw-only STM packet without a full ROS build.
   shell      Open a shell inside ${UV_CONTAINER_NAME}.
 EOF
 }
@@ -399,6 +439,7 @@ main() {
     logs) show_logs ;;
     preflight) run_preflight ;;
     health) run_health ;;
+    yaw-smoke|smoke-yaw|stm-yaw-smoke) shift; run_yaw_smoke "$@" ;;
     shell) open_shell ;;
     -h|--help|help) usage ;;
     *) usage >&2; exit 2 ;;

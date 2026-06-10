@@ -228,6 +228,19 @@ cv model-agx
 
 These commands persist `CV_STM_MODEL_PATH` and restart the service. `model-orin` selects `yolo_cpp/models/nitish-orin.engine` and applies the Orin-stable native TensorRT + full-sensor Bayer defaults: `CV_STM_DETECTOR_BACKEND=native_tensorrt`, `CV_STM_BASLER_PIXEL_FORMAT=bayer_rggb8`, `CV_STM_BASLER_USE_FULL_SENSOR=true`, `CV_STM_BASLER_SOURCE_WIDTH=1920`, `CV_STM_BASLER_SOURCE_HEIGHT=1200`, `CV_STM_BASLER_FPS=160`, `CV_STM_BASLER_EXPOSURE_US=3000.0`, and `CV_STM_SHOW=false`. `model-agx` selects `yolo_cpp/models/nitish-agx.engine` and clears the Orin-specific overrides so AGX returns to the DeepStream Basler profile. The older `model-nano` shortcut remains available as a backward-compatible alias for `model-orin`.
 
+To send one small yaw-only STM packet without a full ROS build, run:
+
+```bash
+cv stop
+cv yaw-smoke
+```
+
+The default is `--port /dev/ttyUSB0 --baud 115200 --yaw-rad 0.05 --count 1`. Override any smoke-tool option after the command, for example:
+
+```bash
+cv yaw-smoke --yaw-rad -0.05 --count 3
+```
+
 To remove stale service-side Basler launch overrides and return to field service defaults with `basler_fps=160`, `basler_uncapped_fps=false`, and preview off, run:
 
 ```bash
