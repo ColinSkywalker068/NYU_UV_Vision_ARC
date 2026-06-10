@@ -24,7 +24,6 @@
 #endif
 
 #ifdef HAVE_PYLON
-#include <GenApi/GenApi.h>
 #include <pylon/PylonIncludes.h>
 #endif
 
