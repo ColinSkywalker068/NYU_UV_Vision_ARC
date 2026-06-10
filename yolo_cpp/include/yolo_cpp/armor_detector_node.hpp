@@ -248,6 +248,8 @@ private:
   int enemy_color_blue_value_{1};
   int preview_target_track_id_{-1};
   std::array<int32_t, 4> preview_target_bbox_xyxy_{0, 0, 0, 0};
+  int preview_target_image_width_{0};
+  int preview_target_image_height_{0};
   float conf_{0.30F};
   int target_class_{BLUE_CLASS};
   double fps_{60.0};

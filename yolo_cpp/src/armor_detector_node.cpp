@@ -426,6 +426,8 @@ void ArmorDetectorNode::handle_preview_target(
   preview_has_target_ = msg->has_target;
   preview_target_track_id_ = msg->track_id;
   preview_target_bbox_xyxy_ = msg->bbox_xyxy;
+  preview_target_image_width_ = msg->image_width;
+  preview_target_image_height_ = msg->image_height;
 }
 
 void ArmorDetectorNode::handle_camera_info(
@@ -829,9 +831,17 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
       const int y1 = preview_target_bbox_xyxy_[1];
       const int x2 = preview_target_bbox_xyxy_[2];
       const int y2 = preview_target_bbox_xyxy_[3];
+      const int target_source_width =
+          preview_target_image_width_ > 0 ? preview_target_image_width_ : source_width;
+      const int target_source_height =
+          preview_target_image_height_ > 0 ? preview_target_image_height_ : source_height;
+      const double target_scale_x =
+          static_cast<double>(preview.cols) / static_cast<double>(target_source_width);
+      const double target_scale_y =
+          static_cast<double>(preview.rows) / static_cast<double>(target_source_height);
       const cv::Rect target_rect = vision_node_helpers::scale_rect_to_preview(
-          cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)), scale_x,
-          scale_y, image_rect);
+          cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)), target_scale_x,
+          target_scale_y, image_rect);
       if (target_rect.width > 0 && target_rect.height > 0) {
         const cv::Scalar target_color(0, 0, 255);
         cv::rectangle(preview, target_rect, target_color, 4);
@@ -972,8 +982,17 @@ void ArmorDetectorNode::save_target_frame_if_needed(
     const int y1 = preview_target_bbox_xyxy_[1];
     const int x2 = preview_target_bbox_xyxy_[2];
     const int y2 = preview_target_bbox_xyxy_[3];
-    target_rect = cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)) &
-                  image_rect;
+    const int target_source_width =
+        preview_target_image_width_ > 0 ? preview_target_image_width_ : packet.width();
+    const int target_source_height =
+        preview_target_image_height_ > 0 ? preview_target_image_height_ : packet.height();
+    const double target_scale_x =
+        static_cast<double>(packet.width()) / static_cast<double>(target_source_width);
+    const double target_scale_y =
+        static_cast<double>(packet.height()) / static_cast<double>(target_source_height);
+    target_rect = vision_node_helpers::scale_rect_to_preview(
+        cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)), target_scale_x,
+        target_scale_y, image_rect);
     if (!target_rect.empty()) {
       has_tracker_target = true;
       track_id = preview_target_track_id_;
