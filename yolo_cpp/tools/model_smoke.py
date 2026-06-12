@@ -59,13 +59,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--view",
         action="store_true",
+        default=True,
         help="Display annotated frames in an OpenCV window.",
+    )
+    parser.add_argument(
+        "--no-view",
+        action="store_false",
+        dest="view",
+        help="Disable the OpenCV window.",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("/tmp/yolo_cpp_model_smoke.jpg"),
-        help="Write the last annotated frame here.",
+        default=None,
+        help="Optional path to write the last annotated frame.",
     )
     parser.add_argument(
         "--width", type=int, default=640, help="Requested camera width."
@@ -246,7 +253,7 @@ def main() -> int:
                 if key in (ord("q"), 27):
                     break
 
-        if last_annotated is not None:
+        if last_annotated is not None and args.output is not None:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             if not cv2.imwrite(str(args.output), last_annotated):
                 raise RuntimeError(f"Failed to write {args.output}")
