@@ -78,13 +78,13 @@ std::string json_escape(const std::string &value) {
 std::optional<int> bayer_to_bgr_code(PixelFormat format) {
   switch (format) {
   case PixelFormat::kBayerRggb8:
-    return cv::COLOR_BayerRG2BGR;
-  case PixelFormat::kBayerBggr8:
     return cv::COLOR_BayerBG2BGR;
+  case PixelFormat::kBayerBggr8:
+    return cv::COLOR_BayerRG2BGR;
   case PixelFormat::kBayerGrbg8:
-    return cv::COLOR_BayerGR2BGR;
-  case PixelFormat::kBayerGbrg8:
     return cv::COLOR_BayerGB2BGR;
+  case PixelFormat::kBayerGbrg8:
+    return cv::COLOR_BayerGR2BGR;
   default:
     return std::nullopt;
   }
