@@ -158,11 +158,13 @@ private:
   std::string runtime_log_dir_;
   std::string runtime_log_path_;
   std::string target_color_;
+  std::string show_mode_;
   std::string vis_window_name_;
   std::string bayer_conversion_backend_;
   bool allow_native_tensorrt_fallback_{false};
   bool half_{true};
   bool show_{false};
+  bool show_gui_{false};
   bool use_kalman_{false};
   bool enable_color_verification_{true};
   bool use_model_color_classes_{true};

@@ -41,6 +41,8 @@ Common operator commands:
 ```bash
 cv status
 cv health
+cv preview-gui
+cv preview-web
 cv preview-off
 cv basler-defaults
 cv model-orin

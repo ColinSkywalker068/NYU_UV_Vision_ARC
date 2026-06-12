@@ -77,7 +77,7 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `CV_STM_TARGET_COLOR` | Default enemy color before STM or robot-id feedback arrives | `blue`; set `red` when testing red armor without STM feedback | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_USE_MODEL_COLOR_CLASSES` | Whether model class ids decide enemy color | `true`; set `false` with `CV_STM_ENABLE_COLOR_VERIFICATION=false` to accept both colors during bring-up | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_ENABLE_COLOR_VERIFICATION` | Whether HSV color checks run when model color classes are disabled | `false`; keep disabled while trusting model color classes | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
-| `CV_STM_SHOW` | Whether the service launch opens the OpenCV detector preview window | `false`; use `./services/stm-stack.sh preview-on` or `preview-off` to persist and restart | `services/stm-stack.sh`, `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
+| `CV_STM_SHOW` | Detector preview mode | `false`; use `gui` for the local OpenCV window or `web` for the browser preview; `./services/stm-stack.sh preview-gui`, `preview-web`, and `preview-off` persist and restart | `services/stm-stack.sh`, `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_SAVE_TARGET_FRAMES` | Optional target-frame JPEG capture for visual checks and heatmaps | `false`; set `true` to save up to `CV_STM_TARGET_FRAME_SAVE_MAX` images under `pictures/` next to `vision_logs/` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_TARGET_FRAME_SAVE_DIR` | Optional override for target-frame output directory | Empty by default; unset saves under `pictures/` next to `vision_logs/` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_TARGET_FRAME_SAVE_MAX` | Maximum target-frame images saved per run | `100` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
@@ -271,15 +271,16 @@ Restart the service:
 ./services/stm-stack.sh restart
 ```
 
-Show or hide the detector preview window on the next service run:
+Select the detector preview mode on the next service run:
 
 ```bash
-./services/stm-stack.sh preview-on
+./services/stm-stack.sh preview-gui
+./services/stm-stack.sh preview-web
 ./services/stm-stack.sh preview-off
 ```
 
-These commands persist `CV_STM_SHOW` in `/etc/cv-detection/stm-stack.env` and restart the service. The preview window still needs normal X11 display access from the service container.
-`preview-on` also persists `DISPLAY=${DISPLAY:-:0}` and runs `xhost +si:localuser:root` from the operator shell before restarting. If OpenCV still logs `Can't initialize GTK backend`, run the command from the robot's graphical desktop session or use the browser preview at `http://<robot-host>:8080/`.
+These commands persist `CV_STM_SHOW` in `/etc/cv-detection/stm-stack.env` and restart the service. `preview-gui` opens the local OpenCV window and still needs normal X11 display access from the service container. `preview-web` serves the browser preview at `http://<robot-host>:8080/` without opening a local GUI window.
+`preview-gui` also persists `DISPLAY=${DISPLAY:-:0}` and runs `xhost +si:localuser:root` from the operator shell before restarting. If OpenCV still logs `Can't initialize GTK backend`, run the command from the robot's graphical desktop session or switch to `preview-web`.
 
 Follow live logs:
 
@@ -336,7 +337,7 @@ uv clean
 uv build yolo_cpp
 ```
 
-For Basler high-FPS bring-up on `a2A1920-160ucBAS`, keep `basler_use_full_sensor:=true` and use the raw Bayer source caps: `basler_pixel_format:=bayer_rggb8 basler_source_width:=1920 basler_source_height:=1200 basler_fps:=160 basler_uncapped_fps:=false`. Use `basler_uncapped_fps:=true` only when measuring the camera's natural maximum rate; in that mode exposure/readout can produce a lower steady result such as 110 FPS even when `basler_fps` is set to 160. Use the default `pre_mux_resize:=true` or `CV_STM_DEEPSTREAM_PRE_MUX_RESIZE=true` when you need full FOV with fewer pixels entering `nvstreammux`; the default 640x640 model box resizes 1920x1200 to 640x400 before streammux padding. The default `bayer_conversion_backend:=cuda` / `CV_STM_DEEPSTREAM_BAYER_CONVERSION_BACKEND=cuda` uses the in-process CUDA Bayer resize path when the build supports it, and logs a fallback to CPU `bayer2rgb` otherwise. `show:=false` is the robot default; `show:=true` uses a downscaled preview frame and is throttled by `preview_max_fps` / `CV_STM_PREVIEW_MAX_FPS`; raw image publishing, HSV verification, and target-frame saving still need full-resolution BGR. The startup logs should show the requested and negotiated GStreamer caps plus the camera-reported resulting frame rate. If `basler_pixel_format:=bgr8` is used at full resolution, USB3 bandwidth can reasonably limit capture near 60 FPS; that is not evidence of a Jetson hard cap.
+For Basler high-FPS bring-up on `a2A1920-160ucBAS`, keep `basler_use_full_sensor:=true` and use the raw Bayer source caps: `basler_pixel_format:=bayer_rggb8 basler_source_width:=1920 basler_source_height:=1200 basler_fps:=160 basler_uncapped_fps:=false`. Use `basler_uncapped_fps:=true` only when measuring the camera's natural maximum rate; in that mode exposure/readout can produce a lower steady result such as 110 FPS even when `basler_fps` is set to 160. Use the default `pre_mux_resize:=true` or `CV_STM_DEEPSTREAM_PRE_MUX_RESIZE=true` when you need full FOV with fewer pixels entering `nvstreammux`; the default 640x640 model box resizes 1920x1200 to 640x400 before streammux padding. The default `bayer_conversion_backend:=cuda` / `CV_STM_DEEPSTREAM_BAYER_CONVERSION_BACKEND=cuda` uses the in-process CUDA Bayer resize path when the build supports it, and logs a fallback to CPU `bayer2rgb` otherwise. `show:=false` is the robot default; `show:=gui` and `show:=web` use a downscaled preview frame and are throttled by `preview_max_fps` / `CV_STM_PREVIEW_MAX_FPS`; raw image publishing, HSV verification, and target-frame saving still need full-resolution BGR. The startup logs should show the requested and negotiated GStreamer caps plus the camera-reported resulting frame rate. If `basler_pixel_format:=bgr8` is used at full resolution, USB3 bandwidth can reasonably limit capture near 60 FPS; that is not evidence of a Jetson hard cap.
 
 On the observed `a2A1920-160ucBAS` / serial `41923000` setup, direct Pylon probing reported `Binning*`, `Decimation*`, and `Scaling*` GenICam nodes as absent. Treat `Width` and `Height` as ROI/crop controls there, not full-FOV downsampling controls.
 

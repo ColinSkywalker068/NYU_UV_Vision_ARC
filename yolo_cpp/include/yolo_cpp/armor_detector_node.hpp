@@ -209,9 +209,12 @@ private:
   std::string camera_info_topic_;
   std::string bayer_conversion_backend_;
   std::string preview_http_bind_address_;
+  std::string show_mode_;
   bool allow_native_tensorrt_fallback_{false};
   bool half_{true};
   bool show_{false};
+  bool show_gui_{false};
+  bool show_web_{false};
   bool preview_http_enabled_{true};
   bool enable_color_verification_{true};
   bool use_model_color_classes_{true};

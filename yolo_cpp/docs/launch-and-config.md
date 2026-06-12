@@ -43,8 +43,8 @@ The launch files expose the settings that matter most during bring-up:
 - default enemy color through `target_color` until STM or robot-id feedback overrides it
 - color filtering through `use_model_color_classes` and `enable_color_verification`; defaults trust model class colors and keep HSV disabled
 - target-frame capture through `save_target_frames`, `target_frame_save_max`, and `target_frame_jpeg_quality`; saved JPEGs and a CSV index go under `pictures/` next to `vision_logs/` by default
-- preview through `show` and `preview_max_fps`; when `show:=true`, the detector renders the annotated preview frame for the local OpenCV window and serves the same frame through HTTP by default
-- browser preview through `preview_http_enabled`, `preview_http_bind_address`, `preview_http_port`, and `preview_http_jpeg_quality`; open `http://<robot-host>:8080/`, `/stream.mjpg`, `/snapshot.jpg`, or `/stats.json` from any same-network laptop without ROS
+- preview through `show` and `preview_max_fps`; use `show:=false` to disable preview rendering, `show:=gui` for the local OpenCV window, or `show:=web` for the browser preview
+- browser preview through `show:=web`, `preview_http_enabled`, `preview_http_bind_address`, `preview_http_port`, and `preview_http_jpeg_quality`; open `http://<robot-host>:8080/`, `/stream.mjpg`, `/snapshot.jpg`, or `/stats.json` from any same-network laptop without ROS
 - tracker tuning such as `track_min_hits`, `track_max_coast_frames`, and `track_drop_frames`; defaults favor fast armor-plate switching during spin
 - 3D pose through `enable_3d_pose`, `camera_info_topic`, `camera_frame_id`, and optional static `camera_fx/fy/cx/cy`
 - tracker 3D gating through `association_max_3d_distance_m`
@@ -59,7 +59,7 @@ The default tracker profile is tuned for fast rotating armor plates: `track_min_
 
 ## Basler High-FPS Source Formats
 
-The Basler + DeepStream path defaults to `basler_pixel_format:=bayer_rggb8` with `basler_source_width:=1920` and `basler_source_height:=1200` for the `a2A1920-160ucBAS` full-resolution high-FPS case. This keeps USB traffic at raw 8-bit Bayer instead of full-resolution BGR. Keep `basler_use_full_sensor:=true` to preserve the full FOV. Enable `pre_mux_resize:=true` to resize that full-FOV frame before `nvstreammux`; with the default 640x640 model box, 1920x1200 becomes 640x400 and `nvstreammux` pads it to the model input. The default `bayer_conversion_backend:=cuda` uses the in-process CUDA Bayer resize element when the build includes CUDA and no full-resolution color/debug branch is active. `show:=true` uses a cheap downscaled preview branch; HSV verification, raw image publishing, and target-frame saving still request full-resolution BGR and can force the CPU `bayer2rgb` path.
+The Basler + DeepStream path defaults to `basler_pixel_format:=bayer_rggb8` with `basler_source_width:=1920` and `basler_source_height:=1200` for the `a2A1920-160ucBAS` full-resolution high-FPS case. This keeps USB traffic at raw 8-bit Bayer instead of full-resolution BGR. Keep `basler_use_full_sensor:=true` to preserve the full FOV. Enable `pre_mux_resize:=true` to resize that full-FOV frame before `nvstreammux`; with the default 640x640 model box, 1920x1200 becomes 640x400 and `nvstreammux` pads it to the model input. The default `bayer_conversion_backend:=cuda` uses the in-process CUDA Bayer resize element when the build includes CUDA and no full-resolution color/debug branch is active. `show:=gui` and `show:=web` use a cheap downscaled preview branch; HSV verification, raw image publishing, and target-frame saving still request full-resolution BGR and can force the CPU `bayer2rgb` path.
 
 On the observed `a2A1920-160ucBAS` / serial `41923000` setup, direct Pylon probing reported `Binning*`, `Decimation*`, and `Scaling*` GenICam nodes as absent, so binning is not a supported runtime knob for this camera environment. `Width` and `Height` are still writable, but they are ROI/crop controls and should not be used when full FOV is required.
 
@@ -74,10 +74,10 @@ For a camera-only throughput probe on the robot, launch with `basler_uncapped_fp
 
 ## Browser Preview
 
-Set `show:=true` to render the annotated detector preview. The same preview frame is exposed over HTTP when `preview_http_enabled:=true`:
+Set `show:=web` to render the annotated detector preview for the browser without opening a local GUI window:
 
 ```bash
-uv run yolo_cpp basler.launch.py show:=true
+uv run yolo_cpp basler.launch.py show:=web
 ```
 
 Open the preview from a same-network laptop:
@@ -93,9 +93,9 @@ The preview server exposes:
 - `/snapshot.jpg`: latest rendered preview frame
 - `/stats.json`: latest FPS, backend, camera, candidate count, target state, and detector latency
 
-Use `preview_http_port:=<port>` if another service already owns `8080`. Keep `preview_http_bind_address:=0.0.0.0` for robot-LAN viewing; use `127.0.0.1` only for local-only testing.
+Use `show:=gui` when you want the local OpenCV window instead. The `gui` and `web` modes are intentionally separate. Use `preview_http_port:=<port>` if another service already owns `8080`. Keep `preview_http_bind_address:=0.0.0.0` for robot-LAN viewing; use `127.0.0.1` only for local-only testing.
 
-The HTTP preview is fed before the local `cv::imshow` call. On a headless Jetson, the OpenCV window may disable itself after a display error while the browser stream continues serving frames.
+On a headless Jetson, prefer `show:=web` because it does not require X11 display access.
 
 ## Which Launch Should I Use?
 

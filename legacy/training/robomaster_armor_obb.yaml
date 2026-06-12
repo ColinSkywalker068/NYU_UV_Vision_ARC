@@ -1,0 +1,16 @@
+# Ultralytics YOLO OBB dataset config for RoboMaster armor color detection.
+# Place this file at the dataset root or pass --data with this path and
+# --dataset-root pointing at the directory that contains train/ and valid/.
+#
+# Expected labels:
+#   class_index x1 y1 x2 y2 x3 y3 x4 y4
+# with normalized corner coordinates in [0, 1].
+
+path: .
+train: train/images
+val: valid/images
+# test: test/images
+
+names:
+  0: blue
+  1: red

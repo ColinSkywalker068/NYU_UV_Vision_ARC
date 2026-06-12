@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -16,6 +17,8 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <optional>
+#include <rcl_interfaces/msg/parameter_descriptor.hpp>
+#include <rclcpp/parameter.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <sstream>
 #include <stdexcept>
@@ -128,6 +131,49 @@ cv::Rect preview_source_rect(const FramePacket &packet, const cv::Rect &rect,
                          : rect;
 }
 
+std::string normalize_show_mode(const rclcpp::Parameter &parameter,
+                                const rclcpp::Logger &logger) {
+  std::string mode;
+  switch (parameter.get_type()) {
+  case rclcpp::ParameterType::PARAMETER_BOOL:
+    mode = parameter.as_bool() ? "gui" : "false";
+    break;
+  case rclcpp::ParameterType::PARAMETER_STRING:
+    mode = parameter.as_string();
+    break;
+  default:
+    RCLCPP_WARN(logger,
+                "Unsupported show parameter type; disabling preview. Use one "
+                "of: false, gui, web.");
+    return "false";
+  }
+
+  std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::tolower(ch));
+  });
+  if (mode == "true") {
+    RCLCPP_WARN(logger, "show:=true is deprecated; use show:=gui or show:=web.");
+    return "gui";
+  }
+  if (mode == "0" || mode == "off" || mode == "none" || mode == "no") {
+    return "false";
+  }
+  if (mode == "1" || mode == "on" || mode == "yes") {
+    RCLCPP_WARN(logger, "show:=%s is deprecated; use show:=gui or show:=web.",
+                mode.c_str());
+    return "gui";
+  }
+  if (mode == "false" || mode == "gui" || mode == "web") {
+    return mode;
+  }
+
+  RCLCPP_WARN(logger,
+              "Invalid show mode '%s'; disabling preview. Use one of: false, "
+              "gui, web.",
+              mode.c_str());
+  return "false";
+}
+
 } // namespace
 
 /// Declare parameters, choose the inference runtime, and start capture
@@ -147,7 +193,13 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
                                        default_deepstream_config);
   this->declare_parameter<bool>("allow_native_tensorrt_fallback", false);
   this->declare_parameter<bool>("half", true);
-  this->declare_parameter<bool>("show", false);
+  rcl_interfaces::msg::ParameterDescriptor show_descriptor;
+  show_descriptor.description =
+      "Preview mode: false disables preview, gui opens a local OpenCV window, "
+      "web serves the MJPEG browser preview.";
+  show_descriptor.dynamic_typing = true;
+  this->declare_parameter("show", rclcpp::ParameterValue("false"),
+                          show_descriptor);
   this->declare_parameter<double>("conf", 0.30);
   this->declare_parameter<std::string>("inference_mode", "predict");
   this->declare_parameter<bool>("enable_color_verification", false);
@@ -208,7 +260,10 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
   half_ = this->get_parameter("half").as_bool();
   imgsz_width_ = this->get_parameter("imgsz_width").as_int();
   imgsz_height_ = this->get_parameter("imgsz_height").as_int();
-  show_ = this->get_parameter("show").as_bool();
+  show_mode_ = normalize_show_mode(this->get_parameter("show"),
+                                   this->get_logger());
+  show_gui_ = show_mode_ == "gui";
+  show_web_ = show_mode_ == "web";
   conf_ = static_cast<float>(this->get_parameter("conf").as_double());
   inference_mode_ = this->get_parameter("inference_mode").as_string();
   enable_color_verification_ =
@@ -276,6 +331,12 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
   preview_max_fps_ =
       std::max(1.0, this->get_parameter("preview_max_fps").as_double());
   preview_http_enabled_ = this->get_parameter("preview_http_enabled").as_bool();
+  if (show_web_ && !preview_http_enabled_) {
+    RCLCPP_WARN(this->get_logger(),
+                "show:=web requested but preview_http_enabled=false; preview "
+                "rendering disabled.");
+  }
+  show_ = show_gui_ || (show_web_ && preview_http_enabled_);
   preview_http_bind_address_ =
       this->get_parameter("preview_http_bind_address").as_string();
   preview_http_port_ = std::clamp(
@@ -430,7 +491,7 @@ ArmorDetectorNode::~ArmorDetectorNode() {
     preview_server_->stop();
     preview_server_.reset();
   }
-  if (show_ && !preview_failed_) {
+  if (show_gui_ && !preview_failed_) {
     cv::destroyWindow(vis_window_name_);
   }
   detector_backend_.reset();
@@ -959,7 +1020,7 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
                                     preview_http_jpeg_quality_);
     }
 
-    if (!preview_failed_) {
+    if (show_gui_ && !preview_failed_) {
       try {
         cv::imshow(vis_window_name_, preview);
         cv::waitKey(1);
@@ -980,7 +1041,7 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
 }
 
 void ArmorDetectorNode::initialize_preview_server() {
-  if (!show_ || !preview_http_enabled_) {
+  if (!show_web_ || !preview_http_enabled_) {
     return;
   }
 

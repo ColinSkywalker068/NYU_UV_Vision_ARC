@@ -23,7 +23,7 @@ You can also launch the active stack with custom parameters:
 ```bash
 uv docker
 uv build yolo_cpp
-uv run yolo_cpp realsense.launch.py model_path:=/path/to/model.engine show:=true
+uv run yolo_cpp realsense.launch.py model_path:=/path/to/model.engine show:=gui
 ```
 
 ## Python Standalone Run (No ROS)

@@ -100,8 +100,8 @@ ROS_LOCALHOST_ONLY=1
 # CV_STM_SERIAL_PORT=/dev/ttyUSB0
 # CV_STM_REQUIRE_SERIAL=true
 CV_STM_PREVIEW_MAX_FPS=60.0
-# Toggle the OpenCV preview window for detector frames. The preview state is
-# applied at startup, so use './services/stm-stack.sh preview-on/off'.
+# Select detector preview mode. The preview state is applied at startup, so use
+# './services/stm-stack.sh preview-gui', preview-web, or preview-off.
 CV_STM_SHOW=false
 # Save up to 100 compressed target frames in pictures/ next to vision_logs/.
 # CV_STM_SAVE_TARGET_FRAMES=false
@@ -222,7 +222,7 @@ set_preview() {
   local state_label="$2"
   set_env_value CV_STM_SHOW "$show_value"
   log "Set CV_STM_SHOW=${show_value} in ${ENV_FILE}"
-  if [ "$show_value" = "true" ]; then
+  if [ "$show_value" = "gui" ]; then
     local display_value="${DISPLAY:-:0}"
     set_env_value DISPLAY "$display_value"
     log "Set DISPLAY=${display_value} in ${ENV_FILE}"
@@ -230,10 +230,10 @@ set_preview() {
       if DISPLAY="$display_value" xhost +si:localuser:root >/dev/null; then
         log "Allowed local root X11 access for the service container"
       else
-        log "Warning: xhost could not allow local root X11 access; the browser preview at http://<robot-host>:8080/ may still work"
+        log "Warning: xhost could not allow local root X11 access"
       fi
     else
-      log "Warning: xhost is not installed; the browser preview at http://<robot-host>:8080/ may still work"
+      log "Warning: xhost is not installed"
     fi
   fi
   log "Restarting ${SERVICE_NAME} so preview ${state_label} takes effect"
@@ -408,7 +408,11 @@ Commands:
   start      Start ${SERVICE_NAME}.
   stop       Stop ${SERVICE_NAME}.
   restart    Restart ${SERVICE_NAME}.
-  preview-on Persist CV_STM_SHOW=true and restart ${SERVICE_NAME}.
+  preview-gui
+             Persist CV_STM_SHOW=gui and restart ${SERVICE_NAME}.
+  preview-web
+             Persist CV_STM_SHOW=web and restart ${SERVICE_NAME}.
+  preview-on Legacy alias for preview-gui.
   preview-off
              Persist CV_STM_SHOW=false and restart ${SERVICE_NAME}.
   basler-defaults
@@ -433,7 +437,9 @@ main() {
     start) systemctl_action start ;;
     stop) systemctl_action stop ;;
     restart) systemctl_action restart ;;
-    preview-on) set_preview true on ;;
+    preview-gui) set_preview gui gui ;;
+    preview-web) set_preview web web ;;
+    preview-on) set_preview gui gui ;;
     preview-off) set_preview false off ;;
     basler-defaults) restore_basler_launch_defaults ;;
     model-orin|model-nano) set_orin_profile ;;

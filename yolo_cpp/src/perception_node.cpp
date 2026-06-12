@@ -4,6 +4,7 @@
 #include "yolo_cpp/perception_node.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -14,6 +15,8 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <optional>
+#include <rcl_interfaces/msg/parameter_descriptor.hpp>
+#include <rclcpp/parameter.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <set>
 #include <sstream>
@@ -37,6 +40,45 @@ constexpr int kPreviewMaxWidth = 1280;
 constexpr int kPreviewMaxHeight = 720;
 constexpr char kVisionLogDirName[] = "vision_logs";
 
+std::string normalize_show_mode(const rclcpp::Parameter& parameter, const rclcpp::Logger& logger)
+{
+  std::string mode;
+  switch (parameter.get_type()) {
+    case rclcpp::ParameterType::PARAMETER_BOOL:
+      mode = parameter.as_bool() ? "gui" : "false";
+      break;
+    case rclcpp::ParameterType::PARAMETER_STRING:
+      mode = parameter.as_string();
+      break;
+    default:
+      RCLCPP_WARN(
+        logger, "Unsupported show parameter type; disabling preview. Use one of: false, gui, web.");
+      return "false";
+  }
+
+  std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::tolower(ch));
+  });
+  if (mode == "true") {
+    RCLCPP_WARN(logger, "show:=true is deprecated; use show:=gui or show:=web.");
+    return "gui";
+  }
+  if (mode == "0" || mode == "off" || mode == "none" || mode == "no") {
+    return "false";
+  }
+  if (mode == "1" || mode == "on" || mode == "yes") {
+    RCLCPP_WARN(logger, "show:=%s is deprecated; use show:=gui or show:=web.", mode.c_str());
+    return "gui";
+  }
+  if (mode == "false" || mode == "gui" || mode == "web") {
+    return mode;
+  }
+
+  RCLCPP_WARN(
+    logger, "Invalid show mode '%s'; disabling preview. Use one of: false, gui, web.", mode.c_str());
+  return "false";
+}
+
 }  // namespace
 
 /// Declare parameters and start the combined legacy perception pipeline.
@@ -54,7 +96,12 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions& options)
   this->declare_parameter<std::string>("deepstream_config_path", default_deepstream_config);
   this->declare_parameter<bool>("allow_native_tensorrt_fallback", false);
   this->declare_parameter<bool>("half", true);
-  this->declare_parameter<bool>("show", false);
+  rcl_interfaces::msg::ParameterDescriptor show_descriptor;
+  show_descriptor.description =
+    "Preview mode: false disables preview, gui opens a local OpenCV window, web is reserved for "
+    "the detector-node browser preview.";
+  show_descriptor.dynamic_typing = true;
+  this->declare_parameter("show", rclcpp::ParameterValue("false"), show_descriptor);
   this->declare_parameter<double>("conf", 0.30);
   this->declare_parameter<int>("tracker_timeout", 15);
   this->declare_parameter<double>("prediction_lookahead_steps", 0.5);
@@ -92,7 +139,13 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions& options)
   half_ = this->get_parameter("half").as_bool();
   imgsz_width_ = this->get_parameter("imgsz_width").as_int();
   imgsz_height_ = this->get_parameter("imgsz_height").as_int();
-  show_ = this->get_parameter("show").as_bool();
+  show_mode_ = normalize_show_mode(this->get_parameter("show"), this->get_logger());
+  if (show_mode_ == "web") {
+    RCLCPP_WARN(
+      this->get_logger(), "show:=web is not supported by PerceptionNode; preview disabled.");
+  }
+  show_gui_ = show_mode_ == "gui";
+  show_ = show_gui_;
   conf_ = static_cast<float>(this->get_parameter("conf").as_double());
   tracker_timeout_ = this->get_parameter("tracker_timeout").as_int();
   lookahead_steps_ =
@@ -195,7 +248,7 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions& options)
 PerceptionNode::~PerceptionNode()
 {
   timer_.reset();
-  if (show_ && !preview_failed_) {
+  if (show_gui_ && !preview_failed_) {
     cv::destroyWindow(vis_window_name_);
   }
   detector_backend_.reset();

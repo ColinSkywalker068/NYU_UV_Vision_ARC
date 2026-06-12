@@ -315,8 +315,8 @@ VNC is for operator access only. It does not replace the competition service or 
 | Start or restart the robot vision stack | [runbook.md](runbook.md) and `./services/stm-stack.sh restart` |
 | Inspect service logs | `./services/stm-stack.sh logs` |
 | Validate ROS nodes and topics | `./services/stm-stack.sh health` |
-| View detector camera frames from a laptop | Prefer the browser preview in [`yolo_cpp/docs/launch-and-config.md`](../../yolo_cpp/docs/launch-and-config.md#browser-preview): launch with `show:=true` and open `http://rm-standard.local:8080/` from any same-network device. |
-| Run OpenCV preview windows | VNC can display the host desktop when `CV_STM_SHOW=true`, but match runs should usually keep preview off. |
+| View detector camera frames from a laptop | Prefer the browser preview in [`yolo_cpp/docs/launch-and-config.md`](../../yolo_cpp/docs/launch-and-config.md#browser-preview): launch with `show:=web` and open `http://rm-standard.local:8080/` from any same-network device. |
+| Run OpenCV preview windows | VNC can display the host desktop when `CV_STM_SHOW=gui`, but match runs should usually keep preview off. |
 
 The Docker paths use host networking. Avoid assigning VNC-related port changes inside containers unless a future service explicitly owns that behavior.
 

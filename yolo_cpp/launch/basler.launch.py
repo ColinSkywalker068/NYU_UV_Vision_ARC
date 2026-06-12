@@ -174,16 +174,16 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "blue",
             "Enemy armor color used until STM or robot_id feedback overrides it: blue or red",
         ),
-        ("show", "false", "Show OpenCV visualization window"),
+        ("show", "false", "Preview mode: false, gui, or web"),
         (
             "preview_max_fps",
             "60.0",
-            "Maximum OpenCV preview render FPS when show is enabled",
+            "Maximum preview render FPS when show is gui or web",
         ),
         (
             "preview_http_enabled",
             "true",
-            "Serve the same preview frame over HTTP when show is enabled",
+            "Allow the browser preview server when show is web",
         ),
         (
             "preview_http_bind_address",
@@ -354,7 +354,7 @@ def make_detector_node() -> Node:
                 "camera_fy": launch_config("camera_fy"),
                 "camera_cx": launch_config("camera_cx"),
                 "camera_cy": launch_config("camera_cy"),
-                "show": launch_config("show"),
+                "show": ParameterValue(launch_config("show"), value_type=str),
                 "preview_max_fps": ParameterValue(
                     launch_config("preview_max_fps"),
                     value_type=float,

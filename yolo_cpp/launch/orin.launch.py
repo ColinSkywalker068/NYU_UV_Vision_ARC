@@ -21,7 +21,7 @@ ORIN_DEFAULTS = {
     "basler_fps": "160",
     "basler_exposure_us": "3000.0",
     "native_tensorrt_cuda_bayer_preprocess": "true",
-    "show": "true",
+    "show": "gui",
 }
 
 
