@@ -75,6 +75,42 @@ std::string json_escape(const std::string &value) {
   return escaped.str();
 }
 
+std::optional<int> bayer_to_bgr_code(PixelFormat format) {
+  switch (format) {
+  case PixelFormat::kBayerRggb8:
+    return cv::COLOR_BayerRG2BGR;
+  case PixelFormat::kBayerBggr8:
+    return cv::COLOR_BayerBG2BGR;
+  case PixelFormat::kBayerGrbg8:
+    return cv::COLOR_BayerGR2BGR;
+  case PixelFormat::kBayerGbrg8:
+    return cv::COLOR_BayerGB2BGR;
+  default:
+    return std::nullopt;
+  }
+}
+
+cv::Mat make_preview_frame(const FramePacket &packet) {
+  cv::Mat preview;
+  if (const auto code = bayer_to_bgr_code(packet.pixel_format);
+      code.has_value() && packet.frame.type() == CV_8UC1) {
+    cv::cvtColor(packet.frame, preview, *code);
+  } else if (packet.pixel_format == PixelFormat::kRgb8 &&
+             packet.frame.type() == CV_8UC3) {
+    cv::cvtColor(packet.frame, preview, cv::COLOR_RGB2BGR);
+  } else if (packet.pixel_format == PixelFormat::kYuyv &&
+             packet.frame.type() == CV_8UC2) {
+    cv::cvtColor(packet.frame, preview, cv::COLOR_YUV2BGR_YUY2);
+  } else {
+    preview = packet.frame.clone();
+  }
+
+  if (packet.flip_180 && !preview.empty()) {
+    cv::flip(preview, preview, -1);
+  }
+  return preview;
+}
+
 } // namespace
 
 /// Declare parameters, choose the inference runtime, and start capture
@@ -812,7 +848,7 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
   }
 
   try {
-    cv::Mat preview = packet.frame.clone();
+    cv::Mat preview = make_preview_frame(packet);
     const int source_width =
         source_geometry.src_w > 0 ? source_geometry.src_w : preview.cols;
     const int source_height =
