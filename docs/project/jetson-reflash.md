@@ -1,9 +1,9 @@
-# Jetson Orin Nano Reflash Guide
+# Jetson Orin Nano Developer Kit Reflash Guide
 
-<!-- SCOPE: Optimized one-time or recovery reflash procedure for Jetson Orin Nano robot hosts used by CV Detection. Focuses on restoring the known-good L4T 36.2 host stack for the current DeepStream 6.4 Docker image. -->
+<!-- SCOPE: Optimized one-time or recovery reflash procedure for Jetson Orin Nano Developer Kit robot hosts used by CV Detection. Focuses on restoring the known-good L4T 36.2 host stack for the current DeepStream 6.4 Docker image. -->
 <!-- DOC_KIND: how-to -->
 <!-- DOC_ROLE: canonical -->
-<!-- READ_WHEN: Read when a Jetson Orin Nano must be reset, downgraded, or aligned with the current DeepStream 6.4 competition container. -->
+<!-- READ_WHEN: Read when a Jetson Orin Nano Developer Kit must be reset, downgraded, or aligned with the current DeepStream 6.4 competition container. -->
 <!-- SKIP_WHEN: Skip when you only need VNC access, normal Docker preflight, ROS launch parameters, or source-level detector debugging. -->
 <!-- PRIMARY_SOURCES: Team Orin Nano setup notes supplied 2026-06-08, services/setup-orin-nano.sh, services/stm-stack.sh, services/start-container.sh, Docker/Dockerfile.cplusplus, docs/project/runbook.md, NVIDIA JetPack and DeepStream compatibility docs. -->
 
@@ -26,7 +26,7 @@
 
 | Field | Guidance |
 |-------|----------|
-| Purpose | Restore a Jetson Orin Nano to the host runtime generation expected by the current CV Detection DeepStream 6.4 Docker image. |
+| Purpose | Restore a Jetson Orin Nano Developer Kit to the host runtime generation expected by the current CV Detection DeepStream 6.4 Docker image. |
 | Read when | The Nano was reset, upgraded too far, or shows Nano-only DeepStream/NvBuf/CUDA failures while the same container works on AGX. |
 | Skip when | The host is already on L4T 36.2 and you only need `cv preflight`, logs, or launch tuning. |
 | Canonical | Yes, for Orin Nano reflash and first boot recovery. |
@@ -54,6 +54,8 @@ That image provides DeepStream 6.4, TensorRT 8.6, CUDA runtime 12.2, ROS 2 Humbl
 
 Do not select a generic "latest JetPack 6.x" SDK Manager target when the goal is to keep the current DeepStream 6.4 image. Newer JetPack hosts can expose different NVIDIA driver and multimedia runtime behavior to the same container.
 
+This guide assumes the NVIDIA Developer Kit carrier board: the board has a microSD slot and uses the J14 Force Recovery header. A production Orin Nano module on a custom carrier may use different recovery pins, storage, and SDK Manager target wording.
+
 ## 2. Before You Wipe The Nano
 
 The reflash wipes the robot host. Save robot-specific state first.
@@ -71,7 +73,7 @@ Also save any local Pylon package archives, model exports, TensorRT engines, and
 
 Use the GameLab Linux PC or another native Ubuntu Linux host. macOS is fine for SSH and SD-card imaging, but it is not the supported path for Jetson recovery flashing because SDK Manager and the USB recovery flow expect a Linux host.
 
-1. Insert the SD card into the Jetson Orin Nano.
+1. Insert the microSD card into the Jetson Orin Nano Developer Kit carrier board.
 2. Short J14 pins `9` and `10` to enter Force Recovery mode.
 3. Power the Jetson from the wall supply.
 4. Connect Jetson USB-C to the GameLab Linux PC with a USB-C to USB-A cable.
@@ -91,13 +93,13 @@ Open NVIDIA SDK Manager on the GameLab Linux PC. Use the team NVIDIA account fro
 |-------------------|--------|
 | Product Category | `Jetson` |
 | Host Machine | Enabled only if the GameLab PC needs SDK Manager host tools; otherwise leave host extras minimal. |
-| Target Hardware | `Jetson Orin Nano` |
+| Target Hardware | `Jetson Orin Nano Developer Kit` when available; otherwise the closest `Jetson Orin Nano` / `Jetson Orin Nano 8GB Developer Kit` target that exposes SD-card flashing |
 | SDK Version | `JetPack 6.0 Developer Preview` / `L4T 36.2` |
 | DeepStream | Disabled |
 | OEM Configuration | Pre-config |
 | Username | `ultraviolet` |
 | Password | Team robot password |
-| Storage Device | SD Card |
+| Storage Device | SD Card / microSD |
 
 Disabling SDK Manager DeepStream is intentional. The robot service runs DeepStream from the Docker image. The host install only needs the Jetson OS, NVIDIA driver/BSP stack, container runtime support, and ordinary system packages.
 

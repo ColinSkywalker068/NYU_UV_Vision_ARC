@@ -146,7 +146,7 @@ template <typename OutputT, typename ConvertT>
 void pack_resized_bgr_to_chw_rgb(const cv::Mat &resized, OutputT *host_input,
                                  int dst_w, const LetterboxMetadata &metadata,
                                  ConvertT convert) {
-  const int plane = metadata.target_w * metadata.target_h;
+  const int plane = metadata.dst_w * metadata.dst_h;
   for (int y = 0; y < resized.rows; ++y) {
     const auto *row = resized.ptr<cv::Vec3b>(y);
     const int out_y = metadata.pad_y + y;
