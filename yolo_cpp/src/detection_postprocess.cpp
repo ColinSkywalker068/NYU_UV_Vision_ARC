@@ -255,8 +255,8 @@ bool looks_like_end2end_shape(const std::vector<int64_t>& shape, int num_classes
 }
 
 std::vector<Detection> parse_end2end_output_tensor(const float* tensor_data,
-  const std::vector<int64_t>& shape, int img_w, int img_h, float conf_threshold, bool task_obb,
-  const rclcpp::Logger* logger)
+  const std::vector<int64_t>& shape, int img_w, int img_h, int num_classes, float conf_threshold,
+  bool task_obb, const rclcpp::Logger* logger)
 {
   std::vector<Detection> detections;
   if (shape.size() != 3U) {
@@ -289,7 +289,29 @@ std::vector<Detection> parse_end2end_output_tensor(const float* tensor_data,
       return tensor_data[static_cast<std::size_t>((attr * num_detections) + i)];
     };
 
-    const float confidence = task_obb ? at(5) : at(4);
+    float angle = 0.0F;
+    float confidence = at(4);
+    int class_id = std::max(0, static_cast<int>(std::lround(at(5))));
+    if (task_obb) {
+      const auto is_class_like = [&](float value) {
+        const float rounded = std::round(value);
+        return std::isfinite(value) && std::abs(value - rounded) < 1e-3F && rounded >= 0.0F
+               && rounded < static_cast<float>(std::max(1, num_classes));
+      };
+      const bool attr5_is_class = is_class_like(at(5));
+      const bool attr6_is_class = is_class_like(at(6));
+      if (!attr5_is_class && attr6_is_class) {
+        // Some exporters emit OBB rows as [cx, cy, w, h, angle, conf, class].
+        angle = at(4);
+        confidence = at(5);
+        class_id = std::max(0, static_cast<int>(std::lround(at(6))));
+      } else {
+        // Ultralytics YOLO26 end-to-end OBB rows are [cx, cy, w, h, conf, class, angle].
+        confidence = at(4);
+        class_id = std::max(0, static_cast<int>(std::lround(at(5))));
+        angle = at(6);
+      }
+    }
     if (!std::isfinite(confidence) || confidence < conf_threshold) {
       continue;
     }
@@ -314,7 +336,7 @@ std::vector<Detection> parse_end2end_output_tensor(const float* tensor_data,
     Detection detection{};
     detection.bbox_model = cv::Rect(x1, y1, std::max(0, x2 - x1), std::max(0, y2 - y1));
     detection.confidence = confidence;
-    detection.class_id = std::max(0, static_cast<int>(std::lround(task_obb ? at(6) : at(5))));
+    detection.class_id = class_id;
     detection.has_corners = true;
     if (task_obb) {
       ParsedCandidate candidate{};
@@ -322,7 +344,7 @@ std::vector<Detection> parse_end2end_output_tensor(const float* tensor_data,
       candidate.cy = at(1);
       candidate.width = at(2);
       candidate.height = at(3);
-      candidate.angle = at(4);
+      candidate.angle = angle;
       float normalized_angle = 0.0F;
       const auto rect = regularize_rbox(candidate, &normalized_angle);
       cv::Point2f corners[4];
@@ -363,7 +385,7 @@ std::vector<Detection> parse_yolo_output_tensor(const float* tensor_data,
 
   if (looks_like_end2end_shape(shape, num_classes, task_obb, end2end, export_includes_nms)) {
     return parse_end2end_output_tensor(
-      tensor_data, shape, img_w, img_h, conf_threshold, task_obb, logger);
+      tensor_data, shape, img_w, img_h, num_classes, conf_threshold, task_obb, logger);
   }
 
   const int channels = static_cast<int>(shape[1]);

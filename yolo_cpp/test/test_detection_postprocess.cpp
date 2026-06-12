@@ -72,9 +72,9 @@ TEST(DetectionPostprocessTest, ParsesYolo26EndToEndObbRows)
   tensor_data[1] = 100.0F;  // cy
   tensor_data[2] = 40.0F;   // width
   tensor_data[3] = 20.0F;   // height
-  tensor_data[4] = 0.25F;   // angle
-  tensor_data[5] = 0.90F;   // confidence
-  tensor_data[6] = 1.0F;    // class id
+  tensor_data[4] = 0.90F;   // confidence
+  tensor_data[5] = 1.0F;    // class id
+  tensor_data[6] = 0.25F;   // angle
 
   const std::vector<int64_t> shape{1, 300, 7};
   const auto detections = yolo_cpp::parse_yolo_output_tensor(
@@ -88,4 +88,26 @@ TEST(DetectionPostprocessTest, ParsesYolo26EndToEndObbRows)
   EXPECT_TRUE(detections.front().has_corners);
   EXPECT_GT(detections.front().bbox_model.width, 0);
   EXPECT_GT(detections.front().bbox_model.height, 0);
+}
+
+TEST(DetectionPostprocessTest, ParsesAlternateEndToEndObbRows)
+{
+  std::vector<float> tensor_data(300 * 7, 0.0F);
+  tensor_data[0] = 100.0F;  // cx
+  tensor_data[1] = 100.0F;  // cy
+  tensor_data[2] = 40.0F;   // width
+  tensor_data[3] = 20.0F;   // height
+  tensor_data[4] = 0.25F;   // angle
+  tensor_data[5] = 0.90F;   // confidence
+  tensor_data[6] = 1.0F;    // class id
+
+  const std::vector<int64_t> shape{1, 300, 7};
+  const auto detections = yolo_cpp::parse_yolo_output_tensor(
+    tensor_data.data(), shape, 640, 640, 2, 0.25F, true, false, std::nullopt, nullptr);
+
+  ASSERT_EQ(detections.size(), 1U);
+  EXPECT_EQ(detections.front().class_id, 1);
+  EXPECT_NEAR(detections.front().confidence, 0.90F, 1e-6F);
+  ASSERT_TRUE(detections.front().obb_angle.has_value());
+  EXPECT_NEAR(*detections.front().obb_angle, 0.25F, 1e-6F);
 }
