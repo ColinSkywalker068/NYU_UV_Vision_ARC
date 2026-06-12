@@ -472,6 +472,7 @@ void ArmorDetectorNode::handle_preview_target(
     const cv_auto_aim_interfaces::msg::Target::SharedPtr msg) {
   std::lock_guard<std::mutex> lock(state_mutex_);
   preview_has_target_ = msg->has_target;
+  preview_target_is_coasting_ = msg->is_coasting;
   preview_target_track_id_ = msg->track_id;
   preview_target_bbox_xyxy_ = msg->bbox_xyxy;
   preview_target_image_width_ = msg->image_width;
@@ -874,7 +875,7 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
                   cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv::LINE_AA);
     }
 
-    if (preview_has_target_) {
+    if (preview_has_target_ && !preview_target_is_coasting_) {
       const int x1 = preview_target_bbox_xyxy_[0];
       const int y1 = preview_target_bbox_xyxy_[1];
       const int x2 = preview_target_bbox_xyxy_[2];
@@ -1025,7 +1026,7 @@ void ArmorDetectorNode::save_target_frame_if_needed(
   cv::Rect target_rect;
   const Candidate *target_candidate = nullptr;
 
-  if (preview_has_target_) {
+  if (preview_has_target_ && !preview_target_is_coasting_) {
     const int x1 = preview_target_bbox_xyxy_[0];
     const int y1 = preview_target_bbox_xyxy_[1];
     const int x2 = preview_target_bbox_xyxy_[2];

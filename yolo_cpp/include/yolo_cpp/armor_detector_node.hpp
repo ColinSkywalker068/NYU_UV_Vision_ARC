@@ -224,6 +224,7 @@ private:
   bool enable_3d_pose_{true};
   bool preview_failed_{false};
   bool preview_has_target_{false};
+  bool preview_target_is_coasting_{false};
   bool stm_color_locked_{false};
   int imgsz_width_{640};
   int imgsz_height_{640};
