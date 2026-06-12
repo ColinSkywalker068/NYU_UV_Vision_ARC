@@ -231,6 +231,7 @@ The CV detector-to-STM field stack uses serial by default, not CAN. Do not spend
 | `docker` requires `sudo` | User is not in the Docker group or the session has not refreshed | Run `sudo usermod -aG docker ultraviolet`, then log out and back in. `services/stm-stack.sh` can still fall back to `sudo docker`. |
 | `pylonsrc` is missing in preflight | Pylon SDK or GStreamer plugin is absent from the image or mount | Use [../../CPP_CONTAINER_RUNBOOK.md](../../CPP_CONTAINER_RUNBOOK.md) to bake or install Pylon into the C++ image. |
 | `nvinfer` missing inside container | Wrong image or DeepStream plugin path | Confirm `CV_STM_IMAGE` is `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon` and re-run preflight. |
+| `colcon build` fails with `undefined reference to nvdla::...` | The Jetson image is missing the NVDLA compiler library that `libnvinfer.so` expects | Restore the expected Jetson TensorRT / DeepStream runtime stack, or let the hardened CMake fallback disable native TensorRT until the library is present. |
 | CUDA driver/runtime mismatch remains | Host is not L4T 36.2 or the wrong container image is running | Re-check host release and `deepstream-app --version-all` inside `cv-stm-stack`. |
 
 ## Maintenance

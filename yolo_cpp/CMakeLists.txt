@@ -97,13 +97,23 @@ find_library(CUDART_LIBRARY NAMES cudart
     /usr/local/cuda/targets/aarch64-linux/lib
     /usr/lib/x86_64-linux-gnu
     /usr/lib/aarch64-linux-gnu)
-if(TENSORRT_INCLUDE_DIR AND CUDART_INCLUDE_DIR AND TENSORRT_LIBRARY AND CUDART_LIBRARY)
+find_library(NVDLA_COMPILER_LIBRARY NAMES nvdla_compiler
+  PATHS
+    /usr/lib
+    /usr/lib/x86_64-linux-gnu
+    /usr/lib/aarch64-linux-gnu
+    /usr/lib/aarch64-linux-gnu/nvidia
+    /usr/lib/aarch64-linux-gnu/tegra
+    /usr/local/lib)
+if(TENSORRT_INCLUDE_DIR AND CUDART_INCLUDE_DIR AND TENSORRT_LIBRARY AND CUDART_LIBRARY
+    AND NVDLA_COMPILER_LIBRARY)
   set(HAVE_TENSORRT TRUE)
   message(STATUS "TensorRT found. Native TensorRT backend enabled.")
   message(STATUS "  TENSORRT_INCLUDE_DIR=${TENSORRT_INCLUDE_DIR}")
   message(STATUS "  TENSORRT_LIBRARY=${TENSORRT_LIBRARY}")
   message(STATUS "  CUDART_INCLUDE_DIR=${CUDART_INCLUDE_DIR}")
   message(STATUS "  CUDART_LIBRARY=${CUDART_LIBRARY}")
+  message(STATUS "  NVDLA_COMPILER_LIBRARY=${NVDLA_COMPILER_LIBRARY}")
 else()
   message(WARNING
     "TensorRT native backend disabled. Missing one or more dependencies:\n"
@@ -111,7 +121,9 @@ else()
     "  TENSORRT_LIBRARY=${TENSORRT_LIBRARY}\n"
     "  CUDART_INCLUDE_DIR=${CUDART_INCLUDE_DIR}\n"
     "  CUDART_LIBRARY=${CUDART_LIBRARY}\n"
-    "Rebuild after installing TensorRT/CUDA headers and libraries, or set TENSORRT_ROOT.")
+    "  NVDLA_COMPILER_LIBRARY=${NVDLA_COMPILER_LIBRARY}\n"
+    "Rebuild after installing TensorRT/CUDA headers, libraries, and the "
+    "matching NVDLA compiler library, or set TENSORRT_ROOT.")
 endif()
 
 include(CheckLanguage)
@@ -258,7 +270,10 @@ endif()
 if(HAVE_TENSORRT)
   target_compile_definitions(yolo_cpp_components PRIVATE HAVE_TENSORRT=1)
   target_include_directories(yolo_cpp_components PRIVATE ${TENSORRT_INCLUDE_DIR} ${CUDART_INCLUDE_DIR})
-  target_link_libraries(yolo_cpp_components ${TENSORRT_LIBRARY} ${CUDART_LIBRARY})
+  target_link_libraries(yolo_cpp_components
+    ${TENSORRT_LIBRARY}
+    ${CUDART_LIBRARY}
+    ${NVDLA_COMPILER_LIBRARY})
 endif()
 
 if(HAVE_PYLON)
