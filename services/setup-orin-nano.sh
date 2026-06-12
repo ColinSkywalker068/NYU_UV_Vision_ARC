@@ -3,8 +3,9 @@
 cd ~
 git clone git@gitlab.com:nyu-robomaster/CV_Detection.git
 
-# Install basic packages
-sudo apt-get install -y can-utils busybox nano vim
+# Update and install basic packages & required Jetson hardware acceleration plugins
+sudo apt-get update
+sudo apt-get install -y can-utils busybox nano vim nvidia-l4t-gstreamer nvidia-l4t-multimedia nvidia-l4t-dla-compiler
 
 # Configure CAN registers
 sudo busybox devmem 0x0c303018 w 0xc458

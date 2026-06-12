@@ -133,7 +133,7 @@ Install only the pieces needed for the CV runtime first. Skip browser, Snap, VNC
 
 ```bash
 sudo apt update
-sudo apt install -y git ca-certificates curl can-utils busybox nano vim nvidia-l4t-dla-compiler
+sudo apt install -y git ca-certificates curl can-utils busybox nano vim nvidia-l4t-dla-compiler nvidia-l4t-gstreamer nvidia-l4t-multimedia
 ```
 
 Set up repository access. Generate a new SSH key only when the reflashed Nano does not already have one backed up.
