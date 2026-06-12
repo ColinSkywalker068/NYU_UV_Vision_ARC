@@ -111,7 +111,9 @@ def validate_dataset(dataset_root: Path, data_yaml: Path) -> None:
     ]
     missing = [str(path) for path in required if not path.exists()]
     if missing:
-        raise FileNotFoundError("Missing expected dataset paths:\n  " + "\n  ".join(missing))
+        raise FileNotFoundError(
+            "Missing expected dataset paths:\n  " + "\n  ".join(missing)
+        )
     if not data_yaml.exists():
         raise FileNotFoundError(f"Dataset YAML not found: {data_yaml}")
 
@@ -121,7 +123,9 @@ def build_custom_augmentations() -> list[Any]:
     try:
         import albumentations as A
     except ImportError:
-        print("Albumentations is not installed; continuing with built-in YOLO aug only.")
+        print(
+            "Albumentations is not installed; continuing with built-in YOLO aug only."
+        )
         return []
 
     return [
