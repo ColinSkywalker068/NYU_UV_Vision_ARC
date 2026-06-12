@@ -240,13 +240,17 @@ set_preview() {
   systemctl_action restart
 }
 
-restore_basler_launch_defaults() {
+reset_common_basler_overrides() {
   unset_env_values \
+    CV_STM_DETECTOR_BACKEND \
+    CV_STM_ALLOW_NATIVE_TENSORRT_FALLBACK \
     CV_STM_BASLER_PIXEL_FORMAT \
     CV_STM_BASLER_SOURCE_WIDTH \
     CV_STM_BASLER_SOURCE_HEIGHT \
     CV_STM_BASLER_USE_FULL_SENSOR \
     CV_STM_BASLER_FLIP \
+    CV_STM_BASLER_EXPOSURE_US \
+    CV_STM_BASLER_GAIN_DB \
     CV_STM_DEEPSTREAM_PRE_MUX_RESIZE \
     CV_STM_NATIVE_TENSORRT_CUDA_BAYER_PREPROCESS \
     CV_STM_DEEPSTREAM_PRE_MUX_WIDTH \
@@ -254,6 +258,10 @@ restore_basler_launch_defaults() {
     CV_STM_DEEPSTREAM_PROFILE_STAGES \
     CV_STM_DEEPSTREAM_PROFILE_STAGE_INTERVAL \
     CV_STM_DEEPSTREAM_BAYER_CONVERSION_BACKEND
+}
+
+restore_basler_launch_defaults() {
+  reset_common_basler_overrides
   set_env_value CV_STM_BASLER_FPS 160
   set_env_value CV_STM_BASLER_UNCAPPED_FPS false
   set_env_value CV_STM_SHOW false
@@ -263,42 +271,30 @@ restore_basler_launch_defaults() {
   systemctl_action restart
 }
 
-set_orin_profile() {
-  local model_path="${CV_STM_REPO_ROOT%/}/${ORIN_MODEL_RELATIVE}"
-  set_env_value CV_STM_MODEL_PATH "$model_path"
-  set_env_value CV_STM_DETECTOR_BACKEND native_tensorrt
-  set_env_value CV_STM_BASLER_PIXEL_FORMAT bayer_rggb8
-  set_env_value CV_STM_BASLER_FPS 160
-  set_env_value CV_STM_BASLER_EXPOSURE_US 3000.0
-  set_env_value CV_STM_NATIVE_TENSORRT_CUDA_BAYER_PREPROCESS true
-  set_env_value CV_STM_BASLER_USE_FULL_SENSOR true
-  set_env_value CV_STM_BASLER_SOURCE_WIDTH 1920
-  set_env_value CV_STM_BASLER_SOURCE_HEIGHT 1200
-  set_env_value CV_STM_SHOW false
-  set_env_value CV_STM_LAUNCH_PROFILE basler
-  log "Set Orin native TensorRT + full-sensor Bayer profile in ${ENV_FILE}"
-  log "Restarting ${SERVICE_NAME} with Orin model and stable native Basler defaults"
-  systemctl_action restart
-}
+set_model_profile() {
+  local model_relative="$1"
+  local model_label="$2"
+  local model_path="${CV_STM_REPO_ROOT%/}/${model_relative}"
 
-set_agx_profile() {
-  local model_path="${CV_STM_REPO_ROOT%/}/${AGX_MODEL_RELATIVE}"
+  reset_common_basler_overrides
   set_env_value CV_STM_MODEL_PATH "$model_path"
-  unset_env_values \
-    CV_STM_DETECTOR_BACKEND \
-    CV_STM_BASLER_PIXEL_FORMAT \
-    CV_STM_BASLER_EXPOSURE_US \
-    CV_STM_NATIVE_TENSORRT_CUDA_BAYER_PREPROCESS \
-    CV_STM_BASLER_USE_FULL_SENSOR \
-    CV_STM_BASLER_SOURCE_WIDTH \
-    CV_STM_BASLER_SOURCE_HEIGHT
+  set_env_value CV_STM_DETECTOR_BACKEND deepstream
+  set_env_value CV_STM_ALLOW_NATIVE_TENSORRT_FALLBACK false
   set_env_value CV_STM_BASLER_FPS 160
   set_env_value CV_STM_BASLER_UNCAPPED_FPS false
   set_env_value CV_STM_SHOW false
   set_env_value CV_STM_LAUNCH_PROFILE basler
-  log "Set AGX DeepStream profile in ${ENV_FILE}"
-  log "Restarting ${SERVICE_NAME} with AGX model"
+  log "Set ${model_label} model profile in ${ENV_FILE}"
+  log "Restarting ${SERVICE_NAME} with ${model_label} model and normalized Basler defaults"
   systemctl_action restart
+}
+
+set_orin_profile() {
+  set_model_profile "$ORIN_MODEL_RELATIVE" "Orin"
+}
+
+set_agx_profile() {
+  set_model_profile "$AGX_MODEL_RELATIVE" "AGX"
 }
 
 show_status() {
@@ -412,20 +408,22 @@ Commands:
              Persist CV_STM_SHOW=gui and restart ${SERVICE_NAME}.
   preview-web
              Persist CV_STM_SHOW=web and restart ${SERVICE_NAME}.
-  preview-on Legacy alias for preview-gui.
   preview-off
              Persist CV_STM_SHOW=false and restart ${SERVICE_NAME}.
   basler-defaults
              Restore field Basler defaults and restart with basler_fps=160, basler_uncapped_fps=false, show=false.
-  model-orin  Persist the Orin model and native TensorRT + full-sensor Bayer defaults, then restart ${SERVICE_NAME}.
-  model-nano  Legacy alias for model-orin.
-  model-agx   Persist the AGX model and DeepStream defaults, then restart ${SERVICE_NAME}.
+  model-orin  Persist the Orin model and normalized Basler defaults, then restart ${SERVICE_NAME}.
+  model-agx   Persist the AGX model and normalized Basler defaults, then restart ${SERVICE_NAME}.
   status     Show systemd status.
   logs       Follow systemd logs.
   preflight  Validate image, ROS package, model, and selected profile prerequisites.
   health     Check selected-profile ROS nodes and topics inside ${UV_CONTAINER_NAME}.
   yaw-smoke  Compile and send one yaw-only STM packet without a full ROS build.
   shell      Open a shell inside ${UV_CONTAINER_NAME}.
+
+Legacy aliases:
+  preview-on Legacy alias for preview-gui.
+  model-nano  Legacy alias for model-orin.
 EOF
 }
 
