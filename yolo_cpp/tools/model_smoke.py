@@ -46,7 +46,9 @@ def parse_args() -> argparse.Namespace:
         help="Ultralytics task for the model.",
     )
     parser.add_argument("--imgsz", type=int, default=640, help="Inference image size.")
-    parser.add_argument("--conf", type=float, default=0.25, help="Confidence threshold.")
+    parser.add_argument(
+        "--conf", type=float, default=0.25, help="Confidence threshold."
+    )
     parser.add_argument(
         "--output",
         type=Path,
@@ -94,7 +96,7 @@ def make_test_card(width: int = 1280, height: int = 720) -> np.ndarray:
     return frame
 
 
-def load_source_image(source: Optional[Path]) -> np.ndarray:
+def load_source_image(source: Path | None) -> np.ndarray:
     if source is None:
         return make_test_card()
 
