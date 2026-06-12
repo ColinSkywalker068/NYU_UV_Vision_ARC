@@ -237,6 +237,11 @@ bool looks_like_end2end_shape(const std::vector<int64_t>& shape, int num_classes
   const bool matches_end2end_shape = (dim1 > expected_attrs && dim2 == expected_attrs)
                                      || (dim2 > expected_attrs && dim1 == expected_attrs);
 
+  if (matches_raw_shape && matches_end2end_shape) {
+    // Two-class OBB raw exports and YOLO26 end-to-end OBB rows both carry seven values.
+    // Preserve [1, 7, N] as raw output, but accept [1, N, 7] as post-NMS detections.
+    return dim2 == expected_attrs && dim1 > expected_attrs;
+  }
   if (matches_raw_shape && !matches_end2end_shape) {
     return false;
   }
@@ -284,15 +289,23 @@ std::vector<Detection> parse_end2end_output_tensor(const float* tensor_data,
       return tensor_data[static_cast<std::size_t>((attr * num_detections) + i)];
     };
 
-    const float confidence = at(4);
+    const float confidence = task_obb ? at(5) : at(4);
     if (!std::isfinite(confidence) || confidence < conf_threshold) {
       continue;
     }
 
-    const float x1f = clamp_value(at(0), 0.0F, static_cast<float>(img_w - 1));
-    const float y1f = clamp_value(at(1), 0.0F, static_cast<float>(img_h - 1));
-    const float x2f = clamp_value(at(2), 0.0F, static_cast<float>(img_w - 1));
-    const float y2f = clamp_value(at(3), 0.0F, static_cast<float>(img_h - 1));
+    const float x1f = task_obb ? clamp_value(
+      at(0) - (at(2) * 0.5F), 0.0F, static_cast<float>(img_w - 1))
+                               : clamp_value(at(0), 0.0F, static_cast<float>(img_w - 1));
+    const float y1f = task_obb ? clamp_value(
+      at(1) - (at(3) * 0.5F), 0.0F, static_cast<float>(img_h - 1))
+                               : clamp_value(at(1), 0.0F, static_cast<float>(img_h - 1));
+    const float x2f = task_obb ? clamp_value(
+      at(0) + (at(2) * 0.5F), 0.0F, static_cast<float>(img_w - 1))
+                               : clamp_value(at(2), 0.0F, static_cast<float>(img_w - 1));
+    const float y2f = task_obb ? clamp_value(
+      at(1) + (at(3) * 0.5F), 0.0F, static_cast<float>(img_h - 1))
+                               : clamp_value(at(3), 0.0F, static_cast<float>(img_h - 1));
     const int x1 = static_cast<int>(std::floor(std::min(x1f, x2f)));
     const int y1 = static_cast<int>(std::floor(std::min(y1f, y2f)));
     const int x2 = static_cast<int>(std::ceil(std::max(x1f, x2f)));
@@ -301,12 +314,24 @@ std::vector<Detection> parse_end2end_output_tensor(const float* tensor_data,
     Detection detection{};
     detection.bbox_model = cv::Rect(x1, y1, std::max(0, x2 - x1), std::max(0, y2 - y1));
     detection.confidence = confidence;
-    detection.class_id = std::max(0, static_cast<int>(std::lround(at(5))));
+    detection.class_id = std::max(0, static_cast<int>(std::lround(task_obb ? at(6) : at(5))));
     detection.has_corners = true;
-    detection.corners_model = axis_aligned_corners(
-      std::min(x1f, x2f), std::min(y1f, y2f), std::max(x1f, x2f), std::max(y1f, y2f));
     if (task_obb) {
-      detection.obb_angle = at(6);
+      ParsedCandidate candidate{};
+      candidate.cx = at(0);
+      candidate.cy = at(1);
+      candidate.width = at(2);
+      candidate.height = at(3);
+      candidate.angle = at(4);
+      float normalized_angle = 0.0F;
+      const auto rect = regularize_rbox(candidate, &normalized_angle);
+      cv::Point2f corners[4];
+      rect.points(corners);
+      detection.corners_model = order_armor_corners(corners);
+      detection.obb_angle = normalized_angle;
+    } else {
+      detection.corners_model = axis_aligned_corners(
+        std::min(x1f, x2f), std::min(y1f, y2f), std::max(x1f, x2f), std::max(y1f, y2f));
     }
     detections.push_back(detection);
   }
