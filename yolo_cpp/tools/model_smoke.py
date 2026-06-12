@@ -47,7 +47,9 @@ def parse_args() -> argparse.Namespace:
         help="Ultralytics task for the model.",
     )
     parser.add_argument("--imgsz", type=int, default=640, help="Inference image size.")
-    parser.add_argument("--conf", type=float, default=0.25, help="Confidence threshold.")
+    parser.add_argument(
+        "--conf", type=float, default=0.25, help="Confidence threshold."
+    )
     parser.add_argument(
         "--frames",
         type=int,
@@ -65,7 +67,9 @@ def parse_args() -> argparse.Namespace:
         default=Path("/tmp/yolo_cpp_model_smoke.jpg"),
         help="Write the last annotated frame here.",
     )
-    parser.add_argument("--width", type=int, default=640, help="Requested camera width.")
+    parser.add_argument(
+        "--width", type=int, default=640, help="Requested camera width."
+    )
     parser.add_argument(
         "--height",
         type=int,
@@ -129,7 +133,15 @@ def configure_camera(
             symbolics = list(camera.PixelFormat.GetSymbolics())
         except Exception:
             symbolics = []
-        for candidate in ["BayerRG8", "BayerBG8", "BayerGB8", "BayerGR8", "BGR8", "RGB8", "Mono8"]:
+        for candidate in [
+            "BayerRG8",
+            "BayerBG8",
+            "BayerGB8",
+            "BayerGR8",
+            "BGR8",
+            "RGB8",
+            "Mono8",
+        ]:
             if candidate in symbolics:
                 camera.PixelFormat.SetValue(candidate)
                 break
@@ -145,7 +157,11 @@ def configure_camera(
             fps = float(camera.ResultingFrameRate.GetValue())
         except Exception:
             fps = 0.0
-        return {"width": float(target_width), "height": float(target_height), "fps": fps}
+        return {
+            "width": float(target_width),
+            "height": float(target_height),
+            "fps": fps,
+        }
     except Exception:
         camera.Close()
         raise
@@ -209,7 +225,9 @@ def main() -> int:
                 first_frame_time = perf_counter()
 
             frame_count += 1
-            results = model.predict(frame, imgsz=args.imgsz, conf=args.conf, verbose=False)
+            results = model.predict(
+                frame, imgsz=args.imgsz, conf=args.conf, verbose=False
+            )
             result = results[0]
             annotated = result.plot()
             last_annotated = annotated
@@ -236,7 +254,9 @@ def main() -> int:
 
         if first_frame_time is not None and frame_count > 0:
             elapsed = perf_counter() - first_frame_time
-            print(f"frames={frame_count} elapsed={elapsed:.3f}s avg_fps={frame_count / elapsed:.2f}")
+            print(
+                f"frames={frame_count} elapsed={elapsed:.3f}s avg_fps={frame_count / elapsed:.2f}"
+            )
         return 0
     finally:
         if camera.IsGrabbing():
