@@ -111,6 +111,23 @@ cv::Mat make_preview_frame(const FramePacket &packet) {
   return preview;
 }
 
+cv::Rect flip_rect_180(const cv::Rect &rect, int image_width, int image_height) {
+  if (image_width <= 0 || image_height <= 0 || rect.empty()) {
+    return rect;
+  }
+  const int x1 = std::clamp(image_width - rect.x - rect.width, 0, image_width);
+  const int y1 = std::clamp(image_height - rect.y - rect.height, 0, image_height);
+  const int x2 = std::clamp(image_width - rect.x, 0, image_width);
+  const int y2 = std::clamp(image_height - rect.y, 0, image_height);
+  return cv::Rect(x1, y1, std::max(0, x2 - x1), std::max(0, y2 - y1));
+}
+
+cv::Rect preview_source_rect(const FramePacket &packet, const cv::Rect &rect,
+                             int image_width, int image_height) {
+  return packet.flip_180 ? flip_rect_180(rect, image_width, image_height)
+                         : rect;
+}
+
 } // namespace
 
 /// Declare parameters, choose the inference runtime, and start capture
@@ -862,8 +879,10 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
     for (const auto &candidate : candidates) {
       const cv::Scalar color =
           candidate.is_enemy ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 165, 255);
+      const cv::Rect candidate_source_rect = preview_source_rect(
+          packet, candidate.bbox_source, source_width, source_height);
       const cv::Rect preview_rect = vision_node_helpers::scale_rect_to_preview(
-          candidate.bbox_source, scale_x, scale_y, image_rect);
+          candidate_source_rect, scale_x, scale_y, image_rect);
       if (preview_rect.empty()) {
         continue;
       }
@@ -888,10 +907,23 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
           static_cast<double>(preview.cols) / static_cast<double>(target_source_width);
       const double target_scale_y =
           static_cast<double>(preview.rows) / static_cast<double>(target_source_height);
+      const cv::Rect target_source_rect = preview_source_rect(
+          packet, cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)),
+          target_source_width, target_source_height);
       const cv::Rect target_rect = vision_node_helpers::scale_rect_to_preview(
-          cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)), target_scale_x,
-          target_scale_y, image_rect);
-      if (target_rect.width > 0 && target_rect.height > 0) {
+          target_source_rect, target_scale_x, target_scale_y, image_rect);
+      const auto matching_candidate = std::find_if(
+          candidates.begin(), candidates.end(), [&](const Candidate &candidate) {
+            const cv::Rect candidate_source_rect = preview_source_rect(
+                packet, candidate.bbox_source, source_width, source_height);
+            const cv::Rect candidate_rect =
+                vision_node_helpers::scale_rect_to_preview(
+                    candidate_source_rect, scale_x, scale_y, image_rect);
+            return vision_node_helpers::rect_iou(target_rect, candidate_rect) >
+                   0.05;
+          });
+      if (target_rect.width > 0 && target_rect.height > 0 &&
+          matching_candidate != candidates.end()) {
         const cv::Scalar target_color(0, 0, 255);
         cv::rectangle(preview, target_rect, target_color, 4);
         cv::circle(preview,
