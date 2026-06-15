@@ -84,7 +84,7 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `CV_STM_TARGET_FRAME_SAVE_MAX` | Maximum target-frame images saved per run | `100` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_TARGET_FRAME_JPEG_QUALITY` | JPEG quality for optional target-frame capture | `85` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_CAMERA_TYPE` | Lower-level camera backend override for the Basler-profile launch only | Usually unset; prefer `CV_STM_LAUNCH_PROFILE` | `services/stm-stack-entrypoint.sh` |
-| `CV_STM_MODEL_PATH` | Competition model or engine path override | Empty by default; `yolo_cpp/config/default_model_path.txt` supplies the robot-local fallback | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_MODEL_PATH` | Competition model or engine path override | Empty by default; `yolo_cpp/config/default_model_path.txt` supplies the robot-local fallback shared engine | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_SERIAL_PORT` | STM32 serial device for competition startup | `/dev/ttyUSB0` | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_REQUIRE_SERIAL` | Whether preflight must fail when the serial path is absent | Defaults to `true` for `basler`, `false` for `realsense` | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_EXTRA_LAUNCH_ARGS` | Optional extra selected-profile launch arguments | Empty by default | `services/stm-stack-entrypoint.sh` |
@@ -227,7 +227,7 @@ cv model-orin
 cv model-agx
 ```
 
-These commands persist `CV_STM_MODEL_PATH` and restart the service. `model-orin` selects `yolo_cpp/models/nitish-orin.engine`, and `model-agx` selects `yolo_cpp/models/nitish-agx.engine`; both now normalize the service to the same Basler/DeepStream defaults so the only intentional difference is the model file. The older `model-nano` shortcut remains available as a backward-compatible alias for `model-orin`.
+These commands persist `CV_STM_MODEL_PATH` and restart the service. `model-orin` and `model-agx` both select `yolo_cpp/models/kushalv2.engine`, so the only difference between the commands is the operator label in the command name. The older `model-nano` shortcut remains available as a backward-compatible alias for `model-orin`.
 
 To send one small yaw-only STM packet without a full ROS build, run:
 

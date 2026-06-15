@@ -17,8 +17,7 @@ ENV_DIR="${CV_STM_ENV_DIR:-/etc/cv-detection}"
 ENV_FILE="${CV_STM_ENV_FILE:-${ENV_DIR}/stm-stack.env}"
 DEFAULT_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"
 LEGACY_CPLUSPLUS_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus"
-ORIN_MODEL_RELATIVE="yolo_cpp/models/nitish-orin.engine"
-AGX_MODEL_RELATIVE="yolo_cpp/models/nitish-agx.engine"
+SHARED_MODEL_RELATIVE="yolo_cpp/models/kushalv2.engine"
 
 if [ -f "$ENV_FILE" ]; then
   set -a
@@ -290,11 +289,11 @@ set_model_profile() {
 }
 
 set_orin_profile() {
-  set_model_profile "$ORIN_MODEL_RELATIVE" "Orin"
+  set_model_profile "$SHARED_MODEL_RELATIVE" "Orin"
 }
 
 set_agx_profile() {
-  set_model_profile "$AGX_MODEL_RELATIVE" "AGX"
+  set_model_profile "$SHARED_MODEL_RELATIVE" "AGX"
 }
 
 show_status() {
