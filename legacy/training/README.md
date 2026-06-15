@@ -95,6 +95,26 @@ conda activate <env-name> #yolo-nas for this example
 
 Now you can run any python file for quick prototyping and making sure your code works
 
+### Nano engine helper
+
+Use `export_nano_engine.sh` when you already have a trained `.pt` or exported `.onnx` and want to build the Nano FP16 TensorRT engine or validate ONNX ingestion through the active detector stack.
+
+```bash
+./Training/export_nano_engine.sh \
+  --input runs/robomaster_obb/armor_yolo26s_obb_close_motion/weights/best.pt \
+  --engine-output yolo_cpp/models/kushalv2.engine
+```
+
+If you only want to validate the ONNX path, use node mode:
+
+```bash
+./Training/export_nano_engine.sh \
+  --mode node \
+  --input runs/robomaster_obb/armor_yolo26s_obb_close_motion/weights/best.pt
+```
+
+The script searches for `trtexec` automatically and accepts `--trtexec /path/to/trtexec` when the TensorRT binary is not on `PATH`.
+
 ### Run dependencies - ASYNCHRONOUSLY
 Suppose you are training a large model that takes hours to train and you cannot be the terminal open all the time. Use `SBATCH` files to specify your system configuration and  commands to run. SLURM will automatically allocate resources and run the commands when possible. An example of this can be found in `train_nas.SBATCH`. All communication happpens using emails. 
 
@@ -109,4 +129,3 @@ watch squeue -u <netid> #enter your net id here
 ```
 
 **NOTE** make sure to define the `.err` and `.out` file with unqiue names so that its easier to debug your problems.
-
