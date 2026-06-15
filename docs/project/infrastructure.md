@@ -13,6 +13,7 @@
 ## Quick Navigation
 
 - [Operations Runbook](runbook.md)
+- [Jetson SSH Access](ssh-access.md)
 - [Jetson Orin Nano Reflash](jetson-reflash.md)
 - [Jetson VNC Access](jetson-vnc.md)
 - [Setup Guide](../Setup/Setup.md)
@@ -28,7 +29,7 @@
 | Read When | You need to know what runs where, which host devices are required, which images are used, or which automation exists. |
 | Skip When | You need command procedures, troubleshooting steps, ROS 2 node architecture, or detector/tracker implementation details. |
 | Canonical | Yes |
-| Next Docs | [Operations Runbook](runbook.md), [Setup Guide](../Setup/Setup.md) |
+| Next Docs | [Operations Runbook](runbook.md), [Jetson SSH Access](ssh-access.md), [Setup Guide](../Setup/Setup.md) |
 | Primary Sources | `Docker/docker-compose.yml`, `Docker/Dockerfile.run-cv`, `Docker/Dockerfile.cplusplus`, `services/start-container.sh`, `services/stm-stack.service`, `services/stm-stack.sh`, `services/stm-stack-entrypoint.sh`, `.github/workflows/main.yml`, `.gitlab-ci.yml` |
 
 ## 1. Server Inventory

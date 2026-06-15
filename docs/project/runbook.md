@@ -13,6 +13,7 @@
 ## Quick Navigation
 
 - [Infrastructure](infrastructure.md)
+- [Jetson SSH Access](ssh-access.md)
 - [Jetson Orin Nano Reflash](jetson-reflash.md)
 - [Jetson VNC Access](jetson-vnc.md)
 - [Setup Guide](../Setup/Setup.md)
@@ -28,7 +29,7 @@
 | Read When | You need exact Docker, ROS 2, systemd, test, or troubleshooting commands. |
 | Skip When | You need static host inventory, CI/CD inventory, or high-level architecture. |
 | Canonical | Yes |
-| Next Docs | [Infrastructure](infrastructure.md), [Setup Guide](../Setup/Setup.md) |
+| Next Docs | [Infrastructure](infrastructure.md), [Jetson SSH Access](ssh-access.md), [Setup Guide](../Setup/Setup.md) |
 | Primary Sources | `Docker/docker-compose.yml`, `Docker/Dockerfile.run-cv`, `Docker/Dockerfile.cplusplus`, `Docker/build_cplusplus.sh`, `services/uv.sh`, `services/start-container.sh`, `services/stm-stack.service`, `services/stm-stack.sh`, `services/stm-stack-entrypoint.sh`, `services/setup-stm-stack.sh`, `CPP_CONTAINER_RUNBOOK.md` |
 
 ## 1. Overview
