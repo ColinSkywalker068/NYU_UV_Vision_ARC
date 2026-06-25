@@ -13,7 +13,7 @@ from launch import LaunchDescription
 
 ORIN_DEFAULTS = {
     "detector_backend": "native_tensorrt",
-    "model_path": "/home/ultraviolet/CV_Detection/yolo_cpp/models/kushalv2.engine",
+    "model_path": "/home/ultraviolet/CV_Detection/yolo_cpp/models/kushalv2-nano.engine",
     "basler_pixel_format": "bayer_rggb8",
     "basler_use_full_sensor": "true",
     "basler_source_width": "1920",
