@@ -163,7 +163,7 @@ sequenceDiagram
 
 ### 6.2 RealSense-Only Launch
 
-`realsense.launch.py` starts RealSense capture, native TensorRT detection, tracker, processor, and solver without the serial bridge. It is the lighter runtime for camera and solver bring-up.
+`realsense.launch.py` starts RealSense D455 RGB capture, DeepStream detection, tracker, processor, and solver without the serial bridge. It is the lighter runtime for camera and solver bring-up; `detector_backend:=native_tensorrt` remains available for direct TensorRT comparison.
 
 ### 6.3 Zero-Copy Experiment
 

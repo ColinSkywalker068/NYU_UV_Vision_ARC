@@ -659,9 +659,10 @@ void ArmorDetectorNode::initialize_native_pipeline() {
 }
 
 void ArmorDetectorNode::initialize_deepstream_runtime() {
-  if (camera_config_.camera_type != "basler") {
+  if (camera_config_.camera_type != "basler" &&
+      camera_config_.camera_type != "realsense") {
     throw std::runtime_error(
-        "DeepStream runtime currently supports camera_type=basler only");
+        "DeepStream runtime currently supports camera_type=basler or realsense");
   }
   if (inference_mode_ != "predict") {
     throw std::runtime_error(
@@ -674,25 +675,50 @@ void ArmorDetectorNode::initialize_deepstream_runtime() {
   config.task = task_;
   config.imgsz_width = imgsz_width_;
   config.imgsz_height = imgsz_height_;
-  config.source_width = camera_config_.basler_use_full_sensor
-                            ? camera_config_.basler_source_width
-                            : imgsz_width_;
-  config.source_height = camera_config_.basler_use_full_sensor
-                             ? camera_config_.basler_source_height
-                             : imgsz_height_;
-  config.source_fps = camera_config_.basler_fps;
-  config.source_exposure_us = camera_config_.basler_exposure_us;
-  config.source_gain_db = camera_config_.basler_gain_db;
-  config.source_fps_uncapped = camera_config_.basler_uncapped_fps;
-  config.source_use_full_sensor = camera_config_.basler_use_full_sensor;
-  config.source_pixel_format = camera_config_.basler_pixel_format;
+  if (camera_config_.camera_type == "realsense") {
+    config.source_kind = "realsense";
+    config.source_element = "appsrc";
+    config.source_id = "realsense";
+    config.source_width = camera_config_.realsense_width;
+    config.source_height = camera_config_.realsense_height;
+    config.source_fps = camera_config_.realsense_fps;
+    config.source_exposure_us = camera_config_.realsense_exposure;
+    config.source_gain_db = camera_config_.realsense_gain;
+    config.source_fps_uncapped = false;
+    config.source_use_full_sensor = true;
+    config.source_pixel_format = "yuy2";
+    config.source_auto_exposure = camera_config_.realsense_auto_exposure;
+    config.source_auto_white_balance =
+        camera_config_.realsense_auto_white_balance;
+    config.source_white_balance = camera_config_.realsense_white_balance;
+    config.source_use_poll = camera_config_.realsense_use_poll;
+    config.source_use_max_native_fps =
+        camera_config_.realsense_use_max_native_fps;
+    config.flip_source = false;
+  } else {
+    config.source_kind = "basler";
+    config.source_element = "pylonsrc";
+    config.source_id = "basler";
+    config.source_width = camera_config_.basler_use_full_sensor
+                              ? camera_config_.basler_source_width
+                              : imgsz_width_;
+    config.source_height = camera_config_.basler_use_full_sensor
+                               ? camera_config_.basler_source_height
+                               : imgsz_height_;
+    config.source_fps = camera_config_.basler_fps;
+    config.source_exposure_us = camera_config_.basler_exposure_us;
+    config.source_gain_db = camera_config_.basler_gain_db;
+    config.source_fps_uncapped = camera_config_.basler_uncapped_fps;
+    config.source_use_full_sensor = camera_config_.basler_use_full_sensor;
+    config.source_pixel_format = camera_config_.basler_pixel_format;
+    config.flip_source = camera_config_.basler_flip;
+  }
   config.pre_mux_resize = pre_mux_resize_;
   config.pre_mux_width = pre_mux_width_;
   config.pre_mux_height = pre_mux_height_;
   config.profile_stages = deepstream_profile_stages_;
   config.profile_stage_interval = deepstream_profile_stage_interval_;
   config.bayer_conversion_backend = bayer_conversion_backend_;
-  config.flip_source = camera_config_.basler_flip;
   config.conf_threshold = conf_;
   config.half = half_;
   config.enable_color_verification =
@@ -707,7 +733,7 @@ void ArmorDetectorNode::initialize_deepstream_runtime() {
       });
   fps_ = deepstream_runtime_->source_actual_fps() > 0.0
              ? deepstream_runtime_->source_actual_fps()
-             : static_cast<double>(std::max(1, camera_config_.basler_fps));
+             : static_cast<double>(std::max(1, config.source_fps));
 }
 
 void ArmorDetectorNode::timer_callback() {

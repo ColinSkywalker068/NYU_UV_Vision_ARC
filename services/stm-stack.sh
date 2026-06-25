@@ -107,8 +107,10 @@ CV_STM_SHOW=false
 # CV_STM_TARGET_FRAME_SAVE_DIR=
 # CV_STM_TARGET_FRAME_SAVE_MAX=100
 # CV_STM_TARGET_FRAME_JPEG_QUALITY=85
-# RealSense profile skips Basler/DeepStream/Pylon checks and serial by default:
+# RealSense profile uses RGB-only DeepStream through appsrc and skips Basler/Pylon
+# checks and serial by default:
 # CV_STM_LAUNCH_PROFILE=realsense
+# CV_STM_DETECTOR_BACKEND=deepstream
 # CV_STM_REQUIRE_SERIAL=false
 # Field service defaults intentionally request a deterministic 160 FPS Basler cap
 # while keeping preview off. Other Basler launch knobs stay on launch defaults.
@@ -296,6 +298,20 @@ set_agx_profile() {
   set_model_profile "$SHARED_MODEL_RELATIVE" "AGX"
 }
 
+set_realsense_deepstream_profile() {
+  set_env_value CV_STM_LAUNCH_PROFILE realsense
+  set_env_value CV_STM_DETECTOR_BACKEND deepstream
+  set_env_value CV_STM_ALLOW_NATIVE_TENSORRT_FALLBACK false
+  set_env_value CV_STM_REQUIRE_SERIAL false
+  set_env_value CV_STM_REALSENSE_WIDTH 640
+  set_env_value CV_STM_REALSENSE_HEIGHT 480
+  set_env_value CV_STM_REALSENSE_FPS 60
+  set_env_value CV_STM_SHOW false
+  log "Set RealSense D455 DeepStream profile in ${ENV_FILE}"
+  log "Restarting ${SERVICE_NAME} with realsense.launch.py, DeepStream, 640x480@60, and show=false"
+  systemctl_action restart
+}
+
 show_status() {
   systemctl status "$SERVICE_NAME" --no-pager
 }
@@ -411,6 +427,8 @@ Commands:
              Persist CV_STM_SHOW=false and restart ${SERVICE_NAME}.
   basler-defaults
              Restore field Basler defaults and restart with basler_fps=160, basler_uncapped_fps=false, show=false.
+  realsense-deepstream
+             Persist RealSense D455 DeepStream defaults and restart with 640x480@60, show=false, and serial optional.
   model-orin  Persist the Orin model and normalized Basler defaults, then restart ${SERVICE_NAME}.
   model-agx   Persist the AGX model and normalized Basler defaults, then restart ${SERVICE_NAME}.
   status     Show systemd status.
@@ -439,6 +457,7 @@ main() {
     preview-on) set_preview gui gui ;;
     preview-off) set_preview false off ;;
     basler-defaults) restore_basler_launch_defaults ;;
+    realsense-deepstream) set_realsense_deepstream_profile ;;
     model-orin|model-nano) set_orin_profile ;;
     model-agx) set_agx_profile ;;
     status) show_status ;;

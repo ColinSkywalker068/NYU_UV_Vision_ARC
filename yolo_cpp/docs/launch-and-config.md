@@ -5,7 +5,7 @@ Related pages: [Overview](./overview.md) | [Pipeline](./pipeline.md) | [Nodes](.
 ## Launch Files
 
 - [`basler.launch.py`](../launch/basler.launch.py): Basler + DeepStream field stack with detector, tracker, processor, 3D solver, and STM bridge
-- [`realsense.launch.py`](../launch/realsense.launch.py): RealSense + native TensorRT detector, tracker, processor, and solver stack without the serial bridge
+- [`realsense.launch.py`](../launch/realsense.launch.py): RealSense D455 RGB + DeepStream detector, tracker, processor, and solver stack without the serial bridge
 - [`stm.launch.py`](../launch/stm.launch.py): compatibility alias that forwards to `basler.launch.py`
 - [`zerocopy.launch.py`](../launch/zerocopy.launch.py): component-container launch for the combined perception path
 
@@ -101,4 +101,4 @@ On a headless Jetson, prefer `show:=web` because it does not require X11 display
 
 Use `basler.launch.py` when you want the real field-facing Basler stack with controller integration. Its default solver mode is `absolute`, so STM RX yaw/pitch radians are added to the solved aim offsets, then the bridge sends outgoing yaw/pitch radians to STM because the current controls firmware expects radians. `stm.launch.py` remains available only as a compatibility alias.
 
-Use `realsense.launch.py` when you want a smaller RealSense loop for camera, native TensorRT inference, tracking, 3D processor tuning, and aiming without serial transport in the way. Its default solver mode is `offset`, since there may be no STM attitude feedback.
+Use `realsense.launch.py` when you want a smaller RealSense D455 loop for RGB-only DeepStream inference, tracking, 3D processor tuning, and aiming without serial transport in the way. Its default solver mode is `offset`, since there may be no STM attitude feedback. The launch defaults to `640x480@60` RealSense color capture, `detector_backend:=deepstream`, and no camera flip; set `detector_backend:=native_tensorrt` only for the older direct TensorRT path.

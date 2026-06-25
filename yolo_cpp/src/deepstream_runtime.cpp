@@ -33,12 +33,17 @@
 
 #if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
 #include <gst/app/gstappsink.h>
+#include <gst/app/gstappsrc.h>
 #include <gst/gst.h>
 #include <gst/gstchildproxy.h>
 #include <gst/video/video.h>
 #include <gstnvdsinfer.h>
 #include <gstnvdsmeta.h>
 #include <nvdsmeta.h>
+#endif
+
+#if defined(HAVE_LIBREALSENSE2)
+#include <librealsense2/rs.hpp>
 #endif
 
 namespace yolo_cpp
@@ -553,10 +558,12 @@ struct DeepStreamRuntime::Impl
   GstBus* bus{nullptr};
   GstAppSink* infer_sink{nullptr};
   GstAppSink* color_sink{nullptr};
+  GstAppSrc* app_source{nullptr};
   GstPad* tee_infer_pad{nullptr};
   GstPad* streammux_sink_pad{nullptr};
   GstPad* tee_color_pad{nullptr};
   std::filesystem::path runtime_config_path;
+  std::thread source_thread;
   std::thread infer_thread;
   std::thread color_thread;
   std::thread bus_thread;
@@ -575,6 +582,14 @@ struct DeepStreamRuntime::Impl
   std::string fps_cap_status{"unknown"};
   std::string actual_bayer_conversion_backend{"none"};
   bool cuda_bayer_resizes_source{false};
+  GstClockTime next_source_pts{0};
+  GstClockTime source_frame_duration{GST_CLOCK_TIME_NONE};
+  std::uint64_t source_frame_index{0};
+#if defined(HAVE_LIBREALSENSE2)
+  rs2::pipeline realsense_pipeline;
+  rs2::pipeline_profile realsense_profile;
+  rs2_format realsense_stream_format{RS2_FORMAT_YUYV};
+#endif
   enum class StageProbePoint : std::size_t
   {
     kSourceCaps = 0,
@@ -638,6 +653,7 @@ struct DeepStreamRuntime::Impl
       "DeepStream runtime unavailable: build missing GStreamer or DeepStream development "
       "headers/libs");
 #else
+    prepare_source_config();
     validate_runtime();
     materialize_config();
     build_pipeline();
@@ -651,6 +667,19 @@ struct DeepStreamRuntime::Impl
 #if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
     running = false;
 
+    if (app_source != nullptr) {
+      gst_app_src_end_of_stream(app_source);
+    }
+#if defined(HAVE_LIBREALSENSE2)
+    try {
+      realsense_pipeline.stop();
+    } catch (...) {
+    }
+#endif
+
+    if (source_thread.joinable()) {
+      source_thread.join();
+    }
     if (infer_thread.joinable()) {
       infer_thread.join();
     }
@@ -680,6 +709,7 @@ struct DeepStreamRuntime::Impl
 
     infer_sink = nullptr;
     color_sink = nullptr;
+    app_source = nullptr;
 
     if (!runtime_config_path.empty()) {
       std::error_code ec;
@@ -701,6 +731,285 @@ struct DeepStreamRuntime::Impl
     const auto backend = normalize_format_token(config.bayer_conversion_backend);
     return backend == "cpu" || backend == "bayer2rgb";
   }
+
+  bool is_realsense_source() const
+  {
+    return normalize_format_token(config.source_kind) == "realsense";
+  }
+
+  bool is_basler_source() const
+  {
+    const auto source_kind = normalize_format_token(config.source_kind);
+    return source_kind.empty() || source_kind == "basler";
+  }
+
+  void prepare_source_config()
+  {
+    if (is_realsense_source()) {
+      prepare_realsense_source_config();
+      return;
+    }
+    if (!is_basler_source()) {
+      throw std::runtime_error(
+        "Unsupported DeepStream source_kind '" + config.source_kind + "'. Use basler or realsense.");
+    }
+  }
+
+#if defined(HAVE_LIBREALSENSE2)
+  static std::string realsense_format_label(rs2_format format)
+  {
+    switch (format) {
+      case RS2_FORMAT_YUYV:
+        return "yuy2";
+      case RS2_FORMAT_BGR8:
+        return "bgr8";
+      case RS2_FORMAT_RGB8:
+        return "rgb8";
+      default:
+        return "unknown";
+    }
+  }
+
+  static int bytes_per_pixel_for_realsense_format(rs2_format format)
+  {
+    switch (format) {
+      case RS2_FORMAT_YUYV:
+        return 2;
+      case RS2_FORMAT_BGR8:
+      case RS2_FORMAT_RGB8:
+        return 3;
+      default:
+        throw std::runtime_error("Unsupported RealSense color format for DeepStream appsrc");
+    }
+  }
+
+  void prepare_realsense_source_config()
+  {
+    config.source_kind = "realsense";
+    config.source_element = "appsrc";
+    config.source_id = "realsense";
+    config.source_use_full_sensor = true;
+    config.flip_source = false;
+
+    const int requested_width = std::max(1, config.source_width);
+    const int requested_height = std::max(1, config.source_height);
+    const int requested_fps = std::max(1, config.source_fps);
+    struct PreferredFormat
+    {
+      rs2_format format;
+      const char* label;
+    };
+    const std::array<PreferredFormat, 3> preferred_formats{{
+      {RS2_FORMAT_YUYV, "yuy2"},
+      {RS2_FORMAT_BGR8, "bgr8"},
+      {RS2_FORMAT_RGB8, "rgb8"},
+    }};
+
+    rs2::context ctx;
+    auto devices = ctx.query_devices();
+    if (devices.size() == 0) {
+      throw std::runtime_error("DeepStream RealSense source requested, but no RealSense camera was found");
+    }
+
+    int best_fps = -1;
+    int best_rank = static_cast<int>(preferred_formats.size());
+    rs2_format best_format = RS2_FORMAT_YUYV;
+
+    for (auto&& device : devices) {
+      for (auto&& sensor : device.query_sensors()) {
+        if (!sensor.is<rs2::color_sensor>()) {
+          continue;
+        }
+        for (auto&& profile : sensor.get_stream_profiles()) {
+          auto video = profile.as<rs2::video_stream_profile>();
+          if (video.stream_type() != RS2_STREAM_COLOR || video.width() != requested_width
+              || video.height() != requested_height)
+          {
+            continue;
+          }
+          const int fps = video.fps();
+          if (!config.source_use_max_native_fps && fps < requested_fps) {
+            continue;
+          }
+          for (std::size_t rank = 0; rank < preferred_formats.size(); ++rank) {
+            if (video.format() != preferred_formats[rank].format) {
+              continue;
+            }
+            if (fps > best_fps || (fps == best_fps && static_cast<int>(rank) < best_rank)) {
+              best_fps = fps;
+              best_rank = static_cast<int>(rank);
+              best_format = video.format();
+            }
+          }
+        }
+      }
+    }
+
+    if (best_fps <= 0) {
+      throw std::runtime_error(
+        "No compatible RealSense color profile found for " + std::to_string(requested_width) + "x"
+        + std::to_string(requested_height) + " @ " + std::to_string(requested_fps)
+        + " FPS using YUYV/BGR8/RGB8");
+    }
+
+    config.source_width = requested_width;
+    config.source_height = requested_height;
+    config.source_fps = best_fps;
+    config.source_pixel_format = realsense_format_label(best_format);
+    realsense_stream_format = best_format;
+    source_actual_fps = static_cast<double>(best_fps);
+    source_frame_duration = gst_util_uint64_scale_int(GST_SECOND, 1, best_fps);
+
+    rs2::config rs_config;
+    try {
+      rs_config.disable_all_streams();
+    } catch (...) {
+    }
+    rs_config.enable_stream(
+      RS2_STREAM_COLOR, config.source_width, config.source_height, realsense_stream_format,
+      config.source_fps);
+    realsense_profile = realsense_pipeline.start(rs_config);
+    configure_realsense_sensor();
+
+    auto stream_profile =
+      realsense_profile.get_stream(RS2_STREAM_COLOR).as<rs2::video_stream_profile>();
+    config.source_width = stream_profile.width();
+    config.source_height = stream_profile.height();
+    config.source_fps = stream_profile.fps();
+    realsense_stream_format = stream_profile.format();
+    config.source_pixel_format = realsense_format_label(realsense_stream_format);
+    source_actual_fps = static_cast<double>(std::max(1, stream_profile.fps()));
+    source_frame_duration =
+      gst_util_uint64_scale_int(GST_SECOND, 1, std::max(1, stream_profile.fps()));
+
+    RCLCPP_INFO(logger, "RealSense color-only DeepStream source selected: %dx%d %s @ %d FPS",
+      config.source_width, config.source_height, config.source_pixel_format.c_str(),
+      config.source_fps);
+  }
+
+  void configure_realsense_sensor()
+  {
+    auto device = realsense_profile.get_device();
+    for (auto&& sensor : device.query_sensors()) {
+      if (!sensor.is<rs2::color_sensor>()) {
+        continue;
+      }
+      if (sensor.supports(RS2_OPTION_ENABLE_AUTO_EXPOSURE)) {
+        sensor.set_option(
+          RS2_OPTION_ENABLE_AUTO_EXPOSURE, config.source_auto_exposure ? 1.0F : 0.0F);
+      }
+      if (!config.source_auto_exposure) {
+        if (sensor.supports(RS2_OPTION_EXPOSURE)) {
+          sensor.set_option(RS2_OPTION_EXPOSURE, static_cast<float>(config.source_exposure_us));
+        }
+        if (sensor.supports(RS2_OPTION_GAIN)) {
+          sensor.set_option(RS2_OPTION_GAIN, static_cast<float>(config.source_gain_db));
+        }
+      }
+      if (sensor.supports(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE)) {
+        sensor.set_option(
+          RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, config.source_auto_white_balance ? 1.0F : 0.0F);
+      }
+      if (!config.source_auto_white_balance && sensor.supports(RS2_OPTION_WHITE_BALANCE)) {
+        sensor.set_option(
+          RS2_OPTION_WHITE_BALANCE, static_cast<float>(config.source_white_balance));
+      }
+    }
+  }
+
+  GstBuffer* make_realsense_appsrc_buffer(const rs2::video_frame& frame)
+  {
+    const int width = frame.get_width();
+    const int height = frame.get_height();
+    const int bytes_per_pixel = bytes_per_pixel_for_realsense_format(realsense_stream_format);
+    const int dst_stride = width * bytes_per_pixel;
+    const int src_stride = frame.get_stride_in_bytes();
+    const auto* src = static_cast<const std::uint8_t*>(frame.get_data());
+    if (src == nullptr || width <= 0 || height <= 0 || src_stride <= 0) {
+      return nullptr;
+    }
+
+    GstBuffer* buffer = gst_buffer_new_allocate(nullptr, static_cast<gsize>(dst_stride * height), nullptr);
+    if (buffer == nullptr) {
+      throw std::runtime_error("Failed to allocate RealSense appsrc GstBuffer");
+    }
+
+    GstMapInfo map_info;
+    if (!gst_buffer_map(buffer, &map_info, GST_MAP_WRITE)) {
+      gst_buffer_unref(buffer);
+      throw std::runtime_error("Failed to map RealSense appsrc GstBuffer");
+    }
+    for (int row = 0; row < height; ++row) {
+      std::memcpy(map_info.data + row * dst_stride, src + row * src_stride,
+        static_cast<std::size_t>(dst_stride));
+    }
+    gst_buffer_unmap(buffer, &map_info);
+
+    const GstClockTime duration =
+      source_frame_duration != GST_CLOCK_TIME_NONE
+        ? source_frame_duration
+        : gst_util_uint64_scale_int(GST_SECOND, 1, std::max(1, config.source_fps));
+    GST_BUFFER_PTS(buffer) = next_source_pts;
+    GST_BUFFER_DTS(buffer) = next_source_pts;
+    GST_BUFFER_DURATION(buffer) = duration;
+    GST_BUFFER_OFFSET(buffer) = source_frame_index++;
+    next_source_pts += duration;
+    return buffer;
+  }
+
+  void realsense_source_loop()
+  {
+    while (running) {
+      try {
+        rs2::frameset frames;
+        if (config.source_use_poll) {
+          if (!realsense_pipeline.poll_for_frames(&frames)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+          }
+        } else {
+          frames = realsense_pipeline.wait_for_frames(1000);
+        }
+
+        rs2::video_frame color_frame = frames.get_color_frame();
+        if (!color_frame) {
+          continue;
+        }
+        GstBuffer* buffer = make_realsense_appsrc_buffer(color_frame);
+        if (buffer == nullptr) {
+          continue;
+        }
+        const GstFlowReturn flow = gst_app_src_push_buffer(app_source, buffer);
+        if (flow != GST_FLOW_OK) {
+          if (running) {
+            RCLCPP_WARN(logger, "RealSense appsrc push stopped with flow return %d",
+              static_cast<int>(flow));
+          }
+          break;
+        }
+      } catch (const rs2::error& exc) {
+        if (running) {
+          RCLCPP_ERROR(logger, "RealSense capture error: %s", exc.what());
+        }
+      } catch (const std::exception& exc) {
+        if (running) {
+          RCLCPP_ERROR(logger, "RealSense appsrc error: %s", exc.what());
+        }
+      }
+    }
+
+    if (app_source != nullptr) {
+      gst_app_src_end_of_stream(app_source);
+    }
+  }
+#else
+  void prepare_realsense_source_config()
+  {
+    throw std::runtime_error(
+      "DeepStream RealSense source requested, but this yolo_cpp build did not find "
+      "librealsense2 headers/libs.");
+  }
+#endif
 
   /// Verify GStreamer/DeepStream elements and read model metadata needed for parsing.
   void validate_runtime()
@@ -751,7 +1060,8 @@ struct DeepStreamRuntime::Impl
       GstElementFactory* factory = gst_element_factory_find(element_name.c_str());
       if (factory == nullptr) {
         throw std::runtime_error("Required GStreamer element not found: " + element_name
-                                 + ". Check DeepStream and Basler plugin installation.");
+                                 + ". Check DeepStream, GStreamer, and camera source plugin "
+                                   "installation.");
       }
       gst_object_unref(factory);
     }
@@ -906,6 +1216,27 @@ struct DeepStreamRuntime::Impl
 
   void query_source_actuals()
   {
+    if (is_realsense_source()) {
+      source_actual_fps =
+        source_actual_fps > 0.0 ? source_actual_fps : static_cast<double>(std::max(1, config.source_fps));
+      RCLCPP_INFO(logger,
+        "DeepStream RealSense appsrc source: %dx%d pixel_format=%s @ %.2f FPS "
+        "(pre_mux_resize=%s, flip_source=false)",
+        config.source_width, config.source_height, config.source_pixel_format.c_str(),
+        source_actual_fps, config.pre_mux_resize ? "true" : "false");
+      RCLCPP_INFO(logger,
+        "DeepStream RealSense caps requested: source='%s' infer_cpu='%s' infer_nvmm='%s' color='%s'",
+        requested_source_caps.c_str(), requested_infer_cpu_caps.c_str(),
+        requested_infer_nvmm_caps.c_str(),
+        requested_color_caps.empty() ? "disabled" : requested_color_caps.c_str());
+      RCLCPP_INFO(logger,
+        "DeepStream RealSense caps negotiated: source='%s' infer_nvmm='%s' color='%s'",
+        current_caps_for_pad(source_caps, "src").c_str(),
+        current_caps_for_pad(infer_nvmm_caps, "src").c_str(),
+        color_caps != nullptr ? current_caps_for_pad(color_caps, "src").c_str() : "disabled");
+      return;
+    }
+
     const auto fps = read_source_actual_fps();
     source_actual_fps = fps.value_or(static_cast<double>(std::max(1, config.source_fps)));
     const auto pixel_format = get_child_proxy_string_if_present(source, "cam::PixelFormat");
@@ -1132,6 +1463,7 @@ struct DeepStreamRuntime::Impl
       throw std::runtime_error("Failed to create DeepStream pipeline");
     }
 
+    const bool source_is_realsense = is_realsense_source();
     const auto source_format = resolve_source_format(config.source_pixel_format);
     const std::optional<int> source_width = positive_dimension(config.source_width);
     const std::optional<int> source_height = positive_dimension(config.source_height);
@@ -1141,6 +1473,12 @@ struct DeepStreamRuntime::Impl
     const bool need_preview_branch = config.preview_frame && !need_full_color_branch;
     const bool need_color_branch = need_full_color_branch || need_preview_branch;
     source = make_element(config.source_element.c_str(), "source");
+    if (source_is_realsense) {
+      app_source = GST_APP_SRC(source);
+      gst_app_src_set_stream_type(app_source, GST_APP_STREAM_TYPE_STREAM);
+      g_object_set(G_OBJECT(source), "is-live", TRUE, "format", GST_FORMAT_TIME, "block", FALSE,
+        "do-timestamp", FALSE, nullptr);
+    }
     source_caps = make_element("capsfilter", "source_caps");
     source_bayer_convert =
       make_bayer_converter(source_format, pre_mux_resize, need_full_color_branch);
@@ -1198,29 +1536,38 @@ struct DeepStreamRuntime::Impl
     const std::optional<int> processing_height =
       config.source_use_full_sensor ? std::nullopt : source_height;
 
-    if (g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr) {
+    if (!source_is_realsense
+        && g_object_class_find_property(G_OBJECT_GET_CLASS(source), "do-timestamp") != nullptr)
+    {
       g_object_set(G_OBJECT(source), "do-timestamp", TRUE, nullptr);
     }
-    configure_basler_source(source_format);
+    if (!source_is_realsense) {
+      configure_basler_source(source_format);
+    }
     configure_low_latency_queue(infer_queue);
     configure_low_latency_queue(infer_post_queue);
 
     bool uncapped_fps_applied = false;
-    if (config.source_fps_uncapped
-        && set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", false))
-    {
-      uncapped_fps_applied = true;
-      fps_cap_status = "disabled camera AcquisitionFrameRate limit";
-    } else if (config.source_fps_uncapped) {
-      RCLCPP_INFO(logger,
-        "Basler AcquisitionFrameRateEnable is not exposed by pylonsrc; requesting %d "
-        "FPS through caps",
-        config.source_fps);
-      fps_cap_status = "uncapped requested, falling back to caps framerate";
+    if (!source_is_realsense) {
+      if (config.source_fps_uncapped
+          && set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", false))
+      {
+        uncapped_fps_applied = true;
+        fps_cap_status = "disabled camera AcquisitionFrameRate limit";
+      } else if (config.source_fps_uncapped) {
+        RCLCPP_INFO(logger,
+          "Basler AcquisitionFrameRateEnable is not exposed by pylonsrc; requesting %d "
+          "FPS through caps",
+          config.source_fps);
+        fps_cap_status = "uncapped requested, falling back to caps framerate";
+      }
     }
 
     std::optional<int> capped_fps;
-    if (!config.source_fps_uncapped) {
+    if (source_is_realsense) {
+      capped_fps = std::max(1, config.source_fps);
+      fps_cap_status = "RealSense selected color FPS";
+    } else if (!config.source_fps_uncapped) {
       set_child_proxy_bool_if_present(source, "cam::AcquisitionFrameRateEnable", true);
       if (!set_child_proxy_double_if_present(
             source, "cam::AcquisitionFrameRate", static_cast<double>(config.source_fps)))
@@ -1238,9 +1585,12 @@ struct DeepStreamRuntime::Impl
       source_format.media_type, source_format.caps_format, source_width, source_height, capped_fps);
     GstCaps* source_caps_value = gst_caps_from_string(requested_source_caps.c_str());
     if (source_caps_value == nullptr) {
-      throw std::runtime_error("Failed to create Basler source caps: " + requested_source_caps);
+      throw std::runtime_error("Failed to create DeepStream source caps: " + requested_source_caps);
     }
     g_object_set(G_OBJECT(source_caps), "caps", source_caps_value, nullptr);
+    if (source_is_realsense) {
+      gst_app_src_set_caps(app_source, source_caps_value);
+    }
     gst_caps_unref(source_caps_value);
     if (source_flip != nullptr) {
       g_object_set(G_OBJECT(source_flip), "method", 2, nullptr);
@@ -1426,6 +1776,11 @@ struct DeepStreamRuntime::Impl
   void start_threads()
   {
     running = true;
+    if (is_realsense_source()) {
+#if defined(HAVE_LIBREALSENSE2)
+      source_thread = std::thread([this]() { this->realsense_source_loop(); });
+#endif
+    }
     infer_thread = std::thread([this]() { this->infer_loop(); });
     if (color_sink != nullptr) {
       color_thread = std::thread([this]() { this->color_loop(); });

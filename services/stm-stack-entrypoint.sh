@@ -186,7 +186,7 @@ detector_backend() {
   fi
   case "$(launch_profile)" in
     basler) printf '%s' "deepstream" ;;
-    realsense) printf '%s' "native_tensorrt" ;;
+    realsense) printf '%s' "deepstream" ;;
     *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler or realsense." ;;
   esac
 }
@@ -213,11 +213,14 @@ run_preflight() {
 
   require_file "$(model_path)"
 
-  if [ "$(launch_profile)" = "basler" ] && [ "$(detector_backend)" = "deepstream" ]; then
+  if [ "$(detector_backend)" = "deepstream" ]; then
     require_command gst-inspect-1.0
     require_gst_element nvstreammux
     require_gst_element nvinfer
     require_gst_element nvvideoconvert
+    if [ "$(launch_profile)" = "realsense" ]; then
+      require_gst_element appsrc
+    fi
   fi
 
   if [ "$(launch_profile)" = "basler" ]; then
@@ -289,6 +292,7 @@ run_launch() {
         "serial_port:=$(serial_port)"
       )
       append_optional_launch_arg CV_STM_BASLER_EXPOSURE_US basler_exposure_us
+      append_optional_launch_arg CV_STM_DEEPSTREAM_CONFIG_PATH deepstream_config_path
       append_optional_launch_arg CV_STM_BASLER_GAIN_DB basler_gain_db
       append_optional_launch_arg CV_STM_BASLER_FPS basler_fps
       append_optional_launch_arg CV_STM_BASLER_UNCAPPED_FPS basler_uncapped_fps
@@ -306,13 +310,25 @@ run_launch() {
       append_optional_launch_arg CV_STM_BASLER_FLIP basler_flip
       ;;
     realsense)
+      LAUNCH_ARGS+=(
+        "detector_backend:=$(detector_backend)"
+        "allow_native_tensorrt_fallback:=${CV_STM_ALLOW_NATIVE_TENSORRT_FALLBACK:-false}"
+      )
+      append_optional_launch_arg CV_STM_DEEPSTREAM_CONFIG_PATH deepstream_config_path
+      append_optional_launch_arg CV_STM_DEEPSTREAM_PROFILE_STAGES deepstream_profile_stages
+      append_optional_launch_arg CV_STM_DEEPSTREAM_PROFILE_STAGE_INTERVAL deepstream_profile_stage_interval
       append_optional_launch_arg CV_STM_REALSENSE_WIDTH rs_width
       append_optional_launch_arg CV_STM_REALSENSE_HEIGHT rs_height
       append_optional_launch_arg CV_STM_REALSENSE_FPS rs_fps
       append_optional_launch_arg CV_STM_REALSENSE_EXPOSURE rs_exposure
+      append_optional_launch_arg CV_STM_REALSENSE_GAIN rs_gain
       append_optional_launch_arg CV_STM_REALSENSE_AUTO_EXPOSURE rs_auto_exposure
+      append_optional_launch_arg CV_STM_REALSENSE_AUTO_WHITE_BALANCE rs_auto_white_balance
+      append_optional_launch_arg CV_STM_REALSENSE_WHITE_BALANCE rs_white_balance
       append_optional_launch_arg CV_STM_REALSENSE_USE_POLL rs_use_poll
       append_optional_launch_arg CV_STM_REALSENSE_USE_MAX_NATIVE_FPS rs_use_max_native_fps
+      append_optional_launch_arg CV_STM_DETECTOR_IMGSZ_WIDTH imgsz_width
+      append_optional_launch_arg CV_STM_DETECTOR_IMGSZ_HEIGHT imgsz_height
       ;;
     *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler or realsense." ;;
   esac

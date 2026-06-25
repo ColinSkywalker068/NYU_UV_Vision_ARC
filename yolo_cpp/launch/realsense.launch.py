@@ -4,9 +4,19 @@ from typing import Any
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import EnvironmentVariable, LaunchConfiguration
+from launch.substitutions import (
+    EnvironmentVariable,
+    LaunchConfiguration,
+    PathJoinSubstitution,
+)
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+from launch_ros.substitutions import FindPackageShare
+
+
+def package_config_path(file_name: str) -> PathJoinSubstitution:
+    """Return a path inside the installed yolo_cpp config directory."""
+    return PathJoinSubstitution([FindPackageShare("yolo_cpp"), "config", file_name])
 
 
 def launch_config(name: str) -> LaunchConfiguration:
@@ -17,11 +27,33 @@ def launch_config(name: str) -> LaunchConfiguration:
 def argument_specs() -> list[tuple[str, Any, str]]:
     """Declare launch arguments in operator-facing order."""
     return [
+        (
+            "detector_backend",
+            "deepstream",
+            "Detector backend: deepstream or native_tensorrt",
+        ),
+        (
+            "allow_native_tensorrt_fallback",
+            "false",
+            "Allow DeepStream startup to fall back to native TensorRT",
+        ),
+        (
+            "deepstream_config_path",
+            package_config_path("deepstream_bestmerge_nvinfer.txt"),
+            "Optional DeepStream nvinfer config template path",
+        ),
         ("rs_width", "640", "RealSense color width"),
         ("rs_height", "480", "RealSense color height"),
         ("rs_fps", "60", "RealSense color FPS"),
         ("rs_exposure", "120.0", "RealSense manual exposure"),
+        ("rs_gain", "64.0", "RealSense manual gain"),
         ("rs_auto_exposure", "true", "Enable RealSense auto exposure"),
+        (
+            "rs_auto_white_balance",
+            "true",
+            "Enable RealSense auto white balance",
+        ),
+        ("rs_white_balance", "6500.0", "RealSense manual white balance"),
         (
             "rs_use_poll",
             "false",
@@ -31,6 +63,18 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "rs_use_max_native_fps",
             "true",
             "Use the best native RealSense FPS for the requested resolution",
+        ),
+        ("imgsz_width", "640", "Detector model input width"),
+        ("imgsz_height", "640", "Detector model input height"),
+        (
+            "deepstream_profile_stages",
+            "false",
+            "Log DeepStream per-stage pad timing for conversion bottleneck diagnosis",
+        ),
+        (
+            "deepstream_profile_stage_interval",
+            "300",
+            "Frames between DeepStream stage-profile log summaries",
         ),
         (
             "model_path",
@@ -171,7 +215,7 @@ def declare_arguments() -> list[DeclareLaunchArgument]:
 
 
 def make_detector_node() -> Node:
-    """Create the native TensorRT detector node for RealSense input."""
+    """Create the detector node for RealSense input."""
     return Node(
         package="yolo_cpp",
         executable="armor_detector_node",
@@ -180,15 +224,27 @@ def make_detector_node() -> Node:
         parameters=[
             {
                 "camera_type": "realsense",
-                "detector_backend": "native_tensorrt",
-                "allow_native_tensorrt_fallback": False,
+                "detector_backend": launch_config("detector_backend"),
+                "allow_native_tensorrt_fallback": launch_config(
+                    "allow_native_tensorrt_fallback"
+                ),
+                "deepstream_config_path": launch_config("deepstream_config_path"),
                 "realsense_width": launch_config("rs_width"),
                 "realsense_height": launch_config("rs_height"),
                 "realsense_fps": launch_config("rs_fps"),
                 "realsense_exposure": launch_config("rs_exposure"),
+                "realsense_gain": launch_config("rs_gain"),
                 "realsense_auto_exposure": launch_config("rs_auto_exposure"),
+                "realsense_auto_white_balance": launch_config(
+                    "rs_auto_white_balance"
+                ),
+                "realsense_white_balance": launch_config("rs_white_balance"),
                 "realsense_use_poll": launch_config("rs_use_poll"),
                 "realsense_use_max_native_fps": launch_config("rs_use_max_native_fps"),
+                "deepstream_profile_stages": launch_config("deepstream_profile_stages"),
+                "deepstream_profile_stage_interval": launch_config(
+                    "deepstream_profile_stage_interval"
+                ),
                 "model_path": launch_config("model_path"),
                 "task": launch_config("task"),
                 "conf": launch_config("conf"),
@@ -218,8 +274,8 @@ def make_detector_node() -> Node:
                 "camera_fy": launch_config("camera_fy"),
                 "camera_cx": launch_config("camera_cx"),
                 "camera_cy": launch_config("camera_cy"),
-                "imgsz_width": launch_config("rs_width"),
-                "imgsz_height": launch_config("rs_height"),
+                "imgsz_width": launch_config("imgsz_width"),
+                "imgsz_height": launch_config("imgsz_height"),
             }
         ],
     )

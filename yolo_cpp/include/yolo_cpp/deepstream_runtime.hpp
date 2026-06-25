@@ -45,8 +45,14 @@ public:
     bool enable_color_verification{true};
     bool debug_publish_image_raw{false};
     bool preview_frame{false};
+    std::string source_kind{"basler"};
     std::string source_element{"pylonsrc"};
     std::string source_id{"basler"};
+    bool source_auto_exposure{false};
+    bool source_auto_white_balance{true};
+    double source_white_balance{6500.0};
+    bool source_use_poll{false};
+    bool source_use_max_native_fps{false};
   };
 
   /// One completed DeepStream inference callback payload.

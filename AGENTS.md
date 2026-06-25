@@ -93,7 +93,7 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 | Build all ROS packages | `uv build` | Runs `colcon build --symlink-install --cmake-args -DBUILD_TESTING=OFF` in a ROS workspace. |
 | Build active stack | `uv build yolo_cpp` | Builds `cv_auto_aim_interfaces` and `yolo_cpp` together. |
 | Launch Basler field stack | `uv run yolo_cpp basler.launch.py` | Basler, DeepStream, detector, tracker, processor, solver, and STM bridge. |
-| Launch RealSense stack | `uv run yolo_cpp realsense.launch.py` | Detector, tracker, processor, and solver without serial bridge. |
+| Launch RealSense stack | `uv run yolo_cpp realsense.launch.py` | D455 RGB + DeepStream detector, tracker, processor, and solver without serial bridge. |
 | Launch compatibility alias | `uv run yolo_cpp stm.launch.py` | Deprecated alias that forwards to `basler.launch.py`. |
 | Launch zero-copy experiment | `uv run yolo_cpp zerocopy.launch.py` | Component-container path for the combined perception node. |
 | Install competition service | `./services/stm-stack.sh install` | Installs and enables the headless STM systemd service without starting it. |
