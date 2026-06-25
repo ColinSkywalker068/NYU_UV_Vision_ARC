@@ -235,9 +235,7 @@ def make_detector_node() -> Node:
                 "realsense_exposure": launch_config("rs_exposure"),
                 "realsense_gain": launch_config("rs_gain"),
                 "realsense_auto_exposure": launch_config("rs_auto_exposure"),
-                "realsense_auto_white_balance": launch_config(
-                    "rs_auto_white_balance"
-                ),
+                "realsense_auto_white_balance": launch_config("rs_auto_white_balance"),
                 "realsense_white_balance": launch_config("rs_white_balance"),
                 "realsense_use_poll": launch_config("rs_use_poll"),
                 "realsense_use_max_native_fps": launch_config("rs_use_max_native_fps"),
