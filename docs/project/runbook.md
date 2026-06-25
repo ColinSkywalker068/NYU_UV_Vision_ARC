@@ -74,7 +74,7 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `CV_BASE_IMAGE` | Docker Compose build base image override | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon` | `Docker/docker-compose.yml` |
 | `CV_STM_IMAGE` | Competition STM service Docker image | `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon`; use `cv-detection-cplusplus-pylon:local` while validating a local bake before pushing | `services/stm-stack.service`, `services/stm-stack.sh`, `Docker/bake_cplusplus_pylon_image.sh` |
 | `CV_STM_REPO_ROOT` | Repository path inside the service container | `/home/ultraviolet/CV_Detection` | `services/stm-stack.service`, `services/stm-stack-entrypoint.sh` |
-| `CV_STM_LAUNCH_PROFILE` | Service launch profile | `basler`; set `realsense` for RealSense + native TensorRT bring-up | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_LAUNCH_PROFILE` | Service launch profile | `basler`; set `realsense` for RealSense + native TensorRT bring-up or `rm_handoff` for the upstream-compatible detector -> tracker -> comms path | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_TARGET_COLOR` | Default enemy color before STM or robot-id feedback arrives | `blue`; set `red` when testing red armor without STM feedback | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_USE_MODEL_COLOR_CLASSES` | Whether model class ids decide enemy color | `true`; set `false` with `CV_STM_ENABLE_COLOR_VERIFICATION=false` to accept both colors during bring-up | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_ENABLE_COLOR_VERIFICATION` | Whether HSV color checks run when model color classes are disabled | `false`; keep disabled while trusting model color classes | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
@@ -86,7 +86,10 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `CV_STM_CAMERA_TYPE` | Lower-level camera backend override for the Basler-profile launch only | Usually unset; prefer `CV_STM_LAUNCH_PROFILE` | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_MODEL_PATH` | Competition model or engine path override | Empty by default; `yolo_cpp/config/default_model_path.txt` supplies the robot-local fallback shared engine | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_SERIAL_PORT` | STM32 serial device for competition startup | `/dev/ttyUSB0` | `services/stm-stack-entrypoint.sh` |
-| `CV_STM_REQUIRE_SERIAL` | Whether preflight must fail when the serial path is absent | Defaults to `true` for `basler`, `false` for `realsense` | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_REQUIRE_SERIAL` | Whether preflight must fail when the serial path is absent | Defaults to `true` for `basler` and `rm_handoff`, `false` for `realsense` | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_SERIAL_ENABLE` | Whether `rm_handoff.launch.py` starts the RM serial bridge | `true` when set by `cv rm-handoff` | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_BT_ADAPTER_ENABLE` | Whether `rm_handoff.launch.py` starts the BT compatibility adapter | `false` when set by `cv rm-handoff`; set `true` for BT integration testing | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_RM_HANDOFF_NUMBER_MODEL_PATH` / `CV_STM_RM_HANDOFF_NUMBER_LABEL_PATH` | Optional RM armor-number classifier assets | Empty by default for `cv rm-handoff`; set both to require the original MLP classifier | `services/stm-stack.sh`, `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/rm_handoff.launch.py` |
 | `CV_STM_EXTRA_LAUNCH_ARGS` | Optional extra selected-profile launch arguments | Empty by default | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_BASLER_PIXEL_FORMAT` | Basler source pixel format for the DeepStream/Pylon path | `bayer_rggb8`; alternatives include `yuy2`, `bgr8`, `mono8` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_BASLER_FPS` | Basler requested camera frame-rate cap | `160` for both the STM service and `basler.launch.py` defaults | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
@@ -198,7 +201,7 @@ docker compose -f Docker/docker-compose.yml down
 
 ## 7. Robot Systemd Deployment
 
-The declared boot service is `services/stm-stack.service`. It runs from `/home/ultraviolet/CV_Detection`, requires `docker.service`, removes the previous `cv-stm-stack` container, and launches the selected `CV_STM_LAUNCH_PROFILE` through `services/stm-stack-entrypoint.sh`. The default profile is the full Basler + DeepStream + STM32 `basler.launch.py` stack; `CV_STM_LAUNCH_PROFILE=realsense` launches the RealSense + native TensorRT bring-up stack without requiring serial by default.
+The declared boot service is `services/stm-stack.service`. It runs from `/home/ultraviolet/CV_Detection`, requires `docker.service`, removes the previous `cv-stm-stack` container, and launches the selected `CV_STM_LAUNCH_PROFILE` through `services/stm-stack-entrypoint.sh`. The default profile is the full Basler + DeepStream + STM32 `basler.launch.py` stack; `CV_STM_LAUNCH_PROFILE=realsense` launches the RealSense + native TensorRT bring-up stack without requiring serial by default; `CV_STM_LAUNCH_PROFILE=rm_handoff` launches the upstream-compatible detector -> tracker -> RM serial/BT handoff path.
 
 The service uses the Pylon-enabled C++ image `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon` and reads optional overrides from `/etc/cv-detection/stm-stack.env`. Startup is intentionally prebuilt: it fails when `install/setup.bash` is missing instead of running `uv build` during match bring-up.
 
@@ -228,6 +231,14 @@ cv model-agx
 ```
 
 These commands persist `CV_STM_MODEL_PATH` and restart the service. `model-orin` and `model-agx` both select `yolo_cpp/models/kushalv2.engine`, so the only difference between the commands is the operator label in the command name. The older `model-nano` shortcut remains available as a backward-compatible alias for `model-orin`.
+
+To switch the service to the RM handoff compatibility path, run:
+
+```bash
+cv rm-handoff
+```
+
+This persists `CV_STM_LAUNCH_PROFILE=rm_handoff`, starts `rm_handoff.launch.py`, enables the RM serial bridge, and keeps the main detector model on the shared `yolo_cpp/models/kushalv2.engine` path. If the original RM armor-number classifier assets are available inside the container, set `CV_STM_RM_HANDOFF_NUMBER_MODEL_PATH` and `CV_STM_RM_HANDOFF_NUMBER_LABEL_PATH` before running `cv rm-handoff`; otherwise the command disables strict classifier requirements and uses detector class IDs as fallback armor numbers.
 
 To send one small yaw-only STM packet without a full ROS build, run:
 

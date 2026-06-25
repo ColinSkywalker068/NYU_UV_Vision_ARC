@@ -23,12 +23,16 @@ list(REMOVE_DUPLICATES PYLON_SEARCH_ROOTS)
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
+find_package(auto_aim_interfaces REQUIRED)
 find_package(cv_auto_aim_interfaces REQUIRED)
+find_package(Eigen3 REQUIRED)
+find_package(rm_decision_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
@@ -193,6 +197,7 @@ set(YOLO_CPP_COMPONENT_SOURCES
   src/pnp_solver.cpp
   src/tracking_math.cpp
   src/tracker.cpp
+  src/rm_handoff_tracker.cpp
   src/camera_backend.cpp
   src/model_metadata.cpp
   src/detection_postprocess.cpp
@@ -204,6 +209,7 @@ set(YOLO_CPP_COMPONENT_SOURCES
   src/gst_cuda_bayer_resize.cpp
   src/armor_detector_node.cpp
   src/armor_tracker_node.cpp
+  src/rm_handoff_tracker_node.cpp
   src/armor_processor_node.cpp
   src/aim_solver_node.cpp
   src/perception_node.cpp
@@ -247,6 +253,7 @@ if(HAVE_DEEPSTREAM)
 endif()
 
 ament_target_dependencies(yolo_cpp_components
+  auto_aim_interfaces
   cv_auto_aim_interfaces
   ament_index_cpp
   rclcpp
@@ -254,12 +261,13 @@ ament_target_dependencies(yolo_cpp_components
   geometry_msgs
   sensor_msgs
   std_msgs
+  std_srvs
   tf2
   tf2_geometry_msgs
   tf2_ros
   visualization_msgs
 )
-target_link_libraries(yolo_cpp_components ${OpenCV_LIBS})
+target_link_libraries(yolo_cpp_components Eigen3::Eigen ${OpenCV_LIBS})
 
 if(HAVE_LIBREALSENSE2)
   target_compile_definitions(yolo_cpp_components PRIVATE HAVE_LIBREALSENSE2=1)
@@ -294,6 +302,7 @@ endif()
 rclcpp_components_register_nodes(yolo_cpp_components
   "yolo_cpp::ArmorDetectorNode"
   "yolo_cpp::ArmorTrackerNode"
+  "yolo_cpp::RmHandoffTrackerNode"
   "yolo_cpp::ArmorProcessorNode"
   "yolo_cpp::AimSolverNode"
   "yolo_cpp::PerceptionNode"
@@ -307,6 +316,7 @@ add_executable(armor_detector_node src/armor_detector_node_main.cpp)
 target_link_libraries(armor_detector_node yolo_cpp_components)
 ament_target_dependencies(
   armor_detector_node
+  auto_aim_interfaces
   cv_auto_aim_interfaces
   geometry_msgs
   rclcpp
@@ -322,6 +332,20 @@ ament_target_dependencies(
   geometry_msgs
   rclcpp
   std_msgs
+)
+
+add_executable(rm_handoff_tracker_node src/rm_handoff_tracker_node_main.cpp)
+target_link_libraries(rm_handoff_tracker_node yolo_cpp_components)
+ament_target_dependencies(
+  rm_handoff_tracker_node
+  auto_aim_interfaces
+  geometry_msgs
+  rclcpp
+  std_srvs
+  tf2
+  tf2_geometry_msgs
+  tf2_ros
+  visualization_msgs
 )
 
 add_executable(armor_processor_node src/armor_processor_node_main.cpp)
@@ -360,6 +384,29 @@ target_include_directories(stm32_serial_bridge PUBLIC
 )
 ament_target_dependencies(stm32_serial_bridge rclcpp std_msgs)
 
+add_executable(rm_handoff_serial_bridge
+  src/rm_handoff_crc.cpp
+  src/rm_handoff_serial_bridge_node.cpp
+  src/rm_handoff_serial_bridge_main.cpp
+)
+target_include_directories(rm_handoff_serial_bridge PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(
+  rm_handoff_serial_bridge
+  auto_aim_interfaces
+  geometry_msgs
+  rclcpp
+  rm_decision_interfaces
+  std_msgs
+  std_srvs
+  tf2
+  tf2_geometry_msgs
+  tf2_ros
+  visualization_msgs
+)
+
 if(YOLO_CPP_BUILD_MANUAL_TOOLS)
   add_executable(stm32_yaw_packet_smoke
     tools/stm32_yaw_packet_smoke.cpp
@@ -378,11 +425,17 @@ install(
 
 install(
   TARGETS yolo_cpp_components perception_node
-    armor_detector_node armor_tracker_node armor_processor_node aim_solver_node fps_benchmark
-    stm32_serial_bridge
+    armor_detector_node armor_tracker_node rm_handoff_tracker_node armor_processor_node
+    aim_solver_node fps_benchmark
+    stm32_serial_bridge rm_handoff_serial_bridge
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+  PROGRAMS scripts/bt_comm_adapter.py
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 if(YOLO_CPP_BUILD_MANUAL_TOOLS)
@@ -445,6 +498,34 @@ if(BUILD_TESTING)
       ${OpenCV_INCLUDE_DIRS}
     )
     target_link_libraries(test_tracking_core ${OpenCV_LIBS})
+  endif()
+  ament_add_gtest(test_rm_handoff_tracker
+    test/test_rm_handoff_tracker.cpp
+    src/rm_handoff_tracker.cpp
+  )
+  if(TARGET test_rm_handoff_tracker)
+    target_include_directories(test_rm_handoff_tracker PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+    )
+    ament_target_dependencies(
+      test_rm_handoff_tracker
+      auto_aim_interfaces
+      geometry_msgs
+      tf2
+      tf2_geometry_msgs
+    )
+    target_link_libraries(test_rm_handoff_tracker Eigen3::Eigen)
+  endif()
+  ament_add_gtest(test_rm_handoff_protocol
+    test/test_rm_handoff_protocol.cpp
+    src/rm_handoff_crc.cpp
+  )
+  if(TARGET test_rm_handoff_protocol)
+    target_include_directories(test_rm_handoff_protocol PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+    )
   endif()
 endif()
 

@@ -110,6 +110,14 @@ CV_STM_SHOW=false
 # RealSense profile skips Basler/DeepStream/Pylon checks and serial by default:
 # CV_STM_LAUNCH_PROFILE=realsense
 # CV_STM_REQUIRE_SERIAL=false
+# RM handoff profile runs detector -> upstream-compatible tracker -> RM serial
+# bridge. The main detector model still comes from CV_STM_MODEL_PATH or
+# yolo_cpp/config/default_model_path.txt. Set the two classifier paths below to
+# require the original RM number classifier; otherwise 'cv rm-handoff' uses the
+# model class IDs as fallback armor numbers.
+# CV_STM_LAUNCH_PROFILE=rm_handoff
+# CV_STM_RM_HANDOFF_NUMBER_MODEL_PATH=/home/ultraviolet/CV_Detection/yolo_cpp/models/rm_handoff/mlp.onnx
+# CV_STM_RM_HANDOFF_NUMBER_LABEL_PATH=/home/ultraviolet/CV_Detection/yolo_cpp/models/rm_handoff/label.txt
 # Field service defaults intentionally request a deterministic 160 FPS Basler cap
 # while keeping preview off. Other Basler launch knobs stay on launch defaults.
 CV_STM_BASLER_FPS=160
@@ -241,8 +249,11 @@ set_preview() {
 
 reset_common_basler_overrides() {
   unset_env_values \
+    CV_STM_CAMERA_TYPE \
     CV_STM_DETECTOR_BACKEND \
     CV_STM_ALLOW_NATIVE_TENSORRT_FALLBACK \
+    CV_STM_SERIAL_ENABLE \
+    CV_STM_BT_ADAPTER_ENABLE \
     CV_STM_BASLER_PIXEL_FORMAT \
     CV_STM_BASLER_SOURCE_WIDTH \
     CV_STM_BASLER_SOURCE_HEIGHT \
@@ -294,6 +305,38 @@ set_orin_profile() {
 
 set_agx_profile() {
   set_model_profile "$SHARED_MODEL_RELATIVE" "AGX"
+}
+
+set_rm_handoff_profile() {
+  local model_path="${CV_STM_REPO_ROOT%/}/${SHARED_MODEL_RELATIVE}"
+
+  reset_common_basler_overrides
+  set_env_value CV_STM_MODEL_PATH "$model_path"
+  set_env_value CV_STM_LAUNCH_PROFILE rm_handoff
+  set_env_value CV_STM_CAMERA_TYPE basler
+  set_env_value CV_STM_DETECTOR_BACKEND native_tensorrt
+  set_env_value CV_STM_NATIVE_TENSORRT_CUDA_BAYER_PREPROCESS true
+  set_env_value CV_STM_REQUIRE_SERIAL true
+  set_env_value CV_STM_SERIAL_ENABLE true
+  set_env_value CV_STM_BT_ADAPTER_ENABLE false
+  set_env_value CV_STM_BASLER_FPS 160
+  set_env_value CV_STM_BASLER_UNCAPPED_FPS false
+  set_env_value CV_STM_SHOW false
+
+  if [ -n "${CV_STM_RM_HANDOFF_NUMBER_MODEL_PATH:-}" ] &&
+     [ -n "${CV_STM_RM_HANDOFF_NUMBER_LABEL_PATH:-}" ]; then
+    set_env_value CV_STM_RM_HANDOFF_NUMBER_CLASSIFIER_ENABLED true
+    set_env_value CV_STM_RM_HANDOFF_REQUIRE_NUMBER_CLASSIFIER true
+    log "Keeping configured RM handoff number classifier paths in ${ENV_FILE}"
+  else
+    set_env_value CV_STM_RM_HANDOFF_NUMBER_CLASSIFIER_ENABLED false
+    set_env_value CV_STM_RM_HANDOFF_REQUIRE_NUMBER_CLASSIFIER false
+    log "No RM handoff number classifier paths are configured; using model class IDs as fallback armor numbers"
+  fi
+
+  log "Set RM handoff profile in ${ENV_FILE}"
+  log "Restarting ${SERVICE_NAME} with rm_handoff.launch.py and ${model_path}"
+  systemctl_action restart
 }
 
 show_status() {
@@ -413,6 +456,8 @@ Commands:
              Restore field Basler defaults and restart with basler_fps=160, basler_uncapped_fps=false, show=false.
   model-orin  Persist the Orin model and normalized Basler defaults, then restart ${SERVICE_NAME}.
   model-agx   Persist the AGX model and normalized Basler defaults, then restart ${SERVICE_NAME}.
+  rm-handoff
+             Persist the RM handoff detector/tracker/comms profile, then restart ${SERVICE_NAME}.
   status     Show systemd status.
   logs       Follow systemd logs.
   preflight  Validate image, ROS package, model, and selected profile prerequisites.
@@ -441,6 +486,7 @@ main() {
     basler-defaults) restore_basler_launch_defaults ;;
     model-orin|model-nano) set_orin_profile ;;
     model-agx) set_agx_profile ;;
+    rm-handoff|handoff|rm_handoff) set_rm_handoff_profile ;;
     status) show_status ;;
     logs) show_logs ;;
     preflight) run_preflight ;;

@@ -11,8 +11,10 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iomanip>
+#include <opencv2/dnn.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -25,6 +27,7 @@
 #include <string>
 #include <utility>
 
+#include "auto_aim_interfaces/msg/armor.hpp"
 #include "cv_auto_aim_interfaces/msg/armor.hpp"
 #include "vision_node_helpers.hpp"
 
@@ -114,12 +117,14 @@ cv::Mat make_preview_frame(const FramePacket &packet) {
   return preview;
 }
 
-cv::Rect flip_rect_180(const cv::Rect &rect, int image_width, int image_height) {
+cv::Rect flip_rect_180(const cv::Rect &rect, int image_width,
+                       int image_height) {
   if (image_width <= 0 || image_height <= 0 || rect.empty()) {
     return rect;
   }
   const int x1 = std::clamp(image_width - rect.x - rect.width, 0, image_width);
-  const int y1 = std::clamp(image_height - rect.y - rect.height, 0, image_height);
+  const int y1 =
+      std::clamp(image_height - rect.y - rect.height, 0, image_height);
   const int x2 = std::clamp(image_width - rect.x, 0, image_width);
   const int y2 = std::clamp(image_height - rect.y, 0, image_height);
   return cv::Rect(x1, y1, std::max(0, x2 - x1), std::max(0, y2 - y1));
@@ -152,7 +157,8 @@ std::string normalize_show_mode(const rclcpp::Parameter &parameter,
     return static_cast<char>(std::tolower(ch));
   });
   if (mode == "true") {
-    RCLCPP_WARN(logger, "show:=true is deprecated; use show:=gui or show:=web.");
+    RCLCPP_WARN(logger,
+                "show:=true is deprecated; use show:=gui or show:=web.");
     return "gui";
   }
   if (mode == "0" || mode == "off" || mode == "none" || mode == "no") {
@@ -172,6 +178,92 @@ std::string normalize_show_mode(const rclcpp::Parameter &parameter,
               "gui, web.",
               mode.c_str());
   return "false";
+}
+
+std::array<cv::Point2f, 4>
+candidate_number_corners(const Candidate &candidate) {
+  if (candidate.has_corners) {
+    return candidate.corners_source;
+  }
+  const auto &box = candidate.bbox_source;
+  return {cv::Point2f(static_cast<float>(box.x),
+                      static_cast<float>(box.y + box.height)),
+          cv::Point2f(static_cast<float>(box.x), static_cast<float>(box.y)),
+          cv::Point2f(static_cast<float>(box.x + box.width),
+                      static_cast<float>(box.y)),
+          cv::Point2f(static_cast<float>(box.x + box.width),
+                      static_cast<float>(box.y + box.height))};
+}
+
+cv::Mat extract_number_roi(const cv::Mat &frame, const Candidate &candidate,
+                           int armor_type) {
+  if (frame.empty()) {
+    return {};
+  }
+
+  constexpr int kLightLength = 12;
+  constexpr int kWarpHeight = 28;
+  constexpr int kSmallArmorWidth = 32;
+  constexpr int kLargeArmorWidth = 54;
+  const cv::Size roi_size(20, 28);
+  const int warp_width =
+      armor_type == cv_auto_aim_interfaces::msg::Armor::ARMOR_LARGE
+          ? kLargeArmorWidth
+          : kSmallArmorWidth;
+  const int top_light_y = (kWarpHeight - kLightLength) / 2 - 1;
+  const int bottom_light_y = top_light_y + kLightLength;
+
+  const auto corners = candidate_number_corners(candidate);
+  const cv::Point2f source_vertices[4] = {corners[0], corners[1], corners[2],
+                                          corners[3]};
+  const cv::Point2f target_vertices[4] = {
+      cv::Point2f(0.0F, static_cast<float>(bottom_light_y)),
+      cv::Point2f(0.0F, static_cast<float>(top_light_y)),
+      cv::Point2f(static_cast<float>(warp_width - 1),
+                  static_cast<float>(top_light_y)),
+      cv::Point2f(static_cast<float>(warp_width - 1),
+                  static_cast<float>(bottom_light_y)),
+  };
+
+  cv::Mat warped;
+  const auto transform =
+      cv::getPerspectiveTransform(source_vertices, target_vertices);
+  cv::warpPerspective(frame, warped, transform,
+                      cv::Size(warp_width, kWarpHeight));
+  if (warped.empty()) {
+    return {};
+  }
+
+  const int roi_x = std::max(0, (warp_width - roi_size.width) / 2);
+  cv::Rect roi_rect(roi_x, 0, std::min(roi_size.width, warped.cols - roi_x),
+                    std::min(roi_size.height, warped.rows));
+  if (roi_rect.width <= 0 || roi_rect.height <= 0) {
+    return {};
+  }
+
+  cv::Mat number_image = warped(roi_rect).clone();
+  if (number_image.channels() == 3) {
+    cv::cvtColor(number_image, number_image, cv::COLOR_BGR2GRAY);
+  }
+  cv::threshold(number_image, number_image, 0, 255,
+                cv::THRESH_BINARY | cv::THRESH_OTSU);
+  return number_image;
+}
+
+bool contains_string(const std::vector<std::string> &values,
+                     const std::string &target) {
+  return std::find(values.begin(), values.end(), target) != values.end();
+}
+
+bool is_rm_handoff_type_mismatch(const std::string &number,
+                                 const std::string &type) {
+  if (type == "large") {
+    return number == "outpost" || number == "2" || number == "guard";
+  }
+  if (type == "small") {
+    return number == "1" || number == "base";
+  }
+  return true;
 }
 
 } // namespace
@@ -247,6 +339,16 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
   this->declare_parameter<std::string>("preview_http_bind_address", "0.0.0.0");
   this->declare_parameter<int>("preview_http_port", 8080);
   this->declare_parameter<int>("preview_http_jpeg_quality", 80);
+  this->declare_parameter<std::string>("detector_output_contract",
+                                       "cv_auto_aim");
+  this->declare_parameter<std::string>("rm_handoff_number_model_path", "");
+  this->declare_parameter<std::string>("rm_handoff_number_label_path", "");
+  this->declare_parameter<bool>("rm_handoff_number_classifier_enabled", true);
+  this->declare_parameter<bool>("rm_handoff_require_number_classifier", true);
+  this->declare_parameter<double>("rm_handoff_classifier_threshold", 0.7);
+  this->declare_parameter<std::vector<std::string>>(
+      "rm_handoff_ignore_classes", std::vector<std::string>{"negative"});
+  this->declare_parameter<std::string>("rm_handoff_default_number", "");
 
   model_path_ = vision_node_helpers::resolve_model_path(
       this->get_parameter("model_path").as_string());
@@ -260,8 +362,8 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
   half_ = this->get_parameter("half").as_bool();
   imgsz_width_ = this->get_parameter("imgsz_width").as_int();
   imgsz_height_ = this->get_parameter("imgsz_height").as_int();
-  show_mode_ = normalize_show_mode(this->get_parameter("show"),
-                                   this->get_logger());
+  show_mode_ =
+      normalize_show_mode(this->get_parameter("show"), this->get_logger());
   show_gui_ = show_mode_ == "gui";
   show_web_ = show_mode_ == "web";
   conf_ = static_cast<float>(this->get_parameter("conf").as_double());
@@ -346,6 +448,29 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
       std::clamp(static_cast<int>(
                      this->get_parameter("preview_http_jpeg_quality").as_int()),
                  1, 100);
+  detector_output_contract_ =
+      this->get_parameter("detector_output_contract").as_string();
+  rm_handoff_number_model_path_ =
+      this->get_parameter("rm_handoff_number_model_path").as_string();
+  rm_handoff_number_label_path_ =
+      this->get_parameter("rm_handoff_number_label_path").as_string();
+  rm_handoff_number_classifier_enabled_ =
+      this->get_parameter("rm_handoff_number_classifier_enabled").as_bool();
+  rm_handoff_require_number_classifier_ =
+      this->get_parameter("rm_handoff_require_number_classifier").as_bool();
+  rm_handoff_classifier_threshold_ =
+      this->get_parameter("rm_handoff_classifier_threshold").as_double();
+  rm_handoff_ignore_classes_ =
+      this->get_parameter("rm_handoff_ignore_classes").as_string_array();
+  rm_handoff_default_number_ =
+      this->get_parameter("rm_handoff_default_number").as_string();
+  if (detector_output_contract_ != "cv_auto_aim" &&
+      detector_output_contract_ != "rm_handoff") {
+    RCLCPP_WARN(this->get_logger(),
+                "Unknown detector_output_contract '%s'; using cv_auto_aim.",
+                detector_output_contract_.c_str());
+    detector_output_contract_ = "cv_auto_aim";
+  }
 
   runtime_log_path_ = (std::filesystem::path(resolve_runtime_log_dir()) /
                        ("vision_runtime_" +
@@ -408,11 +533,17 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
           "attitude_flags", 10,
           std::bind(&ArmorDetectorNode::handle_attitude_flags, this,
                     std::placeholders::_1));
-  preview_target_subscription_ =
-      this->create_subscription<cv_auto_aim_interfaces::msg::Target>(
-          preview_target_topic_, 10,
-          std::bind(&ArmorDetectorNode::handle_preview_target, this,
-                    std::placeholders::_1));
+  if (detector_output_contract_ == "cv_auto_aim") {
+    preview_target_subscription_ =
+        this->create_subscription<cv_auto_aim_interfaces::msg::Target>(
+            preview_target_topic_, 10,
+            std::bind(&ArmorDetectorNode::handle_preview_target, this,
+                      std::placeholders::_1));
+  } else if (show_) {
+    RCLCPP_INFO(this->get_logger(),
+                "RM handoff output mode disables cv_auto_aim preview target "
+                "subscription to avoid topic type conflicts.");
+  }
   if (enable_3d_pose_) {
     camera_info_subscription_ =
         this->create_subscription<sensor_msgs::msg::CameraInfo>(
@@ -421,9 +552,16 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
                       std::placeholders::_1));
     configure_static_camera_model();
   }
-  armors_publisher_ =
-      this->create_publisher<cv_auto_aim_interfaces::msg::Armors>(
-          "detector/armors", 10);
+  if (detector_output_contract_ == "rm_handoff") {
+    initialize_rm_handoff_number_classifier();
+    rm_handoff_armors_publisher_ =
+        this->create_publisher<auto_aim_interfaces::msg::Armors>(
+            "detector/armors", rclcpp::SensorDataQoS());
+  } else {
+    armors_publisher_ =
+        this->create_publisher<cv_auto_aim_interfaces::msg::Armors>(
+            "detector/armors", 10);
+  }
   if (debug_publish_image_raw_) {
     auto qos =
         rclcpp::QoS(rclcpp::KeepLast(1)).best_effort().durability_volatile();
@@ -794,7 +932,12 @@ void ArmorDetectorNode::process_detection_cycle(
       batch.letterbox.src_h > 0
           ? batch.letterbox.src_h
           : (packet != nullptr ? packet->height() : imgsz_height_);
-  publish_armors(candidates, frame_id, stamp, image_width, image_height);
+  if (detector_output_contract_ == "rm_handoff") {
+    publish_rm_handoff_armors(candidates, packet, frame_id, stamp, image_width,
+                              image_height);
+  } else {
+    publish_armors(candidates, frame_id, stamp, image_width, image_height);
+  }
   const auto publish_done = std::chrono::steady_clock::now();
   const double publish_ms =
       std::chrono::duration<double, std::milli>(publish_done - publish_start)
@@ -907,6 +1050,193 @@ void ArmorDetectorNode::publish_armors(const std::vector<Candidate> &candidates,
   armors_publisher_->publish(std::move(msg));
 }
 
+void ArmorDetectorNode::initialize_rm_handoff_number_classifier() {
+  rm_handoff_number_classifier_ready_ = false;
+  rm_handoff_number_labels_.clear();
+
+  if (!rm_handoff_number_classifier_enabled_) {
+    RCLCPP_WARN(this->get_logger(),
+                "RM handoff number classifier disabled; tracker same-id "
+                "matching will depend on fallback numbers.");
+    return;
+  }
+
+  if (rm_handoff_number_model_path_.empty() ||
+      rm_handoff_number_label_path_.empty()) {
+    const std::string message =
+        "RM handoff number classifier paths are empty. Set "
+        "rm_handoff_number_model_path and rm_handoff_number_label_path.";
+    if (rm_handoff_require_number_classifier_) {
+      throw std::runtime_error(message);
+    }
+    RCLCPP_WARN(this->get_logger(), "%s", message.c_str());
+    return;
+  }
+
+  std::ifstream label_file(rm_handoff_number_label_path_);
+  if (!label_file.is_open()) {
+    const std::string message = "Failed to open RM handoff number labels: " +
+                                rm_handoff_number_label_path_;
+    if (rm_handoff_require_number_classifier_) {
+      throw std::runtime_error(message);
+    }
+    RCLCPP_WARN(this->get_logger(), "%s", message.c_str());
+    return;
+  }
+
+  std::string label;
+  while (std::getline(label_file, label)) {
+    if (!label.empty()) {
+      rm_handoff_number_labels_.push_back(label);
+    }
+  }
+  if (rm_handoff_number_labels_.empty()) {
+    const std::string message =
+        "RM handoff number label file did not contain any labels.";
+    if (rm_handoff_require_number_classifier_) {
+      throw std::runtime_error(message);
+    }
+    RCLCPP_WARN(this->get_logger(), "%s", message.c_str());
+    return;
+  }
+
+  try {
+    rm_handoff_number_net_ =
+        cv::dnn::readNetFromONNX(rm_handoff_number_model_path_);
+    rm_handoff_number_classifier_ready_ = true;
+    RCLCPP_INFO(this->get_logger(),
+                "Loaded RM handoff number classifier: model=%s labels=%s",
+                rm_handoff_number_model_path_.c_str(),
+                rm_handoff_number_label_path_.c_str());
+  } catch (const std::exception &exc) {
+    const std::string message =
+        "Failed to load RM handoff number classifier: " +
+        std::string(exc.what());
+    if (rm_handoff_require_number_classifier_) {
+      throw std::runtime_error(message);
+    }
+    RCLCPP_WARN(this->get_logger(), "%s", message.c_str());
+  }
+}
+
+std::optional<std::string> ArmorDetectorNode::classify_rm_handoff_number(
+    const cv::Mat &frame, const Candidate &candidate, int armor_type) {
+  if (!rm_handoff_number_classifier_ready_) {
+    return std::nullopt;
+  }
+
+  cv::Mat number_image = extract_number_roi(frame, candidate, armor_type);
+  if (number_image.empty()) {
+    return std::nullopt;
+  }
+
+  number_image.convertTo(number_image, CV_32F, 1.0 / 255.0);
+  cv::Mat blob;
+  cv::dnn::blobFromImage(number_image, blob);
+  rm_handoff_number_net_.setInput(blob);
+  cv::Mat output = rm_handoff_number_net_.forward();
+  if (output.empty()) {
+    return std::nullopt;
+  }
+
+  output = output.reshape(1, 1);
+  double max_logit = 0.0;
+  cv::Point max_logit_point;
+  cv::minMaxLoc(output, nullptr, &max_logit, nullptr, &max_logit_point);
+  cv::Mat exp_scores;
+  cv::exp(output - max_logit, exp_scores);
+  const double sum = cv::sum(exp_scores)[0];
+  if (sum <= 0.0) {
+    return std::nullopt;
+  }
+  exp_scores /= sum;
+
+  double confidence = 0.0;
+  cv::Point class_id_point;
+  cv::minMaxLoc(exp_scores, nullptr, &confidence, nullptr, &class_id_point);
+  const int label_id = class_id_point.x;
+  if (label_id < 0 ||
+      label_id >= static_cast<int>(rm_handoff_number_labels_.size())) {
+    return std::nullopt;
+  }
+  if (confidence < rm_handoff_classifier_threshold_) {
+    return std::nullopt;
+  }
+  const std::string &number = rm_handoff_number_labels_[label_id];
+  if (contains_string(rm_handoff_ignore_classes_, number)) {
+    return std::nullopt;
+  }
+  return number;
+}
+
+void ArmorDetectorNode::publish_rm_handoff_armors(
+    const std::vector<Candidate> &candidates, const FramePacket *packet,
+    const std::string &frame_id, const rclcpp::Time &stamp, int image_width,
+    int image_height) {
+  auto_aim_interfaces::msg::Armors msg;
+  msg.header.stamp = stamp;
+  msg.header.frame_id = frame_id;
+
+  cv::Mat classifier_frame;
+  if (packet != nullptr && !packet->empty()) {
+    classifier_frame = make_preview_frame(*packet);
+  }
+
+  msg.armors.reserve(candidates.size());
+  for (const auto &candidate : candidates) {
+    const double aspect =
+        static_cast<double>(std::max(1, candidate.bbox_source.width)) /
+        static_cast<double>(std::max(1, candidate.bbox_source.height));
+    const int armor_type =
+        aspect >= large_armor_min_aspect_ratio_
+            ? cv_auto_aim_interfaces::msg::Armor::ARMOR_LARGE
+            : cv_auto_aim_interfaces::msg::Armor::ARMOR_SMALL;
+    const std::string type =
+        armor_type == cv_auto_aim_interfaces::msg::Armor::ARMOR_LARGE ? "large"
+                                                                      : "small";
+
+    auto pose = solve_candidate_pose(candidate, image_width, image_height);
+    if (!pose.has_value()) {
+      continue;
+    }
+
+    auto number =
+        classify_rm_handoff_number(classifier_frame, candidate, armor_type);
+    if (!number.has_value()) {
+      if (!rm_handoff_default_number_.empty()) {
+        number = rm_handoff_default_number_;
+      } else if (rm_handoff_require_number_classifier_) {
+        continue;
+      } else {
+        number = std::to_string(candidate.class_id);
+      }
+    }
+    if (is_rm_handoff_type_mismatch(*number, type)) {
+      continue;
+    }
+
+    auto_aim_interfaces::msg::Armor armor;
+    armor.number = *number;
+    armor.type = type;
+    armor.pose = *pose;
+
+    const double principal_x =
+        camera_calibration_.available
+            ? camera_calibration_.model.camera_matrix(0, 2)
+            : static_cast<double>(image_width) / 2.0;
+    const double principal_y =
+        camera_calibration_.available
+            ? camera_calibration_.model.camera_matrix(1, 2)
+            : static_cast<double>(image_height) / 2.0;
+    armor.distance_to_image_center = static_cast<float>(std::hypot(
+        static_cast<double>(candidate.center_source.x) - principal_x,
+        static_cast<double>(candidate.center_source.y) - principal_y));
+    msg.armors.push_back(std::move(armor));
+  }
+
+  rm_handoff_armors_publisher_->publish(std::move(msg));
+}
+
 void ArmorDetectorNode::publish_debug_image(const FramePacket &packet,
                                             const rclcpp::Time &stamp) {
   if (!debug_image_publisher_) {
@@ -960,21 +1290,24 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
       const int y1 = preview_target_bbox_xyxy_[1];
       const int x2 = preview_target_bbox_xyxy_[2];
       const int y2 = preview_target_bbox_xyxy_[3];
-      const int target_source_width =
-          preview_target_image_width_ > 0 ? preview_target_image_width_ : source_width;
-      const int target_source_height =
-          preview_target_image_height_ > 0 ? preview_target_image_height_ : source_height;
-      const double target_scale_x =
-          static_cast<double>(preview.cols) / static_cast<double>(target_source_width);
-      const double target_scale_y =
-          static_cast<double>(preview.rows) / static_cast<double>(target_source_height);
+      const int target_source_width = preview_target_image_width_ > 0
+                                          ? preview_target_image_width_
+                                          : source_width;
+      const int target_source_height = preview_target_image_height_ > 0
+                                           ? preview_target_image_height_
+                                           : source_height;
+      const double target_scale_x = static_cast<double>(preview.cols) /
+                                    static_cast<double>(target_source_width);
+      const double target_scale_y = static_cast<double>(preview.rows) /
+                                    static_cast<double>(target_source_height);
       const cv::Rect target_source_rect = preview_source_rect(
           packet, cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)),
           target_source_width, target_source_height);
       const cv::Rect target_rect = vision_node_helpers::scale_rect_to_preview(
           target_source_rect, target_scale_x, target_scale_y, image_rect);
       const auto matching_candidate = std::find_if(
-          candidates.begin(), candidates.end(), [&](const Candidate &candidate) {
+          candidates.begin(), candidates.end(),
+          [&](const Candidate &candidate) {
             const cv::Rect candidate_source_rect = preview_source_rect(
                 packet, candidate.bbox_source, source_width, source_height);
             const cv::Rect candidate_rect =
@@ -1124,17 +1457,19 @@ void ArmorDetectorNode::save_target_frame_if_needed(
     const int y1 = preview_target_bbox_xyxy_[1];
     const int x2 = preview_target_bbox_xyxy_[2];
     const int y2 = preview_target_bbox_xyxy_[3];
-    const int target_source_width =
-        preview_target_image_width_ > 0 ? preview_target_image_width_ : packet.width();
-    const int target_source_height =
-        preview_target_image_height_ > 0 ? preview_target_image_height_ : packet.height();
-    const double target_scale_x =
-        static_cast<double>(packet.width()) / static_cast<double>(target_source_width);
-    const double target_scale_y =
-        static_cast<double>(packet.height()) / static_cast<double>(target_source_height);
+    const int target_source_width = preview_target_image_width_ > 0
+                                        ? preview_target_image_width_
+                                        : packet.width();
+    const int target_source_height = preview_target_image_height_ > 0
+                                         ? preview_target_image_height_
+                                         : packet.height();
+    const double target_scale_x = static_cast<double>(packet.width()) /
+                                  static_cast<double>(target_source_width);
+    const double target_scale_y = static_cast<double>(packet.height()) /
+                                  static_cast<double>(target_source_height);
     target_rect = vision_node_helpers::scale_rect_to_preview(
-        cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)), target_scale_x,
-        target_scale_y, image_rect);
+        cv::Rect(x1, y1, std::max(1, x2 - x1), std::max(1, y2 - y1)),
+        target_scale_x, target_scale_y, image_rect);
     if (!target_rect.empty()) {
       has_tracker_target = true;
       track_id = preview_target_track_id_;

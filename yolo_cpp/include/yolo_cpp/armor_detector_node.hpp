@@ -7,6 +7,7 @@
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <opencv2/dnn.hpp>
 #include <optional>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
@@ -16,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "auto_aim_interfaces/msg/armors.hpp"
 #include "cv_auto_aim_interfaces/msg/armors.hpp"
 #include "cv_auto_aim_interfaces/msg/target.hpp"
 #include "yolo_cpp/camera_backend.hpp"
@@ -96,6 +98,18 @@ private:
   void publish_armors(const std::vector<Candidate> &candidates,
                       const std::string &source_id, const rclcpp::Time &stamp,
                       int image_width, int image_height);
+  /// Publish a handoff-compatible auto_aim_interfaces/Armors message.
+  void publish_rm_handoff_armors(const std::vector<Candidate> &candidates,
+                                 const FramePacket *packet,
+                                 const std::string &frame_id,
+                                 const rclcpp::Time &stamp, int image_width,
+                                 int image_height);
+  /// Load the optional upstream number classifier used by RM handoff tracking.
+  void initialize_rm_handoff_number_classifier();
+  /// Classify or resolve the armor number required by the upstream tracker.
+  std::optional<std::string>
+  classify_rm_handoff_number(const cv::Mat &frame, const Candidate &candidate,
+                             int armor_type);
   /// Solve a camera-frame pose for a candidate when corners and intrinsics are
   /// available.
   std::optional<geometry_msgs::msg::Pose>
@@ -179,6 +193,8 @@ private:
       camera_info_subscription_;
   rclcpp::Publisher<cv_auto_aim_interfaces::msg::Armors>::SharedPtr
       armors_publisher_;
+  rclcpp::Publisher<auto_aim_interfaces::msg::Armors>::SharedPtr
+      rm_handoff_armors_publisher_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debug_image_publisher_;
 
   rclcpp::Time last_frame_time_;
@@ -210,6 +226,10 @@ private:
   std::string bayer_conversion_backend_;
   std::string preview_http_bind_address_;
   std::string show_mode_;
+  std::string detector_output_contract_;
+  std::string rm_handoff_number_model_path_;
+  std::string rm_handoff_number_label_path_;
+  std::string rm_handoff_default_number_;
   bool allow_native_tensorrt_fallback_{false};
   bool half_{true};
   bool show_{false};
@@ -229,6 +249,9 @@ private:
   bool preview_has_target_{false};
   bool preview_target_is_coasting_{false};
   bool stm_color_locked_{false};
+  bool rm_handoff_number_classifier_enabled_{false};
+  bool rm_handoff_number_classifier_ready_{false};
+  bool rm_handoff_require_number_classifier_{true};
   int imgsz_width_{640};
   int imgsz_height_{640};
   int pre_mux_width_{0};
@@ -269,10 +292,14 @@ private:
   double large_armor_width_m_{0.225};
   double large_armor_height_m_{0.055};
   double large_armor_min_aspect_ratio_{3.2};
+  double rm_handoff_classifier_threshold_{0.7};
   double preview_fps_{0.0};
   CameraCalibration camera_calibration_;
   std::optional<ArmorPnPSolver> pnp_solver_;
   std::vector<double> camera_distortion_;
+  std::vector<std::string> rm_handoff_ignore_classes_;
+  std::vector<std::string> rm_handoff_number_labels_;
+  cv::dnn::Net rm_handoff_number_net_;
   StageTotals stage_totals_;
   std::ofstream runtime_log_stream_;
   std::ofstream target_frame_index_stream_;

@@ -45,6 +45,7 @@ cv preview-gui
 cv preview-web
 cv preview-off
 cv basler-defaults
+cv rm-handoff
 cv model-orin
 cv model-agx
 cv yaw-smoke
@@ -75,7 +76,7 @@ The robot-local fallback model path is configured at:
 yolo_cpp/config/default_model_path.txt
 ```
 
-Override it with `CV_STM_MODEL_PATH` or a launch `model_path:=...` argument. `cv model-orin` and `cv model-agx` now normalize the service to the same Basler/DeepStream defaults and differ only in `CV_STM_MODEL_PATH`; `model-nano` remains a backward-compatible alias for `model-orin`.
+Override it with `CV_STM_MODEL_PATH` or a launch `model_path:=...` argument. `cv model-orin` and `cv model-agx` now normalize the service to the same Basler/DeepStream defaults and differ only in `CV_STM_MODEL_PATH`; `model-nano` remains a backward-compatible alias for `model-orin`. `cv rm-handoff` selects the RM handoff detector -> tracker -> comms launch profile and still points the main detector at the shared `.engine` model.
 
 ## Documentation
 

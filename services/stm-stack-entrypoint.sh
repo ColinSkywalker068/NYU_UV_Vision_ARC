@@ -152,7 +152,8 @@ launch_file() {
   case "$(launch_profile)" in
     basler) printf '%s' "basler.launch.py" ;;
     realsense) printf '%s' "realsense.launch.py" ;;
-    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler or realsense." ;;
+    rm_handoff) printf '%s' "rm_handoff.launch.py" ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, or rm_handoff." ;;
   esac
 }
 
@@ -164,7 +165,8 @@ camera_type() {
   case "$(launch_profile)" in
     basler) printf '%s' "basler" ;;
     realsense) printf '%s' "realsense" ;;
-    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler or realsense." ;;
+    rm_handoff) printf '%s' "basler" ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, or rm_handoff." ;;
   esac
 }
 
@@ -187,7 +189,8 @@ detector_backend() {
   case "$(launch_profile)" in
     basler) printf '%s' "deepstream" ;;
     realsense) printf '%s' "native_tensorrt" ;;
-    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler or realsense." ;;
+    rm_handoff) printf '%s' "native_tensorrt" ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, or rm_handoff." ;;
   esac
 }
 
@@ -203,8 +206,17 @@ serial_required() {
   case "$(launch_profile)" in
     basler) printf '%s' "true" ;;
     realsense) printf '%s' "false" ;;
-    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler or realsense." ;;
+    rm_handoff) printf '%s' "true" ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, or rm_handoff." ;;
   esac
+}
+
+rm_handoff_number_classifier_enabled() {
+  printf '%s' "${CV_STM_RM_HANDOFF_NUMBER_CLASSIFIER_ENABLED:-true}"
+}
+
+rm_handoff_number_classifier_required() {
+  printf '%s' "${CV_STM_RM_HANDOFF_REQUIRE_NUMBER_CLASSIFIER:-true}"
 }
 
 run_preflight() {
@@ -213,14 +225,14 @@ run_preflight() {
 
   require_file "$(model_path)"
 
-  if [ "$(launch_profile)" = "basler" ] && [ "$(detector_backend)" = "deepstream" ]; then
+  if [ "$(camera_type)" = "basler" ] && [ "$(detector_backend)" = "deepstream" ]; then
     require_command gst-inspect-1.0
     require_gst_element nvstreammux
     require_gst_element nvinfer
     require_gst_element nvvideoconvert
   fi
 
-  if [ "$(launch_profile)" = "basler" ]; then
+  if [ "$(camera_type)" = "basler" ]; then
     require_command gst-inspect-1.0
     if [[ "${CV_STM_IMAGE:-}" != *cplusplus* ]]; then
       log "Basler profile is using CV_STM_IMAGE=${CV_STM_IMAGE:-unknown}; the default C++ image is expected unless this custom image includes pylonsrc"
@@ -241,6 +253,18 @@ run_preflight() {
           require_gst_element bayer2rgb
           ;;
       esac
+    fi
+  fi
+
+  if [ "$(launch_profile)" = "rm_handoff" ]; then
+    if is_true "$(rm_handoff_number_classifier_enabled)" &&
+       is_true "$(rm_handoff_number_classifier_required)"; then
+      [ -n "${CV_STM_RM_HANDOFF_NUMBER_MODEL_PATH:-}" ] ||
+        die "RM handoff number classifier is required; set CV_STM_RM_HANDOFF_NUMBER_MODEL_PATH or run 'cv rm-handoff' to use the fallback-number profile"
+      [ -n "${CV_STM_RM_HANDOFF_NUMBER_LABEL_PATH:-}" ] ||
+        die "RM handoff number classifier is required; set CV_STM_RM_HANDOFF_NUMBER_LABEL_PATH or run 'cv rm-handoff' to use the fallback-number profile"
+      require_file "$CV_STM_RM_HANDOFF_NUMBER_MODEL_PATH"
+      require_file "$CV_STM_RM_HANDOFF_NUMBER_LABEL_PATH"
     fi
   fi
 
@@ -305,6 +329,46 @@ run_launch() {
       append_optional_launch_arg CV_STM_BASLER_USE_FULL_SENSOR basler_use_full_sensor
       append_optional_launch_arg CV_STM_BASLER_FLIP basler_flip
       ;;
+    rm_handoff)
+      LAUNCH_ARGS+=(
+        "camera_type:=$(camera_type)"
+        "detector_backend:=$(detector_backend)"
+        "allow_native_tensorrt_fallback:=${CV_STM_ALLOW_NATIVE_TENSORRT_FALLBACK:-false}"
+        "serial_enable:=${CV_STM_SERIAL_ENABLE:-$(serial_required)}"
+        "serial_port:=$(serial_port)"
+        "serial_baudrate:=${CV_STM_SERIAL_BAUDRATE:-115200}"
+        "bt_adapter_enable:=${CV_STM_BT_ADAPTER_ENABLE:-false}"
+        "rm_handoff_number_classifier_enabled:=$(rm_handoff_number_classifier_enabled)"
+        "rm_handoff_require_number_classifier:=$(rm_handoff_number_classifier_required)"
+        "native_tensorrt_cuda_bayer_preprocess:=${CV_STM_NATIVE_TENSORRT_CUDA_BAYER_PREPROCESS:-true}"
+      )
+      append_optional_launch_arg CV_STM_RM_HANDOFF_NUMBER_MODEL_PATH rm_handoff_number_model_path
+      append_optional_launch_arg CV_STM_RM_HANDOFF_NUMBER_LABEL_PATH rm_handoff_number_label_path
+      append_optional_launch_arg CV_STM_RM_HANDOFF_CLASSIFIER_THRESHOLD rm_handoff_classifier_threshold
+      append_optional_launch_arg CV_STM_RM_HANDOFF_DEFAULT_NUMBER rm_handoff_default_number
+      append_optional_launch_arg CV_STM_BASLER_EXPOSURE_US basler_exposure_us
+      append_optional_launch_arg CV_STM_BASLER_GAIN_DB basler_gain_db
+      append_optional_launch_arg CV_STM_BASLER_FPS basler_fps
+      append_optional_launch_arg CV_STM_BASLER_UNCAPPED_FPS basler_uncapped_fps
+      append_optional_launch_arg CV_STM_BASLER_PIXEL_FORMAT basler_pixel_format
+      append_optional_launch_arg CV_STM_BASLER_SOURCE_WIDTH basler_source_width
+      append_optional_launch_arg CV_STM_BASLER_SOURCE_HEIGHT basler_source_height
+      append_optional_launch_arg CV_STM_BASLER_USE_FULL_SENSOR basler_use_full_sensor
+      append_optional_launch_arg CV_STM_BASLER_FLIP basler_flip
+      append_optional_launch_arg CV_STM_DEEPSTREAM_PRE_MUX_RESIZE pre_mux_resize
+      append_optional_launch_arg CV_STM_DEEPSTREAM_PRE_MUX_WIDTH pre_mux_width
+      append_optional_launch_arg CV_STM_DEEPSTREAM_PRE_MUX_HEIGHT pre_mux_height
+      append_optional_launch_arg CV_STM_DEEPSTREAM_PROFILE_STAGES deepstream_profile_stages
+      append_optional_launch_arg CV_STM_DEEPSTREAM_PROFILE_STAGE_INTERVAL deepstream_profile_stage_interval
+      append_optional_launch_arg CV_STM_DEEPSTREAM_BAYER_CONVERSION_BACKEND bayer_conversion_backend
+      append_optional_launch_arg CV_STM_REALSENSE_WIDTH realsense_width
+      append_optional_launch_arg CV_STM_REALSENSE_HEIGHT realsense_height
+      append_optional_launch_arg CV_STM_REALSENSE_FPS realsense_fps
+      append_optional_launch_arg CV_STM_REALSENSE_EXPOSURE realsense_exposure
+      append_optional_launch_arg CV_STM_REALSENSE_AUTO_EXPOSURE realsense_auto_exposure
+      append_optional_launch_arg CV_STM_REALSENSE_USE_POLL realsense_use_poll
+      append_optional_launch_arg CV_STM_REALSENSE_USE_MAX_NATIVE_FPS realsense_use_max_native_fps
+      ;;
     realsense)
       append_optional_launch_arg CV_STM_REALSENSE_WIDTH rs_width
       append_optional_launch_arg CV_STM_REALSENSE_HEIGHT rs_height
@@ -314,7 +378,7 @@ run_launch() {
       append_optional_launch_arg CV_STM_REALSENSE_USE_POLL rs_use_poll
       append_optional_launch_arg CV_STM_REALSENSE_USE_MAX_NATIVE_FPS rs_use_max_native_fps
       ;;
-    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler or realsense." ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, or rm_handoff." ;;
   esac
 
   if [ -n "${CV_STM_EXTRA_LAUNCH_ARGS:-}" ]; then
@@ -336,15 +400,33 @@ graph_has_line() {
 check_graph_once() {
   local report="${1:-false}"
   local nodes topics missing=0
-  local -a expected_nodes=(
-    /armor_detector_node
-    /armor_tracker_node
-    /armor_processor_node
-    /aim_solver_node
-  )
-  if [ "$(launch_profile)" != "realsense" ]; then
-    expected_nodes+=(/stm32_serial_bridge_node)
+  local -a expected_nodes=()
+  local -a expected_topics=()
+
+  if [ "$(launch_profile)" = "rm_handoff" ]; then
+    expected_nodes=(/armor_detector_node /armor_tracker)
+    expected_topics=(/detector/armors /tracker/target /tracker/info)
+    if is_true "${CV_STM_SERIAL_ENABLE:-$(serial_required)}"; then
+      expected_nodes+=(/rm_serial_driver)
+      expected_topics+=(/latency /aiming_point)
+    fi
+    if is_true "${CV_STM_BT_ADAPTER_ENABLE:-false}"; then
+      expected_nodes+=(/bt_comm_adapter)
+      expected_topics+=(/cmd_vel_chassis_bt /game_status /robot_status /all_robot_hp)
+    fi
+  else
+    expected_nodes=(
+      /armor_detector_node
+      /armor_tracker_node
+      /armor_processor_node
+      /aim_solver_node
+    )
+    expected_topics=(/detector/armors /tracker/tracked_armors /processor/target /aim_solution)
+    if [ "$(launch_profile)" != "realsense" ]; then
+      expected_nodes+=(/stm32_serial_bridge_node)
+    fi
   fi
+
   nodes="$(ROS_DISABLE_ROS_DAEMON=1 ros2 node list 2>/dev/null || true)"
   topics="$(ROS_DISABLE_ROS_DAEMON=1 ros2 topic list 2>/dev/null || true)"
 
@@ -355,7 +437,7 @@ check_graph_once() {
     fi
   done
 
-  for topic in /detector/armors /tracker/tracked_armors /processor/target /aim_solution; do
+  for topic in "${expected_topics[@]}"; do
     if ! graph_has_line "$topics" "$topic"; then
       [ "$report" = "true" ] && printf '[stm-stack] missing topic: %s\n' "$topic" >&2
       missing=1
@@ -392,7 +474,7 @@ run       Validate prerequisites, then exec the selected launch profile.
 preflight Validate package, model, plugin, camera, and serial prerequisites only.
 health    Validate the live ROS graph for the selected profile.
 
-CV_STM_LAUNCH_PROFILE defaults to basler. Supported profiles: basler, realsense.
+CV_STM_LAUNCH_PROFILE defaults to basler. Supported profiles: basler, realsense, rm_handoff.
 EOF
 }
 

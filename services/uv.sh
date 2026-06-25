@@ -136,7 +136,7 @@ case $1 in
     if [[ $IS_ROS2_WORKSPACE = true ]]; then
       if (( $# == 2 || $# == 3 )); then
         if [[ $2 == "yolo_cpp" ]]; then
-          colcon build --packages-select cv_auto_aim_interfaces yolo_cpp --symlink-install --cmake-args -DBUILD_TESTING=OFF
+          colcon build --packages-select auto_aim_interfaces rm_decision_interfaces cv_auto_aim_interfaces yolo_cpp --symlink-install --cmake-args -DBUILD_TESTING=OFF
         else
           colcon build --packages-select $2 --symlink-install --cmake-args -DBUILD_TESTING=OFF
         fi
