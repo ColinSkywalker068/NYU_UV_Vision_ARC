@@ -223,14 +223,14 @@ For direct Orin Nano visual bring-up without the service profile, use the native
 uv run yolo_cpp orin.launch.py
 ```
 
-The default model path targets the Orin engine. To switch the systemd service between host-specific engines without editing `/etc/cv-detection/stm-stack.env` by hand, use:
+The default model path targets the Orin Nano engine. To switch the systemd service between host-specific engines without editing `/etc/cv-detection/stm-stack.env` by hand, use:
 
 ```bash
 cv model-orin
 cv model-agx
 ```
 
-These commands persist `CV_STM_MODEL_PATH` and restart the service. `model-orin` and `model-agx` both select `yolo_cpp/models/kushalv2.engine`, so the only difference between the commands is the operator label in the command name. The older `model-nano` shortcut remains available as a backward-compatible alias for `model-orin`.
+These commands persist `CV_STM_MODEL_PATH` and restart the service. `model-orin` and `model-agx` both select `yolo_cpp/models/kushalv2-nano.engine`, so the only difference between the commands is the operator label in the command name. The older `model-nano` shortcut remains available as a backward-compatible alias for `model-orin`.
 
 To switch the service to the RM handoff compatibility path, run:
 
