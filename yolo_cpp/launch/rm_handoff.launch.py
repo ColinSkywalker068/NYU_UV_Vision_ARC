@@ -54,7 +54,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "false",
             "Enable HSV enemy-color verification when use_model_color_classes is false",
         ),
-        ("target_color", "blue", "Enemy color until STM/robot-id feedback overrides it"),
+        (
+            "target_color",
+            "blue",
+            "Enemy color until STM/robot-id feedback overrides it",
+        ),
         ("show", "false", "Preview mode: false, gui, or web"),
         ("preview_max_fps", "60.0", "Maximum preview render FPS"),
         ("debug_publish_image_raw", "false", "Publish debug image_raw frames"),
@@ -198,8 +202,12 @@ def generate_launch_description() -> LaunchDescription:
                 "camera_cx": launch_config("camera_cx"),
                 "camera_cy": launch_config("camera_cy"),
                 "detector_output_contract": "rm_handoff",
-                "rm_handoff_number_model_path": launch_config("rm_handoff_number_model_path"),
-                "rm_handoff_number_label_path": launch_config("rm_handoff_number_label_path"),
+                "rm_handoff_number_model_path": launch_config(
+                    "rm_handoff_number_model_path"
+                ),
+                "rm_handoff_number_label_path": launch_config(
+                    "rm_handoff_number_label_path"
+                ),
                 "rm_handoff_number_classifier_enabled": launch_config(
                     "rm_handoff_number_classifier_enabled"
                 ),
@@ -254,8 +262,12 @@ def generate_launch_description() -> LaunchDescription:
         parameters=[
             {
                 "target_frame": launch_config("target_frame"),
-                "tracker.max_match_distance": launch_config("tracker_max_match_distance"),
-                "tracker.max_match_yaw_diff": launch_config("tracker_max_match_yaw_diff"),
+                "tracker.max_match_distance": launch_config(
+                    "tracker_max_match_distance"
+                ),
+                "tracker.max_match_yaw_diff": launch_config(
+                    "tracker_max_match_yaw_diff"
+                ),
                 "tracker.tracking_thres": launch_config("tracker_tracking_thres"),
                 "tracker.lost_time_thres": launch_config("tracker_lost_time_thres"),
             }
