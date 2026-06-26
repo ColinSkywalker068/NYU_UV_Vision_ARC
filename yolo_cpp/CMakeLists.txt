@@ -407,6 +407,23 @@ ament_target_dependencies(
   visualization_msgs
 )
 
+add_executable(nyush_gimbal_serial_bridge
+  src/rm_handoff_crc.cpp
+  src/nyush_gimbal_protocol.cpp
+  src/nyush_gimbal_serial_bridge_node.cpp
+  src/nyush_gimbal_serial_bridge_main.cpp
+)
+target_include_directories(nyush_gimbal_serial_bridge PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(
+  nyush_gimbal_serial_bridge
+  cv_auto_aim_interfaces
+  rclcpp
+  std_msgs
+)
+
 if(YOLO_CPP_BUILD_MANUAL_TOOLS)
   add_executable(stm32_yaw_packet_smoke
     tools/stm32_yaw_packet_smoke.cpp
@@ -427,7 +444,7 @@ install(
   TARGETS yolo_cpp_components perception_node
     armor_detector_node armor_tracker_node rm_handoff_tracker_node armor_processor_node
     aim_solver_node fps_benchmark
-    stm32_serial_bridge rm_handoff_serial_bridge
+    stm32_serial_bridge rm_handoff_serial_bridge nyush_gimbal_serial_bridge
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -523,6 +540,17 @@ if(BUILD_TESTING)
   )
   if(TARGET test_rm_handoff_protocol)
     target_include_directories(test_rm_handoff_protocol PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+    )
+  endif()
+  ament_add_gtest(test_nyush_gimbal_protocol
+    test/test_nyush_gimbal_protocol.cpp
+    src/rm_handoff_crc.cpp
+    src/nyush_gimbal_protocol.cpp
+  )
+  if(TARGET test_nyush_gimbal_protocol)
+    target_include_directories(test_nyush_gimbal_protocol PUBLIC
       $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
       $<INSTALL_INTERFACE:include>
     )
