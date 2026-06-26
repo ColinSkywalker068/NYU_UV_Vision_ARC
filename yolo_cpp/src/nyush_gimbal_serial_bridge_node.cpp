@@ -259,8 +259,7 @@ private:
 
       std_msgs::msg::Int32MultiArray flags;
       flags.data = {enemy_color_, static_cast<int>(packet.mode),
-                    static_cast<int>(packet.bullet_speed),
-                    static_cast<int>(packet.bullet_count), 0};
+                    static_cast<int>(packet.bullet_speed), 0, 0};
       attitude_flags_publisher_->publish(flags);
 
       if (serial_verbose_) {

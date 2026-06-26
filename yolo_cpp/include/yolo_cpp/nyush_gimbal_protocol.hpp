@@ -40,7 +40,9 @@ struct VisionToGimbal {
 
 struct AttitudePacket {
   float yaw{0.0F};
+  float yaw_vel{0.0F};
   float pitch{0.0F};
+  float pitch_vel{0.0F};
   float roll{0.0F};
   float bullet_speed{0.0F};
   uint16_t bullet_count{0};

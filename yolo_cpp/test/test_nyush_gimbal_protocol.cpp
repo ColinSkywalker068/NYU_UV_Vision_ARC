@@ -47,7 +47,9 @@ TEST(NYUSHGimbalProtocol,
   const auto parsed = parse_gimbal_packets(buffer);
   ASSERT_EQ(parsed.size(), 1U);
   EXPECT_FLOAT_EQ(parsed[0].yaw, 0.5F);
+  EXPECT_FLOAT_EQ(parsed[0].yaw_vel, 0.0F);
   EXPECT_FLOAT_EQ(parsed[0].pitch, -0.25F);
+  EXPECT_FLOAT_EQ(parsed[0].pitch_vel, 0.0F);
   EXPECT_FLOAT_EQ(parsed[0].bullet_speed, 22.0F);
   EXPECT_EQ(parsed[0].bullet_count, 7);
   EXPECT_EQ(parsed[0].mode, NYUSH_GIMBAL_MODE_AIM);

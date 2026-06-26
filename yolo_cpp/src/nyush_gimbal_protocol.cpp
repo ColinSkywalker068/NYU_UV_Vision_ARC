@@ -10,14 +10,24 @@
 namespace yolo_cpp::nyush_gimbal {
 namespace {
 
-float quaternion_roll(const float q[4]) {
+struct ProtocolYpr {
+  float yaw{0.0F};
+  float pitch{0.0F};
+  float roll{0.0F};
+};
+
+ProtocolYpr quaternion_to_protocol_ypr(const float q[4]) {
   const float w = q[0];
   const float x = q[1];
   const float y = q[2];
   const float z = q[3];
-  const float sinr_cosp = 2.0F * ((w * x) + (y * z));
-  const float cosr_cosp = 1.0F - (2.0F * ((x * x) + (y * y)));
-  return std::atan2(sinr_cosp, cosr_cosp);
+  const float yaw = std::atan2(2.0F * ((w * z) + (x * y)),
+                               (2.0F * ((w * w) + (x * x))) - 1.0F);
+  const float pitch = std::atan2(2.0F * ((w * x) + (y * z)),
+                                 (2.0F * ((w * w) + (z * z))) - 1.0F);
+  const float roll =
+      std::asin(std::clamp(2.0F * ((w * y) - (x * z)), -1.0F, 1.0F));
+  return {yaw, pitch, roll};
 }
 
 template <typename PacketT>
@@ -95,9 +105,10 @@ parse_gimbal_packets(std::vector<uint8_t> &rx_buffer) {
     }
 
     const auto packet = from_bytes<GimbalToVision>(packet_bytes);
-    parsed_packets.push_back(
-        AttitudePacket{packet.yaw, packet.pitch, quaternion_roll(packet.q),
-                       packet.bullet_speed, packet.bullet_count, packet.mode});
+    const auto ypr = quaternion_to_protocol_ypr(packet.q);
+    parsed_packets.push_back(AttitudePacket{
+        packet.yaw, packet.yaw_vel, packet.pitch, packet.pitch_vel, ypr.roll,
+        packet.bullet_speed, packet.bullet_count, packet.mode});
     rx_buffer.erase(rx_buffer.begin(),
                     rx_buffer.begin() + sizeof(GimbalToVision));
   }
