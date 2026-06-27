@@ -85,7 +85,7 @@ No `.env.example` file exists in the current repository. The operational variabl
 | `CV_STM_TARGET_FRAME_JPEG_QUALITY` | JPEG quality for optional target-frame capture | `85` | `services/stm-stack-entrypoint.sh`, `yolo_cpp/launch/basler.launch.py` |
 | `CV_STM_CAMERA_TYPE` | Lower-level camera backend override for the Basler-profile launch only | Usually unset; prefer `CV_STM_LAUNCH_PROFILE` | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_MODEL_PATH` | Competition model or engine path override | Empty by default; `yolo_cpp/config/default_model_path.txt` supplies the robot-local fallback shared engine | `services/stm-stack-entrypoint.sh` |
-| `CV_STM_SERIAL_PORT` | STM32 serial device for competition startup | `/dev/ttyUSB0` | `services/stm-stack-entrypoint.sh` |
+| `CV_STM_SERIAL_PORT` | STM32 serial device or bridge PTY for competition startup | `/dev/ttyUSB0`; use `/tmp/nyush-rm-sentry-vision` on the sentry robot when the nyush RM control bridge owns the MCU serial path | `services/stm-stack-entrypoint.sh`, `services/stm-stack.sh` |
 | `CV_STM_REQUIRE_SERIAL` | Whether preflight must fail when the serial path is absent | Defaults to `true` for `basler` and `rm_handoff`, `false` for `realsense` | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_SERIAL_ENABLE` | Whether `rm_handoff.launch.py` starts the RM serial bridge | `true` when set by `cv rm-handoff` | `services/stm-stack-entrypoint.sh` |
 | `CV_STM_BT_ADAPTER_ENABLE` | Whether `rm_handoff.launch.py` starts the BT compatibility adapter | `false` when set by `cv rm-handoff`; set `true` for BT integration testing | `services/stm-stack-entrypoint.sh` |
@@ -239,6 +239,18 @@ cv rm-handoff
 ```
 
 This persists `CV_STM_LAUNCH_PROFILE=rm_handoff`, starts `rm_handoff.launch.py`, enables the RM serial bridge, and keeps the main detector model on the shared `yolo_cpp/models/kushalv2.engine` path. If the original RM armor-number classifier assets are available inside the container, set `CV_STM_RM_HANDOFF_NUMBER_MODEL_PATH` and `CV_STM_RM_HANDOFF_NUMBER_LABEL_PATH` before running `cv rm-handoff`; otherwise the command disables strict classifier requirements and uses detector class IDs as fallback armor numbers.
+
+On the sentry robot, do not run the default serial-enabled CV stack against `/dev/ttyUSB0` while the `nyush-rm-control` bridge owns the MCU/control serial path. Point CV at the bridge Vision PTY instead:
+
+```bash
+cv sentry-bridge
+```
+
+This persists `CV_STM_SERIAL_PORT=/tmp/nyush-rm-sentry-vision`, keeps serial required/enabled, and restarts the service. Start the sentry bridge first so the PTY exists before CV preflight or service restart. For camera/detector-only checks, use a non-serial profile or explicitly disable serial:
+
+```bash
+CV_STM_REQUIRE_SERIAL=false CV_STM_SERIAL_ENABLE=false ./services/stm-stack.sh restart
+```
 
 To send one small yaw-only STM packet without a full ROS build, run:
 

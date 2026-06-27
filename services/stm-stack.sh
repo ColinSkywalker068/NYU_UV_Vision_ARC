@@ -18,6 +18,7 @@ ENV_FILE="${CV_STM_ENV_FILE:-${ENV_DIR}/stm-stack.env}"
 DEFAULT_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"
 LEGACY_CPLUSPLUS_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus"
 SHARED_MODEL_RELATIVE="yolo_cpp/models/kushalv2-nano.engine"
+SENTRY_VISION_SERIAL_PORT="/tmp/nyush-rm-sentry-vision"
 
 if [ -f "$ENV_FILE" ]; then
   set -a
@@ -339,6 +340,15 @@ set_rm_handoff_profile() {
   systemctl_action restart
 }
 
+set_sentry_bridge_profile() {
+  set_env_value CV_STM_SERIAL_PORT "$SENTRY_VISION_SERIAL_PORT"
+  set_env_value CV_STM_REQUIRE_SERIAL true
+  set_env_value CV_STM_SERIAL_ENABLE true
+  log "Set sentry bridge serial port in ${ENV_FILE}: ${SENTRY_VISION_SERIAL_PORT}"
+  log "Restarting ${SERVICE_NAME}; start the sentry bridge first so the Vision PTY exists"
+  systemctl_action restart
+}
+
 show_status() {
   systemctl status "$SERVICE_NAME" --no-pager
 }
@@ -458,6 +468,8 @@ Commands:
   model-agx   Persist the AGX model and normalized Basler defaults, then restart ${SERVICE_NAME}.
   rm-handoff
              Persist the RM handoff detector/tracker/comms profile, then restart ${SERVICE_NAME}.
+  sentry-bridge
+             Persist serial output to /tmp/nyush-rm-sentry-vision for the sentry control bridge, then restart ${SERVICE_NAME}.
   status     Show systemd status.
   logs       Follow systemd logs.
   preflight  Validate image, ROS package, model, and selected profile prerequisites.
@@ -487,6 +499,7 @@ main() {
     model-orin|model-nano) set_orin_profile ;;
     model-agx) set_agx_profile ;;
     rm-handoff|handoff|rm_handoff) set_rm_handoff_profile ;;
+    sentry-bridge|sentry_bridge|sentry) set_sentry_bridge_profile ;;
     status) show_status ;;
     logs) show_logs ;;
     preflight) run_preflight ;;
