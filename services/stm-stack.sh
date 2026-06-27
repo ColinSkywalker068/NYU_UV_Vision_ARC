@@ -341,11 +341,18 @@ set_rm_handoff_profile() {
 }
 
 set_sentry_bridge_profile() {
+  reset_common_basler_overrides
+  set_env_value CV_STM_LAUNCH_PROFILE nyush_gimbal
+  set_env_value CV_STM_CAMERA_TYPE basler
+  set_env_value CV_STM_DETECTOR_BACKEND deepstream
+  set_env_value CV_STM_ALLOW_NATIVE_TENSORRT_FALLBACK false
   set_env_value CV_STM_SERIAL_PORT "$SENTRY_VISION_SERIAL_PORT"
   set_env_value CV_STM_REQUIRE_SERIAL true
   set_env_value CV_STM_SERIAL_ENABLE true
-  log "Set sentry bridge serial port in ${ENV_FILE}: ${SENTRY_VISION_SERIAL_PORT}"
-  log "Restarting ${SERVICE_NAME}; start the sentry bridge first so the Vision PTY exists"
+  set_env_value CV_STM_BASLER_FPS 160
+  set_env_value CV_STM_BASLER_UNCAPPED_FPS false
+  log "Set sentry NYUSH gimbal profile in ${ENV_FILE}: ${SENTRY_VISION_SERIAL_PORT}"
+  log "Restarting ${SERVICE_NAME} with nyush_gimbal.launch.py; start the sentry bridge first so the Vision PTY exists"
   systemctl_action restart
 }
 
@@ -469,7 +476,7 @@ Commands:
   rm-handoff
              Persist the RM handoff detector/tracker/comms profile, then restart ${SERVICE_NAME}.
   sentry-bridge
-             Persist serial output to /tmp/nyush-rm-sentry-vision for the sentry control bridge, then restart ${SERVICE_NAME}.
+             Persist the NYUSH gimbal profile and /tmp/nyush-rm-sentry-vision bridge PTY, then restart ${SERVICE_NAME}.
   status     Show systemd status.
   logs       Follow systemd logs.
   preflight  Validate image, ROS package, model, and selected profile prerequisites.

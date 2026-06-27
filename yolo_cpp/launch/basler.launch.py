@@ -4,6 +4,7 @@ from typing import Any
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import (
     EnvironmentVariable,
     LaunchConfiguration,
@@ -55,6 +56,7 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ("serial_port", "/dev/ttyUSB0", "Serial port for STM32 connection"),
         ("serial_baudrate", "115200", "Baud rate for STM32 serial"),
         ("serial_verbose", "false", "Enable verbose serial logging"),
+        ("stm32_serial_enable", "true", "Start the SeaSky STM32 serial bridge"),
         ("basler_width", "640", "Basler frame width"),
         ("basler_height", "640", "Basler frame height"),
         ("basler_fps", "160", "Basler frames per second"),
@@ -452,6 +454,7 @@ def make_stm_bridge_node() -> Node:
         executable="stm32_serial_bridge",
         name="stm32_serial_bridge_node",
         output="screen",
+        condition=IfCondition(launch_config("stm32_serial_enable")),
         parameters=[
             {
                 "transmit_enable": True,

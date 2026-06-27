@@ -153,7 +153,8 @@ launch_file() {
     basler) printf '%s' "basler.launch.py" ;;
     realsense) printf '%s' "realsense.launch.py" ;;
     rm_handoff) printf '%s' "rm_handoff.launch.py" ;;
-    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, or rm_handoff." ;;
+    nyush_gimbal) printf '%s' "nyush_gimbal.launch.py" ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, rm_handoff, or nyush_gimbal." ;;
   esac
 }
 
@@ -166,7 +167,8 @@ camera_type() {
     basler) printf '%s' "basler" ;;
     realsense) printf '%s' "realsense" ;;
     rm_handoff) printf '%s' "basler" ;;
-    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, or rm_handoff." ;;
+    nyush_gimbal) printf '%s' "basler" ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, rm_handoff, or nyush_gimbal." ;;
   esac
 }
 
@@ -190,7 +192,8 @@ detector_backend() {
     basler) printf '%s' "deepstream" ;;
     realsense) printf '%s' "native_tensorrt" ;;
     rm_handoff) printf '%s' "native_tensorrt" ;;
-    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, or rm_handoff." ;;
+    nyush_gimbal) printf '%s' "deepstream" ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, rm_handoff, or nyush_gimbal." ;;
   esac
 }
 
@@ -207,7 +210,8 @@ serial_required() {
     basler) printf '%s' "true" ;;
     realsense) printf '%s' "false" ;;
     rm_handoff) printf '%s' "true" ;;
-    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, or rm_handoff." ;;
+    nyush_gimbal) printf '%s' "true" ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, rm_handoff, or nyush_gimbal." ;;
   esac
 }
 
@@ -304,7 +308,7 @@ run_launch() {
   append_optional_launch_arg CV_STM_PREVIEW_MAX_FPS preview_max_fps
 
   case "$(launch_profile)" in
-    basler)
+    basler|nyush_gimbal)
       LAUNCH_ARGS+=(
         "camera_type:=$(camera_type)"
         "detector_backend:=$(detector_backend)"
@@ -312,6 +316,21 @@ run_launch() {
         "serial_verbose:=${CV_STM_SERIAL_VERBOSE:-false}"
         "serial_port:=$(serial_port)"
       )
+      if [ "$(launch_profile)" = "nyush_gimbal" ]; then
+        LAUNCH_ARGS+=(
+          "stm32_serial_enable:=false"
+          "nyush_gimbal_enable:=${CV_STM_NYUSH_GIMBAL_ENABLE:-true}"
+          "nyush_gimbal_port:=$(serial_port)"
+          "nyush_gimbal_baudrate:=${CV_STM_SERIAL_BAUDRATE:-115200}"
+          "nyush_gimbal_verbose:=${CV_STM_SERIAL_VERBOSE:-false}"
+        )
+        append_optional_launch_arg CV_STM_NYUSH_ENEMY_COLOR nyush_enemy_color
+        append_optional_launch_arg CV_STM_NYUSH_RX_YAW_SIGN nyush_rx_yaw_sign
+        append_optional_launch_arg CV_STM_NYUSH_RX_PITCH_SIGN nyush_rx_pitch_sign
+        append_optional_launch_arg CV_STM_NYUSH_RX_ROLL_SIGN nyush_rx_roll_sign
+        append_optional_launch_arg CV_STM_NYUSH_TX_YAW_SIGN nyush_tx_yaw_sign
+        append_optional_launch_arg CV_STM_NYUSH_TX_PITCH_SIGN nyush_tx_pitch_sign
+      fi
       append_optional_launch_arg CV_STM_BASLER_EXPOSURE_US basler_exposure_us
       append_optional_launch_arg CV_STM_BASLER_GAIN_DB basler_gain_db
       append_optional_launch_arg CV_STM_BASLER_FPS basler_fps
@@ -378,7 +397,7 @@ run_launch() {
       append_optional_launch_arg CV_STM_REALSENSE_USE_POLL rs_use_poll
       append_optional_launch_arg CV_STM_REALSENSE_USE_MAX_NATIVE_FPS rs_use_max_native_fps
       ;;
-    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, or rm_handoff." ;;
+    *) die "Unsupported CV_STM_LAUNCH_PROFILE=$(launch_profile). Expected basler, realsense, rm_handoff, or nyush_gimbal." ;;
   esac
 
   if [ -n "${CV_STM_EXTRA_LAUNCH_ARGS:-}" ]; then
@@ -422,7 +441,9 @@ check_graph_once() {
       /aim_solver_node
     )
     expected_topics=(/detector/armors /tracker/tracked_armors /processor/target /aim_solution)
-    if [ "$(launch_profile)" != "realsense" ]; then
+    if [ "$(launch_profile)" = "nyush_gimbal" ]; then
+      expected_nodes+=(/nyush_gimbal_serial_bridge)
+    elif [ "$(launch_profile)" != "realsense" ]; then
       expected_nodes+=(/stm32_serial_bridge_node)
     fi
   fi
@@ -474,7 +495,7 @@ run       Validate prerequisites, then exec the selected launch profile.
 preflight Validate package, model, plugin, camera, and serial prerequisites only.
 health    Validate the live ROS graph for the selected profile.
 
-CV_STM_LAUNCH_PROFILE defaults to basler. Supported profiles: basler, realsense, rm_handoff.
+CV_STM_LAUNCH_PROFILE defaults to basler. Supported profiles: basler, realsense, rm_handoff, nyush_gimbal.
 EOF
 }
 
