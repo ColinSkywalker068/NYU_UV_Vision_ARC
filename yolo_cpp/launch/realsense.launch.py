@@ -82,6 +82,7 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Path to YOLO weights (.pt / .engine / .onnx); empty uses the package default resolver",
         ),
         ("task", "obb", "YOLO task: detect, obb, segment"),
+        ("inference_mode", "predict", "Detector inference mode"),
         ("conf", "0.30", "Confidence threshold"),
         (
             "use_model_color_classes",
@@ -98,7 +99,28 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "blue",
             "Enemy armor color used until robot_id feedback overrides it: blue or red",
         ),
+        (
+            "use_robot_id_targeting",
+            "false",
+            "Allow robot_id or attitude_flags feedback to override target color",
+        ),
+        ("enemy_color_red_value", "0", "Controller/robot-id value for red enemy color"),
+        ("enemy_color_blue_value", "1", "Controller/robot-id value for blue enemy color"),
+        ("max_hsv_candidates", "3", "Maximum candidate boxes checked by HSV color verification"),
+        ("small_armor_width_m", "0.135", "Small armor physical width for PnP"),
+        ("small_armor_height_m", "0.055", "Small armor physical height for PnP"),
+        ("large_armor_width_m", "0.225", "Large armor physical width for PnP"),
+        ("large_armor_height_m", "0.055", "Large armor physical height for PnP"),
+        (
+            "large_armor_min_aspect_ratio",
+            "3.2",
+            "Aspect ratio threshold used to classify large armor plates",
+        ),
+        ("runtime_log_dir", "", "Optional directory for detector runtime logs"),
+        ("stage_log_interval", "300", "Frames between detector/tracker timing summaries"),
         ("show", "false", "Preview mode: false, gui, or web"),
+        ("vis_window_name", "Armor Detector", "OpenCV preview window name"),
+        ("preview_target_topic", "tracker/target", "Target topic used for preview overlays"),
         (
             "preview_max_fps",
             "60.0",
@@ -196,13 +218,35 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "camera_optical_frame",
             "Frame used for processor target pose output",
         ),
+        ("processor_lost_threshold", "5", "Frames before processor target state is considered lost"),
+        ("spin_observer_allow", "true", "Enable spin observation in the processor"),
+        ("spin_observer_max_jump_angle", "0.2", "Maximum armor jump angle for spin observation"),
+        ("spin_observer_max_jump_period", "0.8", "Maximum jump period for spin observation"),
+        (
+            "spin_observer_allow_following_range",
+            "0.3",
+            "Range threshold for allowing following during spin observation",
+        ),
+        ("filter_position_alpha", "0.7", "Processor position low-pass alpha"),
+        ("filter_velocity_alpha", "0.5", "Processor velocity low-pass alpha"),
         (
             "use_3d_solution",
             "true",
             "Use processor pose/velocity when available for yaw/pitch solving",
         ),
+        (
+            "solver_output_mode",
+            "offset",
+            "Aim output mode: offset or absolute. Absolute adds STM attitude yaw/pitch.",
+        ),
         ("solver_latency_s", "0.03", "Latency used by the 3D ballistic prediction"),
         ("default_bullet_speed_mps", "18.0", "Fallback bullet speed for 3D solving"),
+        (
+            "compensate_gravity",
+            "true",
+            "Enable simple gravity drop compensation in the 3D solver",
+        ),
+        ("gravity_mps2", "9.80665", "Gravity constant used by solver compensation"),
     ]
 
 
@@ -245,11 +289,27 @@ def make_detector_node() -> Node:
                 ),
                 "model_path": launch_config("model_path"),
                 "task": launch_config("task"),
+                "inference_mode": launch_config("inference_mode"),
                 "conf": launch_config("conf"),
                 "use_model_color_classes": launch_config("use_model_color_classes"),
                 "enable_color_verification": launch_config("enable_color_verification"),
                 "target_color": launch_config("target_color"),
+                "use_robot_id_targeting": launch_config("use_robot_id_targeting"),
+                "enemy_color_red_value": launch_config("enemy_color_red_value"),
+                "enemy_color_blue_value": launch_config("enemy_color_blue_value"),
+                "max_hsv_candidates": launch_config("max_hsv_candidates"),
+                "small_armor_width_m": launch_config("small_armor_width_m"),
+                "small_armor_height_m": launch_config("small_armor_height_m"),
+                "large_armor_width_m": launch_config("large_armor_width_m"),
+                "large_armor_height_m": launch_config("large_armor_height_m"),
+                "large_armor_min_aspect_ratio": launch_config(
+                    "large_armor_min_aspect_ratio"
+                ),
+                "runtime_log_dir": launch_config("runtime_log_dir"),
+                "stage_log_interval": launch_config("stage_log_interval"),
                 "show": ParameterValue(launch_config("show"), value_type=str),
+                "vis_window_name": launch_config("vis_window_name"),
+                "preview_target_topic": launch_config("preview_target_topic"),
                 "preview_max_fps": ParameterValue(
                     launch_config("preview_max_fps"),
                     value_type=float,
@@ -291,6 +351,10 @@ def make_tracker_node() -> Node:
                 "track_min_hits": launch_config("track_min_hits"),
                 "track_max_coast_frames": launch_config("track_max_coast_frames"),
                 "track_drop_frames": launch_config("track_drop_frames"),
+                "use_robot_id_targeting": launch_config("use_robot_id_targeting"),
+                "enemy_color_red_value": launch_config("enemy_color_red_value"),
+                "enemy_color_blue_value": launch_config("enemy_color_blue_value"),
+                "stage_log_interval": launch_config("stage_log_interval"),
                 "association_max_center_distance_ratio": launch_config(
                     "association_max_center_distance_ratio"
                 ),
@@ -316,7 +380,24 @@ def make_processor_node() -> Node:
         executable="armor_processor_node",
         name="armor_processor_node",
         output="screen",
-        parameters=[{"target_frame": launch_config("processor_target_frame")}],
+        parameters=[
+            {
+                "target_frame": launch_config("processor_target_frame"),
+                "processor_lost_threshold": launch_config("processor_lost_threshold"),
+                "spin_observer.allow": launch_config("spin_observer_allow"),
+                "spin_observer.max_jump_angle": launch_config(
+                    "spin_observer_max_jump_angle"
+                ),
+                "spin_observer.max_jump_period": launch_config(
+                    "spin_observer_max_jump_period"
+                ),
+                "spin_observer.allow_following_range": launch_config(
+                    "spin_observer_allow_following_range"
+                ),
+                "filter.position_alpha": launch_config("filter_position_alpha"),
+                "filter.velocity_alpha": launch_config("filter_velocity_alpha"),
+            }
+        ],
     )
 
 
@@ -338,9 +419,11 @@ def make_solver_node() -> Node:
                 "default_image_height": launch_config("rs_height"),
                 "target_topic": "processor/target",
                 "use_3d_solution": launch_config("use_3d_solution"),
-                "output_mode": "offset",
+                "output_mode": launch_config("solver_output_mode"),
                 "solver_latency_s": launch_config("solver_latency_s"),
                 "default_bullet_speed_mps": launch_config("default_bullet_speed_mps"),
+                "compensate_gravity": launch_config("compensate_gravity"),
+                "gravity_mps2": launch_config("gravity_mps2"),
             }
         ],
     )
