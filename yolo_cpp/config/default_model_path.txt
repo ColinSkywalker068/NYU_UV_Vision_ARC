@@ -1,2 +1,2 @@
 # Robot-local fallback model path used when model_path and CV_STM_MODEL_PATH are empty.
-../models/kushalv2-nano.engine
+../models/kushalv2.engine
