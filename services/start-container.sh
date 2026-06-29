@@ -151,7 +151,9 @@ add_env_if_set() {
 }
 
 add_pylon_mount_if_available() {
-	add_volume_if_exists /opt/pylon /opt/pylon ro
+	if [ -f /opt/pylon/include/pylon/PylonIncludes.h ] && [ -d /opt/pylon/lib ]; then
+		add_volume_if_exists /opt/pylon /opt/pylon ro
+	fi
 }
 
 is_cplusplus_context() {

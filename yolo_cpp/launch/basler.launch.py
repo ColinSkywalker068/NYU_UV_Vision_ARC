@@ -115,7 +115,7 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ),
         ("basler_exposure_us", "5000.0", "Basler exposure in microseconds"),
         ("basler_gain_db", "5.0", "Basler gain in dB"),
-        ("basler_flip", "true", "Rotate Basler frames 180 degrees"),
+        ("basler_flip", "false", "Rotate Basler frames 180 degrees"),
         (
             "basler_use_full_sensor",
             "true",
@@ -171,8 +171,18 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ),
         (
             "target_color",
-            "blue",
+            EnvironmentVariable("AUTOAIM_TARGET_COLOR", default_value="blue"),
             "Enemy armor color used until STM or robot_id feedback overrides it: blue or red",
+        ),
+        (
+            "use_robot_id_targeting",
+            "true",
+            "Allow /robot_id feedback to switch enemy color after startup",
+        ),
+        (
+            "transmit_enable",
+            "true",
+            "Enable STM32 serial TX; set false for preview-only bench testing",
         ),
         ("show", "false", "Preview mode: false, gui, or web"),
         (
@@ -371,6 +381,7 @@ def make_detector_node() -> Node:
                 "use_model_color_classes": launch_config("use_model_color_classes"),
                 "enable_color_verification": launch_config("enable_color_verification"),
                 "target_color": launch_config("target_color"),
+                "use_robot_id_targeting": launch_config("use_robot_id_targeting"),
                 "inference_mode": launch_config("inference_mode"),
             }
         ],
@@ -454,7 +465,7 @@ def make_stm_bridge_node() -> Node:
         output="screen",
         parameters=[
             {
-                "transmit_enable": True,
+                "transmit_enable": launch_config("transmit_enable"),
                 "serial_port": launch_config("serial_port"),
                 "serial_baudrate": launch_config("serial_baudrate"),
                 "serial_verbose": launch_config("serial_verbose"),
