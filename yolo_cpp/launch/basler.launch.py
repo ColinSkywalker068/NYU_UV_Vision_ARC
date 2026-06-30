@@ -277,6 +277,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ),
         ("solver_latency_s", "0.03", "Latency used by the 3D ballistic prediction"),
         (
+            "angle_gain",
+            "1.35",
+            "Multiplier applied to relative yaw/pitch corrections to make aiming more aggressive",
+        ),
+        (
             "compensate_gravity",
             "true",
             "Enable simple gravity drop compensation in the 3D solver",
@@ -450,6 +455,7 @@ def make_solver_node() -> Node:
                 "output_mode": launch_config("solver_output_mode"),
                 "default_bullet_speed_mps": launch_config("default_bullet_speed_mps"),
                 "solver_latency_s": launch_config("solver_latency_s"),
+                "angle_gain": launch_config("angle_gain"),
                 "compensate_gravity": launch_config("compensate_gravity"),
             }
         ],

@@ -47,6 +47,7 @@ AimSolverNode::AimSolverNode(const rclcpp::NodeOptions& options)
   this->declare_parameter<std::string>("output_mode", output_mode_);
   this->declare_parameter<double>("default_bullet_speed_mps", default_bullet_speed_mps_);
   this->declare_parameter<double>("solver_latency_s", solver_latency_s_);
+  this->declare_parameter<double>("angle_gain", 1.35);
   this->declare_parameter<bool>("compensate_gravity", compensate_gravity_);
   this->declare_parameter<double>("gravity_mps2", gravity_mps2_);
 
@@ -63,6 +64,7 @@ AimSolverNode::AimSolverNode(const rclcpp::NodeOptions& options)
     static_cast<float>(this->get_parameter("default_bullet_speed_mps").as_double());
   bullet_speed_mps_ = default_bullet_speed_mps_;
   solver_latency_s_ = static_cast<float>(this->get_parameter("solver_latency_s").as_double());
+  angle_gain_ = static_cast<float>(this->get_parameter("angle_gain").as_double());
   compensate_gravity_ = this->get_parameter("compensate_gravity").as_bool();
   gravity_mps2_ = static_cast<float>(this->get_parameter("gravity_mps2").as_double());
 
@@ -112,6 +114,9 @@ void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::Sha
     pitch = solved.second;
     used_3d = true;
   }
+  auto [aggressive_yaw, aggressive_pitch] = apply_angle_gain(yaw, pitch, angle_gain_);
+  yaw = aggressive_yaw;
+  pitch = aggressive_pitch;
   if (output_mode_ == "absolute" && have_attitude_) {
     yaw += current_yaw_rad_;
     pitch += current_pitch_rad_;

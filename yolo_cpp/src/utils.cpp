@@ -162,6 +162,12 @@ std::pair<float, float> calculate_angles(
   return {yaw, pitch};
 }
 
+std::pair<float, float> apply_angle_gain(float yaw_rad, float pitch_rad, float gain)
+{
+  const float effective_gain = std::max(1.0F, gain);
+  return {yaw_rad * effective_gain, pitch_rad * effective_gain};
+}
+
 std::pair<bool, int> check_enemy(const cv::Mat& roi_image, int target_class)
 {
   // HSV masks are a fallback when model classes are not trusted for team color.

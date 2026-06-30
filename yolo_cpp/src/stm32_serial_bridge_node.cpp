@@ -1,5 +1,5 @@
 /// @file stm32_serial_bridge_node.cpp
-/// @brief Implements ROS-to-Seasky serial transport for the STM32 controller.
+/// @brief Implements ROS-to-SP/ST USB CDC transport for the STM32 controller.
 
 #include "yolo_cpp/stm32_serial_bridge_node.hpp"
 
@@ -8,6 +8,7 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstdlib>
@@ -18,18 +19,235 @@
 #include <functional>
 #include <iomanip>
 #include <memory>
-#include <sstream>
+#include <optional>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
+#include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/int32_multi_array.hpp>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "yolo_cpp/seasky_protocol.hpp"
-
 namespace yolo_cpp
 {
+
+namespace
+{
+
+constexpr uint8_t SP_HEADER_0 = static_cast<uint8_t>('S');
+constexpr uint8_t SP_HEADER_1 = static_cast<uint8_t>('P');
+constexpr uint8_t ST_HEADER_1 = static_cast<uint8_t>('T');
+constexpr std::size_t SP_RX_SIZE = 29U;  // VisionToGimbal: Jetson -> MCU.
+constexpr std::size_t SP_TX_SIZE = 43U;  // GimbalToVision: MCU -> Jetson.
+constexpr std::size_t ST_TX_SIZE = 39U;  // SentryTelemetry: MCU -> Jetson.
+
+constexpr int FIRE_MODE_NO_FIRE = 0;
+constexpr int FIRE_MODE_AUTO_FIRE = 1;
+constexpr int FIRE_MODE_AUTO_AIM = 2;
+constexpr int DEFAULT_FIRE_MODE = FIRE_MODE_AUTO_AIM;
+constexpr int DEFAULT_TARGET_TYPE = 0;
+constexpr int TARGET_STATE_NO_TARGET = 0;
+constexpr int TARGET_STATE_CONVERGING = 1;
+constexpr int TARGET_STATE_READY_TO_FIRE = 2;
+constexpr double DEFAULT_RX_POLL_PERIOD_SECONDS = 0.01;
+constexpr int ENEMY_COLOR_RED = 0;
+constexpr int ENEMY_COLOR_BLUE = 1;
+constexpr int WORK_MODE_AIM = 0;
+
+constexpr uint16_t CRC16_TABLE[256] = {
+  0x0000, 0x1189, 0x2312, 0x329B, 0x4624, 0x57AD, 0x6536, 0x74BF, 0x8C48, 0x9DC1, 0xAF5A, 0xBED3,
+  0xCA6C, 0xDBE5, 0xE97E, 0xF8F7, 0x1081, 0x0108, 0x3393, 0x221A, 0x56A5, 0x472C, 0x75B7, 0x643E,
+  0x9CC9, 0x8D40, 0xBFDB, 0xAE52, 0xDAED, 0xCB64, 0xF9FF, 0xE876, 0x2102, 0x308B, 0x0210, 0x1399,
+  0x6726, 0x76AF, 0x4434, 0x55BD, 0xAD4A, 0xBCC3, 0x8E58, 0x9FD1, 0xEB6E, 0xFAE7, 0xC87C, 0xD9F5,
+  0x3183, 0x200A, 0x1291, 0x0318, 0x77A7, 0x662E, 0x54B5, 0x453C, 0xBDCB, 0xAC42, 0x9ED9, 0x8F50,
+  0xFBEF, 0xEA66, 0xD8FD, 0xC974, 0x4204, 0x538D, 0x6116, 0x709F, 0x0420, 0x15A9, 0x2732, 0x36BB,
+  0xCE4C, 0xDFC5, 0xED5E, 0xFCD7, 0x8868, 0x99E1, 0xAB7A, 0xBAF3, 0x5285, 0x430C, 0x7197, 0x601E,
+  0x14A1, 0x0528, 0x37B3, 0x263A, 0xDECD, 0xCF44, 0xFDDF, 0xEC56, 0x98E9, 0x8960, 0xBBFB, 0xAA72,
+  0x6306, 0x728F, 0x4014, 0x519D, 0x2522, 0x34AB, 0x0630, 0x17B9, 0xEF4E, 0xFEC7, 0xCC5C, 0xDDD5,
+  0xA96A, 0xB8E3, 0x8A78, 0x9BF1, 0x7387, 0x620E, 0x5095, 0x411C, 0x35A3, 0x242A, 0x16B1, 0x0738,
+  0xFFCF, 0xEE46, 0xDCDD, 0xCD54, 0xB9EB, 0xA862, 0x9AF9, 0x8B70, 0x8408, 0x9581, 0xA71A, 0xB693,
+  0xC22C, 0xD3A5, 0xE13E, 0xF0B7, 0x0840, 0x19C9, 0x2B52, 0x3ADB, 0x4E64, 0x5FED, 0x6D76, 0x7CFF,
+  0x9489, 0x8500, 0xB79B, 0xA612, 0xD2AD, 0xC324, 0xF1BF, 0xE036, 0x18C1, 0x0948, 0x3BD3, 0x2A5A,
+  0x5EE5, 0x4F6C, 0x7DF7, 0x6C7E, 0xA50A, 0xB483, 0x8618, 0x9791, 0xE32E, 0xF2A7, 0xC03C, 0xD1B5,
+  0x2942, 0x38CB, 0x0A50, 0x1BD9, 0x6F66, 0x7EEF, 0x4C74, 0x5DFD, 0xB58B, 0xA402, 0x9699, 0x8710,
+  0xF3AF, 0xE226, 0xD0BD, 0xC134, 0x39C3, 0x284A, 0x1AD1, 0x0B58, 0x7FE7, 0x6E6E, 0x5CF5, 0x4D7C,
+  0xC60C, 0xD785, 0xE51E, 0xF497, 0x8028, 0x91A1, 0xA33A, 0xB2B3, 0x4A44, 0x5BCD, 0x6956, 0x78DF,
+  0x0C60, 0x1DE9, 0x2F72, 0x3EFB, 0xD68D, 0xC704, 0xF59F, 0xE416, 0x90A9, 0x8120, 0xB3BB, 0xA232,
+  0x5AC5, 0x4B4C, 0x79D7, 0x685E, 0x1CE1, 0x0D68, 0x3FF3, 0x2E7A, 0xE70E, 0xF687, 0xC41C, 0xD595,
+  0xA12A, 0xB0A3, 0x8238, 0x93B1, 0x6B46, 0x7ACF, 0x4854, 0x59DD, 0x2D62, 0x3CEB, 0x0E70, 0x1FF9,
+  0xF78F, 0xE606, 0xD49D, 0xC514, 0xB1AB, 0xA022, 0x92B9, 0x8330, 0x7BC7, 0x6A4E, 0x58D5, 0x495C,
+  0x3DE3, 0x2C6A, 0x1EF1, 0x0F78};
+
+uint16_t compute_sp_crc16(const uint8_t* data, std::size_t len)
+{
+  uint16_t crc = 0xFFFF;
+  for (std::size_t i = 0; i < len; ++i) {
+    crc = static_cast<uint16_t>((crc >> 8) ^ CRC16_TABLE[(crc ^ data[i]) & 0x00FFU]);
+  }
+  return crc;
+}
+
+uint16_t read_u16_le(const std::vector<uint8_t>& data, std::size_t offset)
+{
+  return static_cast<uint16_t>(data[offset])
+         | static_cast<uint16_t>(static_cast<uint16_t>(data[offset + 1]) << 8U);
+}
+
+void append_u16_le(std::vector<uint8_t>& data, uint16_t value)
+{
+  data.push_back(static_cast<uint8_t>(value & 0xFFU));
+  data.push_back(static_cast<uint8_t>((value >> 8U) & 0xFFU));
+}
+
+void append_float_le(std::vector<uint8_t>& data, float value)
+{
+  const auto* raw = reinterpret_cast<const uint8_t*>(&value);
+  data.insert(data.end(), raw, raw + sizeof(float));
+}
+
+float read_float_le(const std::vector<uint8_t>& data, std::size_t offset)
+{
+  float value = 0.0F;
+  std::memcpy(&value, data.data() + offset, sizeof(float));
+  return value;
+}
+
+uint8_t fire_mode_to_sp_mode(int fire_mode)
+{
+  if (fire_mode == FIRE_MODE_AUTO_FIRE) {
+    return 2U;
+  }
+  if (fire_mode == FIRE_MODE_AUTO_AIM) {
+    return 1U;
+  }
+  return 0U;
+}
+
+uint16_t build_vision_flags(int fire_mode, int target_state, int target_type)
+{
+  return static_cast<uint16_t>(
+    (fire_mode & 0x0003) | ((target_state & 0x0003) << 2) | ((target_type & 0x000F) << 4));
+}
+
+struct AttitudeFrame
+{
+  float yaw{0.0F};
+  float pitch{0.0F};
+  float roll{0.0F};
+  int enemy_color{-1};
+  int work_mode{WORK_MODE_AIM};
+  int bullet_speed{0};
+  int flags_register{0};
+  int command_id{0};
+  int robot_id{0};
+};
+
+std::vector<uint8_t> build_sp_command_frame(
+  uint8_t mode, float yaw, float yaw_vel, float yaw_acc, float pitch, float pitch_vel,
+  float pitch_acc)
+{
+  std::vector<uint8_t> packet;
+  packet.reserve(SP_RX_SIZE);
+  packet.push_back(SP_HEADER_0);
+  packet.push_back(SP_HEADER_1);
+  packet.push_back(mode);
+  append_float_le(packet, yaw);
+  append_float_le(packet, yaw_vel);
+  append_float_le(packet, yaw_acc);
+  append_float_le(packet, pitch);
+  append_float_le(packet, pitch_vel);
+  append_float_le(packet, pitch_acc);
+  append_u16_le(packet, compute_sp_crc16(packet.data(), packet.size()));
+  return packet;
+}
+
+bool crc_ok(const std::vector<uint8_t>& frame)
+{
+  if (frame.size() < 2U) {
+    return false;
+  }
+  return compute_sp_crc16(frame.data(), frame.size() - 2U) == read_u16_le(frame, frame.size() - 2U);
+}
+
+std::optional<AttitudeFrame> parse_sp_frame(const std::vector<uint8_t>& frame)
+{
+  if (frame.size() != SP_TX_SIZE || frame[0] != SP_HEADER_0 || frame[1] != SP_HEADER_1
+      || !crc_ok(frame)) {
+    return std::nullopt;
+  }
+
+  AttitudeFrame parsed;
+  parsed.command_id = static_cast<int>((SP_HEADER_0 << 8U) | SP_HEADER_1);
+  parsed.work_mode = std::max(0, static_cast<int>(frame[2]) - 1);
+  parsed.yaw = read_float_le(frame, 19);
+  parsed.pitch = read_float_le(frame, 27);
+  parsed.bullet_speed = static_cast<int>(read_float_le(frame, 35));
+  parsed.flags_register = (parsed.work_mode & 0x0003) | ((parsed.bullet_speed & 0x00FF) << 8);
+  return parsed;
+}
+
+std::optional<AttitudeFrame> parse_st_frame(const std::vector<uint8_t>& frame)
+{
+  if (frame.size() != ST_TX_SIZE || frame[0] != SP_HEADER_0 || frame[1] != ST_HEADER_1
+      || !crc_ok(frame)) {
+    return std::nullopt;
+  }
+
+  AttitudeFrame parsed;
+  parsed.command_id = static_cast<int>((SP_HEADER_0 << 8U) | ST_HEADER_1);
+  parsed.robot_id = static_cast<int>(frame[30]);
+  parsed.bullet_speed = static_cast<int>(read_u16_le(frame, 33));
+  const int team_color = static_cast<int>(frame[35]);  // 0=red, 1=blue.
+  parsed.enemy_color = team_color == 0 ? ENEMY_COLOR_BLUE : ENEMY_COLOR_RED;
+  parsed.flags_register = parsed.enemy_color | ((parsed.bullet_speed & 0x00FF) << 8);
+  return parsed;
+}
+
+std::vector<AttitudeFrame> parse_sp_st_frames(std::vector<uint8_t>& rx_buffer)
+{
+  std::vector<AttitudeFrame> parsed_frames;
+
+  while (true) {
+    auto header = std::find(rx_buffer.begin(), rx_buffer.end(), SP_HEADER_0);
+    if (header == rx_buffer.end()) {
+      rx_buffer.clear();
+      break;
+    }
+    if (header != rx_buffer.begin()) {
+      rx_buffer.erase(rx_buffer.begin(), header);
+    }
+    if (rx_buffer.size() < 2U) {
+      break;
+    }
+
+    std::size_t frame_size = 0U;
+    if (rx_buffer[1] == SP_HEADER_1) {
+      frame_size = SP_TX_SIZE;
+    } else if (rx_buffer[1] == ST_HEADER_1) {
+      frame_size = ST_TX_SIZE;
+    } else {
+      rx_buffer.erase(rx_buffer.begin());
+      continue;
+    }
+
+    if (rx_buffer.size() < frame_size) {
+      break;
+    }
+
+    std::vector<uint8_t> frame(rx_buffer.begin(), rx_buffer.begin() + frame_size);
+    std::optional<AttitudeFrame> parsed =
+      frame_size == SP_TX_SIZE ? parse_sp_frame(frame) : parse_st_frame(frame);
+    if (parsed.has_value()) {
+      parsed_frames.push_back(*parsed);
+      rx_buffer.erase(rx_buffer.begin(), rx_buffer.begin() + frame_size);
+    } else {
+      rx_buffer.erase(rx_buffer.begin());
+    }
+  }
+
+  return parsed_frames;
+}
 
 /// Convert an integer baud rate parameter into a termios constant.
 speed_t baud_to_constant(int baudrate)
@@ -49,7 +267,9 @@ speed_t baud_to_constant(int baudrate)
   }
 }
 
-/// Thin non-blocking POSIX serial wrapper for Seasky TX/RX frames.
+}  // namespace
+
+/// Thin non-blocking POSIX serial wrapper for SP/ST TX/RX frames.
 class SerialTransport
 {
 public:
@@ -107,14 +327,14 @@ public:
 
   bool send_vision_data(float pitch, float yaw, int fire_mode, int target_state, int target_type)
   {
-    // The STM32 protocol expects pitch before yaw in the float payload.
+    (void)target_type;
     if (!connected_ || fd_ < 0) {
       return false;
     }
 
-    const uint16_t flags_register = build_vision_flags(fire_mode, target_state, target_type);
-    const auto packet = build_seasky_frame(
-      SEASKY_COMMAND_VISION_RECV, flags_register, std::vector<float>{pitch, yaw});
+    const uint8_t mode =
+      target_state == TARGET_STATE_NO_TARGET ? 0U : fire_mode_to_sp_mode(fire_mode);
+    const auto packet = build_sp_command_frame(mode, yaw, 0.0F, 0.0F, pitch, 0.0F, 0.0F);
     const auto bytes_written =
       ::write(fd_, reinterpret_cast<const char*>(packet.data()), packet.size());
     if (bytes_written < 0) {
@@ -125,9 +345,9 @@ public:
     ++message_count_;
 
     if (verbose_ || target_state == TARGET_STATE_CONVERGING) {
-      RCLCPP_INFO(logger_, "[Seasky TX #%d] pitch=%.6f yaw=%.6f flags=0x%04X bytes=%ld",
-        message_count_, static_cast<double>(pitch), static_cast<double>(yaw), flags_register,
-        static_cast<long>(bytes_written));
+      RCLCPP_INFO(logger_, "[SP TX #%d] mode=%u pitch=%.6f yaw=%.6f bytes=%ld",
+        message_count_, static_cast<unsigned>(mode), static_cast<double>(pitch),
+        static_cast<double>(yaw), static_cast<long>(bytes_written));
     }
     return true;
   }
@@ -152,7 +372,7 @@ public:
       return {};
     }
     rx_buffer_.resize(old_size + static_cast<std::size_t>(bytes_read));
-    return parse_attitude_frames(rx_buffer_);
+    return parse_sp_st_frames(rx_buffer_);
   }
 
   void close()
@@ -174,9 +394,6 @@ private:
   int message_count_{0};
   std::vector<uint8_t> rx_buffer_;
 };
-
-namespace
-{
 
 constexpr char kVisionLogDirName[] = "vision_logs";
 constexpr float kRadToDeg = 57.29577951308232F;
@@ -216,8 +433,6 @@ std::string timestamp_now_compact()
   out << std::put_time(&local_tm, "%Y%m%d_%H%M%S");
   return out.str();
 }
-
-}  // namespace
 
 STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
     : rclcpp::Node("stm32_serial_bridge_node", options)
@@ -271,12 +486,13 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
 
   attitude_publisher_ =
     this->create_publisher<std_msgs::msg::Float32MultiArray>("attitude_data", 10);
+  robot_id_publisher_ = this->create_publisher<std_msgs::msg::Int32>("robot_id", 10);
   attitude_flags_publisher_ =
     this->create_publisher<std_msgs::msg::Int32MultiArray>("attitude_flags", 10);
 
   rx_timer_ = this->create_wall_timer(std::chrono::duration<double>(DEFAULT_RX_POLL_PERIOD_SECONDS),
     std::bind(&STM32SerialBridgeNode::handle_rx_poll, this));
-  RCLCPP_INFO(this->get_logger(), "STM32 serial bridge ready. transmit_enable=%s, port=%s, baud=%d",
+  RCLCPP_INFO(this->get_logger(), "STM32 serial bridge ready. transmit_enable=%s, port=%s, baud=%ld",
     transmit_enable_ ? "true" : "false", this->get_parameter("serial_port").as_string().c_str(),
     this->get_parameter("serial_baudrate").as_int());
 }
@@ -336,10 +552,18 @@ void STM32SerialBridgeNode::handle_rx_poll()
     attitude_msg.data = {frame.yaw, frame.pitch, frame.roll};
     attitude_publisher_->publish(attitude_msg);
 
-    std_msgs::msg::Int32MultiArray flags_msg;
-    flags_msg.data = {frame.enemy_color, frame.work_mode, frame.bullet_speed, frame.flags_register,
-      frame.command_id};
-    attitude_flags_publisher_->publish(flags_msg);
+    if (frame.robot_id > 0) {
+      std_msgs::msg::Int32 robot_id_msg;
+      robot_id_msg.data = frame.robot_id;
+      robot_id_publisher_->publish(robot_id_msg);
+    }
+
+    if (frame.enemy_color >= 0) {
+      std_msgs::msg::Int32MultiArray flags_msg;
+      flags_msg.data = {frame.enemy_color, frame.work_mode, frame.bullet_speed,
+        frame.flags_register, frame.command_id};
+      attitude_flags_publisher_->publish(flags_msg);
+    }
     log_rx_event(frame.yaw, frame.pitch, frame.roll, frame.enemy_color, frame.work_mode,
       frame.bullet_speed, frame.flags_register, frame.command_id);
   }

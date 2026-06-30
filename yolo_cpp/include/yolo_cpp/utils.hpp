@@ -69,6 +69,9 @@ cv::Point2f unletterbox_point(const cv::Point2f& point, const LetterboxMetadata&
 std::pair<float, float> calculate_angles(
   const cv::Rect& bbox, int img_w, int img_h, float hfov_rad, float vfov_rad);
 
+/// Scale relative yaw/pitch errors to make the aim output more aggressive.
+std::pair<float, float> apply_angle_gain(float yaw_rad, float pitch_rad, float gain);
+
 /// Estimate whether an ROI matches the configured enemy color using HSV thresholds.
 std::pair<bool, int> check_enemy(const cv::Mat& roi_image, int target_class);
 

@@ -67,6 +67,7 @@ private:
   float default_bullet_speed_mps_{15.0F};
   float bullet_speed_mps_{15.0F};
   float solver_latency_s_{0.0F};
+  float angle_gain_{1.35F};
   float gravity_mps2_{9.80665F};
   float current_yaw_rad_{0.0F};
   float current_pitch_rad_{0.0F};

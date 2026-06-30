@@ -446,6 +446,19 @@ if(BUILD_TESTING)
     )
     target_link_libraries(test_tracking_core ${OpenCV_LIBS})
   endif()
+
+  ament_add_gtest(test_angle_gain
+    test/test_angle_gain.cpp
+    src/utils.cpp
+  )
+  if(TARGET test_angle_gain)
+    target_include_directories(test_angle_gain PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+      ${OpenCV_INCLUDE_DIRS}
+    )
+    target_link_libraries(test_angle_gain ${OpenCV_LIBS})
+  endif()
 endif()
 
 ament_package()

@@ -6,6 +6,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
+#include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/int32_multi_array.hpp>
 #include <string>
 #include <vector>
@@ -17,7 +18,7 @@ namespace yolo_cpp
 
 class SerialTransport;
 
-/// Bridges ROS aim commands to the STM32 Seasky serial protocol.
+/// Bridges ROS aim commands to the STM32 SP/ST USB CDC protocol.
 class YOLO_CPP_PUBLIC STM32SerialBridgeNode : public rclcpp::Node
 {
 public:
@@ -61,6 +62,7 @@ private:
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr suggest_fire_subscription_;
   rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr angle_subscription_;
   rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr attitude_publisher_;
+  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr robot_id_publisher_;
   rclcpp::Publisher<std_msgs::msg::Int32MultiArray>::SharedPtr attitude_flags_publisher_;
   rclcpp::TimerBase::SharedPtr rx_timer_;
 
