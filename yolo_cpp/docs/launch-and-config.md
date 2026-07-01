@@ -55,7 +55,7 @@ The launch files expose the settings that matter most during bring-up:
 
 The DeepStream template shipped with the package lives at [`config/deepstream_bestmerge_nvinfer.txt`](../config/deepstream_bestmerge_nvinfer.txt).
 
-The default tracker profile is tuned for fast rotating armor plates: `track_min_hits:=1`, `track_max_coast_frames:=1`, `track_drop_frames:=4`, `association_max_center_distance_ratio:=0.30`, `association_min_iou:=0.0`, `target_switch_min_score_delta:=0.02`, and `target_lock_hysteresis_frames:=0`. Increase the coast, lock, and score-delta values when you want steadier lock over faster switching.
+The default tracker profile is tuned for fast rotating armor plates: `track_min_hits:=1`, `track_max_coast_frames:=1`, `track_drop_frames:=4`, `association_max_center_distance_ratio:=0.30`, `association_min_iou:=0.0`, `target_switch_min_score_delta:=0.02`, and `target_lock_hysteresis_frames:=0`. Increase the coast, lock, and score-delta values when you want steadier lock over faster switching. When diagnosing snap-back after detector dropouts, also check `publish_zero_angles_when_no_target`; set it false if the controller should receive the no-target state without replacing the last yaw/pitch command with `0,0`.
 
 ## Basler High-FPS Source Formats
 

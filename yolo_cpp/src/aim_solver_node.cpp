@@ -215,8 +215,10 @@ void AimSolverNode::publish_no_target(int image_width, int image_height)
   bbox_publisher_->publish(bbox_msg_);
   override_publisher_->publish(override_msg_);
   suggest_fire_publisher_->publish(suggest_fire_msg_);
-  angle_msg_.data = {0.0F, 0.0F};
-  angle_publisher_->publish(angle_msg_);
+  if (publish_zero_angles_when_no_target_) {
+    angle_msg_.data = {0.0F, 0.0F};
+    angle_publisher_->publish(angle_msg_);
+  }
   obb_angle_publisher_->publish(obb_angle_msg_);
 
   cv_auto_aim_interfaces::msg::AimSolution solution;

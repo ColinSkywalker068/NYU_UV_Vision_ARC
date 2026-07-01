@@ -16,6 +16,7 @@ The package is easier to work with when you keep those responsibilities separate
 - combined reference path: [`../src/perception_node.cpp`](../src/perception_node.cpp)
 - FPS isolation harness: [`../src/fps_benchmark.cpp`](../src/fps_benchmark.cpp)
 - tracking tests: [`../test/test_tracking_core.cpp`](../test/test_tracking_core.cpp)
+- macOS/no-ROS tracker replay: [`../tools/standalone_tracker/README.md`](../tools/standalone_tracker/README.md)
 - manual STM yaw smoke tool: [`../tools/stm32_yaw_packet_smoke.cpp`](../tools/stm32_yaw_packet_smoke.cpp)
 
 ## Verification Flow
@@ -26,6 +27,15 @@ When you touch behavior in this package, a good minimum loop is:
 2. Run the launch file closest to the path you changed.
 3. Check that the expected topics are present and publishing.
 4. Revisit the tracker test if the change touched association or target persistence.
+
+For tracker-only debugging on a Mac, use the standalone replay harness:
+
+```bash
+./yolo_cpp/tools/standalone_tracker/run_tracker_replay.sh
+```
+
+It compiles only the tracker core with Apple Clang and prints selected track state, coasting count,
+tracked center, predicted center, and solver-compatible yaw/pitch signs.
 
 ## Jetson FPS Isolation
 

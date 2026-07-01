@@ -514,7 +514,7 @@ void STM32SerialBridgeNode::handle_override(const std_msgs::msg::Bool::SharedPtr
   target_state_ = has_target_
                     ? (suggest_fire_ ? TARGET_STATE_READY_TO_FIRE : TARGET_STATE_CONVERGING)
                     : TARGET_STATE_NO_TARGET;
-  if (has_target_ && !prev_has_target) {
+  if (has_target_ != prev_has_target) {
     maybe_send();
   }
 }
