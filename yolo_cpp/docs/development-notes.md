@@ -1,6 +1,6 @@
 # Development Notes
 
-Related pages: [Overview](./overview.md) | [Pipeline](./pipeline.md) | [Nodes](./nodes.md) | [Interfaces](./interfaces.md) | [Legacy Pipeline Notes](./legacy-pipeline-notes.md) | [Launch and Config](./launch-and-config.md)
+Related pages: [Overview](./overview.md) | [Pipeline](./pipeline.md) | [Nodes](./nodes.md) | [Interfaces](./interfaces.md) | [Basler SP/ST Bringup](./basler-sp-st-bringup.md) | [Legacy Pipeline Notes](./legacy-pipeline-notes.md) | [Launch and Config](./launch-and-config.md)
 
 ## Where to Extend the Package
 
@@ -16,7 +16,7 @@ The package is easier to work with when you keep those responsibilities separate
 - combined reference path: [`../src/perception_node.cpp`](../src/perception_node.cpp)
 - FPS isolation harness: [`../src/fps_benchmark.cpp`](../src/fps_benchmark.cpp)
 - tracking tests: [`../test/test_tracking_core.cpp`](../test/test_tracking_core.cpp)
-- manual STM yaw smoke tool: [`../tools/stm32_yaw_packet_smoke.cpp`](../tools/stm32_yaw_packet_smoke.cpp)
+- manual SP/ST serial smoke tool: [`../tools/hardware_serial_smoke.sh`](../tools/hardware_serial_smoke.sh)
 
 ## Verification Flow
 
@@ -55,17 +55,13 @@ The profile log reports average milliseconds for source-to-Bayer conversion, que
 
 ## Manual Hardware Tools
 
-The STM yaw packet sender is a hardware smoke tool, not a package test. Build it only when needed:
+The SP/ST serial helper is a hardware smoke tool, not a package test. Run it directly when you want to verify that the Type-C board opens, accepts `SP` frames, and optionally replies with `SP` or `ST` frames:
 
 ```bash
-colcon build --packages-select yolo_cpp --cmake-args -DYOLO_CPP_BUILD_MANUAL_TOOLS=ON
+./yolo_cpp/tools/hardware_serial_smoke.sh --port /dev/ttyACM0
 ```
 
-Then inspect its options with:
-
-```bash
-ros2 run yolo_cpp stm32_yaw_packet_smoke --help
-```
+The default command sends a safe `mode=0` no-target frame. Use `--mode aim --yaw-rad 0.05` only when the robot is in a safe test stance.
 
 ## Related Repo Docs
 
