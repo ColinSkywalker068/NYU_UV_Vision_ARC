@@ -152,6 +152,16 @@ systemctl_action() {
   run_sudo systemctl "$1" "$SERVICE_NAME"
 }
 
+enable_boot() {
+  run_sudo systemctl enable "$SERVICE_NAME"
+  log "Enabled ${SERVICE_NAME} at boot; startup will reload ${ENV_FILE}"
+}
+
+disable_boot() {
+  run_sudo systemctl disable "$SERVICE_NAME"
+  log "Disabled ${SERVICE_NAME} at boot; saved settings remain in ${ENV_FILE}"
+}
+
 set_env_value() {
   local key="$1"
   local value="$2"
@@ -399,6 +409,8 @@ Usage: ./services/stm-stack.sh <command>
 
 Commands:
   install    Install and enable ${SERVICE_NAME}; does not start it.
+  enable     Start ${SERVICE_NAME} automatically at boot using the saved environment file.
+  disable    Disable automatic boot startup without deleting saved settings.
   run        Run the selected launch profile in the foreground without systemd.
   start      Start ${SERVICE_NAME}.
   stop       Stop ${SERVICE_NAME}.
@@ -430,6 +442,8 @@ main() {
   local command="${1:-}"
   case "$command" in
     install) install_service ;;
+    enable) enable_boot ;;
+    disable) disable_boot ;;
     run) run_foreground ;;
     start) systemctl_action start ;;
     stop) systemctl_action stop ;;

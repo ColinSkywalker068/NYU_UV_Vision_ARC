@@ -216,7 +216,16 @@ acceptance condition. SP mode `0` requests no control, mode `1` requests gimbal
 aiming, and mode `2` additionally requests firing subject to the firmware's
 separate firing gates.
 
-Configuration-only changes in `/etc/cv-detection/stm-stack.env` require only:
+The systemd service loads `/etc/cv-detection/stm-stack.env` every time it
+starts, including after a reboot. Enable automatic boot startup without
+changing the saved preview or launch settings with:
+
+```bash
+cv enable
+```
+
+Use `cv disable` to stop automatic boot startup without deleting the saved
+environment file. Configuration-only changes require only:
 
 ```bash
 cv restart
