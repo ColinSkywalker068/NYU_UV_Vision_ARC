@@ -14,6 +14,7 @@
 
 - [Infrastructure](infrastructure.md)
 - [Jetson SSH Access](ssh-access.md)
+- [STM Stack Configuration](stm-stack-config.md)
 - [Jetson Orin Nano Reflash](jetson-reflash.md)
 - [Jetson VNC Access](jetson-vnc.md)
 - [Setup Guide](../Setup/Setup.md)

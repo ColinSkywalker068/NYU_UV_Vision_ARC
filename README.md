@@ -69,6 +69,13 @@ uv run yolo_cpp basler.launch.py
 uv run yolo_cpp realsense.launch.py
 ```
 
+The persistent Jetson configuration lives outside the repository at
+`/etc/cv-detection/stm-stack.env`. A safe copyable template and the complete
+setup/restart/rebuild instructions are in
+[`services/stm-stack.env.example`](services/stm-stack.env.example) and
+[`docs/project/stm-stack-config.md`](docs/project/stm-stack-config.md).
+Keep `transmit_enable:=false` for preview-only operation.
+
 The robot-local fallback model path is configured at:
 
 ```text
