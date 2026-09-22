@@ -1513,6 +1513,9 @@ struct DeepStreamRuntime::Impl
     packet.pixel_format = PixelFormat::kBgr8;
     packet.storage_kind = BackingStoreKind::kHost;
     packet.capture_time_ns = static_cast<std::int64_t>(GST_BUFFER_PTS(buffer));
+    packet.capture_steady_time_ns = static_cast<std::int64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
     packet.source_id = config.source_id;
     gst_buffer_unmap(buffer, &map_info);
     return packet;

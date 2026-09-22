@@ -12,6 +12,8 @@
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/float32_multi_array.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/int32_multi_array.hpp>
 #include <string>
 #include <vector>
@@ -190,6 +192,22 @@ private:
   std::chrono::steady_clock::time_point last_preview_render_time_{};
   bool have_last_preview_render_time_{false};
   std::mutex state_mutex_;
+  rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr preview_command_subscription_;
+  rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr preview_attitude_subscription_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr preview_override_subscription_;
+  std::chrono::steady_clock::time_point preview_command_time_{};
+  std::chrono::steady_clock::time_point preview_attitude_time_{};
+  std::chrono::steady_clock::time_point preview_override_time_{};
+  bool preview_command_valid_{false};
+  bool preview_attitude_valid_{false};
+  bool preview_override_{false};
+  bool preview_command_is_offset_{false};
+  bool preview_absolute_error_arrow_{false};
+  bool preview_transmit_enabled_{false};
+  float preview_command_yaw_{0.0F};
+  float preview_command_pitch_{0.0F};
+  float preview_attitude_yaw_{0.0F};
+  float preview_attitude_pitch_{0.0F};
 
   CameraConfig camera_config_;
   std::string model_path_;

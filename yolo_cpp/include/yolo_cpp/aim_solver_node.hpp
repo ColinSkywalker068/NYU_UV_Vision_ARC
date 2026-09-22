@@ -2,6 +2,10 @@
 #define YOLO_CPP__AIM_SOLVER_NODE_HPP_
 
 #include <rclcpp/rclcpp.hpp>
+#include <atomic>
+#include <chrono>
+#include <deque>
+#include <mutex>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
@@ -34,6 +38,11 @@ private:
   /// Update controller-provided flags used by solver behavior.
   void handle_attitude_flags(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
 
+  /// Interpolate controller attitude at a camera-frame timestamp.
+  bool attitude_at(
+    const rclcpp::Time& frame_stamp, float* yaw, float* pitch,
+    double* nearest_offset_ms, bool* interpolated);
+
   /// Publish an explicit no-target command state.
   void publish_no_target(int image_width, int image_height);
 
@@ -57,6 +66,13 @@ private:
   std_msgs::msg::Float32MultiArray angle_msg_;
   std_msgs::msg::Float32 obb_angle_msg_;
 
+  struct AttitudeSample
+  {
+    rclcpp::Time stamp;
+    float yaw{0.0F};
+    float pitch{0.0F};
+  };
+
   bool publish_zero_angles_when_no_target_{true};
   bool use_3d_solution_{true};
   bool compensate_gravity_{true};
@@ -71,6 +87,13 @@ private:
   float current_yaw_rad_{0.0F};
   float current_pitch_rad_{0.0F};
   bool have_attitude_{false};
+  std::chrono::steady_clock::time_point attitude_received_{};
+  std::deque<AttitudeSample> attitude_history_;
+  std::mutex attitude_mutex_;
+  double attitude_history_seconds_{1.0};
+  double attitude_sync_tolerance_ms_{30.0};
+  std::atomic<std::uint64_t> attitude_sync_aligned_{0};
+  std::atomic<std::uint64_t> attitude_sync_rejected_{0};
   float hfov_rad_{0.0F};
   float vfov_rad_{0.0F};
 };

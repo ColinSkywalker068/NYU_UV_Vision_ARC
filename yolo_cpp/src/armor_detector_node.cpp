@@ -38,6 +38,23 @@ constexpr int kPreviewMaxHeight = 720;
 constexpr char kVisionLogDirName[] = "vision_logs";
 constexpr char kTargetFrameDirName[] = "pictures";
 constexpr double kPi = 3.14159265358979323846;
+constexpr std::int64_t kMaxCaptureStampAgeNs = 2000000000LL;
+
+rclcpp::Time capture_stamp(const FramePacket *packet,
+                           const rclcpp::Time &processing_stamp) {
+  if (packet == nullptr || packet->capture_steady_time_ns <= 0) {
+    return processing_stamp;
+  }
+  const auto steady_now_ns = static_cast<std::int64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count());
+  const auto age_ns = steady_now_ns - packet->capture_steady_time_ns;
+  if (age_ns < 0 || age_ns > kMaxCaptureStampAgeNs) {
+    return processing_stamp;
+  }
+  return processing_stamp - rclcpp::Duration::from_nanoseconds(age_ns);
+}
 
 std::string json_escape(const std::string &value) {
   std::ostringstream escaped;
@@ -230,6 +247,11 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
   this->declare_parameter<std::string>("preview_target_topic",
                                        "tracker/target");
   this->declare_parameter<bool>("debug_publish_image_raw", false);
+  preview_command_is_offset_ = this->declare_parameter<bool>("preview_command_is_offset", false);
+  preview_absolute_error_arrow_ =
+      this->declare_parameter<bool>("preview_absolute_error_arrow", false);
+  preview_transmit_enabled_ =
+      this->declare_parameter<bool>("preview_transmit_enabled", false);
   this->declare_parameter<bool>("save_target_frames", false);
   this->declare_parameter<bool>("pre_mux_resize", false);
   this->declare_parameter<bool>("native_tensorrt_cuda_bayer_preprocess", false);
@@ -403,6 +425,37 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
       "robot_id", 10,
       std::bind(&ArmorDetectorNode::id_listener_callback, this,
                 std::placeholders::_1));
+  preview_command_subscription_ = this->create_subscription<std_msgs::msg::Float32MultiArray>(
+      "bounding_box_angles", 1,
+      [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg) {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        preview_command_valid_ = msg->data.size() == 2 &&
+            std::isfinite(msg->data[0]) && std::isfinite(msg->data[1]);
+        if (preview_command_valid_) {
+          preview_command_yaw_ = msg->data[0];
+          preview_command_pitch_ = msg->data[1];
+        }
+        preview_command_time_ = std::chrono::steady_clock::now();
+      });
+  preview_attitude_subscription_ =
+      this->create_subscription<std_msgs::msg::Float32MultiArray>(
+          "attitude_data", 10,
+          [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg) {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            preview_attitude_valid_ = msg->data.size() >= 2 &&
+                std::isfinite(msg->data[0]) && std::isfinite(msg->data[1]);
+            if (preview_attitude_valid_) {
+              preview_attitude_yaw_ = msg->data[0];
+              preview_attitude_pitch_ = msg->data[1];
+            }
+            preview_attitude_time_ = std::chrono::steady_clock::now();
+          });
+  preview_override_subscription_ = this->create_subscription<std_msgs::msg::Bool>(
+      "override", 1, [this](const std_msgs::msg::Bool::SharedPtr msg) {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        preview_override_ = msg->data;
+        preview_override_time_ = std::chrono::steady_clock::now();
+      });
   attitude_flags_subscription_ =
       this->create_subscription<std_msgs::msg::Int32MultiArray>(
           "attitude_flags", 10,
@@ -742,7 +795,8 @@ void ArmorDetectorNode::process_detection_cycle(
   // candidates, optional debug images, runtime telemetry, and ROS interface
   // messages.
   std::lock_guard<std::mutex> lock(state_mutex_);
-  const auto stamp = this->get_clock()->now();
+  const auto processing_stamp = this->get_clock()->now();
+  const auto stamp = capture_stamp(packet, processing_stamp);
   if (debug_publish_image_raw_ && packet != nullptr) {
     publish_debug_image(*packet, stamp);
   }
@@ -1000,6 +1054,76 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
         cv::putText(preview, label, label_origin, cv::FONT_HERSHEY_SIMPLEX, 0.7,
                     target_color, 2, cv::LINE_AA);
       }
+    }
+
+    // Render in final preview pixels, with no second camera flip. The arrow
+    // reads the same radians topic as the serial bridge, never a target box.
+    const cv::Point center(preview.cols / 2, preview.rows / 2);
+    cv::drawMarker(preview, center, cv::Scalar(255, 255, 255),
+                   cv::MARKER_CROSS, 24, 2, cv::LINE_AA);
+    const auto command_now = std::chrono::steady_clock::now();
+    const bool fresh_command = preview_command_valid_ && preview_override_ &&
+        command_now - preview_command_time_ < std::chrono::milliseconds(250) &&
+        command_now - preview_override_time_ < std::chrono::milliseconds(250);
+    const bool fresh_attitude = preview_attitude_valid_ &&
+        command_now - preview_attitude_time_ < std::chrono::milliseconds(250);
+    std::string command_label = "CMD: no target / stale (not TX confirmation)";
+    std::string error_label;
+    if (fresh_command) {
+      double arrow_yaw = preview_command_yaw_;
+      double arrow_pitch = preview_command_pitch_;
+      bool draw_arrow = preview_command_is_offset_;
+      if (preview_command_is_offset_) {
+        command_label = cv::format("OFFSET yaw=%+.3f pitch=%+.3f rad",
+                                   preview_command_yaw_, preview_command_pitch_);
+      } else {
+        command_label = cv::format("ABS CMD yaw=%+.3f pitch=%+.3f rad",
+                                   preview_command_yaw_, preview_command_pitch_);
+        if (preview_absolute_error_arrow_ && fresh_attitude) {
+          arrow_yaw = std::remainder(
+              static_cast<double>(preview_command_yaw_ - preview_attitude_yaw_),
+              2.0 * CV_PI);
+          arrow_pitch = preview_command_pitch_ - preview_attitude_pitch_;
+          draw_arrow = true;
+          error_label = cv::format(
+              "CUR y=%+.3f p=%+.3f | ERR y=%+.3f p=%+.3f rad",
+              preview_attitude_yaw_, preview_attitude_pitch_, arrow_yaw,
+              arrow_pitch);
+        } else if (preview_absolute_error_arrow_) {
+          error_label = "ABS ERROR ARROW HIDDEN: attitude missing / stale";
+        } else {
+          error_label = "ABS ERROR ARROW DISABLED";
+        }
+      }
+      if (draw_arrow) {
+        // Type C command coordinates: positive yaw is right, pitch is up.
+        // Clamp angles before tan, then scale both axes together to fit.
+        double dx = std::tan(std::clamp(arrow_yaw, -1.4, 1.4)) *
+            center.x / std::tan(hfov_rad_ / 2.0);
+        double dy = -std::tan(std::clamp(arrow_pitch, -1.4, 1.4)) *
+            center.y / std::tan(vfov_rad_ / 2.0);
+        const double fit = std::max({1.0, std::abs(dx) / std::max(1, center.x - 12),
+                                    std::abs(dy) / std::max(1, center.y - 12)});
+        const cv::Point end(center.x + cvRound(dx / fit), center.y + cvRound(dy / fit));
+        if (cv::norm(end - center) >= 2.0) {
+          cv::arrowedLine(preview, center, end, cv::Scalar(255, 255, 0), 3, cv::LINE_AA, 0, 0.15);
+        } else {
+          cv::circle(preview, center, 8, cv::Scalar(255, 255, 0), 2, cv::LINE_AA);
+        }
+      }
+    }
+    const cv::Scalar tx_color = preview_transmit_enabled_
+        ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 255, 0);
+    const std::string tx_label = preview_transmit_enabled_
+        ? "TX CONFIG: ENABLED" : "TX CONFIG: DISABLED";
+    cv::putText(preview, tx_label, cv::Point(12, 58),
+                cv::FONT_HERSHEY_SIMPLEX, 0.75, tx_color, 2, cv::LINE_AA);
+    cv::putText(preview, command_label, cv::Point(12, preview.rows - 38),
+                cv::FONT_HERSHEY_SIMPLEX, 0.55, cv::Scalar(255, 255, 0), 1, cv::LINE_AA);
+    if (!error_label.empty()) {
+      cv::putText(preview, error_label, cv::Point(12, preview.rows - 18),
+                  cv::FONT_HERSHEY_SIMPLEX, 0.55, cv::Scalar(255, 255, 0), 1,
+                  cv::LINE_AA);
     }
 
     cv::putText(preview, "FPS " + cv::format("%.1f", preview_fps_),

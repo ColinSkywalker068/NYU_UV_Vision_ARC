@@ -53,6 +53,8 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Path to YOLO weights (.pt / .engine / .onnx); empty uses the package default resolver",
         ),
         ("serial_port", "/dev/ttyUSB0", "Serial port for STM32 connection"),
+        ("transmit_enable", "false", "Explicitly enable absolute SP commands only after bench validation"),
+        ("receive_enable", "false", "Read MCU telemetry without transmitting commands"),
         ("serial_baudrate", "115200", "Baud rate for STM32 serial"),
         ("serial_verbose", "false", "Enable verbose serial logging"),
         ("basler_width", "640", "Basler frame width"),
@@ -116,6 +118,12 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ("basler_exposure_us", "5000.0", "Basler exposure in microseconds"),
         ("basler_gain_db", "5.0", "Basler gain in dB"),
         ("basler_flip", "true", "Rotate Basler frames 180 degrees"),
+        ("preview_command_is_offset", "false", "Draw command arrow only with solver_output_mode=offset"),
+        (
+            "preview_absolute_error_arrow",
+            "false",
+            "Draw command-minus-attitude arrow for absolute solver output when telemetry is fresh",
+        ),
         (
             "basler_use_full_sensor",
             "true",
@@ -267,6 +275,16 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ),
         ("solver_latency_s", "0.03", "Latency used by the 3D ballistic prediction"),
         (
+            "attitude_history_seconds",
+            "1.0",
+            "Attitude history retained for capture-time interpolation",
+        ),
+        (
+            "attitude_sync_tolerance_ms",
+            "30.0",
+            "Maximum edge extrapolation when aligning attitude to a camera frame",
+        ),
+        (
             "compensate_gravity",
             "true",
             "Enable simple gravity drop compensation in the 3D solver",
@@ -334,6 +352,11 @@ def make_detector_node() -> Node:
                 "basler_exposure_us": launch_config("basler_exposure_us"),
                 "basler_gain_db": launch_config("basler_gain_db"),
                 "basler_flip": launch_config("basler_flip"),
+                "preview_command_is_offset": launch_config("preview_command_is_offset"),
+                "preview_absolute_error_arrow": launch_config(
+                    "preview_absolute_error_arrow"
+                ),
+                "preview_transmit_enabled": launch_config("transmit_enable"),
                 "basler_use_full_sensor": launch_config("basler_use_full_sensor"),
                 "basler_centered_roi": launch_config("basler_centered_roi"),
                 "realsense_width": launch_config("realsense_width"),
@@ -439,6 +462,10 @@ def make_solver_node() -> Node:
                 "output_mode": launch_config("solver_output_mode"),
                 "default_bullet_speed_mps": launch_config("default_bullet_speed_mps"),
                 "solver_latency_s": launch_config("solver_latency_s"),
+                "attitude_history_seconds": launch_config("attitude_history_seconds"),
+                "attitude_sync_tolerance_ms": launch_config(
+                    "attitude_sync_tolerance_ms"
+                ),
                 "compensate_gravity": launch_config("compensate_gravity"),
             }
         ],
@@ -454,7 +481,9 @@ def make_stm_bridge_node() -> Node:
         output="screen",
         parameters=[
             {
-                "transmit_enable": True,
+                "transmit_enable": launch_config("transmit_enable"),
+                "receive_enable": launch_config("receive_enable"),
+                "command_output_mode": launch_config("solver_output_mode"),
                 "serial_port": launch_config("serial_port"),
                 "serial_baudrate": launch_config("serial_baudrate"),
                 "serial_verbose": launch_config("serial_verbose"),
