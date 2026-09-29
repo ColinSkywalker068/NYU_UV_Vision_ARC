@@ -77,51 +77,9 @@ container_running() {
 write_default_env_file() {
   local tmp
   tmp="$(mktemp)"
-  cat > "$tmp" <<EOF
-# Optional overrides for stm-stack.service and services/stm-stack.sh.
-# Keep startup prebuilt and deterministic; build explicitly with 'uv build yolo_cpp'.
-CV_STM_IMAGE=${DEFAULT_IMAGE}
-# To test a locally baked Pylon image before pushing:
-# CV_STM_IMAGE=cv-detection-cplusplus-pylon:local
-UV_CONTAINER_NAME=cv-stm-stack
-CV_STM_LAUNCH_PROFILE=basler
-# Keep the competition graph local to this robot by default. Override these
-# when intentionally using remote ROS tools across machines.
-ROS_DOMAIN_ID=37
-ROS_LOCALHOST_ONLY=1
-# Optional. When unset, yolo_cpp/config/default_model_path.txt supplies the robot-local fallback.
-# CV_STM_MODEL_PATH=/path/to/model.engine
-# CV_STM_TARGET_COLOR=blue
-# Default is to trust model color classes and skip HSV verification.
-# Accept both model colors during detector bring-up by setting both false:
-# CV_STM_USE_MODEL_COLOR_CLASSES=false
-# CV_STM_ENABLE_COLOR_VERIFICATION=false
-# CV_STM_SERIAL_PORT=/dev/ttyUSB0
-# CV_STM_REQUIRE_SERIAL=true
-CV_STM_PREVIEW_MAX_FPS=60.0
-# Select detector preview mode. The preview state is applied at startup, so use
-# './services/stm-stack.sh preview-gui', preview-web, or preview-off.
-CV_STM_SHOW=false
-# Save up to 100 compressed target frames in pictures/ next to vision_logs/.
-# CV_STM_SAVE_TARGET_FRAMES=false
-# CV_STM_TARGET_FRAME_SAVE_DIR=
-# CV_STM_TARGET_FRAME_SAVE_MAX=100
-# CV_STM_TARGET_FRAME_JPEG_QUALITY=85
-# RealSense profile skips Basler/DeepStream/Pylon checks and serial by default:
-# CV_STM_LAUNCH_PROFILE=realsense
-# CV_STM_REQUIRE_SERIAL=false
-# Field service defaults intentionally request a deterministic 160 FPS Basler cap
-# while keeping preview off. Other Basler launch knobs stay on launch defaults.
-CV_STM_BASLER_FPS=160
-CV_STM_BASLER_UNCAPPED_FPS=false
-# CV_STM_DEEPSTREAM_PROFILE_STAGES=false
-# Diagnostic A/B for Nano CUDA Bayer crashes; keeps CUDA Bayer but uses synchronous copies.
-# YOLO_CUDA_BAYER_SYNC_MEMCPY=1
-# CV_STM_EXTRA_LAUNCH_ARGS="basler_exposure_us:=5000.0 basler_gain_db:=5.0"
-# CV_STM_REALSENSE_WIDTH=640
-# CV_STM_REALSENSE_HEIGHT=480
-# CV_STM_REALSENSE_FPS=60
-EOF
+  # Fresh installs must inherit the same explicit preview-only safety gates as
+  # the tracked example, rather than falling through to launch defaults.
+  cp "${SCRIPT_DIR}/stm-stack.env.example" "$tmp"
   run_sudo install -m 0644 "$tmp" "$ENV_FILE"
   rm -f "$tmp"
 }
@@ -191,7 +149,13 @@ set_env_value() {
     } > "$tmp"
   fi
 
-  run_sudo install -m 0644 "$tmp" "$ENV_FILE"
+  # Preserve the operator's edit permissions when replacing saved settings.
+  if [ -f "$ENV_FILE" ]; then
+    run_sudo install -m "$(stat -c %a "$ENV_FILE")" \
+      -o "$(stat -c %u "$ENV_FILE")" -g "$(stat -c %g "$ENV_FILE")" "$tmp" "$ENV_FILE"
+  else
+    run_sudo install -m 0644 "$tmp" "$ENV_FILE"
+  fi
   rm -f "$tmp"
 }
 
@@ -222,7 +186,13 @@ unset_env_values() {
     printf '# Optional overrides for stm-stack.service and services/stm-stack.sh.\n' > "$tmp"
   fi
 
-  run_sudo install -m 0644 "$tmp" "$ENV_FILE"
+  # Preserve the operator's edit permissions when replacing saved settings.
+  if [ -f "$ENV_FILE" ]; then
+    run_sudo install -m "$(stat -c %a "$ENV_FILE")" \
+      -o "$(stat -c %u "$ENV_FILE")" -g "$(stat -c %g "$ENV_FILE")" "$tmp" "$ENV_FILE"
+  else
+    run_sudo install -m 0644 "$tmp" "$ENV_FILE"
+  fi
   rm -f "$tmp"
 }
 

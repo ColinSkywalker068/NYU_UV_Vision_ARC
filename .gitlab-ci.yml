@@ -14,6 +14,7 @@ python_tracking_tests:
   stage: test
   image: python:3.11-slim
   script:
+    - bash services/test-stm-env.sh
     - cd yolo_cpp/tools
     - >-
       python3 -m unittest

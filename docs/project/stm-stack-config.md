@@ -60,7 +60,8 @@ cv enable
 cv restart
 ```
 
-`cv install` preserves an existing live env file. The explicit `install`
+`cv install` preserves an existing live env file. Fresh installations copy the
+tracked safe example, including disabled transmission and fire recommendations. The explicit `install`
 command above is for a new machine or an intentional reset. Back up a tuned live
 file before replacing it.
 
@@ -167,3 +168,31 @@ When a setting should become the documented team default, update
 `services/stm-stack.env.example` and this guide in Git. Do not commit secrets,
 credentials, private keys, or machine tokens. The live `/etc` file remains the
 runtime source of truth for an individual robot.
+
+## Editing over wireless VS Code SSH
+
+For Orin2, connect VS Code Remote SSH to `jetson-orin2-wifi`
+(`ultraviolet@rm-orin2.local`) and open `/home/ultraviolet/CV_Detection`.
+Open `/etc/cv-detection/stm-stack.env` directly. An administrator can grant
+the robot operator edit access once with:
+
+```bash
+sudo chgrp ultraviolet /etc/cv-detection/stm-stack.env
+sudo chmod 0664 /etc/cv-detection/stm-stack.env
+```
+
+Preview helper changes preserve these file permissions. Save the env, then
+run `cv restart` in the remote terminal. Check `cv status` and `cv logs`.
+TX is controlled by `transmit_enable` in `CV_STM_EXTRA_LAUNCH_ARGS`;
+changing target color, output mode, or web preview does not arm transmission.
+Keep `enable_fire_recommendation:=false` for development. A live absolute
+command preview also requires fresh Type C attitude telemetry.
+
+For a wireless preview tunnel on the host device:
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes \
+  -L 127.0.0.1:18082:127.0.0.1:8080 jetson-orin2-wifi
+```
+
+Open `http://127.0.0.1:18082/`.

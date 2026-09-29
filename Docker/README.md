@@ -113,3 +113,16 @@ UPDATE_STM_ENV=1 ./bake_cplusplus_pylon_image.sh
 That creates `cv-detection-cplusplus-pylon:local`, verifies `gst-inspect-1.0 pylonsrc`, and updates `/etc/cv-detection/stm-stack.env` when `UPDATE_STM_ENV=1`. After validation, tag and push it as the runtime C++ image, for example `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon`.
 
 For the fully reproducible vendor-package path, copy the Basler SDK and GStreamer package archives under `Docker/pylon/`, then build with `PYLON_PACKAGE` and `PYLON_GSTREAMER_PACKAGE` set before running `./build_cplusplus.sh`.
+
+## JetPack 6.0 GA compatibility
+
+`Dockerfile.cplusplus` defaults to DeepStream 7.0 for L4T 36.3 / JetPack
+6.0 GA (CUDA 12.2, TensorRT 8.6). DeepStream 6.4 targets the earlier
+JetPack 6.0 developer preview. Match the host release before building;
+do not reuse an engine from a different TensorRT/GPU configuration without
+loading it successfully on the deployment Jetson.
+
+The version can be overridden together with `DEEPSTREAM_DEB_VERSION` for
+a deliberately supported older host. Basler archives remain local under
+`Docker/pylon/`; do not commit vendor archives. Validate `pylonsrc`,
+`nvinfer`, `nvstreammux`, and `nvvideoconvert` with the NVIDIA runtime.
