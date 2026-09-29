@@ -1,5 +1,16 @@
+#!/usr/bin/env bash
 HOME_DIR=$HOME
-CV_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"
+# Use the same saved runtime image for rebuilds and systemd startup.
+CV_IMAGE_OVERRIDE="${CV_IMAGE:-}"
+CV_STM_ENV_FILE="${CV_STM_ENV_FILE:-/etc/cv-detection/stm-stack.env}"
+if [ -f "$CV_STM_ENV_FILE" ]; then
+  CV_HAD_ALLEXPORT=false
+  [[ $- == *a* ]] && CV_HAD_ALLEXPORT=true
+  set -a
+  source "$CV_STM_ENV_FILE"
+  [ "$CV_HAD_ALLEXPORT" = true ] || set +a
+fi
+CV_IMAGE="${CV_IMAGE_OVERRIDE:-${CV_STM_IMAGE:-nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon}}"
 CV_PYTHON_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra"
 
 # Resolve symlink to find the actual scripts directory

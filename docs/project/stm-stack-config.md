@@ -142,7 +142,8 @@ Confirm mechanical safety and controller gates before enabling TX.
 
 An env-only change needs only `cv restart`.
 
-After changing CV C++ or ROS launch source:
+After changing CV C++ or ROS launch source (`uv` uses the saved
+`CV_STM_IMAGE`, so the build and boot service use the same runtime):
 
 ```bash
 cd /home/ultraviolet/CV_Detection

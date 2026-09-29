@@ -27,6 +27,7 @@ python_tracking_tests:
       yolo_cpp/launch/basler.launch.py
       yolo_cpp/launch/realsense.launch.py
       yolo_cpp/launch/tracking_observe.launch.py
+      Docker/bake_team_pylon_layer.py
 
 ros_build_and_test:
   stage: test

@@ -142,3 +142,21 @@ ARM64 Debian bundle as argument 4 and the matching Ubuntu 22.04 ARM64
 GStreamer plugin `.deb` as argument 5; both files go in `Docker/pylon/`.
 An image built without those arguments is only a dependency/build image,
 not a camera-ready runtime. The service preflight rejects missing `pylonsrc`.
+
+### Reuse the team's already-baked Basler SDK
+
+The team camera image contains large archived installers. To reuse only its
+Basler SDK/plugin layer on a Jetson with the GA dependency image built above:
+
+```bash
+python3 Docker/bake_team_pylon_layer.py \
+  --base-image nyuultraviolet/cv-dockerfile:orin2-ds70-base \
+  --target-image cv-detection-orin2:jp60-ds70-pylon
+```
+
+The helper pins and verifies the published layer checksum, restricts extracted
+paths to the Basler SDK and its plugin libraries, builds a local image, and
+checks `pylonsrc` using the NVIDIA runtime. It does not mount camera or serial
+devices. An existing downloaded layer can be supplied with `--archive` for
+offline reuse. This reuses the team's packaged SDK; a new vendor SDK version
+should use the official Basler installer path and a matching plugin instead.
