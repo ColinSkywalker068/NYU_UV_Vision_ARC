@@ -207,6 +207,19 @@ the displayed command, STM attitude reception, and the command-minus-attitude
 preview arrow continue to work while TX is disabled. `cv yaw-smoke` is a
 separate hardware command tool and must also be treated as real transmission.
 
+For a **real movement TX test with fire recommendations disabled** (including
+Orin2), edit `/etc/cv-detection/stm-stack.env` on the Jetson. Inside the existing
+`CV_STM_EXTRA_LAUNCH_ARGS` value, change `transmit_enable:=false` to
+`transmit_enable:=true`, keep `enable_fire_recommendation:=false`, and keep
+`solver_output_mode:=absolute`. Save the file, then run `cv restart`.
+
+**Fire recommendations disabled does not disable gimbal movement.** Movement
+still depends on the Type C acceptance gates below. These settings persist
+across restarts and reboots; after the test, restore `transmit_enable:=false`
+and run `cv restart` again. An environment-only change requires no CV rebuild
+or Type C firmware reflash. The tracked `services/stm-stack.env.example` is a
+template; editing it does not change the live service configuration.
+
 The Type C sentry firmware applies a second, independent acceptance gate:
 
 - With the normal DBUS remote, left switch **up** enables vision control.
