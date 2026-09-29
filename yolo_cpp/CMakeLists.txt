@@ -204,6 +204,7 @@ set(YOLO_CPP_COMPONENT_SOURCES
   src/gst_cuda_bayer_resize.cpp
   src/armor_detector_node.cpp
   src/armor_tracker_node.cpp
+  src/robot_state_estimator.cpp
   src/armor_processor_node.cpp
   src/aim_solver_node.cpp
   src/perception_node.cpp
@@ -416,7 +417,13 @@ if(BUILD_TESTING)
   find_package(ament_cmake_clang_format REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
 
-  ament_clang_format(CONFIG_FILE ${CMAKE_CURRENT_SOURCE_DIR}/../.clang-format)
+  # The legacy source tree predates the ROS formatting profile. Keep the new standalone tracking
+  # core formatted without turning this feature branch into a repository-wide style rewrite.
+  ament_clang_format(
+    include/yolo_cpp/robot_state_estimator.hpp
+    src/robot_state_estimator.cpp
+    test/test_robot_state_estimator.cpp
+  )
 
   ament_add_gtest(test_detection_postprocess
     test/test_detection_postprocess.cpp
@@ -445,6 +452,16 @@ if(BUILD_TESTING)
       ${OpenCV_INCLUDE_DIRS}
     )
     target_link_libraries(test_tracking_core ${OpenCV_LIBS})
+  endif()
+  ament_add_gtest(test_robot_state_estimator
+    test/test_robot_state_estimator.cpp
+    src/robot_state_estimator.cpp
+  )
+  if(TARGET test_robot_state_estimator)
+    target_include_directories(test_robot_state_estimator PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+    )
   endif()
 endif()
 

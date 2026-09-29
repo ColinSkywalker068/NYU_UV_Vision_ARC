@@ -24,6 +24,25 @@ class RobotTrackingScenarioTest(unittest.TestCase):
         self.assertEqual(omega0, 0.0)
         self.assertEqual(omega1, 0.0)
 
+    def test_stationary_single_plate_is_continuously_visible(self):
+        frames = generate_frames(
+            scenarios()["stationary_single_plate"],
+            fps=30.0,
+            seed=4,
+            position_noise_std_m=0.0,
+            normal_noise_std=0.0,
+        )
+        self.assertTrue(frames)
+        self.assertTrue(all(len(frame["observations"]) == 1 for frame in frames))
+        positions = {
+            (
+                frame["observations"][0]["position_x_m"],
+                frame["observations"][0]["position_z_m"],
+            )
+            for frame in frames
+        }
+        self.assertEqual(positions, {(0.35, 3.5)})
+
     def test_spin_stop_reverse_covers_all_motion_modes(self):
         robot = scenarios()["spin_stop_reverse"].robots[0]
         self.assertGreater(robot_state(robot, 1.0)[3], 0.0)

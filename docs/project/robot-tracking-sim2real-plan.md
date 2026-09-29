@@ -27,9 +27,9 @@ The fire gate is separate from movement transmission:
 
 - `enable_fire_recommendation:=false` prevents a positive fire recommendation.
 - `transmit_enable:=false` prevents controller-facing movement packets.
-- The planned observation-only launch omits the solver and serial transmitter entirely.
+- `tracking_observe.launch.py` omits the solver and serial transmitter entirely.
 
-The browser preview from the full stack is not an isolation boundary. Use the observation-only launch after it is implemented for live perception debugging.
+The browser preview from the full stack is not an isolation boundary. Use the observation-only launch for live perception debugging.
 
 ## Target State
 
@@ -57,8 +57,8 @@ The non-spinning case is the same model with angular velocity near zero. Do not 
 ### 1. Fail-closed observation and fire behavior
 
 - Keep fire recommendations opt-in.
-- Add an observation-only launch containing camera, detector, robot tracker, preview, and recorder.
-- Exclude aim command publishers and controller transmission.
+- Use the observation-only launch for camera, detector, plate tracking, and robot estimation.
+- It excludes aim command publishers and controller transmission.
 - Add a prominent `OBSERVATION ONLY` status to the preview.
 - Add an automated assertion that the profile publishes no command or fire topics and opens no writable serial transport.
 
@@ -67,6 +67,8 @@ Exit gate: startup, restart, target acquisition, and target loss produce zero po
 ### 2. Native deterministic simulation
 
 Use [`robot_tracking_scenario.py`](../../yolo_cpp/tools/robot_tracking_scenario.py) on the Mac. It generates detector-boundary observations while keeping robot and plate identity only in evaluator truth.
+
+Use [`robot_tracking_closed_loop_sim.py`](../../yolo_cpp/tools/robot_tracking_closed_loop_sim.py) to exercise a baseline robot-center/phase estimator, future-plate selector, rate/acceleration-limited yaw gimbal, and solver fire gate. It records only a boolean fire recommendation; it does not model a launcher or projectile.
 
 Required scenarios:
 
@@ -81,10 +83,18 @@ Run the current native checks:
 
 ```bash
 python3 yolo_cpp/tools/test_robot_tracking_scenario.py
+python3 yolo_cpp/tools/test_robot_tracking_closed_loop_sim.py
 python3 yolo_cpp/tools/robot_tracking_scenario.py \
   --scenario spin_stop_reverse \
   --output /tmp/robot-tracking-spin-stop-reverse.jsonl
+python3 yolo_cpp/tools/robot_tracking_closed_loop_sim.py \
+  --scenario spin_stop_reverse \
+  --output /tmp/robot-tracking-closed-loop.jsonl
 ```
+
+Add `--enable-fire-recommendation` only when a test explicitly needs to record the frames where the simulated solver would recommend fire. The default produces zero positive recommendations.
+
+The closed-loop summary reports evaluator-only angular agreement for those recommendations. This uses simulation truth to expose an overconfident solver; truth is never passed into the estimator or fire gate, and the value is not a projectile-hit prediction.
 
 Exit gate: deterministic scenarios cover spin and non-spin transitions without leaking truth identity into tracker input.
 

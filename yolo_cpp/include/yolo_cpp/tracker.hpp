@@ -182,6 +182,7 @@ private:
   {
     const TrackSnapshot* snapshot{nullptr};
     double center_distance{0.0};
+    double selection_score{0.0};
   };
 
   TrackSnapshot make_snapshot(const TrackRecord& track) const;

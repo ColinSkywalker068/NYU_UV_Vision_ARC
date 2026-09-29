@@ -49,3 +49,15 @@ bool has_velocity
 geometry_msgs/Vector3 velocity
 # Target range in meters.
 float32 range
+# True only after multiple-plate or rotation evidence confirms a shared robot model.
+# A lone stationary plate intentionally leaves this false and uses the direct pose above.
+bool has_robot_state
+# Shared robot center and velocity in the same frame as pose.
+geometry_msgs/Point robot_center
+geometry_msgs/Vector3 robot_velocity
+# Phase of armor slot zero and its angular velocity, in radians and radians/second.
+float32 robot_phase
+float32 robot_angular_velocity
+# Geometry used to reconstruct future armor positions.
+float32 armor_radius
+uint8 armor_count

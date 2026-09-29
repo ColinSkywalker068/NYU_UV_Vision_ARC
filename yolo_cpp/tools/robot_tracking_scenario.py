@@ -183,6 +183,20 @@ def generate_frames(
 def scenarios() -> dict[str, Scenario]:
     four_plate = dict(radius_m=0.22, plate_count=4)
     return {
+        "stationary_single_plate": Scenario(
+            "stationary_single_plate",
+            (
+                RobotSpec(
+                    "standalone_plate",
+                    0.35,
+                    3.5,
+                    0.0,
+                    radius_m=0.0,
+                    plate_count=1,
+                    segments=(MotionSegment(3.0, 0.0, 0.0, 0.0),),
+                ),
+            ),
+        ),
         "nonspin_translate": Scenario(
             "nonspin_translate",
             (

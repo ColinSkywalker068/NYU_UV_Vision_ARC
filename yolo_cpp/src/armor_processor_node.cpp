@@ -9,6 +9,7 @@
 #include <cmath>
 #include <functional>
 #include <geometry_msgs/msg/point_stamped.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
@@ -53,6 +54,13 @@ ArmorProcessorNode::ArmorProcessorNode(const rclcpp::NodeOptions& options)
     "spin_observer.allow_following_range", spin_allow_following_range_);
   this->declare_parameter<double>("filter.position_alpha", position_alpha_);
   this->declare_parameter<double>("filter.velocity_alpha", velocity_alpha_);
+  this->declare_parameter<bool>("robot_estimator.enable", robot_estimator_enable_);
+  this->declare_parameter<double>("robot_estimator.armor_radius_m", robot_armor_radius_m_);
+  this->declare_parameter<int>("robot_estimator.armor_count", robot_armor_count_);
+  this->declare_parameter<double>("robot_estimator.center_gate_m", 0.45);
+  this->declare_parameter<double>("robot_estimator.plate_cluster_gate_m", 0.18);
+  this->declare_parameter<int>("robot_estimator.min_updates", 5);
+  this->declare_parameter<int>("robot_estimator.coast_frames", 8);
 
   target_frame_ = this->get_parameter("target_frame").as_string();
   processor_lost_threshold_ = this->get_parameter("processor_lost_threshold").as_int();
@@ -63,6 +71,23 @@ ArmorProcessorNode::ArmorProcessorNode(const rclcpp::NodeOptions& options)
     this->get_parameter("spin_observer.allow_following_range").as_double();
   position_alpha_ = std::clamp(this->get_parameter("filter.position_alpha").as_double(), 0.0, 1.0);
   velocity_alpha_ = std::clamp(this->get_parameter("filter.velocity_alpha").as_double(), 0.0, 1.0);
+  robot_estimator_enable_ = this->get_parameter("robot_estimator.enable").as_bool();
+  robot_armor_radius_m_ = std::max(
+    0.01, this->get_parameter("robot_estimator.armor_radius_m").as_double());
+  robot_armor_count_ = std::max(
+    1, static_cast<int>(this->get_parameter("robot_estimator.armor_count").as_int()));
+  RobotEstimatorConfig estimator_config;
+  estimator_config.armor_radius_m = robot_armor_radius_m_;
+  estimator_config.armor_count = robot_armor_count_;
+  estimator_config.center_gate_m =
+    std::max(0.01, this->get_parameter("robot_estimator.center_gate_m").as_double());
+  estimator_config.plate_cluster_gate_m = std::max(
+    0.01, this->get_parameter("robot_estimator.plate_cluster_gate_m").as_double());
+  estimator_config.min_updates = std::max(
+    1, static_cast<int>(this->get_parameter("robot_estimator.min_updates").as_int()));
+  estimator_config.coast_frames = std::max(
+    0, static_cast<int>(this->get_parameter("robot_estimator.coast_frames").as_int()));
+  robot_estimator_ = std::make_unique<RobotStateEstimator>(estimator_config);
 
   tf2_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
   tf2_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf2_buffer_);
@@ -85,7 +110,6 @@ ArmorProcessorNode::ArmorProcessorNode(const rclcpp::NodeOptions& options)
 void ArmorProcessorNode::handle_tracks(
   const cv_auto_aim_interfaces::msg::TrackedArmors::SharedPtr msg)
 {
-  // The processor deliberately consumes only the selected track to keep solver behavior stable.
   rclcpp::Time stamp(msg->header.stamp);
   if (stamp.nanoseconds() == 0) {
     stamp = this->get_clock()->now();
@@ -112,8 +136,40 @@ void ArmorProcessorNode::handle_tracks(
 
   bool valid_measurement = false;
   geometry_msgs::msg::Point measurement;
+  std::vector<RobotPlateObservation> robot_observations;
   if (selected != nullptr && selected->has_pose) {
     valid_measurement = transform_point(msg->header, selected->pose_camera.position, measurement);
+  }
+
+  if (robot_estimator_enable_ && robot_estimator_ != nullptr) {
+    // Anchor a new robot state to the selected plate. Once anchored, the center gate rejects
+    // plates belonging to other robots while allowing multiple plates from this robot.
+    const bool initialized = robot_estimator_->state().initialized;
+    for (const auto& track : msg->tracks) {
+      if (!track.has_pose || (!initialized && (&track != selected))) {
+        continue;
+      }
+      geometry_msgs::msg::Pose pose;
+      if (!transform_pose(msg->header, track.pose_camera, pose)) {
+        continue;
+      }
+      const auto& q = pose.orientation;
+      // Rotate the armor object's +Z axis into the target frame.
+      Vector3d normal{
+        2.0 * ((q.x * q.z) + (q.w * q.y)),
+        2.0 * ((q.y * q.z) - (q.w * q.x)),
+        1.0 - 2.0 * ((q.x * q.x) + (q.y * q.y))};
+      const double facing_dot =
+        normal.x * pose.position.x + normal.y * pose.position.y + normal.z * pose.position.z;
+      if (facing_dot > 0.0) {
+        normal.x = -normal.x;
+        normal.y = -normal.y;
+        normal.z = -normal.z;
+      }
+      robot_observations.push_back({
+        {pose.position.x, pose.position.y, pose.position.z}, normal, track.track_id});
+    }
+    robot_estimator_->update(robot_observations, stamp.seconds());
   }
 
   if (valid_measurement) {
@@ -159,12 +215,54 @@ void ArmorProcessorNode::handle_tracks(
     target.range = static_cast<float>(point_range(filter_.position));
   }
 
+  if (robot_estimator_enable_ && robot_estimator_ != nullptr) {
+    const auto& robot = robot_estimator_->state();
+    if (robot.initialized && robot.model_confirmed) {
+      target.has_robot_state = true;
+      target.robot_center.x = robot.center.x;
+      target.robot_center.y = robot.center.y;
+      target.robot_center.z = robot.center.z;
+      target.robot_velocity.x = robot.velocity.x;
+      target.robot_velocity.y = robot.velocity.y;
+      target.robot_velocity.z = robot.velocity.z;
+      target.robot_phase = static_cast<float>(robot.phase_rad);
+      target.robot_angular_velocity = static_cast<float>(robot.angular_velocity_rad_s);
+      target.armor_radius = static_cast<float>(robot_armor_radius_m_);
+      target.armor_count = static_cast<uint8_t>(robot_armor_count_);
+    }
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000,
+      "TRACK_STATE mode=%s target=%d track_id=%d coast=%d center=(%.3f,%.3f,%.3f) "
+      "velocity=(%.3f,%.3f,%.3f) phase=%.3f omega=%.3f accepted=%zu rejected=%zu",
+      target.has_robot_state ? "robot" : "direct_plate", target.has_target, target.track_id,
+      robot.coast_frames, robot.center.x, robot.center.y, robot.center.z, robot.velocity.x,
+      robot.velocity.y, robot.velocity.z, robot.phase_rad, robot.angular_velocity_rad_s,
+      robot.accepted_observations, robot.rejected_observations);
+  }
+
   apply_spin_observer(target);
   if (target.has_pose) {
     target.range = static_cast<float>(point_range(target.pose.position));
   }
   target_publisher_->publish(target);
   publish_markers(target);
+}
+
+bool ArmorProcessorNode::transform_pose(const std_msgs::msg::Header& header,
+  const geometry_msgs::msg::Pose& pose, geometry_msgs::msg::Pose& transformed)
+{
+  geometry_msgs::msg::PoseStamped source;
+  source.header = header;
+  source.pose = pose;
+  try {
+    transformed = tf2_buffer_->transform(source, target_frame_).pose;
+    return true;
+  } catch (const tf2::TransformException& exc) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000, "Armor pose transform unavailable: %s",
+      exc.what());
+    return false;
+  }
 }
 
 bool ArmorProcessorNode::transform_point(const std_msgs::msg::Header& header,
@@ -245,6 +343,16 @@ void ArmorProcessorNode::apply_spin_observer(cv_auto_aim_interfaces::msg::Target
   // close-range following when configured.
   cv_auto_aim_interfaces::msg::SpinInfo info;
   info.header = target.header;
+
+  if (target.has_robot_state) {
+    info.target_spinning = std::abs(target.robot_angular_velocity) >= 0.7F;
+    // The solver applies the final human-controlled fire gate. Here this only expresses whether
+    // the estimator has a fresh target, without freezing the pose during armor switches.
+    target.suggest_fire = target.has_target && !target.is_coasting;
+    info.suggest_fire = target.suggest_fire;
+    spin_info_publisher_->publish(info);
+    return;
+  }
 
   if (!allow_spin_observer_) {
     info.suggest_fire = target.suggest_fire;

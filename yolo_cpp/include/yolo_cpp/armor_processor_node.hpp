@@ -5,7 +5,9 @@
 #include <tf2_ros/transform_listener.h>
 
 #include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
+#include <memory>
 #include <optional>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/header.hpp>
@@ -15,6 +17,7 @@
 #include "cv_auto_aim_interfaces/msg/spin_info.hpp"
 #include "cv_auto_aim_interfaces/msg/target.hpp"
 #include "cv_auto_aim_interfaces/msg/tracked_armors.hpp"
+#include "yolo_cpp/robot_state_estimator.hpp"
 #include "yolo_cpp/visibility_control.hpp"
 
 namespace yolo_cpp
@@ -56,6 +59,9 @@ private:
   /// Transform a camera-frame point into the configured target frame.
   bool transform_point(const std_msgs::msg::Header& header, const geometry_msgs::msg::Point& point,
     geometry_msgs::msg::Point& transformed);
+  /// Transform a complete armor pose so its plate normal remains available.
+  bool transform_pose(const std_msgs::msg::Header& header, const geometry_msgs::msg::Pose& pose,
+    geometry_msgs::msg::Pose& transformed);
   /// Update the position/velocity filter with a measured target point.
   void update_filter(
     int track_id, const rclcpp::Time& stamp, const geometry_msgs::msg::Point& measurement);
@@ -77,6 +83,9 @@ private:
   double spin_allow_following_range_{0.3};
   double position_alpha_{0.7};
   double velocity_alpha_{0.5};
+  bool robot_estimator_enable_{true};
+  double robot_armor_radius_m_{0.26};
+  int robot_armor_count_{4};
 
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::TrackedArmors>::SharedPtr tracks_subscription_;
   rclcpp::Publisher<cv_auto_aim_interfaces::msg::Target>::SharedPtr target_publisher_;
@@ -87,6 +96,7 @@ private:
 
   FilterState filter_;
   SpinState spin_;
+  std::unique_ptr<RobotStateEstimator> robot_estimator_;
 };
 
 }  // namespace yolo_cpp

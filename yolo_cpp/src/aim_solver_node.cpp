@@ -2,6 +2,7 @@
 /// @brief Implements target-to-yaw/pitch solving and legacy command publication.
 
 #include "yolo_cpp/aim_solver_node.hpp"
+#include "yolo_cpp/robot_state_estimator.hpp"
 
 #include <algorithm>
 #include <array>
@@ -308,11 +309,27 @@ std::pair<float, float> AimSolverNode::solve_3d_angles(
   double z = target.pose.position.z;
   double t = 0.0;
 
+  RobotEstimate robot;
+  if (target.has_robot_state) {
+    robot.initialized = true;
+    robot.center = {target.robot_center.x, target.robot_center.y, target.robot_center.z};
+    robot.velocity = {
+      target.robot_velocity.x, target.robot_velocity.y, target.robot_velocity.z};
+    robot.phase_rad = target.robot_phase;
+    robot.angular_velocity_rad_s = target.robot_angular_velocity;
+  }
+
   for (int i = 0; i < 3; ++i) {
     const double distance = std::sqrt((x * x) + (y * y) + (z * z));
     t = distance / speed;
     const double predict_dt = solver_latency_s_ + t;
-    if (target.has_velocity) {
+    if (target.has_robot_state && target.armor_count > 0 && target.armor_radius > 0.0F) {
+      const auto armor = select_future_armor(
+        robot, predict_dt, target.armor_radius, target.armor_count);
+      x = armor.position.x;
+      y = armor.position.y;
+      z = armor.position.z;
+    } else if (target.has_velocity) {
       x = target.pose.position.x + (target.velocity.x * predict_dt);
       y = target.pose.position.y + (target.velocity.y * predict_dt);
       z = target.pose.position.z + (target.velocity.z * predict_dt);

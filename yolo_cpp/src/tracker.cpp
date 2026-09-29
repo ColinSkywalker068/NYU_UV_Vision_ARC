@@ -398,7 +398,11 @@ std::optional<int> TrackManager::choose_selected_track_id(const std::vector<Trac
       cv::Point2f(static_cast<float>(track.observation.image_width) / 2.0F,
         static_cast<float>(track.observation.image_height) / 2.0F),
       track.observation.image_width, track.observation.image_height);
-    ranked.push_back(RankedTrack{&track, center_distance});
+    // Confidence and proximity both matter. Expressing the lock hysteresis in this same score
+    // prevents a far-off stale armor from winning solely because its confidence is marginally
+    // higher, while still avoiding switches for small frame-to-frame fluctuations.
+    const double selection_score = track.observation.confidence - center_distance;
+    ranked.push_back(RankedTrack{&track, center_distance, selection_score});
   }
 
   if (ranked.empty()) {
@@ -436,12 +440,10 @@ std::optional<int> TrackManager::choose_selected_track_id(const std::vector<Trac
         const bool locked_exceeded_coast = locked->state == TrackState::kCoasting
                                            && locked->lost_frames > static_cast<std::uint32_t>(
                                                 config_.target_lock_hysteresis_frames);
-        const float minimum_switch_confidence =
-          locked->observation.confidence
-          + static_cast<float>(config_.target_switch_min_score_delta);
+        const double locked_score = locked->observation.confidence - locked_distance;
         const bool challenger_is_better =
-          (selected->observation.confidence >= minimum_switch_confidence)
-          && (ranked.front().center_distance < locked_distance);
+          ranked.front().selection_score >=
+          locked_score + config_.target_switch_min_score_delta;
         if (!locked_exceeded_coast && !challenger_is_better) {
           selected = locked;
         }

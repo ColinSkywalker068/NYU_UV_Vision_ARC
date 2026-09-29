@@ -4,6 +4,7 @@ from typing import Any
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import (
     EnvironmentVariable,
     LaunchConfiguration,
@@ -27,6 +28,8 @@ def launch_config(name: str) -> LaunchConfiguration:
 def argument_specs() -> list[tuple[str, Any, str]]:
     """Declare launch arguments in operator-facing order."""
     return [
+        ("start_solver", "true", "Start the aim solver command publisher"),
+        ("start_serial_bridge", "true", "Open the STM serial bridge"),
         (
             "camera_type",
             "basler",
@@ -264,6 +267,21 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Use processor pose/velocity when available for yaw/pitch solving",
         ),
         (
+            "robot_estimator_enable",
+            "true",
+            "Track a shared robot center/phase; a lone plate still uses direct aiming",
+        ),
+        ("robot_armor_radius_m", "0.26", "Robot center-to-armor radius in meters"),
+        ("robot_armor_count", "4", "Number of armor positions around the robot"),
+        ("robot_center_gate_m", "0.45", "Reject plates this far from the tracked center"),
+        (
+            "robot_plate_cluster_gate_m",
+            "0.18",
+            "Maximum inferred-center separation for plates on the same robot",
+        ),
+        ("robot_estimator_min_updates", "5", "Updates required before robot prediction"),
+        ("robot_estimator_coast_frames", "8", "Frames to predict through missing detections"),
+        (
             "solver_output_mode",
             "absolute",
             "Aim output mode: offset or absolute. Absolute adds STM attitude yaw/pitch.",
@@ -442,7 +460,20 @@ def make_processor_node() -> Node:
         executable="armor_processor_node",
         name="armor_processor_node",
         output="screen",
-        parameters=[{"target_frame": launch_config("processor_target_frame")}],
+        parameters=[
+            {
+                "target_frame": launch_config("processor_target_frame"),
+                "robot_estimator.enable": launch_config("robot_estimator_enable"),
+                "robot_estimator.armor_radius_m": launch_config("robot_armor_radius_m"),
+                "robot_estimator.armor_count": launch_config("robot_armor_count"),
+                "robot_estimator.center_gate_m": launch_config("robot_center_gate_m"),
+                "robot_estimator.plate_cluster_gate_m": launch_config(
+                    "robot_plate_cluster_gate_m"
+                ),
+                "robot_estimator.min_updates": launch_config("robot_estimator_min_updates"),
+                "robot_estimator.coast_frames": launch_config("robot_estimator_coast_frames"),
+            }
+        ],
     )
 
 
@@ -453,6 +484,7 @@ def make_solver_node() -> Node:
         executable="aim_solver_node",
         name="aim_solver_node",
         output="screen",
+        condition=IfCondition(launch_config("start_solver")),
         parameters=[
             {
                 "hfov_degrees": launch_config("hfov_degrees"),
@@ -487,6 +519,7 @@ def make_stm_bridge_node() -> Node:
         executable="stm32_serial_bridge",
         name="stm32_serial_bridge_node",
         output="screen",
+        condition=IfCondition(launch_config("start_serial_bridge")),
         parameters=[
             {
                 "transmit_enable": launch_config("transmit_enable"),

@@ -162,6 +162,21 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "true",
             "Use processor pose/velocity when available for yaw/pitch solving",
         ),
+        (
+            "robot_estimator_enable",
+            "true",
+            "Track a shared robot center/phase; a lone plate still uses direct aiming",
+        ),
+        ("robot_armor_radius_m", "0.26", "Robot center-to-armor radius in meters"),
+        ("robot_armor_count", "4", "Number of armor positions around the robot"),
+        ("robot_center_gate_m", "0.45", "Reject plates this far from the tracked center"),
+        (
+            "robot_plate_cluster_gate_m",
+            "0.18",
+            "Maximum inferred-center separation for plates on the same robot",
+        ),
+        ("robot_estimator_min_updates", "5", "Updates required before robot prediction"),
+        ("robot_estimator_coast_frames", "8", "Frames to predict through missing detections"),
         ("solver_latency_s", "0.03", "Latency used by the 3D ballistic prediction"),
         ("default_bullet_speed_mps", "18.0", "Fallback bullet speed for 3D solving"),
     ]
@@ -267,7 +282,20 @@ def make_processor_node() -> Node:
         executable="armor_processor_node",
         name="armor_processor_node",
         output="screen",
-        parameters=[{"target_frame": launch_config("processor_target_frame")}],
+        parameters=[
+            {
+                "target_frame": launch_config("processor_target_frame"),
+                "robot_estimator.enable": launch_config("robot_estimator_enable"),
+                "robot_estimator.armor_radius_m": launch_config("robot_armor_radius_m"),
+                "robot_estimator.armor_count": launch_config("robot_armor_count"),
+                "robot_estimator.center_gate_m": launch_config("robot_center_gate_m"),
+                "robot_estimator.plate_cluster_gate_m": launch_config(
+                    "robot_plate_cluster_gate_m"
+                ),
+                "robot_estimator.min_updates": launch_config("robot_estimator_min_updates"),
+                "robot_estimator.coast_frames": launch_config("robot_estimator_coast_frames"),
+            }
+        ],
     )
 
 
