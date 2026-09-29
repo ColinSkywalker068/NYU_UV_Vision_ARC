@@ -126,3 +126,19 @@ The version can be overridden together with `DEEPSTREAM_DEB_VERSION` for
 a deliberately supported older host. Basler archives remain local under
 `Docker/pylon/`; do not commit vendor archives. Validate `pylonsrc`,
 `nvinfer`, `nvstreammux`, and `nvvideoconvert` with the NVIDIA runtime.
+
+If the team C++ image is already cached, the smaller upgrade recipe is:
+
+```bash
+cd Docker
+DOCKERFILE=Dockerfile.jetpack60-ga ./build_cplusplus.sh \
+  nyuultraviolet/cv-dockerfile \
+  jp60-pytorch21-humble-tensorrt-cplusplus orin2-ds70-base
+```
+
+This keeps the cached ROS/CUDA/TensorRT toolchain and replaces DeepStream 6.4
+with 7.0. To include Basler, pass the SDK `.deb` extracted from its official
+ARM64 Debian bundle as argument 4 and the matching Ubuntu 22.04 ARM64
+GStreamer plugin `.deb` as argument 5; both files go in `Docker/pylon/`.
+An image built without those arguments is only a dependency/build image,
+not a camera-ready runtime. The service preflight rejects missing `pylonsrc`.
