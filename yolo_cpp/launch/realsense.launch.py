@@ -121,6 +121,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Publish zero yaw/pitch when there is no selected target",
         ),
         (
+            "enable_fire_recommendation",
+            "false",
+            "Allow solver fire recommendations; human opt-in for competition only",
+        ),
+        (
             "enable_3d_pose",
             "true",
             "Enable armor corner PnP pose solving in the detector",
@@ -279,6 +284,9 @@ def make_solver_node() -> Node:
                 "vfov_degrees": launch_config("vfov_degrees"),
                 "publish_zero_angles_when_no_target": launch_config(
                     "publish_zero_angles_when_no_target"
+                ),
+                "enable_fire_recommendation": launch_config(
+                    "enable_fire_recommendation"
                 ),
                 "default_image_width": launch_config("rs_width"),
                 "default_image_height": launch_config("rs_height"),

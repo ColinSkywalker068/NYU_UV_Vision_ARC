@@ -50,6 +50,7 @@ The launch files expose the settings that matter most during bring-up:
 - tracker 3D gating through `association_max_3d_distance_m`
 - processor frame selection through `processor_target_frame`
 - solver geometry through `hfov_degrees`, `vfov_degrees`, `use_3d_solution`, `solver_latency_s`, and `default_bullet_speed_mps`
+- solver fire recommendations through `enable_fire_recommendation`; it defaults to `false` and must be set to `true` explicitly for competition
 - serial settings such as `serial_port`, `serial_baudrate`, and `serial_verbose`
 - STM command units through `transmit_angles_in_degrees`
 

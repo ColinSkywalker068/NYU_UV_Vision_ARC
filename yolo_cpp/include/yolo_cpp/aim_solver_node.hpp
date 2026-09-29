@@ -74,6 +74,7 @@ private:
   };
 
   bool publish_zero_angles_when_no_target_{true};
+  bool enable_fire_recommendation_{false};
   bool use_3d_solution_{true};
   bool compensate_gravity_{true};
   std::string target_topic_{"tracker/target"};

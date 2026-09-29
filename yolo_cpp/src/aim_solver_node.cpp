@@ -40,6 +40,7 @@ AimSolverNode::AimSolverNode(const rclcpp::NodeOptions& options)
   this->declare_parameter<double>("hfov_degrees", 79.2);
   this->declare_parameter<double>("vfov_degrees", 63.78);
   this->declare_parameter<bool>("publish_zero_angles_when_no_target", true);
+  this->declare_parameter<bool>("enable_fire_recommendation", false);
   this->declare_parameter<int>("default_image_width", default_image_width_);
   this->declare_parameter<int>("default_image_height", default_image_height_);
   this->declare_parameter<std::string>("target_topic", target_topic_);
@@ -56,6 +57,8 @@ AimSolverNode::AimSolverNode(const rclcpp::NodeOptions& options)
   vfov_rad_ = static_cast<float>(this->get_parameter("vfov_degrees").as_double() * kPi / 180.0);
   publish_zero_angles_when_no_target_ =
     this->get_parameter("publish_zero_angles_when_no_target").as_bool();
+  enable_fire_recommendation_ =
+    this->get_parameter("enable_fire_recommendation").as_bool();
   default_image_width_ = this->get_parameter("default_image_width").as_int();
   default_image_height_ = this->get_parameter("default_image_height").as_int();
   target_topic_ = this->get_parameter("target_topic").as_string();
@@ -88,6 +91,15 @@ AimSolverNode::AimSolverNode(const rclcpp::NodeOptions& options)
   aim_solution_publisher_ =
     this->create_publisher<cv_auto_aim_interfaces::msg::AimSolution>("aim_solution", 10);
 
+  if (enable_fire_recommendation_) {
+    RCLCPP_WARN(
+      this->get_logger(),
+      "FIRE RECOMMENDATIONS ENABLED by explicit operator configuration");
+  } else {
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Fire recommendations disabled. Set enable_fire_recommendation:=true only for competition");
+  }
   RCLCPP_INFO(this->get_logger(), "Initialized AimSolverNode");
 }
 
@@ -158,7 +170,8 @@ void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::Sha
   angle_msg_.data = {yaw, pitch};
   angle_publisher_->publish(angle_msg_);
 
-  suggest_fire_msg_.data = msg->suggest_fire;
+  const bool suggest_fire = enable_fire_recommendation_ && msg->suggest_fire;
+  suggest_fire_msg_.data = suggest_fire;
   suggest_fire_publisher_->publish(suggest_fire_msg_);
 
   obb_angle_msg_.data = msg->has_obb_angle ? msg->obb_angle : 0.0F;
@@ -168,7 +181,7 @@ void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::Sha
   solution.header = msg->header;
   solution.has_solution = true;
   solution.used_3d = used_3d;
-  solution.suggest_fire = msg->suggest_fire;
+  solution.suggest_fire = suggest_fire;
   solution.yaw = yaw;
   solution.pitch = pitch;
   solution.yaw_degrees = static_cast<float>(yaw * 180.0 / kPi);

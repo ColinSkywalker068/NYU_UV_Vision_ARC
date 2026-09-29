@@ -7,7 +7,7 @@ import time
 os.environ['ROS_DOMAIN_ID'] = '90'
 os.environ['ROS_LOCALHOST_ONLY'] = '1'
 import rclpy
-from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Bool, Float32MultiArray
 from cv_auto_aim_interfaces.msg import Target, AimSolution
 
 proc = subprocess.Popen(['ros2', 'run', 'yolo_cpp', 'aim_solver_node',
@@ -18,7 +18,9 @@ node = rclpy.create_node('sentry_solver_test')
 tp = node.create_publisher(Target, 'tracker/target', 10)
 ap = node.create_publisher(Float32MultiArray, 'attitude_data', 10)
 solutions = []
+fire_recommendations = []
 node.create_subscription(AimSolution, 'aim_solution', solutions.append, 10)
+node.create_subscription(Bool, 'suggest_fire', fire_recommendations.append, 10)
 
 
 def spin(seconds):
@@ -35,6 +37,7 @@ try:
     spin(0.5)
     t = Target()
     t.has_target = True
+    t.suggest_fire = True
     t.image_width, t.image_height = 640, 480
     t.bbox_xyxy = [400, 100, 440, 140]  # Target right and up of center.
     tp.publish(t)
@@ -45,12 +48,14 @@ try:
     tp.publish(t)
     spin(0.1)
     assert solutions[-1].has_solution and not solutions[-1].used_3d
+    assert not solutions[-1].suggest_fire, 'fire recommendation was not opt-in'
+    assert fire_recommendations and not fire_recommendations[-1].data
     assert solutions[-1].yaw > 0.4 and solutions[-1].pitch > -0.2, 'wrong sentry signs'
     spin(0.3)
     tp.publish(t)
     spin(0.1)
     assert not solutions[-1].has_solution, 'stale attitude accepted'
-    print('PASS: absolute requires attitude; 2D sentry right/up signs; 250 ms attitude expiry')
+    print('PASS: fire defaults off; absolute attitude gate; 2D signs; 250 ms expiry')
 finally:
     os.killpg(proc.pid, signal.SIGINT)
     try:
