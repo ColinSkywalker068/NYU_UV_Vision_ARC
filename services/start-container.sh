@@ -275,9 +275,15 @@ run_power_script_if_needed() {
 }
 
 write_jetson_model_file() {
-	local model_file="/tmp/cv_detection_nv_jetson_model"
-	rm -rf "$model_file" 2>/dev/null || true
+	local model_file
+	# A boot service runs as root; an operator preflight must not reuse its file.
+	# Keep this bind source for the lifetime of the container, including reuse.
+	model_file="$(mktemp /tmp/cv_detection_nv_jetson_model.XXXXXX)" || {
+		echo "Unable to create Jetson model file; continuing without model bind mount" >&2
+		return 0
+	}
 	if cat /proc/device-tree/model > "$model_file" 2>/dev/null; then
+		chmod 0644 "$model_file"
 		printf '%s' "$model_file"
 	else
 		echo "Unable to write $model_file; continuing without Jetson model bind mount" >&2
