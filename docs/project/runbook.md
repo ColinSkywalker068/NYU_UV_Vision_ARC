@@ -378,7 +378,10 @@ Run the repository formatter/lint hook set:
 pre-commit run --all-files
 ```
 
-The GitLab CI configuration also runs `pre-commit run --all-files` and commits formatting changes back to the branch when changes are produced.
+GitLab CI runs the deterministic Python tracking tests and launch syntax checks in a
+Python 3.11 container. A separate ROS 2 Humble job builds `cv_auto_aim_interfaces` and
+`yolo_cpp`, runs the C++ tests, and publishes JUnit results. CI is read-only and never
+commits or pushes changes back to a branch.
 
 ## 10. Operational Checks
 

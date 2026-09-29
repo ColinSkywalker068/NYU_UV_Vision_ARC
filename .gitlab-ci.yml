@@ -1,35 +1,59 @@
-image: 
-  name: mohanlu/cv_detection_ci:latest 
-  pull_policy: always
+stages:
+  - test
 
-before_script:
-  # - apt-get update -y && apt-get install fd-find -y
-  # - ln -s $(which fdfind) /usr/local/bin/fd || true
-  # - which fd || which fdd || which fdfind
-  # - apt-get install build-essential -y
-  # - apt-get install python3-pip -y # Ensure pip is available for installing pre-commit
-  # - pip3 install pre-commit
-  - git config --global user.email "you@example.com"
-  - git config --global user.name "CI Auto Formatter"
-  - git fetch
-  - git remote add gitlab_origin https://gitlab-ci-token:${CI_TOKEN}@gitlab.com/nyu-robomaster/cv_detection.git
-  - git checkout $CI_COMMIT_REF_NAME
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: "$CI_COMMIT_BRANCH"
+    - if: "$CI_COMMIT_TAG"
 
-lint:
+default:
+  interruptible: true
+
+python_tracking_tests:
   stage: test
+  image: python:3.11-slim
   script:
-    - cd /builds/nyu-robomaster/CV_Detection/ # Change directory to where your code is
-    - pre-commit run --all-files || true # Run pre-commit and ignore failure
-    - |
-      if [ -n "$(git status --porcelain)" ]; then # Check if there are any changes
-        git add .
-        git commit -m "Apply pre-commit fixes"
-        git push gitlab_origin HEAD:$CI_COMMIT_REF_NAME
-      fi
+    - cd yolo_cpp/tools
+    - >-
+      python3 -m unittest
+      test_robot_tracking_scenario.py
+      test_robot_tracking_closed_loop_sim.py
+      test_observation_launch_contract.py
+    - cd ../..
+    - >-
+      python3 -m py_compile
+      yolo_cpp/launch/basler.launch.py
+      yolo_cpp/launch/realsense.launch.py
+      yolo_cpp/launch/tracking_observe.launch.py
 
-
-# pre_commit:
-#   stage: test
-#   script:
-#     - pre-commit clean
-#     - pre-commit run --all-files 
+ros_build_and_test:
+  stage: test
+  image: ros:humble-ros-base-jammy
+  before_script:
+    - apt-get update -qq
+    - >-
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends
+      libopencv-dev
+      ros-humble-tf2-geometry-msgs
+      ros-humble-visualization-msgs
+      ros-humble-ament-cmake-gtest
+      ros-humble-ament-cmake-clang-format
+    - rm -rf /var/lib/apt/lists/*
+  script:
+    - . /opt/ros/humble/setup.sh
+    - >-
+      colcon build
+      --packages-select cv_auto_aim_interfaces yolo_cpp
+      --cmake-args -DBUILD_TESTING=ON
+    - colcon test --packages-select yolo_cpp --return-code-on-test-failure
+    - colcon test-result --verbose
+  artifacts:
+    when: always
+    expire_in: 1 week
+    reports:
+      junit:
+        - build/yolo_cpp/test_results/**/*.xml
+    paths:
+      - build/yolo_cpp/test_results/
+      - log/
