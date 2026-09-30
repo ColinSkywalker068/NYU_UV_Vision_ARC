@@ -29,6 +29,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends --allow-change-
     libnvinfer-lean10=${TRT_VERSION} libnvinfer-dispatch10=${TRT_VERSION} \
     libnvinfer-vc-plugin10=${TRT_VERSION} libnvonnxparsers10=${TRT_VERSION} \
     && rm -rf /var/lib/apt/lists/*
+# DeepStream samples can omit this shared library even when dpkg marks it installed.
+# OpenCV's TIFF codec needs it both when linking the nodes and at runtime.
+RUN apt-get update && apt-get install -y --no-install-recommends --reinstall libjbig0 \
+    && rm -rf /var/lib/apt/lists/*
 ENV PATH=/opt/ros/jazzy/bin:/usr/local/cuda/bin:${PATH}
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/opt/nvidia/deepstream/deepstream/lib:${LD_LIBRARY_PATH}
 WORKDIR /workspace

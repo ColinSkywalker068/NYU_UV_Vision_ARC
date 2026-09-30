@@ -195,8 +195,15 @@ After `trtexec` builds a raw plan, wrap its ONNX metadata with:
 ```bash
 python3 yolo_cpp/tools/wrap_trtexec_engine.py \
   --onnx yolo_cpp/models/latest_best.onnx \
-  --plan /home/ultraviolet/cv-models/ramon-jp72-plan.engine \
-  --output /home/ultraviolet/cv-models/ramon-jp72.engine
+  --plan /home/ultraviolet/cv-models/ramon-ds91-plan.engine \
+  --output /home/ultraviolet/cv-models/ramon-ds91.engine
 ```
 
 Do not overwrite a machine's tuned env file when updating source code.
+
+If a build fails with `libjbig.so.0` missing or undefined `jbg_*` symbols, the
+DeepStream sample image is missing OpenCV's TIFF codec dependency. The JetPack
+7.2 recipe explicitly reinstalls `libjbig0`; a container package listing alone
+does not prove that the shared library exists. Rebuild the image before the
+workspace, then use `ldd /lib/aarch64-linux-gnu/libtiff.so.6` to confirm that
+its dependencies resolve.
