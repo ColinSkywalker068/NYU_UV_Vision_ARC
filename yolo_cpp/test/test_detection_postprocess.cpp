@@ -1,5 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <optional>
 #include <vector>
 
@@ -110,4 +114,34 @@ TEST(DetectionPostprocessTest, ParsesAlternateEndToEndObbRows)
   EXPECT_NEAR(detections.front().confidence, 0.90F, 1e-6F);
   ASSERT_TRUE(detections.front().obb_angle.has_value());
   EXPECT_NEAR(*detections.front().obb_angle, 0.25F, 1e-6F);
+}
+
+TEST(DetectionPostprocessTest, PreservesClassMetadataAndSeparatesBinaryTensorRtPlan)
+{
+  const auto path = std::filesystem::temp_directory_path()
+    / ("yolo_metadata_test_" + std::to_string(
+         std::chrono::steady_clock::now().time_since_epoch().count()) + ".engine");
+  const std::string metadata_json =
+    R"({"task":"obb","end2end":true,"names":{"0":"blue","1":"red"}})";
+  const std::string raw_plan("TRT\0PLAN", 8);
+  const auto metadata_size = static_cast<std::uint32_t>(metadata_json.size());
+  {
+    std::ofstream stream(path, std::ios::binary);
+    stream.write(reinterpret_cast<const char*>(&metadata_size), sizeof(metadata_size));
+    stream << metadata_json;
+    stream.write(raw_plan.data(), static_cast<std::streamsize>(raw_plan.size()));
+  }
+  const auto metadata = yolo_cpp::read_engine_metadata_from_file(path.string());
+  EXPECT_EQ(metadata.class_names.at(0), "blue");
+  EXPECT_EQ(metadata.class_names.at(1), "red");
+  EXPECT_EQ(metadata.task.value_or(""), "obb");
+  EXPECT_TRUE(metadata.end2end);
+  EXPECT_EQ(yolo_cpp::read_engine_plan_from_file(path.string()), raw_plan);
+  {
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    stream.write(raw_plan.data(), static_cast<std::streamsize>(raw_plan.size()));
+  }
+  EXPECT_EQ(yolo_cpp::read_engine_plan_from_file(path.string()), raw_plan);
+  EXPECT_TRUE(yolo_cpp::read_engine_metadata_from_file(path.string()).class_names.empty());
+  std::filesystem::remove(path);
 }
