@@ -185,7 +185,9 @@ optional native backend uses TensorRT 8 APIs; Ramon uses DeepStream 9.1 for
 inference with native fallback disabled. CUDA camera preprocessing remains
 enabled.
 
-Rebuild a TensorRT engine from the tracked ONNX on the target SDK. Engines from
+Rebuild a TensorRT engine from the tracked ONNX **inside the selected runtime image**.
+The official DeepStream image has TensorRT 10.16.1 even when the host has 10.16.2;
+serialized engines must match the container runtime. Use its bundled `trtexec`. Engines from
 TensorRT 8 / JetPack 6 cannot be carried over to TensorRT 10. Keep the ONNX class
 metadata embedded in the new engine so the detector uses the correct color mapping.
 After `trtexec` builds a raw plan, wrap its ONNX metadata with:
