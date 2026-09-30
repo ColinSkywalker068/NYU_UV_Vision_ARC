@@ -47,6 +47,16 @@ services/stm-stack.env.example
 The systemd unit in `services/stm-stack.service` loads the live file through
 `EnvironmentFile=-/etc/cv-detection/stm-stack.env` whenever the service starts.
 
+## Runtime and checkout overrides
+
+`CV_STM_REPO_ROOT` selects the actual checkout; Ramon uses
+`/home/ultraviolet/Documents/CV_Detection`. `CV_STM_IMAGE` selects the compatible
+container. `CV_STM_ROS_DISTRO` selects its ROS installation: `humble` remains
+the default for JetPack 6, while Ramon's JetPack 7.2 / DeepStream 9.1 image uses
+`jazzy`. See [the runtime recipe](../../Docker/README.md#ramon-jetpack-72--deepstream-91).
+Changing the runtime SDK requires rebuilding the workspace and model engine;
+ordinary launch/env changes only require `cv restart`.
+
 ## Initial setup
 
 From the repository root on a newly configured Jetson:

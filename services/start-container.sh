@@ -185,6 +185,7 @@ add_cplusplus_env_args() {
 add_cv_stm_env_args() {
 	local env_names=(
 		CV_STM_REPO_ROOT
+		CV_STM_ROS_DISTRO
 		CV_STM_IMAGE
 		CV_STM_MODEL_PATH
 		CV_STM_LAUNCH_PROFILE

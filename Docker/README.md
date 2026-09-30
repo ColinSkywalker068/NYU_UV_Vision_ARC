@@ -160,3 +160,28 @@ checks `pylonsrc` using the NVIDIA runtime. It does not mount camera or serial
 devices. An existing downloaded layer can be supplied with `--archive` for
 offline reuse. This reuses the team's packaged SDK; a new vendor SDK version
 should use the official Basler installer path and a matching plugin instead.
+
+## Ramon: JetPack 7.2 / DeepStream 9.1
+
+Ramon currently runs Ubuntu 24.04, L4T 39.2.1, CUDA 13.2 and TensorRT 10.16.
+Use the separate ROS Jazzy recipe; the JetPack 6 / Humble image remains the
+default for Orin2. Build on the Jetson:
+
+```bash
+docker build --network host -f Docker/Dockerfile.jetpack72 \
+  -t cv-detection-ramon:jp72-ds91-jazzy-base .
+python3 Docker/bake_team_pylon_layer.py \
+  --base-image cv-detection-ramon:jp72-ds91-jazzy-base \
+  --target-image cv-detection-ramon:jp72-ds91-jazzy-pylon
+```
+
+The Basler bake verifies the pinned team SDK checksum and checks `pylonsrc`.
+Set `CV_STM_IMAGE=cv-detection-ramon:jp72-ds91-jazzy-pylon` and
+`CV_STM_ROS_DISTRO=jazzy` in `/etc/cv-detection/stm-stack.env`. Set
+`CV_STM_REPO_ROOT` to the actual checkout, rebuild the workspace in this image,
+and keep both TX and fire recommendation flags false during validation.
+
+Rebuild a TensorRT engine from the tracked ONNX on the target SDK. Engines from
+TensorRT 8 / JetPack 6 cannot be carried over to TensorRT 10. Keep the ONNX class
+metadata beside the new engine so the detector uses the correct color mapping.
+Do not overwrite a machine's tuned env file when updating source code.

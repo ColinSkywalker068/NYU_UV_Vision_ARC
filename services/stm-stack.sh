@@ -370,7 +370,7 @@ open_shell() {
     die "Container ${UV_CONTAINER_NAME} is not running"
   fi
   docker_cmd exec -it "$UV_CONTAINER_NAME" \
-    bash -lc "cd '${CV_STM_REPO_ROOT}' && { source /opt/ros/humble/setup.bash 2>/dev/null || source /opt/ros/humble/install/setup.bash 2>/dev/null || true; }; source install/setup.bash 2>/dev/null || true; exec bash"
+    bash -lc "cd '${CV_STM_REPO_ROOT}' && { source /opt/ros/${CV_STM_ROS_DISTRO:-humble}/setup.bash 2>/dev/null || source /opt/ros/${CV_STM_ROS_DISTRO:-humble}/install/setup.bash 2>/dev/null || true; }; source install/setup.bash 2>/dev/null || true; exec bash"
 }
 
 usage() {

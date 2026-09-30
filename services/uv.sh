@@ -38,7 +38,8 @@ if [[ ($1 == "run" && $# -ge 3) || $1 == "build" || $1 == "topic" || $1 == "exec
     fi
   fi
   # Start Docker container if the host does not have ROS2 installed
-  source /opt/ros/humble/setup.bash 2> /dev/null || source /opt/ros/humble/install/setup.bash 2> /dev/null
+  UV_ROS_DISTRO="${CV_STM_ROS_DISTRO:-${ROS_DISTRO:-humble}}"
+  source "/opt/ros/${UV_ROS_DISTRO}/setup.bash" 2> /dev/null || source "/opt/ros/${UV_ROS_DISTRO}/install/setup.bash" 2> /dev/null
   if [[ $? != 0 ]]; then
     printf -v current_dir '%q' "$(pwd)"
     forwarded_uv=(uv "$@")
