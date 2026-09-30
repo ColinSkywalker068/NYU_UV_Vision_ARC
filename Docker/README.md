@@ -187,5 +187,14 @@ enabled.
 
 Rebuild a TensorRT engine from the tracked ONNX on the target SDK. Engines from
 TensorRT 8 / JetPack 6 cannot be carried over to TensorRT 10. Keep the ONNX class
-metadata beside the new engine so the detector uses the correct color mapping.
+metadata embedded in the new engine so the detector uses the correct color mapping.
+After `trtexec` builds a raw plan, wrap its ONNX metadata with:
+
+```bash
+python3 yolo_cpp/tools/wrap_trtexec_engine.py \
+  --onnx yolo_cpp/models/latest_best.onnx \
+  --plan /home/ultraviolet/cv-models/ramon-jp72-plan.engine \
+  --output /home/ultraviolet/cv-models/ramon-jp72.engine
+```
+
 Do not overwrite a machine's tuned env file when updating source code.

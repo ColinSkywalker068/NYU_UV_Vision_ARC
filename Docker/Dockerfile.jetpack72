@@ -2,7 +2,7 @@ FROM nvcr.io/nvidia/deepstream:9.1-samples-multiarch
 ENV DEBIAN_FRONTEND=noninteractive ROS_DISTRO=jazzy CV_STM_ROS_DISTRO=jazzy
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl gnupg build-essential cmake git pkg-config \
-    python3-colcon-common-extensions python3-vcstool python3-yaml python3-numpy \
+    python3-yaml python3-numpy \
     python3-onnx libopencv-dev libeigen3-dev libyaml-cpp-dev libusb-1.0-0-dev \
     libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
     gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
