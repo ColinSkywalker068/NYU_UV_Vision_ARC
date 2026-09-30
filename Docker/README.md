@@ -179,7 +179,11 @@ The Basler bake verifies the pinned team SDK checksum and checks `pylonsrc`.
 Set `CV_STM_IMAGE=cv-detection-ramon:jp72-ds91-jazzy-pylon` and
 `CV_STM_ROS_DISTRO=jazzy` in `/etc/cv-detection/stm-stack.env`. Set
 `CV_STM_REPO_ROOT` to the actual checkout, rebuild the workspace in this image,
-and keep both TX and fire recommendation flags false during validation.
+and keep both TX and fire recommendation flags false during validation. Build
+with `--cmake-args -DYOLO_CPP_ENABLE_NATIVE_TENSORRT=OFF` on this runtime: the
+optional native backend uses TensorRT 8 APIs; Ramon uses DeepStream 9.1 for
+inference with native fallback disabled. CUDA camera preprocessing remains
+enabled.
 
 Rebuild a TensorRT engine from the tracked ONNX on the target SDK. Engines from
 TensorRT 8 / JetPack 6 cannot be carried over to TensorRT 10. Keep the ONNX class

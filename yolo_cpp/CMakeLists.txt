@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(YOLO_CPP_BUILD_MANUAL_TOOLS "Build manual hardware smoke tools" OFF)
+option(YOLO_CPP_ENABLE_NATIVE_TENSORRT "Build the TensorRT 8 native backend" ON)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(
@@ -105,7 +106,7 @@ find_library(NVDLA_COMPILER_LIBRARY NAMES nvdla_compiler
     /usr/lib/aarch64-linux-gnu/nvidia
     /usr/lib/aarch64-linux-gnu/tegra
     /usr/local/lib)
-if(TENSORRT_INCLUDE_DIR AND CUDART_INCLUDE_DIR AND TENSORRT_LIBRARY AND CUDART_LIBRARY
+if(YOLO_CPP_ENABLE_NATIVE_TENSORRT AND TENSORRT_INCLUDE_DIR AND CUDART_INCLUDE_DIR AND TENSORRT_LIBRARY AND CUDART_LIBRARY
     AND NVDLA_COMPILER_LIBRARY)
   set(HAVE_TENSORRT TRUE)
   message(STATUS "TensorRT found. Native TensorRT backend enabled.")
