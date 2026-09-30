@@ -3,7 +3,7 @@
 <!-- SCOPE: Persistent Jetson STM stack environment configuration, boot setup, previews, transmission gates, rebuilds, and Type C flashing boundaries. -->
 <!-- DOC_KIND: how-to -->
 <!-- DOC_ROLE: canonical -->
-<!-- READ_WHEN: Read when installing, editing, applying, or reviewing /etc/cv-detection/stm-stack.env. -->
+<!-- READ_WHEN: Read when installing, editing, applying, or reviewing services/stm-stack.env. -->
 <!-- SKIP_WHEN: Skip when you only need detector implementation details or model training. -->
 <!-- PRIMARY_SOURCES: services/stm-stack.env.example, services/stm-stack.service, services/stm-stack.sh, services/stm-stack-entrypoint.sh -->
 
@@ -24,19 +24,22 @@
 | Purpose | Canonical guide for the persistent Jetson CV/STM environment and its safety gates. |
 | Read When | You need to install, edit, restart, preview, enable boot startup, rebuild, or determine whether flashing is required. |
 | Canonical | Yes |
-| Runtime Source | `/etc/cv-detection/stm-stack.env` on the Jetson |
+| Runtime Source | `services/stm-stack.env` on the Jetson |
 | Tracked Example | `services/stm-stack.env.example` |
 | Primary Sources | `services/stm-stack.service`, `services/stm-stack.sh`, `services/stm-stack-entrypoint.sh` |
 
 The running configuration is stored on the Jetson at:
 
 ```text
-/etc/cv-detection/stm-stack.env
+services/stm-stack.env
 ```
 
-`/etc` is part of the Jetson's root filesystem. It is outside this Git
-repository, so edits to the live file are persistent across reboots but are not
-committed or pushed.
+The live file is inside the checkout and ignored by Git. Its settings survive
+reboots and source updates; the tracked safe template remains separate. On Ramon
+the full path is `/home/ultraviolet/Documents/CV_Detection/services/stm-stack.env`.
+`cv install` renders the systemd unit with the actual checkout and env paths.
+An existing legacy `/etc/cv-detection/stm-stack.env` is copied when first migrating
+to the repo location; do not keep editing that old copy afterwards.
 
 The repository keeps a safe, documented template at:
 
@@ -45,7 +48,7 @@ services/stm-stack.env.example
 ```
 
 The systemd unit in `services/stm-stack.service` loads the live file through
-`EnvironmentFile=-/etc/cv-detection/stm-stack.env` whenever the service starts.
+an absolute `EnvironmentFile` pointing to this file whenever the service starts.
 
 ## Runtime and checkout overrides
 
@@ -62,7 +65,7 @@ ordinary launch/env changes only require `cv restart`.
 From the repository root on a newly configured Jetson:
 
 ```bash
-sudo install -D -m 0644 services/stm-stack.env.example /etc/cv-detection/stm-stack.env
+sudo install -D -m 0644 services/stm-stack.env.example services/stm-stack.env
 sudo ln -sf /home/ultraviolet/CV_Detection/services/stm-stack.sh /usr/local/bin/cv
 cv install
 cv preflight
@@ -80,7 +83,7 @@ file before replacing it.
 Edit the live configuration:
 
 ```bash
-sudoedit /etc/cv-detection/stm-stack.env
+sudoedit services/stm-stack.env
 ```
 
 Apply configuration-only changes:
@@ -184,12 +187,12 @@ runtime source of truth for an individual robot.
 
 For Orin2, connect VS Code Remote SSH to `jetson-orin2-wifi`
 (`ultraviolet@rm-orin2.local`) and open `/home/ultraviolet/CV_Detection`.
-Open `/etc/cv-detection/stm-stack.env` directly. An administrator can grant
+Open `services/stm-stack.env` directly. An administrator can grant
 the robot operator edit access once with:
 
 ```bash
-sudo chgrp ultraviolet /etc/cv-detection/stm-stack.env
-sudo chmod 0664 /etc/cv-detection/stm-stack.env
+sudo chgrp ultraviolet services/stm-stack.env
+sudo chmod 0664 services/stm-stack.env
 ```
 
 Preview helper changes preserve these file permissions. Save the env, then

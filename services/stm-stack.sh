@@ -13,7 +13,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SERVICE_NAME="${CV_STM_SERVICE_NAME:-stm-stack.service}"
 SERVICE_SRC="${SCRIPT_DIR}/${SERVICE_NAME}"
 SERVICE_DEST="/etc/systemd/system/${SERVICE_NAME}"
-ENV_DIR="${CV_STM_ENV_DIR:-/etc/cv-detection}"
+ENV_DIR="${CV_STM_ENV_DIR:-${SCRIPT_DIR}}"
 ENV_FILE="${CV_STM_ENV_FILE:-${ENV_DIR}/stm-stack.env}"
 DEFAULT_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"
 LEGACY_CPLUSPLUS_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus"
@@ -80,15 +80,28 @@ write_default_env_file() {
   # Fresh installs must inherit the same explicit preview-only safety gates as
   # the tracked example, rather than falling through to launch defaults.
   cp "${SCRIPT_DIR}/stm-stack.env.example" "$tmp"
-  run_sudo install -m 0644 "$tmp" "$ENV_FILE"
+  run_sudo install -m 0644 -o "$(stat -c %u "$REPO_ROOT")" \
+    -g "$(stat -c %g "$REPO_ROOT")" "$tmp" "$ENV_FILE"
   rm -f "$tmp"
 }
 
 install_service() {
   [ -f "$SERVICE_SRC" ] || die "Service file not found: ${SERVICE_SRC}"
   run_sudo install -d -m 0755 "$ENV_DIR"
-  run_sudo install -m 0644 "$SERVICE_SRC" "$SERVICE_DEST"
+  local unit_tmp escaped_repo escaped_env
+  unit_tmp="$(mktemp)"
+  escaped_repo="$(printf '%s' "$REPO_ROOT" | sed 's/[&|\\]/\\&/g')"
+  escaped_env="$(printf '%s' "$ENV_FILE" | sed 's/[&|\\]/\\&/g')"
+  sed -e "s|/home/ultraviolet/CV_Detection/services/stm-stack.env|${escaped_env}|g" \
+      -e "s|/home/ultraviolet/CV_Detection|${escaped_repo}|g" \
+      "$SERVICE_SRC" > "$unit_tmp"
+  run_sudo install -m 0644 "$unit_tmp" "$SERVICE_DEST"
+  rm -f "$unit_tmp"
 
+  if [ ! -f "$ENV_FILE" ] && [ -f /etc/cv-detection/stm-stack.env ]; then
+    run_sudo cp -p /etc/cv-detection/stm-stack.env "$ENV_FILE"
+    log "Preserved legacy settings in ${ENV_FILE}"
+  fi
   if [ ! -f "$ENV_FILE" ]; then
     write_default_env_file
     log "Created ${ENV_FILE}"

@@ -110,7 +110,7 @@ cd Docker
 UPDATE_STM_ENV=1 ./bake_cplusplus_pylon_image.sh
 ```
 
-That creates `cv-detection-cplusplus-pylon:local`, verifies `gst-inspect-1.0 pylonsrc`, and updates `/etc/cv-detection/stm-stack.env` when `UPDATE_STM_ENV=1`. After validation, tag and push it as the runtime C++ image, for example `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon`.
+That creates `cv-detection-cplusplus-pylon:local`, verifies `gst-inspect-1.0 pylonsrc`, and updates `services/stm-stack.env` when `UPDATE_STM_ENV=1`. After validation, tag and push it as the runtime C++ image, for example `nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon`.
 
 For the fully reproducible vendor-package path, copy the Basler SDK and GStreamer package archives under `Docker/pylon/`, then build with `PYLON_PACKAGE` and `PYLON_GSTREAMER_PACKAGE` set before running `./build_cplusplus.sh`.
 
@@ -177,7 +177,7 @@ python3 Docker/bake_team_pylon_layer.py \
 
 The Basler bake verifies the pinned team SDK checksum and checks `pylonsrc`.
 Set `CV_STM_IMAGE=cv-detection-ramon:jp72-ds91-jazzy-pylon` and
-`CV_STM_ROS_DISTRO=jazzy` in `/etc/cv-detection/stm-stack.env`. Set
+`CV_STM_ROS_DISTRO=jazzy` in `services/stm-stack.env`. Set
 `CV_STM_REPO_ROOT` to the actual checkout, rebuild the workspace in this image,
 and keep both TX and fire recommendation flags false during validation. Build
 with `--cmake-args -DYOLO_CPP_ENABLE_NATIVE_TENSORRT=OFF` on this runtime: the

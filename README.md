@@ -42,7 +42,7 @@ swapping devices. Do not disable SSH host-key checks. See the
 
 ### Safe CV preview
 
-On the **Jetson**, open `/etc/cv-detection/stm-stack.env`. For preview-only
+On the **Jetson**, open `services/stm-stack.env`. For preview-only
 checks, keep `transmit_enable:=false` and `enable_fire_recommendation:=false`
 in `CV_STM_EXTRA_LAUNCH_ARGS`, and select `CV_STM_SHOW=web`. Absolute output
 and preview arrows do not enable transmission. Command arrows also require
@@ -137,8 +137,8 @@ uv run yolo_cpp basler.launch.py
 uv run yolo_cpp realsense.launch.py
 ```
 
-The persistent Jetson configuration lives outside the repository at
-`/etc/cv-detection/stm-stack.env`. A safe copyable template and the complete
+The persistent, Git-ignored Jetson configuration lives inside the repository at
+`services/stm-stack.env`. A safe copyable template and the complete
 setup/restart/rebuild instructions are in
 [`services/stm-stack.env.example`](services/stm-stack.env.example) and
 [`docs/project/stm-stack-config.md`](docs/project/stm-stack-config.md).
@@ -209,7 +209,7 @@ the STM bridge; it is not a serial-transmission acknowledgment. The cyan
 arrow is opt-in: use `solver_output_mode:=offset use_3d_solution:=false
 preview_command_is_offset:=true` together as launch arguments for a 2D
 relative-error test. Set those arguments in `CV_STM_EXTRA_LAUNCH_ARGS` in
-`/etc/cv-detection/stm-stack.env` for the service, then restart it.
+`services/stm-stack.env` for the service, then restart it.
 Do not enable the offset arrow for absolute solver output.
 
 Positive yaw draws right; positive pitch draws up, matching the Type C
@@ -276,7 +276,7 @@ preview arrow continue to work while TX is disabled. `cv yaw-smoke` is a
 separate hardware command tool and must also be treated as real transmission.
 
 For a **real movement TX test with fire recommendations disabled** (including
-Orin2), edit `/etc/cv-detection/stm-stack.env` on the Jetson. Inside the existing
+Orin2), edit `services/stm-stack.env` on the Jetson. Inside the existing
 `CV_STM_EXTRA_LAUNCH_ARGS` value, change `transmit_enable:=false` to
 `transmit_enable:=true`, keep `enable_fire_recommendation:=false`, and keep
 `solver_output_mode:=absolute`. Save the file, then run `cv restart`.
@@ -304,7 +304,7 @@ acceptance condition. SP mode `0` requests no control, mode `1` requests gimbal
 aiming, and mode `2` additionally requests firing subject to the firmware's
 separate firing gates.
 
-The systemd service loads `/etc/cv-detection/stm-stack.env` every time it
+The systemd service loads `services/stm-stack.env` every time it
 starts, including after a reboot. Enable automatic boot startup without
 changing the saved preview or launch settings with:
 

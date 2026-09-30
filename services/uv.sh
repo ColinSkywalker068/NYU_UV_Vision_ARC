@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 HOME_DIR=$HOME
+# Resolve symlink to find the actual scripts directory
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPTS_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+
 # Use the same saved runtime image for rebuilds and systemd startup.
 CV_IMAGE_OVERRIDE="${CV_IMAGE:-}"
-CV_STM_ENV_FILE="${CV_STM_ENV_FILE:-/etc/cv-detection/stm-stack.env}"
+CV_STM_ENV_FILE="${CV_STM_ENV_FILE:-${SCRIPTS_DIR}/stm-stack.env}"
 if [ -f "$CV_STM_ENV_FILE" ]; then
   CV_HAD_ALLEXPORT=false
   [[ $- == *a* ]] && CV_HAD_ALLEXPORT=true
@@ -12,15 +21,6 @@ if [ -f "$CV_STM_ENV_FILE" ]; then
 fi
 CV_IMAGE="${CV_IMAGE_OVERRIDE:-${CV_STM_IMAGE:-nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon}}"
 CV_PYTHON_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra"
-
-# Resolve symlink to find the actual scripts directory
-SOURCE="${BASH_SOURCE[0]}"
-while [ -L "$SOURCE" ]; do
-  DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
-  SOURCE="$(readlink "$SOURCE")"
-  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
-done
-SCRIPTS_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
 
 # Check if the script is running in the background
 IS_BACKGROUND=false

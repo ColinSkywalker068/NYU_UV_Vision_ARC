@@ -13,7 +13,7 @@ Environment=CV_STM_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tens
 Environment=UV_CONTAINER_NAME=cv-stm-stack
 Environment=ROS_DOMAIN_ID=37
 Environment=ROS_LOCALHOST_ONLY=1
-EnvironmentFile=-/etc/cv-detection/stm-stack.env
+EnvironmentFile=-/home/ultraviolet/CV_Detection/services/stm-stack.env
 # Ensure startup always uses the latest mounted workspace and env file.
 ExecStartPre=-/bin/bash -lc '/usr/bin/docker rm -f "${UV_CONTAINER_NAME:-cv-stm-stack}"'
 ExecStart=/bin/bash -lc 'image="${CV_STM_IMAGE:-nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon}"; if [ "$image" = "nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus" ]; then image="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"; fi; CV_STM_IMAGE="$image" UV_CONTAINER_NAME="${UV_CONTAINER_NAME:-cv-stm-stack}" /home/ultraviolet/CV_Detection/services/start-container.sh "$image" bash -lc "cd /home/ultraviolet/CV_Detection && exec ./services/stm-stack-entrypoint.sh run"'
