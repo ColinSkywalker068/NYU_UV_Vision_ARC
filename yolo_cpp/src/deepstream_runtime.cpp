@@ -557,6 +557,7 @@ struct DeepStreamRuntime::Impl
   GstPad* streammux_sink_pad{nullptr};
   GstPad* tee_color_pad{nullptr};
   std::filesystem::path runtime_config_path;
+  std::filesystem::path runtime_engine_plan_path;
   std::thread infer_thread;
   std::thread color_thread;
   std::thread bus_thread;
@@ -681,6 +682,10 @@ struct DeepStreamRuntime::Impl
     infer_sink = nullptr;
     color_sink = nullptr;
 
+    if (!runtime_engine_plan_path.empty()) {
+      std::error_code ec;
+      std::filesystem::remove(runtime_engine_plan_path, ec);
+    }
     if (!runtime_config_path.empty()) {
       std::error_code ec;
       std::filesystem::remove(runtime_config_path, ec);
@@ -761,12 +766,29 @@ struct DeepStreamRuntime::Impl
   void materialize_config()
   {
     std::string config_text = read_text_file(config.config_template_path);
+    std::string model_engine_path = config.model_path;
+    if (!path_has_extension(config.model_path, ".onnx")) {
+      const auto plan = read_engine_plan_from_file(config.model_path);
+      if (plan.size() != std::filesystem::file_size(config.model_path)) {
+        // nvinfer needs raw TensorRT bytes; our detector reads the preserved
+        // Ultralytics metadata from the original model before this step.
+        const auto unique_id = std::chrono::steady_clock::now().time_since_epoch().count();
+        runtime_engine_plan_path = std::filesystem::temp_directory_path()
+          / ("yolo_cpp_deepstream_plan_" + std::to_string(unique_id) + ".engine");
+        std::ofstream plan_stream(runtime_engine_plan_path, std::ios::binary);
+        plan_stream.write(plan.data(), static_cast<std::streamsize>(plan.size()));
+        if (!plan_stream) {
+          throw std::runtime_error("Failed to materialize raw DeepStream engine plan");
+        }
+        model_engine_path = runtime_engine_plan_path.string();
+      }
+    }
     const auto model_source_config = path_has_extension(config.model_path, ".onnx")
                                        ? ("onnx-file=" + config.model_path
                                            + "\nmodel-engine-file=" + config.model_path + ".engine")
-                                       : ("model-engine-file=" + config.model_path);
+                                       : ("model-engine-file=" + model_engine_path);
     replace_all(config_text, "__MODEL_SOURCE_CONFIG__", model_source_config);
-    replace_all(config_text, "__MODEL_ENGINE_FILE__", config.model_path);
+    replace_all(config_text, "__MODEL_ENGINE_FILE__", model_engine_path);
     replace_all(config_text, "__INPUT_WIDTH__", std::to_string(config.imgsz_width));
     replace_all(config_text, "__INPUT_HEIGHT__", std::to_string(config.imgsz_height));
     replace_all(config_text, "__NUM_CLASSES__", std::to_string(std::max(1, num_classes)));

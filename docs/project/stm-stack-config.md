@@ -180,7 +180,7 @@ firmware does not take effect until that firmware is built and flashed.
 
 When a setting should become the documented team default, update
 `services/stm-stack.env.example` and this guide in Git. Do not commit secrets,
-credentials, private keys, or machine tokens. The live `/etc` file remains the
+credentials, private keys, or machine tokens. The live Git-ignored `services/stm-stack.env` remains the
 runtime source of truth for an individual robot.
 
 ## Editing over wireless VS Code SSH
