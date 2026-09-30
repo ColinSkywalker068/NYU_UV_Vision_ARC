@@ -8,7 +8,7 @@
 <!-- PRIMARY_SOURCES: docs/project/runbook.md, docs/project/infrastructure.md, docs/project/jetson-reflash.md, docs/project/jetson-vnc.md -->
 
 > **Status:** Current operator guide
-> **Last Updated:** 2026-06-15
+> **Last Updated:** 2026-09-29
 
 ## Quick Navigation
 
@@ -28,6 +28,38 @@
 | Canonical | Yes |
 | Read Next | [Operations Runbook](runbook.md), [Infrastructure](infrastructure.md), [Jetson Reflash](jetson-reflash.md) |
 | Primary Sources | `docs/project/runbook.md`, `docs/project/infrastructure.md`, `docs/project/jetson-reflash.md`, `docs/project/jetson-vnc.md` |
+
+## Named Team Jetsons
+
+For devices labeled **Ramon** and **Orin2**, use the
+[team Jetson name and configuration registry](https://gitlab.com/nyu-robomaster/autonomy/controls_odin1_nav/-/blob/main/docs/bringup/SSH_ACCESS.md).
+It owns the physical-label-to-hostname mapping, optional SSH aliases,
+Wi-Fi interface names, and verified repository locations. The older
+`rm-standard` and `rm-sentry` examples below apply to separately configured
+robot hosts; do not assume those names refer to a labeled Orin Nano.
+
+CV repository lookup (hostname ownership remains in the linked registry):
+
+| Physical label | Wi-Fi hostname | CV checkout | Selected branch |
+|---|---|---|---|
+| Ramon | `rm-orin-nano-55306.local` | `/home/ultraviolet/Documents/CV_Detection` | `main` |
+| Orin2 | `rm-orin2.local` | `/home/ultraviolet/CV_Detection` | `codex/robot-tracking-sim2real` |
+
+These are verified source-checkout locations, not a claim that the new code
+is built or running. Pulling or switching branches does not rebuild a cached
+image or restart the service. Check the SDK/image compatibility and follow
+the [operations runbook](runbook.md) before deploying.
+
+Both labeled units support the `ultraviolet` account and USB password login.
+SSH keys are optional. Select the physical unit before using the shared USB
+address. Use per-device `HostKeyAlias` entries from the registry to avoid
+mixing trusted identities when swapping Jetsons.
+
+The units have different existing CV checkouts. Verify `hostname`, the repo
+path, `git status --short --branch`, and the installed SDK/container versions
+before changing a runtime. SSH connectivity is not camera or navigation
+acceptance. Keep passwords, private keys, hardware serials, and local runtime
+configuration out of Git.
 
 ## 1. SSH User
 
