@@ -4,6 +4,74 @@
 
 NYU Robomaster ROS 2 C++ auto-aim vision pipeline for camera capture, YOLO/TensorRT/DeepStream armor detection, temporal tracking, 3D target processing, ballistic aim solving, and STM32 serial output.
 
+## Quick Start
+
+### USB → GameLab Wi-Fi SSH
+
+On **your host device**, connect a data cable to the Jetson USB device-mode
+port and log in. SSH keys are optional; enter the current device password
+when prompted.
+
+```bash
+ssh ultraviolet@192.168.55.1
+```
+
+On the **Jetson**, identify the unit and bring up its saved GameLab connection:
+
+```bash
+hostname
+sudo nmcli connection up GameLab
+ip -br -4 addr
+```
+
+If GameLab has not been saved, use `sudo nmcli device wifi connect GameLab --ask`
+and obtain its password from the operator. Connect your host device to
+**GameLab**, then open a second SSH session using the matching hostname:
+
+| Physical label | Wireless SSH | CV checkout |
+|---|---|---|
+| Ramon | `ssh ultraviolet@rm-orin-nano-55306.local` | `/home/ultraviolet/Documents/CV_Detection` |
+| Orin2 | `ssh ultraviolet@rm-orin2.local` | `/home/ultraviolet/CV_Detection` |
+
+Verify `hostname` in the wireless session before unplugging the host-device
+USB cable. If `.local` discovery fails, use the wireless interface address
+printed above: `ssh ultraviolet@WIFI_IP`. DHCP can change the address.
+Both Jetsons use the same USB address; verify the unit and its host key when
+swapping devices. Do not disable SSH host-key checks. See the
+[SSH guide](docs/project/ssh-access.md) for the device registry and troubleshooting.
+
+### Safe CV preview
+
+On the **Jetson**, open `/etc/cv-detection/stm-stack.env`. For preview-only
+checks, keep `transmit_enable:=false` and `enable_fire_recommendation:=false`
+in `CV_STM_EXTRA_LAUNCH_ARGS`, and select `CV_STM_SHOW=web`. Absolute output
+and preview arrows do not enable transmission. Command arrows also require
+fresh Type C attitude telemetry and an authorized target.
+
+```bash
+cv preflight
+cv restart
+cv status
+cv logs
+```
+
+The saved env is outside Git and survives restarts/reboots. Saving a setting
+requires `cv restart` to apply it. Pulling source requires a compatible rebuild
+before restart; use the runtime matched to this Jetson's JetPack release.
+[Config and safety details](docs/project/stm-stack-config.md).
+
+On **your host device**, keep the following terminal open (Ramon example),
+then visit `http://127.0.0.1:18080/`:
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes \
+  -L 127.0.0.1:18080:127.0.0.1:8080 ultraviolet@rm-orin-nano-55306.local
+```
+
+For Orin2, substitute `rm-orin2.local`; USB uses `192.168.55.1`. In VS Code,
+use **Remote-SSH: Connect to Host**, connect to the same SSH target, open the
+checkout from the table, then use **File: Open File** to open the live env.
+
 ## For Readers
 
 Several repository docs start with machine-readable metadata and navigation tables because agents use them to route work safely. If you are reading manually, use each doc's `Quick Navigation` table and skip past `SCOPE`, `DOC_KIND`, `Agent Entry`, and maintenance blocks. The fastest human paths are [Quick Start](#quick-start), [Project runbook](docs/project/runbook.md), [Jetson reflash guide](docs/project/jetson-reflash.md), and [Launch and config](yolo_cpp/docs/launch-and-config.md).
@@ -18,7 +86,7 @@ The runtime is centered on:
 - `Docker/`: active container images and Docker bring-up notes.
 - `docs/` and `yolo_cpp/docs/`: current project, architecture, runbook, and package documentation.
 
-## Quick Start
+## CV Operator Commands
 
 On the robot, use the `cv` operator command for the headless Basler + DeepStream + STM32 service.
 Install or refresh the shortcut once:
