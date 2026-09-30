@@ -207,3 +207,8 @@ DeepStream sample image is missing OpenCV's TIFF codec dependency. The JetPack
 does not prove that the shared library exists. Rebuild the image before the
 workspace, then use `ldd /lib/aarch64-linux-gnu/libtiff.so.6` to confirm that
 its dependencies resolve.
+
+YOLO26 exports can report both `end2end=true` and `args.nms=false`. Their output
+still contains detection rows; the parser must honor `end2end` first. Confidence
+values outside 0–1 or nonfinite poses indicate a pipeline error, not an exposure
+problem. Keep TX disabled while diagnosing these symptoms.

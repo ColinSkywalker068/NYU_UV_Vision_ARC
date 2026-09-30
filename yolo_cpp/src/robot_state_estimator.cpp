@@ -88,6 +88,9 @@ void RobotStateEstimator::reset()
 void RobotStateEstimator::update(
   const std::vector<RobotPlateObservation> & observations, double timestamp_s)
 {
+  if (!std::isfinite(timestamp_s)) {
+    return;
+  }
   if (state_.initialized && timestamp_s <= state_.timestamp_s) {
     timestamp_s = state_.timestamp_s + 1e-4;
   }
@@ -114,6 +117,16 @@ void RobotStateEstimator::update(
   candidates.reserve(observations.size());
   std::size_t rejected = 0;
   for (const auto & observation : observations) {
+    const auto finite_vector = [](const Vector3d & value) {
+      return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    };
+    const double normal_length = norm(observation.outward_normal);
+    if (
+      !finite_vector(observation.position) || !finite_vector(observation.outward_normal) ||
+      !std::isfinite(normal_length) || normal_length < 1e-9) {
+      ++rejected;
+      continue;
+    }
     const Vector3d candidate = inferred_center(observation, config_.armor_radius_m);
     if (state_.initialized && norm(subtract(candidate, prior.center)) > config_.center_gate_m) {
       ++rejected;

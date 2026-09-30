@@ -222,11 +222,13 @@ bool looks_like_end2end_shape(const std::vector<int64_t>& shape, int num_classes
   if (shape.size() != 3U) {
     return false;
   }
-  if (export_includes_nms.has_value()) {
-    return *export_includes_nms;
-  }
+  // End-to-end models already emit detection rows. The separate exporter NMS
+  // option can still be false; it does not turn this output into raw channels.
   if (end2end_metadata) {
     return true;
+  }
+  if (export_includes_nms.has_value()) {
+    return *export_includes_nms;
   }
 
   const int expected_attrs = task_obb ? 7 : 6;
@@ -291,7 +293,7 @@ std::vector<Detection> parse_end2end_output_tensor(const float* tensor_data,
 
     float angle = 0.0F;
     float confidence = at(4);
-    int class_id = std::max(0, static_cast<int>(std::lround(at(5))));
+    float class_value = at(5);
     if (task_obb) {
       const auto is_class_like = [&](float value) {
         const float rounded = std::round(value);
@@ -304,17 +306,24 @@ std::vector<Detection> parse_end2end_output_tensor(const float* tensor_data,
         // Some exporters emit OBB rows as [cx, cy, w, h, angle, conf, class].
         angle = at(4);
         confidence = at(5);
-        class_id = std::max(0, static_cast<int>(std::lround(at(6))));
+        class_value = at(6);
       } else {
         // Ultralytics YOLO26 end-to-end OBB rows are [cx, cy, w, h, conf, class, angle].
         confidence = at(4);
-        class_id = std::max(0, static_cast<int>(std::lround(at(5))));
+        class_value = at(5);
         angle = at(6);
       }
     }
-    if (!std::isfinite(confidence) || confidence < conf_threshold) {
+    if (!std::isfinite(confidence) || confidence < conf_threshold || confidence > 1.0F ||
+        !std::isfinite(class_value) || class_value < 0.0F ||
+        class_value >= static_cast<float>(std::max(1, num_classes)) ||
+        std::abs(class_value - std::round(class_value)) > 1e-3F ||
+        !std::isfinite(at(0)) || !std::isfinite(at(1)) ||
+        !std::isfinite(at(2)) || !std::isfinite(at(3)) || !std::isfinite(angle) ||
+        (task_obb && (at(2) <= 0.0F || at(3) <= 0.0F))) {
       continue;
     }
+    const int class_id = static_cast<int>(std::lround(class_value));
 
     const float x1f = task_obb ? clamp_value(
       at(0) - (at(2) * 0.5F), 0.0F, static_cast<float>(img_w - 1))
@@ -333,8 +342,11 @@ std::vector<Detection> parse_end2end_output_tensor(const float* tensor_data,
     const int x2 = static_cast<int>(std::ceil(std::max(x1f, x2f)));
     const int y2 = static_cast<int>(std::ceil(std::max(y1f, y2f)));
 
+    if (x2 <= x1 || y2 <= y1) {
+      continue;
+    }
     Detection detection{};
-    detection.bbox_model = cv::Rect(x1, y1, std::max(0, x2 - x1), std::max(0, y2 - y1));
+    detection.bbox_model = cv::Rect(x1, y1, x2 - x1, y2 - y1);
     detection.confidence = confidence;
     detection.class_id = class_id;
     detection.has_corners = true;
@@ -414,7 +426,7 @@ std::vector<Detection> parse_yolo_output_tensor(const float* tensor_data,
         best_cls = cls;
       }
     }
-    if (best_conf < conf_threshold) {
+    if (!std::isfinite(best_conf) || best_conf < conf_threshold || best_conf > 1.0F) {
       continue;
     }
 
@@ -424,6 +436,11 @@ std::vector<Detection> parse_yolo_output_tensor(const float* tensor_data,
     candidate.width = at(2);
     candidate.height = at(3);
     candidate.angle = (extras > 0) ? at(4 + nc) : 0.0F;
+    if (!std::isfinite(candidate.cx) || !std::isfinite(candidate.cy) ||
+        !std::isfinite(candidate.width) || !std::isfinite(candidate.height) ||
+        !std::isfinite(candidate.angle) || candidate.width <= 0.0F || candidate.height <= 0.0F) {
+      continue;
+    }
     candidate.confidence = best_conf;
     candidate.class_id = best_cls;
     parsed.push_back(candidate);

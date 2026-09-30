@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -172,5 +173,32 @@ TEST(RobotStateEstimator, FutureArmorUsesPredictedCenterAndPhase)
   const auto armor = yolo_cpp::select_future_armor(state, 0.5, 0.25, 4);
   EXPECT_NEAR(armor.position.x, 0.5, 1e-6);
   EXPECT_NEAR(armor.position.z, 3.75, 1e-6);
+}
+TEST(RobotStateEstimator, InvalidPoseDoesNotPoisonRobotState)
+{
+  RobotStateEstimator estimator;
+  auto invalid = plate(0.0, 4.0, 0.0, 0, 99);
+  invalid.position.x = std::numeric_limits<double>::quiet_NaN();
+  estimator.update({invalid}, 0.0);
+  EXPECT_FALSE(estimator.state().initialized);
+  for (int frame = 0; frame < 20; ++frame) {
+    estimator.update({plate(0.0, 4.0, 0.0, 0, 1), plate(0.0, 4.0, 0.0, 1, 2)}, frame / 60.0);
+  }
+  const auto before = estimator.state();
+  estimator.update({invalid, plate(0.0, 4.0, 0.0, 0, 1)}, 20.0 / 60.0);
+  EXPECT_GT(estimator.state().rejected_observations, before.rejected_observations);
+  EXPECT_TRUE(std::isfinite(estimator.state().center.x));
+  EXPECT_TRUE(std::isfinite(estimator.state().velocity.x));
+  EXPECT_TRUE(std::isfinite(estimator.state().phase_rad));
+  EXPECT_NEAR(estimator.state().center.z, 4.0, 1e-6);
+}
+
+TEST(RobotStateEstimator, NonFiniteTimestampDoesNotAdvanceState)
+{
+  RobotStateEstimator estimator;
+  estimator.update({plate(0.0, 4.0, 0.0, 0, 1)}, 0.0);
+  estimator.update({plate(1.0, 4.0, 0.0, 0, 1)}, std::numeric_limits<double>::quiet_NaN());
+  EXPECT_EQ(estimator.state().timestamp_s, 0.0);
+  EXPECT_NEAR(estimator.state().center.x, 0.0, 1e-6);
 }
 }  // namespace

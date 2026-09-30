@@ -256,7 +256,10 @@ bool ArmorProcessorNode::transform_pose(const std_msgs::msg::Header& header,
   source.pose = pose;
   try {
     transformed = tf2_buffer_->transform(source, target_frame_).pose;
-    return true;
+    const auto& p = transformed.position;
+    const auto& q = transformed.orientation;
+    return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z) &&
+           std::isfinite(q.x) && std::isfinite(q.y) && std::isfinite(q.z) && std::isfinite(q.w);
   } catch (const tf2::TransformException& exc) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), 1000, "Armor pose transform unavailable: %s",
@@ -273,7 +276,8 @@ bool ArmorProcessorNode::transform_point(const std_msgs::msg::Header& header,
   source.point = point;
   try {
     transformed = tf2_buffer_->transform(source, target_frame_).point;
-    return true;
+    return std::isfinite(transformed.x) && std::isfinite(transformed.y) &&
+           std::isfinite(transformed.z);
   } catch (const tf2::TransformException& exc) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), 1000, "Target transform unavailable: %s", exc.what());
