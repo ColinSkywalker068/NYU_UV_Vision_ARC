@@ -56,7 +56,7 @@ AimSolverNode::AimSolverNode(const rclcpp::NodeOptions& options)
   prediction_config_.actuator_delay_s = this->declare_parameter<double>("actuator_delay_s", 0.0);
   prediction_config_.max_frame_age_s = this->declare_parameter<double>("max_frame_age_s", 0.25);
   prediction_config_.max_measurement_age_s = this->declare_parameter<double>("max_measurement_age_s", 0.15);
-  prediction_config_.yaw_speed_rad_s = this->declare_parameter<double>("yaw_max_slew_deg_s", 120.0) * kPi / 180;
+  prediction_config_.yaw_speed_rad_s = this->declare_parameter<double>("yaw_max_slew_deg_s", 60.0) * kPi / 180;
   prediction_config_.pitch_speed_rad_s = this->declare_parameter<double>("pitch_max_slew_deg_s", 60.0) * kPi / 180;
   prediction_config_.yaw_accel_rad_s2 = this->declare_parameter<double>("yaw_max_accel_deg_s2", 360.0) * kPi / 180;
   prediction_config_.pitch_accel_rad_s2 = this->declare_parameter<double>("pitch_max_accel_deg_s2", 240.0) * kPi / 180;

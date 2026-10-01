@@ -15,6 +15,7 @@
 #include "yolo_cpp/visibility_control.hpp"
 #include "cv_auto_aim_interfaces/msg/gimbal_attitude.hpp"
 #include "cv_auto_aim_interfaces/msg/aim_solution.hpp"
+#include "cv_auto_aim_interfaces/msg/target.hpp"
 
 namespace yolo_cpp
 {
@@ -44,6 +45,8 @@ private:
   /// Poll serial RX for attitude frames from the STM32.
   void handle_rx_poll();
   void handle_solution(const cv_auto_aim_interfaces::msg::AimSolution::SharedPtr msg);
+  void log_alignment(const cv_auto_aim_interfaces::msg::AimSolution& msg, bool accepted);
+  void log_tracking_target(const cv_auto_aim_interfaces::msg::Target::SharedPtr msg);
 
   /// Send the latest vision command when transmission is enabled.
   void maybe_send();
@@ -72,6 +75,11 @@ private:
   rclcpp::TimerBase::SharedPtr rx_timer_;
 
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::AimSolution>::SharedPtr solution_subscription_;
+  rclcpp::Subscription<cv_auto_aim_interfaces::msg::Target>::SharedPtr tracking_log_subscription_;
+  cv_auto_aim_interfaces::msg::GimbalAttitude latest_attitude_sample_;
+  bool tracking_log_enable_{true};
+  std::int64_t runtime_log_max_bytes_{67108864};
+  int runtime_log_backups_{3};
   std::int64_t last_solution_stamp_ns_{0};
   bool transmit_enable_{false};
   double attitude_receive_delay_s_{0.0};

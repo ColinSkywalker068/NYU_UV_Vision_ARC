@@ -58,7 +58,7 @@ class LaunchParameters(unittest.TestCase):
         self.assertFalse(bridge["transmit_angles_in_degrees"])
         self.assertFalse(solver["enable_fire_recommendation"])
         self.assertEqual(solver["output_mode"], "absolute")
-        self.assertEqual(solver["yaw_max_slew_deg_s"], 120.0)
+        self.assertEqual(solver["yaw_max_slew_deg_s"], 60.0)
         self.assertEqual(solver["pitch_max_accel_deg_s2"], 240.0)
         self.assertEqual(tracker["camera_translation_m"], (0.0, 0.0, 0.0))
         self.assertEqual(tracker["track_max_coast_frames"], 6)

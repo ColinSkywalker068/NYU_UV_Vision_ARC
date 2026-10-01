@@ -15,7 +15,7 @@ from pathlib import Path
 
 import rclpy
 from std_msgs.msg import Bool, Float32MultiArray
-from cv_auto_aim_interfaces.msg import AimSolution
+from cv_auto_aim_interfaces.msg import AimSolution, Target
 
 
 def attitude_packet(yaw, pitch):
@@ -51,12 +51,15 @@ class SerialReconnectTest(unittest.TestCase):
         )
         self.angles = self.node.create_publisher(Float32MultiArray, "bounding_box_angles", 10)
         self.solutions = self.node.create_publisher(AimSolution, "aim_solution", 10)
+        self.targets = self.node.create_publisher(Target, "processor/target", 10)
         self.override = self.node.create_publisher(Bool, "override", 10)
         self.bridge = subprocess.Popen(
             [BRIDGE, "--ros-args", "-p", f"serial_port:={self.port}",
              "-p", "receive_enable:=true", "-p", f"transmit_enable:={str(self.tx_enabled).lower()}",
              "-p", f"calibration_provisional:={str(self.provisional).lower()}",
-             "-p", f"runtime_log_dir:={self.root}"],
+             "-p", f"runtime_log_dir:={self.root}",
+             "-p", f"runtime_log_max_bytes:={4096 if self._testMethodName == 'test_alignment_logging_without_tx_and_rotation' else 67108864}",
+             "-p", "runtime_log_backups:=2"],
             stdout=self.log_file, stderr=subprocess.STDOUT,
         )
 
@@ -97,6 +100,12 @@ class SerialReconnectTest(unittest.TestCase):
         solution.yaw = 0.2
         solution.pitch = 0.1
         if self.send_valid_solution:
+            target = Target()
+            target.header = solution.header
+            target.measurement_stamp_ns = self.node.get_clock().now().nanoseconds
+            target.has_target = True
+            target.track_id = 7
+            self.targets.publish(target)
             self.solutions.publish(solution)
         self.override.publish(Bool(data=True))
         self.angles.publish(Float32MultiArray(data=[0.2, 0.1]))
@@ -185,6 +194,25 @@ class SerialReconnectTest(unittest.TestCase):
 
     def test_provisional_calibration_respects_disabled_tx(self):
         self.check_provisional_tx()
+
+    def test_alignment_logging_without_tx_and_rotation(self):
+        self.attach()
+        self.await_attitude(0.4, -0.1)
+        self.spin_for(1.5, attitude_packet(0.4, -0.1))
+        logs = sorted(self.root.glob("vision_serial_runtime_*"))
+        self.assertEqual(len(logs), 3)
+        content = "\n".join(p.read_text() for p in logs)
+        self.assertIn("kind=tracking_alignment", content)
+        self.assertIn("kind=tracking_target", content)
+        self.assertIn("track_id=7", content)
+        self.assertIn("tx_enabled=0", content)
+        self.assertIn("attitude_fresh=1", content)
+        self.assertIn("source_timestamped=0", content)
+        self.assertIn("yaw_error=", content)
+        self.assertIn("ros_ns=", content)
+        self.assertTrue(all(p.stat().st_size < 6000 for p in logs))
+        self.assertNotIn("kind=serial_tx", content)
+        self.assertEqual(self.outbound, b"")
 
     def test_atomic_solution_rejects_stale_offset_and_replay(self):
         self.attach()

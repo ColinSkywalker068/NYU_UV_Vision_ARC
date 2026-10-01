@@ -9,7 +9,7 @@ namespace sentry_reference {
 using std::isfinite;
 #define VISION_ACCEL_LIMITED_SLEW_ENABLE 1
 #define VISION_SLEW_ERROR_GAIN_S 8.0f
-#define VISION_YAW_MAX_SLEW_DEG_S 120.0f
+#define VISION_YAW_MAX_SLEW_DEG_S 60.0f
 #define VISION_PITCH_MAX_SLEW_DEG_S 60.0f
 #define VISION_YAW_MAX_ACCEL_DEG_S2 360.0f
 #define VISION_PITCH_MAX_ACCEL_DEG_S2 240.0f

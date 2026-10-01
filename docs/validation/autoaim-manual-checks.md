@@ -281,3 +281,41 @@ interlocks, real transport timing, and joint stops remain hardware validation.
 Update this guide when launch names, model contracts, frame conventions, firmware
 limits, or safety defaults change. Run the launch-parameter and production pipeline
 tests; verify every linked path. Last updated: 2026-10-01.
+
+## Recording command/attitude alignment
+
+`tracking_log_enable:=true` (default) adds alignment records to the bridge's
+`vision_serial_runtime_*.log` in the existing `VISION_LOG_DIR` / `vision_logs`
+directory. It works with TX disabled and continues when the operator enables
+TX. Save the env and run `cv restart` to change the setting.
+
+- `tracking_alignment`: command frame timestamp, acceptance, TX configuration,
+  solver status, absolute yaw/pitch, frame/measurement/prediction age, latest
+  measured attitude and its timestamps, freshness, and wrapped yaw error.
+- `tracking_target`: the same frame timestamp plus target ID, coasting state,
+  confidence, image center, inertial pose/velocity and camera orientation.
+- `serial_tx`: actual write result. A successful write does not prove that the
+  MCU accepted the command or that an actuator moved.
+- `serial_rx`: raw SP/ST feedback. All records now include a Jetson ROS timestamp
+  in nanoseconds. The current wire protocol still has no MCU source clock.
+
+Join target and command records by `frame_ns`; callback arrival order is not
+an alignment guarantee. Measured attitude in an alignment row is the latest
+received sample, not an interpolated exposure-time sample. Both timestamps and
+age are retained so stale feedback cannot be mistaken for valid tracking error.
+Angles/errors are radians. Keep the raw records to inspect command versus
+measured-heading oscillation and to estimate relative delay offline.
+
+Each process run rotates its log at 64 MiB and retains three backups (`.log.1`
+through `.log.3`), plus its current file. Older runs are separate files; archive
+or remove them after collecting a test. A quick read-only summary is:
+
+```bash
+python3 tools/analyze-tracking-alignment.py 'vision_logs/vision_serial_runtime_*.log*'
+```
+
+Use the actual log directory printed at startup if it differs. Copy all files
+from the relevant run, including rotated backups, for later analysis. The
+summary reports errors and timing, not a diagnosis of motor PID stability.
+The commissioning yaw reference limit is now 60 degrees/s; pitch remains
+60 degrees/s, with yaw/pitch acceleration caps unchanged at 360/240 degrees/s².

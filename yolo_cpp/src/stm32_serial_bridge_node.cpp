@@ -551,6 +551,12 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
   this->declare_parameter<int>("serial_baudrate", 115200);
   this->declare_parameter<bool>("serial_verbose", false);
   this->declare_parameter<std::string>("runtime_log_dir", "");
+  tracking_log_enable_ = this->declare_parameter<bool>("tracking_log_enable", true);
+  runtime_log_max_bytes_ = this->declare_parameter<int64_t>("runtime_log_max_bytes", 67108864);
+  runtime_log_backups_ = this->declare_parameter<int>("runtime_log_backups", 3);
+  if (runtime_log_max_bytes_ < 1024 || runtime_log_backups_ < 1 || runtime_log_backups_ > 10) {
+    throw std::runtime_error("runtime log size must be >=1024 bytes, backups in [1,10]");
+  }
   this->declare_parameter<int>("fire_mode", DEFAULT_FIRE_MODE);
   this->declare_parameter<int>("hold_fire_mode", FIRE_MODE_NO_FIRE);
   this->declare_parameter<int>("target_type", DEFAULT_TARGET_TYPE);
@@ -609,6 +615,11 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
   }
   attitude_publisher_ =
     this->create_publisher<std_msgs::msg::Float32MultiArray>("attitude_data", 10);
+  if (tracking_log_enable_) {
+    tracking_log_subscription_ = this->create_subscription<cv_auto_aim_interfaces::msg::Target>(
+      "processor/target", 100, std::bind(&STM32SerialBridgeNode::log_tracking_target, this,
+      std::placeholders::_1));
+  }
   stamped_attitude_publisher_ =
     this->create_publisher<cv_auto_aim_interfaces::msg::GimbalAttitude>("gimbal/attitude", 100);
   robot_id_publisher_ = this->create_publisher<std_msgs::msg::Int32>("robot_id", 10);
@@ -692,6 +703,7 @@ void STM32SerialBridgeNode::handle_solution(
     command_time_ = override_time_ = std::chrono::steady_clock::now();
   }
   maybe_send();
+  if (tracking_log_enable_) {log_alignment(*msg, valid);}
 }
 
 void STM32SerialBridgeNode::handle_rx_poll()
@@ -734,6 +746,7 @@ void STM32SerialBridgeNode::handle_rx_poll()
       sample.roll = frame.roll;
       sample.yaw_rate = frame.yaw_rate;
       sample.pitch_rate = frame.pitch_rate;
+      latest_attitude_sample_ = sample;
       stamped_attitude_publisher_->publish(sample);
     }
 
@@ -799,8 +812,76 @@ void STM32SerialBridgeNode::write_runtime_log_line(const std::string& line)
   if (!runtime_log_stream_.is_open()) {
     return;
   }
-  runtime_log_stream_ << "ts=" << timestamp_now_iso8601_ms() << ' ' << line << '\n';
+  if (runtime_log_stream_.tellp() >= runtime_log_max_bytes_) {
+    runtime_log_stream_.close();
+    std::error_code error;
+    std::filesystem::remove(runtime_log_path_ + "." + std::to_string(runtime_log_backups_), error);
+    for (int i = runtime_log_backups_ - 1; i >= 0; --i) {
+      const auto source = runtime_log_path_ + (i ? "." + std::to_string(i) : "");
+      if (std::filesystem::exists(source, error)) {
+        std::filesystem::rename(source, runtime_log_path_ + "." + std::to_string(i + 1), error);
+        if (error) {
+          RCLCPP_ERROR(this->get_logger(), "Runtime log rotation failed: %s", error.message().c_str());
+          return;  // Logging failure must not affect control or grow an unbounded file.
+        }
+      }
+    }
+    runtime_log_stream_.open(runtime_log_path_, std::ios::trunc);
+    if (!runtime_log_stream_.is_open()) {return;}
+  }
+  runtime_log_stream_ << "ros_ns=" << this->now().nanoseconds() << " ts=" << timestamp_now_iso8601_ms() << ' ' << line << '\n';
   runtime_log_stream_.flush();
+}
+
+void STM32SerialBridgeNode::log_alignment(
+  const cv_auto_aim_interfaces::msg::AimSolution& msg, bool accepted)
+{
+  const auto now_ns = this->now().nanoseconds();
+  const auto& a = latest_attitude_sample_;
+  const auto age_ns = now_ns - a.receive_stamp_ns;
+  const bool fresh = a.valid && age_ns >= 0 && age_ns <= 100000000;
+  std::ostringstream line;
+  line << std::setprecision(12) << "kind=tracking_alignment frame_ns="
+       << rclcpp::Time(msg.header.stamp).nanoseconds()
+       << " accepted=" << accepted << " has_solution=" << msg.has_solution
+       << " tx_enabled=" << transmit_enable_ << " status=" << std::quoted(msg.status)
+       << " output_mode=" << std::quoted(msg.output_mode) << " used_3d=" << msg.used_3d
+       << " command_yaw=" << msg.yaw << " command_pitch=" << msg.pitch
+       << " frame_age_s=" << msg.frame_age_s << " measurement_age_s=" << msg.measurement_age_s
+       << " prediction_horizon_s=" << msg.prediction_horizon_s << " range_m=" << msg.range
+       << " selected_slot=" << msg.selected_slot << " suggest_fire=" << msg.suggest_fire
+       << " attitude_valid=" << a.valid << " attitude_fresh=" << fresh
+       << " attitude_stamp_ns=" << rclcpp::Time(a.header.stamp).nanoseconds()
+       << " attitude_receive_ns=" << a.receive_stamp_ns << " attitude_age_s=" << age_ns * 1e-9
+       << " source_timestamped=" << a.source_timestamped
+       << " measured_yaw=" << a.yaw << " measured_pitch=" << a.pitch;
+  if (fresh && accepted) {
+    line << " yaw_error=" << std::remainder(msg.yaw - a.yaw, 6.283185307179586)
+         << " pitch_error=" << msg.pitch - a.pitch;
+  }
+  write_runtime_log_line(line.str());
+}
+
+void STM32SerialBridgeNode::log_tracking_target(
+  const cv_auto_aim_interfaces::msg::Target::SharedPtr msg)
+{
+  std::ostringstream line;
+  line << std::setprecision(12) << "kind=tracking_target frame_ns="
+       << rclcpp::Time(msg->header.stamp).nanoseconds()
+       << " measurement_ns=" << msg->measurement_stamp_ns << " track_id=" << msg->track_id
+       << " has_target=" << msg->has_target << " coasting=" << msg->is_coasting
+       << " has_pose=" << msg->has_pose << " has_velocity=" << msg->has_velocity
+       << " has_robot_state=" << msg->has_robot_state << " robot_track_id=" << msg->robot_track_id
+       << " center_x=" << msg->center_x << " center_y=" << msg->center_y << " confidence=" << msg->confidence
+       << " x=" << msg->pose.position.x << " y=" << msg->pose.position.y
+       << " z=" << msg->pose.position.z << " vx=" << msg->velocity.x
+       << " vy=" << msg->velocity.y << " vz=" << msg->velocity.z
+       << " camera_pose_valid=" << msg->camera_pose_valid
+       << " camera_qx=" << msg->camera_pose.orientation.x
+       << " camera_qy=" << msg->camera_pose.orientation.y
+       << " camera_qz=" << msg->camera_pose.orientation.z
+       << " camera_qw=" << msg->camera_pose.orientation.w;
+  write_runtime_log_line(line.str());
 }
 
 void STM32SerialBridgeNode::log_tx_event(float yaw, float pitch, bool success, int fire_mode)
