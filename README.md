@@ -84,6 +84,8 @@ Several repository docs start with machine-readable metadata and navigation tabl
 
 ## Active Runtime
 
+Planned timing and telemetry work: [Tracker telemetry implementation plan](docs/project/tracker-telemetry-plan.md), including paired Type C changes and validation gates.
+
 The runtime is centered on:
 
 - `yolo_cpp/`: C++ ROS 2 nodes, launch files, DeepStream config, tests, package docs, and active model assets.
