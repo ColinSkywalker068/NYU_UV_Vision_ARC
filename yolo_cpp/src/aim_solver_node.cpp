@@ -136,9 +136,10 @@ void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::Sha
     publish_no_target(image_width, image_height);
     return;
   }
-  if (previous_track_id_ != msg->track_id) {
+  const int selected_identity = msg->has_robot_state ? -(msg->robot_track_id + 2) : msg->track_id;
+  if (previous_track_id_ != selected_identity) {
     previous_slot_ = -1;
-    previous_track_id_ = msg->track_id;
+    previous_track_id_ = selected_identity;
   }
   const auto bbox = rect_from_xyxy(msg->bbox_xyxy);
   const auto & q = msg->camera_pose.orientation;
@@ -165,6 +166,8 @@ void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::Sha
     input.robot.center = {msg->robot_center.x, msg->robot_center.y, msg->robot_center.z};
     input.robot.velocity = {msg->robot_velocity.x, msg->robot_velocity.y, msg->robot_velocity.z};
     input.robot.phase_rad = msg->robot_phase;
+    input.robot.alternating_radius_m = msg->alternating_radius_m;
+    input.robot.alternating_height_m = msg->alternating_height_m;
     input.robot.angular_velocity_rad_s = msg->robot_angular_velocity;
     input.armor_radius_m = msg->armor_radius;
     input.armor_count = msg->armor_count;

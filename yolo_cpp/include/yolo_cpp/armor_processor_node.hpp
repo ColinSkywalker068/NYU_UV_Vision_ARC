@@ -84,6 +84,7 @@ private:
   double position_alpha_{0.7};
   double velocity_alpha_{0.5};
   bool robot_estimator_enable_{true};
+  bool robot_estimator_use_ekf_{true};
   double robot_armor_radius_m_{0.26};
   int robot_armor_count_{4};
 

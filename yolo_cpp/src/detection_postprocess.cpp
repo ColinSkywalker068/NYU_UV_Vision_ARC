@@ -575,16 +575,48 @@ std::vector<Detection> parse_aruw_pose_tensor(const float * data,
     // Hero/base are large. Engineer/standard/sentry/outpost use small plates.
     d.armor_type = (cls % 8 == 0 || cls % 8 == 2) ? 1 : 0;
     d.confidence = p[4];
-    const int x = std::clamp(static_cast<int>(std::floor(p[0])), 0, width - 1);
-    const int y = std::clamp(static_cast<int>(std::floor(p[1])), 0, height - 1);
-    const int x2 = std::clamp(static_cast<int>(std::ceil(p[2])), x + 1, width);
-    const int y2 = std::clamp(static_cast<int>(std::ceil(p[3])), y + 1, height);
+    // Project Otto derives its tracked rectangle from the four keypoints. The
+    // separate box head can include extra context and shift the aiming center.
+    float left = width, top = height, right = 0, bottom = 0;
+    for (const auto & point : ordered) {
+      left = std::min(left, point.x);
+      top = std::min(top, point.y);
+      right = std::max(right, point.x);
+      bottom = std::max(bottom, point.y);
+    }
+    const int x = std::clamp(static_cast<int>(std::floor(left)), 0, width - 1);
+    const int y = std::clamp(static_cast<int>(std::floor(top)), 0, height - 1);
+    const int x2 = std::clamp(static_cast<int>(std::ceil(right)), x + 1, width);
+    const int y2 = std::clamp(static_cast<int>(std::ceil(bottom)), y + 1, height);
     d.bbox_model = {x, y, x2 - x, y2 - y};
     d.has_corners = d.corners_are_keypoints = true;
     d.corners_model = ordered;
     result.push_back(d);
   }
-  return result;
+  // The end-to-end head still produced near-identical armor quads in public
+  // replay (same physical plate, three rows). Suppress only near-identical
+  // same-color geometry; nearby distinct plates remain separate observations.
+  std::stable_sort(result.begin(), result.end(), [](const auto & a, const auto & b) {
+    return a.confidence > b.confidence;
+  });
+  std::vector<Detection> unique;
+  for (const auto & candidate : result) {
+    bool duplicate = false;
+    const std::vector<cv::Point2f> quad(candidate.corners_model.begin(), candidate.corners_model.end());
+    for (const auto & kept : unique) {
+      if (candidate.class_id != kept.class_id) {continue;}
+      const std::vector<cv::Point2f> other(kept.corners_model.begin(), kept.corners_model.end());
+      std::vector<cv::Point2f> intersection;
+      const double shared_area = cv::intersectConvexConvex(quad, other, intersection);
+      const double union_area = cv::contourArea(quad) + cv::contourArea(other) - shared_area;
+      if (union_area > 0 && shared_area / union_area > 0.85) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) {unique.push_back(candidate);}
+  }
+  return unique;
 }
 
 }  // namespace yolo_cpp

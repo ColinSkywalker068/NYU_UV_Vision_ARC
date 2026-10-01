@@ -5,6 +5,8 @@
 #include <limits>
 #include <numeric>
 
+#include "yolo_cpp/robot_ekf.hpp"
+
 namespace yolo_cpp
 {
 namespace
@@ -57,7 +59,12 @@ FutureArmor select_future_armor(
   for (int slot = 0; slot < count; ++slot) {
     const double angle = phase + 2.0 * kPi * static_cast<double>(slot) / count;
     const Vector3d normal{std::sin(angle), 0.0, -std::cos(angle)};
-    const Vector3d position = add(center, scale(normal, armor_radius_m));
+    const bool alternate = count == 4 && slot % 2;
+    Vector3d position =
+      add(center, scale(normal, armor_radius_m + (alternate ? state.alternating_radius_m : 0)));
+    if (alternate) {
+      position.y += state.alternating_height_m;
+    }
     // The camera is the origin. A visible plate's outward normal points toward
     // it.
     const Vector3d to_camera = scale(position, -1.0);
@@ -77,17 +84,28 @@ RobotStateEstimator::RobotStateEstimator(RobotEstimatorConfig config) : config_(
   config_.armor_count = std::max(1, config_.armor_count);
   config_.min_updates = std::max(1, config_.min_updates);
   config_.coast_frames = std::max(0, config_.coast_frames);
+  if (config_.use_ekf) {
+    ekf_ = std::make_shared<RobotEkf>(config_);
+  }
 }
 
 void RobotStateEstimator::reset()
 {
   state_ = RobotEstimate();
   robot_geometry_evidence_ = false;
+  if (ekf_) {
+    ekf_->reset();
+  }
 }
 
 void RobotStateEstimator::update(
   const std::vector<RobotPlateObservation> & observations, double timestamp_s)
 {
+  if (ekf_) {
+    ekf_->update(observations, timestamp_s);
+    state_ = ekf_->state();
+    return;
+  }
   if (!std::isfinite(timestamp_s)) {
     return;
   }
@@ -323,6 +341,12 @@ const RobotEstimate * RobotStateBank::for_track(int track_id) const
     }
   }
   return nullptr;
+}
+
+int RobotStateBank::robot_id_for_track(int track_id) const
+{
+  const auto found = track_to_robot_.find(track_id);
+  return found == track_to_robot_.end() ? -1 : found->second;
 }
 
 std::size_t RobotStateBank::size() const { return entries_.size(); }

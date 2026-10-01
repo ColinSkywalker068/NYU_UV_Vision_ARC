@@ -208,6 +208,7 @@ set(YOLO_CPP_COMPONENT_SOURCES
   src/armor_detector_node.cpp
   src/armor_tracker_node.cpp
   src/robot_state_estimator.cpp
+  src/robot_ekf.cpp
   src/armor_processor_node.cpp
   src/aim_solver_node.cpp
   src/perception_node.cpp
@@ -422,6 +423,12 @@ if(BUILD_TESTING)
   find_package(ament_cmake_test REQUIRED)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
+  add_executable(armor_replay tools/armor_replay.cpp)
+  target_include_directories(armor_replay PUBLIC include ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(armor_replay yolo_cpp_components ${OpenCV_LIBS})
+  ament_target_dependencies(armor_replay rclcpp cv_auto_aim_interfaces)
+  install(TARGETS armor_replay RUNTIME DESTINATION lib/${PROJECT_NAME})
+
   # Exercise the actual bridge with virtual ports; no controller hardware is opened.
   ament_add_test(serial_bridge_reconnect
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_serial_reconnect.py
@@ -488,8 +495,11 @@ if(BUILD_TESTING)
   ament_add_gtest(test_robot_state_estimator
     test/test_robot_state_estimator.cpp
     src/robot_state_estimator.cpp
+    src/robot_ekf.cpp
   )
   if(TARGET test_robot_state_estimator)
+    target_link_libraries(test_robot_state_estimator ${OpenCV_LIBS})
+    target_include_directories(test_robot_state_estimator PUBLIC ${OpenCV_INCLUDE_DIRS})
     target_include_directories(test_robot_state_estimator PUBLIC
       $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
       $<INSTALL_INTERFACE:include>

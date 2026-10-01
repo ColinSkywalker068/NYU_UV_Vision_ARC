@@ -202,6 +202,10 @@ TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& de
       ++detection_index)
     {
       const auto& detection = enemy_detections[detection_index];
+      const auto & prior_observation = tracks_[track_index].observation;
+      if (prior_observation.class_id != detection.class_id ||
+        (prior_observation.armor_number >= 0 && detection.armor_number >= 0 &&
+         prior_observation.armor_number != detection.armor_number)) {continue;}
       if (tracks_[track_index].has_3d_state && detection.has_pose) {
         const double position_distance =
           distance_3d(tracks_[track_index].predicted_position, detection.position);

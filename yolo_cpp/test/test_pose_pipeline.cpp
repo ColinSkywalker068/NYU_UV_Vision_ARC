@@ -91,6 +91,38 @@ TEST(ModelProfile, AruwUsesBgrStretchWithCorrectCoordinateInverse)
   EXPECT_FLOAT_EQ(point.y, 400);
 }
 
+TEST(ModelProfile, AruwTracksKeypointRectangleInsteadOfContextBox)
+{
+  // An asymmetric context box must not move the centering point off the armor.
+  const std::array<float, 14> row{40,  50,  240, 180, 0.95, 4,   100,
+                                  130, 100, 100, 180, 100,  180, 130};
+  const auto result = parse_aruw_pose_tensor(row.data(), {1, 1, 14}, 640, 384, 0.5);
+  ASSERT_EQ(result.size(), 1U);
+  EXPECT_EQ(result[0].bbox_model, cv::Rect(100, 100, 80, 30));
+}
+
+TEST(ModelProfile, AruwDropsDuplicateQuadsButKeepsDistinctAdjacentPlates)
+{
+  const std::array<float, 14> first{100, 100, 180, 130, 0.95, 4,   100,
+                                    130, 100, 100, 180, 100,  180, 130};
+  auto duplicate = first;
+  duplicate[4] = 0.8;
+  duplicate[5] = 5;  // A conflicting number on the same physical quad is not a new plate.
+  auto neighbor = first;
+  neighbor[0] += 70;
+  neighbor[2] += 70;
+  for (int i = 6; i < 14; i += 2) {
+    neighbor[i] += 70;
+  }
+  std::vector<float> rows(first.begin(), first.end());
+  rows.insert(rows.end(), duplicate.begin(), duplicate.end());
+  rows.insert(rows.end(), neighbor.begin(), neighbor.end());
+  const auto result = parse_aruw_pose_tensor(rows.data(), {1, 3, 14}, 640, 384, 0.5);
+  ASSERT_EQ(result.size(), 2U);
+  EXPECT_EQ(result[0].armor_number, 7);
+  EXPECT_EQ(result[1].bbox_model.x, 170);
+}
+
 TEST(ProductionPosePipeline, CameraPanDoesNotCreateTargetMotionOrChangeAbsoluteCommand)
 {
   rclcpp::init(0, nullptr);

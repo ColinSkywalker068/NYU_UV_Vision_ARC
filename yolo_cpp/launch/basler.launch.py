@@ -280,18 +280,24 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Maximum inferred-center separation for plates on the same robot",
         ),
         ("robot_estimator_min_updates", "5", "Updates required before robot prediction"),
+        ("robot_estimator_use_ekf", "true", "Use uncertainty-aware center/phase/geometry estimation"),
+        ("actuator_delay_s", "0.0", "Measured actuator response delay; do not guess from packet rate"),
+        ("attitude_max_gap_ms", "50.0", "Maximum telemetry interpolation gap"),
+        ("camera_translation_m", "[0.0,0.0,0.0]", "Camera offset from gimbal pivot, metres in zero-attitude optical axes"),
+        ("camera_mount_yaw_pitch_roll", "[0.0,0.0,0.0]", "Camera mounting rotation in radians"),
+        ("attitude_receive_delay_s", "0.0", "Measured receive-to-sample delay of SP telemetry"),
         ("robot_estimator_coast_frames", "8", "Frames to predict through missing detections"),
         (
             "solver_output_mode",
             "absolute",
-            "Aim output mode: offset or absolute. Absolute adds STM attitude yaw/pitch.",
+            "Aim output mode: offset or absolute. Absolute uses the motion-compensated target frame.",
         ),
         (
             "default_bullet_speed_mps",
             "18.0",
             "Fallback bullet speed when STM feedback does not provide one",
         ),
-        ("solver_latency_s", "0.03", "Latency used by the 3D ballistic prediction"),
+        ("solver_latency_s", "0.0", "Residual transport delay added to measured frame age"),
         (
             "attitude_history_seconds",
             "1.0",
@@ -433,6 +439,10 @@ def make_tracker_node() -> Node:
         parameters=[
             {
                 "track_min_hits": launch_config("track_min_hits"),
+                "attitude_sync_tolerance_ms": launch_config("attitude_sync_tolerance_ms"),
+                "attitude_max_gap_ms": launch_config("attitude_max_gap_ms"),
+                "camera_translation_m": launch_config("camera_translation_m"),
+                "camera_mount_yaw_pitch_roll": launch_config("camera_mount_yaw_pitch_roll"),
                 "track_max_coast_frames": launch_config("track_max_coast_frames"),
                 "track_drop_frames": launch_config("track_drop_frames"),
                 "association_max_center_distance_ratio": launch_config(
@@ -464,6 +474,7 @@ def make_processor_node() -> Node:
             {
                 "target_frame": launch_config("processor_target_frame"),
                 "robot_estimator.enable": launch_config("robot_estimator_enable"),
+                "robot_estimator.use_ekf": launch_config("robot_estimator_use_ekf"),
                 "robot_estimator.armor_radius_m": launch_config("robot_armor_radius_m"),
                 "robot_estimator.armor_count": launch_config("robot_armor_count"),
                 "robot_estimator.center_gate_m": launch_config("robot_center_gate_m"),
@@ -502,6 +513,8 @@ def make_solver_node() -> Node:
                 "output_mode": launch_config("solver_output_mode"),
                 "default_bullet_speed_mps": launch_config("default_bullet_speed_mps"),
                 "solver_latency_s": launch_config("solver_latency_s"),
+                "actuator_delay_s": launch_config("actuator_delay_s"),
+                "attitude_max_gap_ms": launch_config("attitude_max_gap_ms"),
                 "attitude_history_seconds": launch_config("attitude_history_seconds"),
                 "attitude_sync_tolerance_ms": launch_config(
                     "attitude_sync_tolerance_ms"
@@ -524,6 +537,7 @@ def make_stm_bridge_node() -> Node:
             {
                 "transmit_enable": launch_config("transmit_enable"),
                 "receive_enable": launch_config("receive_enable"),
+                "attitude_receive_delay_s": launch_config("attitude_receive_delay_s"),
                 "command_output_mode": launch_config("solver_output_mode"),
                 "serial_port": launch_config("serial_port"),
                 "serial_baudrate": launch_config("serial_baudrate"),

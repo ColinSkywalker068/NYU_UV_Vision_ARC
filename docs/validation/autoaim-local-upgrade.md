@@ -25,7 +25,34 @@ ARUW's 2026 four-corner model is the first integration candidate. It has an expl
 
 CPU timings were measured in an ARM64 Linux Docker container with ONNX Runtime 1.22.1, two inference threads, on this Mac. They do not predict Jetson TensorRT latency. Results: [machine-readable smoke report](model-cpu-smoke-2026-09-30.json).
 
+Native Mac acceleration is now available through ONNX Runtime Core ML. On the M5,
+ARUW measured 5.09 ms median with GPU-enabled execution versus 8.96 ms native CPU;
+all 71 above-threshold outputs matched across 48 sampled frames. The diagnostic
+compute plan assigned most operations to GPU, with CPU fallback for output
+selection. See the [native benchmark](model-native-mac-2026-09-30.json) and
+[reproducible video replay guide](../../tools/model-eval/README.md). The replay runs
+the production C++ decoder/tracker and renders ordinary video files with corners,
+IDs, coasting and pixel error. It does not invent 3D commands from uncalibrated clips.
+
 ARUW's upstream `ColorImage` contract is **BGR**. Its model path resizes floating-point BGR directly to 640×384, without letterboxing. Our adapter deliberately uses that path. RobotPilots uses RGB, centered letterboxing with padding 124, and split color/type outputs. Treating either as our old two-class OBB model is incorrect.
+
+The ARUW adapter orders corners BL/TL/TR/BR and derives the tracked rectangle from
+their bounds, matching the upstream parser. A context box offset cannot move the
+centering point away from the predicted armor corners; this has a regression test.
+Public spin footage also exposed multiple model rows for one physical plate. The
+adapter removes near-identical same-color quads (IoU > 0.85), with a regression
+that preserves adjacent plates. Full replay still shows identity/selection churn
+on spin footage. Reducing duplicate proposals alone does not prove stable robot
+association; the image-only replay deliberately lacks calibrated 3D robot state.
+
+The current branch also contains an optional 11-state EKF for robot center,
+translation, phase, angular speed, radius and alternating plate geometry. It
+weights uncertain planar normals less strongly and retains direct tracking for a
+lone stationary plate. Processor defaults select it for ongoing branch testing;
+the baseline estimator remains available through `robot_estimator.use_ekf:=false`.
+Initial estimator and ROS pipeline regressions pass. Noisy projected-corner,
+multiple-robot and closed-loop actuator validation remain required before this
+branch is a deployment recommendation.
 
 Download pinned weights outside the repository:
 

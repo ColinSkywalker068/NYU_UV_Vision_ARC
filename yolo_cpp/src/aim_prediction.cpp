@@ -24,7 +24,11 @@ FutureArmor select_plate(const AimPredictionInput & in, double horizon, double m
     const double phase =
       r.phase_rad + r.angular_velocity_rad_s * horizon + 2 * kPi * slot / in.armor_count;
     const cv::Point3d n(std::sin(phase), 0, -std::cos(phase));
-    const auto p = center + n * in.armor_radius_m;
+    const bool alternate = in.armor_count == 4 && slot % 2;
+    auto p = center + n * (in.armor_radius_m + (alternate ? r.alternating_radius_m : 0));
+    if (alternate) {
+      p.y += r.alternating_height_m;
+    }
     const double score = -n.dot(p) / std::max(1e-9, cv::norm(p));
     const FutureArmor armor{{p.x, p.y, p.z}, {n.x, n.y, n.z}, slot};
     if (score > best_score) {

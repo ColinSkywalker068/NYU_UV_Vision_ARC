@@ -67,3 +67,10 @@ bool camera_pose_valid
 geometry_msgs/Pose camera_pose
 # Last real detection time. A prediction does not refresh this timestamp.
 int64 measurement_stamp_ns
+
+# Robot identity and learned alternating geometry (four-plate chassis only).
+int32 robot_track_id
+float32 alternating_radius_m
+float32 alternating_height_m
+float32 robot_phase_stddev_rad
+float32 robot_angular_speed_stddev_rad_s

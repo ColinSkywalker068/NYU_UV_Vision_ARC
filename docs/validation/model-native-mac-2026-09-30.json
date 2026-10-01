@@ -1,0 +1,499 @@
+{
+  "scope": "Native inference latency and output agreement; unlabeled, not accuracy or Jetson speed",
+  "model": "aruw-2026/5_12_icon_detector.onnx",
+  "model_sha256": "3af4e44cc66d0f2a29cb7912c9c8da4cdb902fccbc02df4f5b3c0d5847dcdefe",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "machine": "arm64",
+  "python": "3.12.14",
+  "onnxruntime": "1.30.0",
+  "numpy": "2.2.6",
+  "opencv": "4.12.0",
+  "available_providers": [
+    "CoreMLExecutionProvider",
+    "AzureExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "cpu_threads": 2,
+  "threshold": 0.5,
+  "frames": [
+    {
+      "clip": "demo.avi",
+      "frame": 6,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 55,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 61,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 75,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 78,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 92,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 228,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 243,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 315,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 351,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 366,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 405,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 451,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 452,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 496,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 513,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 568,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 587,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 605,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 613,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 620,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 630,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 657,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "demo.avi",
+      "frame": 671,
+      "decoded_clip_frames": 687
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 315,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 351,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 496,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 587,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 605,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 613,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 620,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 630,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 657,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 796,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 828,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 903,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 1043,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 1135,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 1138,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 1215,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 1322,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 1331,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 1364,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 1412,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 1569,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 1580,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 1634,
+      "decoded_clip_frames": 1684
+    },
+    {
+      "clip": "\u88c5\u7532\u677f.mp4",
+      "frame": 1682,
+      "decoded_clip_frames": 1684
+    }
+  ],
+  "results": [
+    {
+      "mode": "cpu",
+      "session_initialization_ms": 48.67820884101093,
+      "registered_providers": [
+        "CPUExecutionProvider"
+      ],
+      "frames": 48,
+      "median_inference_ms": 8.963707950897515,
+      "p95_inference_ms": 10.0335709634237,
+      "frames_with_detections": 43,
+      "detection_count": 71,
+      "blank_detections": 0,
+      "execution_profile": {
+        "kernel_events": {
+          "CPUExecutionProvider": 354
+        },
+        "operators": {
+          "CPUExecutionProvider": [
+            "Add",
+            "Cast",
+            "Concat",
+            "Conv",
+            "Div",
+            "Flatten",
+            "FusedConv",
+            "FusedMatMul",
+            "Gather",
+            "GatherElements",
+            "MaxPool",
+            "Mod",
+            "Mul",
+            "NhwcFusedConv",
+            "QuickGelu",
+            "ReduceMax",
+            "Reshape",
+            "Resize",
+            "Sigmoid",
+            "Softmax",
+            "Split",
+            "Sub",
+            "Tile",
+            "TopK",
+            "Transpose",
+            "Unsqueeze"
+          ]
+        }
+      },
+      "status": "completed"
+    },
+    {
+      "mode": "ALL",
+      "session_initialization_ms": 447.75795890018344,
+      "registered_providers": [
+        "CoreMLExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "frames": 48,
+      "median_inference_ms": 5.092541920021176,
+      "p95_inference_ms": 5.198723112698644,
+      "frames_with_detections": 43,
+      "detection_count": 71,
+      "blank_detections": 0,
+      "cpu_agreement": {
+        "matched_detections": 71,
+        "unmatched_cpu": 0,
+        "unmatched_accelerated": 0,
+        "max_score_difference": 3.2782554626464844e-06,
+        "max_corner_distance_model_pixels": 6.823938019806519e-05,
+        "p95_corner_distance_model_pixels": 4.31583721365314e-05,
+        "matching": "same class and box IoU >= 0.5; output rows may reorder"
+      },
+      "execution_profile": {
+        "kernel_events": {
+          "CoreMLExecutionProvider": 3,
+          "CPUExecutionProvider": 10
+        },
+        "operators": {
+          "CoreMLExecutionProvider": [
+            "18037223929844837429_CoreML_18037223929844837429_0",
+            "18037223929844837429_CoreML_18037223929844837429_1",
+            "18037223929844837429_CoreML_18037223929844837429_2"
+          ],
+          "CPUExecutionProvider": [
+            "Flatten",
+            "GatherElements",
+            "Mod",
+            "Tile",
+            "TopK",
+            "Unsqueeze"
+          ]
+        }
+      },
+      "status": "completed"
+    },
+    {
+      "mode": "CPUAndGPU",
+      "session_initialization_ms": 263.186875032261,
+      "registered_providers": [
+        "CoreMLExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "frames": 48,
+      "median_inference_ms": 5.091521074064076,
+      "p95_inference_ms": 5.198243667837232,
+      "frames_with_detections": 43,
+      "detection_count": 71,
+      "blank_detections": 0,
+      "cpu_agreement": {
+        "matched_detections": 71,
+        "unmatched_cpu": 0,
+        "unmatched_accelerated": 0,
+        "max_score_difference": 3.2782554626464844e-06,
+        "max_corner_distance_model_pixels": 6.823938019806519e-05,
+        "p95_corner_distance_model_pixels": 4.31583721365314e-05,
+        "matching": "same class and box IoU >= 0.5; output rows may reorder"
+      },
+      "execution_profile": {
+        "kernel_events": {
+          "CoreMLExecutionProvider": 3,
+          "CPUExecutionProvider": 10
+        },
+        "operators": {
+          "CoreMLExecutionProvider": [
+            "18037223929844837429_CoreML_18037223929844837429_0",
+            "18037223929844837429_CoreML_18037223929844837429_1",
+            "18037223929844837429_CoreML_18037223929844837429_2"
+          ],
+          "CPUExecutionProvider": [
+            "Flatten",
+            "GatherElements",
+            "Mod",
+            "Tile",
+            "TopK",
+            "Unsqueeze"
+          ]
+        }
+      },
+      "status": "completed"
+    },
+    {
+      "mode": "CPUAndNeuralEngine",
+      "session_initialization_ms": 282.90625009685755,
+      "registered_providers": [
+        "CoreMLExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "frames": 48,
+      "median_inference_ms": 7.999978959560394,
+      "p95_inference_ms": 16.24822723679244,
+      "frames_with_detections": 43,
+      "detection_count": 71,
+      "blank_detections": 0,
+      "cpu_agreement": {
+        "matched_detections": 71,
+        "unmatched_cpu": 0,
+        "unmatched_accelerated": 0,
+        "max_score_difference": 1.2218952178955078e-05,
+        "max_corner_distance_model_pixels": 6.291359750321135e-05,
+        "p95_corner_distance_model_pixels": 4.31583721365314e-05,
+        "matching": "same class and box IoU >= 0.5; output rows may reorder"
+      },
+      "execution_profile": {
+        "kernel_events": {
+          "CoreMLExecutionProvider": 3,
+          "CPUExecutionProvider": 10
+        },
+        "operators": {
+          "CoreMLExecutionProvider": [
+            "18037223929844837429_CoreML_18037223929844837429_0",
+            "18037223929844837429_CoreML_18037223929844837429_1",
+            "18037223929844837429_CoreML_18037223929844837429_2"
+          ],
+          "CPUExecutionProvider": [
+            "Flatten",
+            "GatherElements",
+            "Mod",
+            "Tile",
+            "TopK",
+            "Unsqueeze"
+          ]
+        }
+      },
+      "status": "completed"
+    },
+    {
+      "mode": "CPUOnly",
+      "session_initialization_ms": 272.20108290202916,
+      "registered_providers": [
+        "CoreMLExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "frames": 48,
+      "median_inference_ms": 8.052667020820081,
+      "p95_inference_ms": 8.25562053360045,
+      "frames_with_detections": 43,
+      "detection_count": 71,
+      "blank_detections": 0,
+      "cpu_agreement": {
+        "matched_detections": 71,
+        "unmatched_cpu": 0,
+        "unmatched_accelerated": 0,
+        "max_score_difference": 1.2218952178955078e-05,
+        "max_corner_distance_model_pixels": 6.291359750321135e-05,
+        "p95_corner_distance_model_pixels": 4.31583721365314e-05,
+        "matching": "same class and box IoU >= 0.5; output rows may reorder"
+      },
+      "execution_profile": {
+        "kernel_events": {
+          "CoreMLExecutionProvider": 3,
+          "CPUExecutionProvider": 10
+        },
+        "operators": {
+          "CoreMLExecutionProvider": [
+            "18037223929844837429_CoreML_18037223929844837429_0",
+            "18037223929844837429_CoreML_18037223929844837429_1",
+            "18037223929844837429_CoreML_18037223929844837429_2"
+          ],
+          "CPUExecutionProvider": [
+            "Flatten",
+            "GatherElements",
+            "Mod",
+            "Tile",
+            "TopK",
+            "Unsqueeze"
+          ]
+        }
+      },
+      "status": "completed"
+    }
+  ],
+  "chip": "Apple M5",
+  "compute_plan": {
+    "CoreML_GPU_operations": 397,
+    "CoreML_CPU_operations": 8,
+    "ONNX_Runtime_CPU_operations": 10,
+    "Neural_Engine_operations": 0,
+    "source": "ProfileComputePlan on ALL mode; dispatch estimates, not a hardware utilization trace"
+  }
+}

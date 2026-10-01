@@ -2,6 +2,7 @@
 #define YOLO_CPP__ROBOT_STATE_ESTIMATOR_HPP_
 
 #include <cstddef>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -23,10 +24,12 @@ struct RobotPlateObservation
   int track_id{-1};
   int armor_number{-1};
   int color_class{-1};
+  bool normal_reliable{true};
 };
 
 struct RobotEstimatorConfig
 {
+  bool use_ekf{false};
   double armor_radius_m{0.26};
   int armor_count{4};
   double position_alpha{0.65};
@@ -50,6 +53,11 @@ struct RobotEstimate
   Vector3d velocity;
   double phase_rad{0.0};
   double angular_velocity_rad_s{0.0};
+  double armor_radius_m{0.0};
+  double alternating_radius_m{0.0};
+  double alternating_height_m{0.0};
+  double phase_stddev_rad{0.0};
+  double angular_speed_stddev_rad_s{0.0};
   double timestamp_s{0.0};
   double last_observation_s{0.0};
   int update_count{0};
@@ -73,6 +81,7 @@ FutureArmor select_future_armor(
 
 /// Tracks a shared robot center and rotation phase across individual armor
 /// switches.
+class RobotEkf;
 class RobotStateEstimator
 {
 public:
@@ -87,6 +96,7 @@ private:
   RobotEstimatorConfig config_;
   RobotEstimate state_;
   bool robot_geometry_evidence_{false};
+  std::shared_ptr<RobotEkf> ekf_;
 };
 
 // Separate estimates for distinct robots; selecting another plate does not attach
@@ -97,6 +107,7 @@ public:
   explicit RobotStateBank(RobotEstimatorConfig config = RobotEstimatorConfig());
   void update(const std::vector<RobotPlateObservation> & observations, double timestamp_s);
   const RobotEstimate * for_track(int track_id) const;
+  int robot_id_for_track(int track_id) const;
   std::size_t size() const;
   void reset();
 

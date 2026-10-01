@@ -76,7 +76,9 @@ ArmorProcessorNode::ArmorProcessorNode(const rclcpp::NodeOptions& options)
     0.01, this->get_parameter("robot_estimator.armor_radius_m").as_double());
   robot_armor_count_ = std::max(
     1, static_cast<int>(this->get_parameter("robot_estimator.armor_count").as_int()));
+  robot_estimator_use_ekf_ = this->declare_parameter<bool>("robot_estimator.use_ekf", true);
   RobotEstimatorConfig estimator_config;
+  estimator_config.use_ekf = robot_estimator_use_ekf_;
   estimator_config.armor_radius_m = robot_armor_radius_m_;
   estimator_config.armor_count = robot_armor_count_;
   estimator_config.center_gate_m =
@@ -146,7 +148,7 @@ void ArmorProcessorNode::handle_tracks(
     // Anchor a new robot state to the selected plate. Once anchored, the center gate rejects
     // plates belonging to other robots while allowing multiple plates from this robot.
     for (const auto& track : msg->tracks) {
-      if (!track.has_pose || !track.armor.pose_normal_reliable || track.lost_frames != 0) {
+      if (!track.has_pose || (!track.armor.pose_normal_reliable && !robot_estimator_use_ekf_) || track.lost_frames != 0) {
         continue;
       }
       geometry_msgs::msg::Pose pose;
@@ -170,7 +172,7 @@ void ArmorProcessorNode::handle_tracks(
       }
       robot_observations.push_back({
         {pose.position.x, pose.position.y, pose.position.z}, normal, track.track_id,
-        track.armor.armor_number, track.armor.class_id});
+        track.armor.armor_number, track.armor.class_id, track.armor.pose_normal_reliable});
     }
     robot_estimator_->update(robot_observations, stamp.seconds());
   }
@@ -225,7 +227,12 @@ void ArmorProcessorNode::handle_tracks(
       target.robot_velocity.z = robot.velocity.z;
       target.robot_phase = static_cast<float>(robot.phase_rad);
       target.robot_angular_velocity = static_cast<float>(robot.angular_velocity_rad_s);
-      target.armor_radius = static_cast<float>(robot_armor_radius_m_);
+      target.robot_track_id = robot_estimator_->robot_id_for_track(target.track_id);
+      target.armor_radius = static_cast<float>(robot.armor_radius_m > 0 ? robot.armor_radius_m : robot_armor_radius_m_);
+      target.alternating_radius_m = robot.alternating_radius_m;
+      target.alternating_height_m = robot.alternating_height_m;
+      target.robot_phase_stddev_rad = robot.phase_stddev_rad;
+      target.robot_angular_speed_stddev_rad_s = robot.angular_speed_stddev_rad_s;
       target.armor_count = static_cast<uint8_t>(robot_armor_count_);
     }
     RCLCPP_INFO_THROTTLE(

@@ -152,3 +152,24 @@ TEST(TrackManagerTest, Uses3DGateWhenPoseIsAvailable)
     {make_detection_3d(104.0F, 122.0F, 0.9F, cv::Point3d(1.0, 0.0, 2.0))}, 1.0 / 60.0);
   ASSERT_EQ(result.tracks.size(), 2U);
 }
+
+TEST(TrackManagerTest, DifferentArmorNumbersDoNotSwapIdentitiesAtCrossing)
+{
+  yolo_cpp::TrackManager manager;
+  auto first = make_detection_3d(300, 240, 0.9, {-0.1, 0, 4});
+  auto second = make_detection_3d(340, 240, 0.9, {0.1, 0, 4});
+  first.armor_number = 3;
+  second.armor_number = 4;
+  auto before = manager.update({first, second}, 1.0/60);
+  ASSERT_EQ(before.tracks.size(), 2U);
+  const auto first_id = before.tracks[0].track_id;
+  const auto second_id = before.tracks[1].track_id;
+  std::swap(first.position, second.position);
+  std::swap(first.center, second.center);
+  const auto after = manager.update({first, second}, 1.0/60);
+  ASSERT_EQ(after.tracks.size(), 2U);
+  for (const auto & track : after.tracks) {
+    EXPECT_EQ(track.observation.armor_number, track.track_id == first_id ? 3 : 4);
+    EXPECT_TRUE(track.track_id == first_id || track.track_id == second_id);
+  }
+}

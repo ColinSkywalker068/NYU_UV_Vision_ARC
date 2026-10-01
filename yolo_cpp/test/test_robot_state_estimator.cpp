@@ -243,3 +243,56 @@ TEST(RobotStateEstimator, RejectedMeasurementsExpireConfirmationAndDuplicateTime
   }
   EXPECT_FALSE(estimator.state().model_confirmed);
 }
+
+TEST(RobotEkf, LearnsSpinWithNoisyNormalsAndAlternatingPlateGeometry)
+{
+  yolo_cpp::RobotEstimatorConfig config;
+  config.use_ekf = true;
+  RobotStateEstimator estimator(config);
+  std::mt19937 rng(846);
+  std::normal_distribution<double> noise(0, 0.005);
+  for (int frame = 0; frame < 600; ++frame) {
+    const double t = frame / 120.0;
+    std::vector<RobotPlateObservation> visible;
+    for (int slot = 0; slot < 4; ++slot) {
+      const double angle = 4 * t + slot * M_PI / 2;
+      if (std::cos(angle) < 0.2) {
+        continue;
+      }
+      auto p = plate(0.3 + 0.1 * t, 4.5, 4 * t, slot, slot + 1, slot % 2 ? 0.30 : 0.24);
+      p.position.x += noise(rng);
+      p.position.y = slot % 2 ? 0.06 : 0;
+      p.position.z += noise(rng);
+      p.normal_reliable = false;  // Conservative planar normal uncertainty.
+      visible.push_back(p);
+    }
+    estimator.update(frame % 31 < 3 ? std::vector<RobotPlateObservation>() : visible, t);
+  }
+  const auto & result = estimator.state();
+  EXPECT_TRUE(result.model_confirmed);
+  EXPECT_NEAR(result.center.x, 0.3 + 0.1 * 599 / 120.0, 0.06);
+  EXPECT_NEAR(result.center.z, 4.5, 0.06);
+  EXPECT_NEAR(result.velocity.x, 0.1, 0.15);
+  EXPECT_NEAR(result.angular_velocity_rad_s, 4, 0.4);
+  EXPECT_NEAR(result.armor_radius_m, 0.24, 0.04);
+  EXPECT_NEAR(result.alternating_radius_m, 0.06, 0.04);
+  EXPECT_NEAR(result.alternating_height_m, 0.06, 0.025);
+}
+
+TEST(RobotEkf, UncertainStationarySoloPlateNeverConfirmsRobotOrSpin)
+{
+  yolo_cpp::RobotEstimatorConfig config;
+  config.use_ekf = true;
+  RobotStateEstimator estimator(config);
+  std::mt19937 rng(777);
+  std::normal_distribution<double> noise(0, 0.06);
+  for (int frame = 0; frame < 600; ++frame) {
+    auto p = plate(0, 4, 0, 0, 1);
+    const double normal_error = noise(rng);
+    p.outward_normal = {std::sin(normal_error), 0, -std::cos(normal_error)};
+    p.normal_reliable = false;
+    estimator.update({p}, frame / 120.0);
+    EXPECT_FALSE(estimator.state().model_confirmed);
+  }
+  EXPECT_NEAR(estimator.state().angular_velocity_rad_s, 0, 0.3);
+}
