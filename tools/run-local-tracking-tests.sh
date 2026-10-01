@@ -15,6 +15,7 @@ docker run --rm -v "$repo:/ws/src/CV_Detection:ro" -v "$output:/ws/out" "$image"
   cd /ws/out
   colcon build --base-paths /ws/src/CV_Detection --packages-select cv_auto_aim_interfaces yolo_cpp --cmake-args -DBUILD_TESTING=ON
   source install/setup.bash
+  python3 /ws/src/CV_Detection/services/test_typec_link_ros.py
   colcon test --base-paths /ws/src/CV_Detection --packages-select yolo_cpp --return-code-on-test-failure
   colcon test-result --verbose
 '

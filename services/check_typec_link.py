@@ -27,14 +27,15 @@ def main():
 
     import rclpy
     from rclpy.node import Node
-    from rclpy.parameter_client import AsyncParameterClient
     from rcl_interfaces.msg import ParameterType
+    from rcl_interfaces.srv import GetParameters
     from cv_auto_aim_interfaces.msg import GimbalAttitude
 
     rclpy.init()
     node = Node(f"cv_typec_link_check_{os.getpid()}")
     deadline = time.monotonic() + args.timeout
-    client = AsyncParameterClient(node, "/stm32_serial_bridge_node")
+    # Use the standard service directly: Humble lacks rclpy.parameter_client.
+    client = node.create_client(GetParameters, "/stm32_serial_bridge_node/get_parameters")
     accepted = 0
     previous_stamp = 0
 
@@ -46,12 +47,14 @@ def main():
 
     subscription = node.create_subscription(GimbalAttitude, "/gimbal/attitude", receive, 10)
     try:
-        while not client.services_are_ready() and time.monotonic() < deadline:
+        while not client.service_is_ready() and time.monotonic() < deadline:
             rclpy.spin_once(node, timeout_sec=0.1)
-        if not client.services_are_ready():
+        if not client.service_is_ready():
             print("[stm-stack] Type C link FAILED: bridge parameter service unavailable")
             return 1
-        future = client.get_parameters(["receive_enable", "transmit_enable"])
+        request = GetParameters.Request()
+        request.names = ["receive_enable", "transmit_enable"]
+        future = client.call_async(request)
         while not future.done() and time.monotonic() < deadline:
             rclpy.spin_once(node, timeout_sec=0.1)
         if not future.done() or future.exception() is not None:
