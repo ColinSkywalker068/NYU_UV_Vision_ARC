@@ -50,7 +50,7 @@ The launch files expose the settings that matter most during bring-up:
 - target-frame capture through `save_target_frames`, `target_frame_save_max`, and `target_frame_jpeg_quality`; saved JPEGs and a CSV index go under `pictures/` next to `vision_logs/` by default
 - preview through `show` and `preview_max_fps`; use `show:=false` to disable preview rendering, `show:=gui` for the local OpenCV window, or `show:=web` for the browser preview
 - browser preview through `show:=web`, `preview_http_enabled`, `preview_http_bind_address`, `preview_http_port`, and `preview_http_jpeg_quality`; open `http://<robot-host>:8080/`, `/stream.mjpg`, `/snapshot.jpg`, or `/stats.json` from any same-network laptop without ROS
-- tracker tuning such as `track_min_hits`, `track_max_coast_frames`, and `track_drop_frames`; defaults favor fast armor-plate switching during spin
+- tracker tuning such as `track_min_hits`, `track_max_coast_frames`, `track_max_coast_s`, `track_drop_frames`, and `track_drop_s`; coasting is bounded by both elapsed time and missed frames
 - 3D pose through `enable_3d_pose`, `camera_info_topic`, `camera_frame_id`, and optional static `camera_fx/fy/cx/cy`
 - tracker 3D gating through `association_max_3d_distance_m`
 - processor frame selection through `processor_target_frame`
@@ -61,7 +61,24 @@ The launch files expose the settings that matter most during bring-up:
 
 The DeepStream template shipped with the package lives at [`config/deepstream_bestmerge_nvinfer.txt`](../config/deepstream_bestmerge_nvinfer.txt).
 
-The default tracker profile is tuned for fast rotating armor plates: `track_min_hits:=1`, `track_max_coast_frames:=1`, `track_drop_frames:=4`, `association_max_center_distance_ratio:=0.30`, `association_min_iou:=0.0`, `target_switch_min_score_delta:=0.02`, and `target_lock_hysteresis_frames:=0`. Increase the coast, lock, and score-delta values when you want steadier lock over faster switching.
+The default tracker profile bridges brief missed detections: `track_min_hits:=2`,
+`track_max_coast_frames:=6`, `track_max_coast_s:=0.12`, `track_drop_frames:=16`,
+`track_drop_s:=0.35`, `target_switch_min_score_delta:=0.08`, and
+`target_lock_hysteresis_frames:=6`. The first frame or time limit reached wins.
+Association gates remain `association_max_center_distance_ratio:=0.30`,
+`association_min_iou:=0.0`, and `association_max_3d_distance_m:=0.35`.
+Time-based 3D filtering uses `position_filter_tau_s:=0.035` and
+`velocity_filter_tau_s:=0.10`; zero disables the corresponding filter.
+The preview labels predicted targets **COASTING**. These predictions retain
+their last real measurement timestamp, and do not bypass the solver's 150 ms
+measurement-age cutoff or qualify for fire recommendations. See the
+[manual checks](../../docs/validation/autoaim-manual-checks.md#brief-detection-gaps-and-smoothing)
+for the tuning tradeoffs.
+
+`transmit_enable` is the sole TX configuration switch. `calibration_provisional`
+labels unmeasured camera intrinsics without overriding TX; it still blocks fire
+recommendations. Freshness, finite-value, absolute-output and protocol checks
+continue to reject invalid commands even with TX enabled.
 
 ## Basler High-FPS Source Formats
 
