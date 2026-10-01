@@ -8,7 +8,7 @@ Branch: `codex/autoaim-pose-tracking`. Work in progress; no robot has been conne
 - `gimbal/attitude` carries one receive timestamp assigned in the bridge, shared by tracker and solver. The SP wire has no device timestamp: this remains an estimate, not clock synchronization. `attitude_receive_delay_s` subtracts a measured fixed telemetry delay. A batched read publishes only its newest SP sample.
 - Tracker rotates the full PnP pose into `gimbal_inertial` before 3D association/filtering. X is right, Y down, Z forward at control zero; positive control yaw is right and pitch is up. Camera mounting rotation and translation belong in tracker extrinsics. This compensates gimbal rotation, not chassis translation; moving-chassis odometry is a remaining integration item.
 - Interpolation rejects telemetry gaps over 50 ms; edge extrapolation is limited to 30 ms and telemetry expires after 250 ms. Images require increasing, nonzero capture time. A coasted track retains its last actual measurement time.
-- Processor keeps separate robot estimates by geometric association plus known color/number. A lone stationary armor stays in direct-plate mode. It does not treat predicted/coasting plates as new measurements or smooth the tracker output a second time.
+- Processor keeps separate robot estimates by geometric association plus known color/number. A lone stationary armor stays in direct-plate mode. It does not treat predicted/coasting plates as new measurements. Direct-plate output does not receive another smoothing pass.
 - Solver consumes the already transformed position without adding camera attitude again. Prediction includes measured frame age, configured residual transport delay, flight time and a separately configured actuator delay. The reported slew time uses the sentry limits (120/60 deg/s and 360/240 deg/s² yaw/pitch); it is a rest-to-rest bound, not a measured motor-response guarantee.
 - Serial bridge consumes one atomic `aim_solution` message. Stale, future, replayed, nonfinite or offset commands are rejected. Separate legacy angle/override topics remain for previews; old serial-topic behavior requires explicit `use_legacy_command_topics:=true`.
 
@@ -64,7 +64,7 @@ The fetcher verifies expected size and Git blob hash, records SHA256, and inspec
 
 For ARUW evaluation set `model_type:=aruw_2026_pose`, `task:=pose`, `imgsz_width:=640`, `imgsz_height:=384`. Native TensorRT additionally requires BGR8 camera output. DeepStream requires pre-mux resizing off. Native TensorRT/CUDA/DeepStream execution has not yet been validated for this branch.
 
-PnP requires **real keypoints and calibration matching the source image resolution**. Box-derived corners and guessed FOV intrinsics are insufficient for robot-state estimation. Poor/degenerate quadrilaterals, negative depth, excessive range and large reprojection error are rejected. Ambiguous planar normals cannot confirm a spinning robot, although usable position can still support direct-plate tracking.
+PnP requires **real keypoints and calibration matching the source image resolution**. Box-derived corners and guessed FOV intrinsics are insufficient for robot-state estimation. Poor/degenerate quadrilaterals, negative depth, excessive range and large reprojection error are rejected. Ambiguous planar normals receive greater uncertainty in the EKF; the baseline excludes them. A single ambiguous measurement cannot establish spin, although usable position can still support direct-plate tracking.
 
 ## Safety and deployment
 

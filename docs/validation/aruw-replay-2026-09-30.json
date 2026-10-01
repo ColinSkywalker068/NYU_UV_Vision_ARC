@@ -1,0 +1,98 @@
+{
+  "source": "Pinned public Tongji/RobotPilots videos; native ARUW inference, production C++ decoder and TrackManager",
+  "ground_truth_available": false,
+  "calibrated_pose_available": false,
+  "scope": "Image-space replay; no motor or fire outputs. Changes in ID counts are not identity error rates.",
+  "before_duplicate_filter": {
+    "tongji-demo": {
+      "frames": 687,
+      "frames_with_detections": 421,
+      "frames_with_selection": 505,
+      "distinct_plate_track_ids": 47,
+      "selected_id_changes": 78,
+      "coasting_track_frames": 159,
+      "scope": "No ground truth: ID changes include legitimate plate switches and cannot be called identity errors"
+    },
+    "robotpilots-far-translation": {
+      "frames": 1546,
+      "frames_with_detections": 1536,
+      "frames_with_selection": 1545,
+      "distinct_plate_track_ids": 1,
+      "selected_id_changes": 0,
+      "coasting_track_frames": 9,
+      "scope": "No ground truth: ID changes include legitimate plate switches and cannot be called identity errors"
+    },
+    "robotpilots-medium-spin": {
+      "frames": 2550,
+      "frames_with_detections": 2547,
+      "frames_with_selection": 2550,
+      "distinct_plate_track_ids": 31,
+      "selected_id_changes": 735,
+      "coasting_track_frames": 489,
+      "scope": "No ground truth: ID changes include legitimate plate switches and cannot be called identity errors"
+    },
+    "robotpilots-near-height-spin": {
+      "frames": 2111,
+      "frames_with_detections": 2108,
+      "frames_with_selection": 2111,
+      "distinct_plate_track_ids": 84,
+      "selected_id_changes": 365,
+      "coasting_track_frames": 370,
+      "scope": "No ground truth: ID changes include legitimate plate switches and cannot be called identity errors"
+    }
+  },
+  "after_duplicate_filter": {
+    "tongji-demo": {
+      "frames": 687,
+      "frames_with_detections": 421,
+      "frames_with_selection": 505,
+      "distinct_plate_track_ids": 47,
+      "selected_id_changes": 74,
+      "coasting_track_frames": 157,
+      "scope": "No ground truth: ID changes include legitimate plate switches and cannot be called identity errors",
+      "fps": 30.0,
+      "video_sha256": "20d518e69b917a7d50d4548c628e69083a57aa3c7fb40582aa9e353f569a9d45",
+      "model_sha256": "3af4e44cc66d0f2a29cb7912c9c8da4cdb902fccbc02df4f5b3c0d5847dcdefe",
+      "median_inference_ms": 4.8260834300890565
+    },
+    "robotpilots-far-translation": {
+      "frames": 1546,
+      "frames_with_detections": 1536,
+      "frames_with_selection": 1545,
+      "distinct_plate_track_ids": 1,
+      "selected_id_changes": 0,
+      "coasting_track_frames": 9,
+      "scope": "No ground truth: ID changes include legitimate plate switches and cannot be called identity errors",
+      "fps": 150.0,
+      "video_sha256": "b187d826b22f4b945b21bbcc4781204c893ac3b7bdc825fe80479b2240dd128d",
+      "model_sha256": "3af4e44cc66d0f2a29cb7912c9c8da4cdb902fccbc02df4f5b3c0d5847dcdefe",
+      "median_inference_ms": 6.092292023822665
+    },
+    "robotpilots-medium-spin": {
+      "frames": 2550,
+      "frames_with_detections": 2547,
+      "frames_with_selection": 2550,
+      "distinct_plate_track_ids": 105,
+      "selected_id_changes": 385,
+      "coasting_track_frames": 362,
+      "scope": "No ground truth: ID changes include legitimate plate switches and cannot be called identity errors",
+      "fps": 150.0,
+      "video_sha256": "44f35d11cebd2030fd97cc70269a6f5f135f12a87dc5b163b0ff4e9b21ec3d8a",
+      "model_sha256": "3af4e44cc66d0f2a29cb7912c9c8da4cdb902fccbc02df4f5b3c0d5847dcdefe",
+      "median_inference_ms": 6.154208909720182
+    },
+    "robotpilots-near-height-spin": {
+      "frames": 2111,
+      "frames_with_detections": 2108,
+      "frames_with_selection": 2111,
+      "distinct_plate_track_ids": 67,
+      "selected_id_changes": 352,
+      "coasting_track_frames": 345,
+      "scope": "No ground truth: ID changes include legitimate plate switches and cannot be called identity errors",
+      "fps": 150.0,
+      "video_sha256": "65d15d2897083be1e703d7d7f8c2e7d19db38ce0a711eab6a80743fb552abc06",
+      "model_sha256": "3af4e44cc66d0f2a29cb7912c9c8da4cdb902fccbc02df4f5b3c0d5847dcdefe",
+      "median_inference_ms": 5.74250053614378
+    }
+  }
+}

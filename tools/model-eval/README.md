@@ -123,6 +123,10 @@ The public spin replay exposed duplicate rows for the same plate even with the
 end-to-end head. The adapter suppresses same-color quadrilaterals only when their
 intersection-over-union exceeds 0.85, keeping the highest confidence. A regression
 test checks duplicates disappear while neighboring plates remain separate.
+The [four-clip replay report](../../docs/validation/aruw-replay-2026-09-30.json)
+preserves both before/after counts, including cases where the number of track IDs
+increased. Spin identity churn remains unresolved; fewer selected-ID changes are
+not proof of more accurate association.
 
 Reference: [ARUW parser](https://gitlab.com/aruw/vision/project-otto/-/blob/154035fc34ffb34f99120ffa8e8a2bb098bc6306/project_otto/target_detector/_target_detector.py),
 [Core ML execution provider](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html).

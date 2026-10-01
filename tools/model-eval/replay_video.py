@@ -119,6 +119,7 @@ def render(args):
             last_selected = selected
         selection_text = "No confirmed selected plate"
         visible = []
+        label_boxes = []
         for track in result["tracks"]:
             seen_ids.add(track["id"])
             # Lost tracks beyond publication coast limit remain internal only.
@@ -146,7 +147,20 @@ def render(args):
                 label += " COAST"
             elif track["state"] == 0:
                 label += " NEW"
-            cv2.putText(canvas, label, (max(2, x - 60), max(20, y - 18)), cv2.FONT_HERSHEY_SIMPLEX, .45, color, 1, cv2.LINE_AA)
+            (label_width, label_height), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, .45, 1)
+            label_x = min(max(2, x - 60), w - label_width - 4)
+            label_y = max(label_height + 4, y - 18)
+            for _ in range(12):
+                box = (label_x - 2, label_y - label_height - 3, label_x + label_width + 2, label_y + baseline + 2)
+                overlap = any(box[0] < b[2] and box[2] > b[0] and box[1] < b[3] and box[3] > b[1]
+                              for b in label_boxes)
+                if not overlap:
+                    break
+                label_y = max(label_height + 4, label_y - 22)
+            label_boxes.append(box)
+            cv2.line(canvas, (x, y), (label_x + label_width // 2, label_y + baseline), color, 1, cv2.LINE_AA)
+            cv2.rectangle(canvas, box[:2], box[2:], (12, 12, 12), -1)
+            cv2.putText(canvas, label, (label_x, label_y), cv2.FONT_HERSHEY_SIMPLEX, .45, color, 1, cv2.LINE_AA)
             if track["id"] == selected:
                 cv2.arrowedLine(canvas, center, (x, y), (70, 240, 120), 2, cv2.LINE_AA, tipLength=.08)
                 dx, dy = track["center"][0] - w / scale / 2, track["center"][1] - h / scale / 2
