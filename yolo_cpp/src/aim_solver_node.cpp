@@ -70,6 +70,11 @@ AimSolverNode::AimSolverNode(const rclcpp::NodeOptions& options)
     this->get_parameter("publish_zero_angles_when_no_target").as_bool();
   enable_fire_recommendation_ =
     this->get_parameter("enable_fire_recommendation").as_bool();
+  if (this->declare_parameter<bool>("calibration_provisional", false)) {
+    enable_fire_recommendation_ = false;
+    this->set_parameter(rclcpp::Parameter("enable_fire_recommendation", false));
+    RCLCPP_WARN(this->get_logger(), "UNCALIBRATED preview: fire recommendations locked off");
+  }
   default_image_width_ = this->get_parameter("default_image_width").as_int();
   default_image_height_ = this->get_parameter("default_image_height").as_int();
   target_topic_ = this->get_parameter("target_topic").as_string();

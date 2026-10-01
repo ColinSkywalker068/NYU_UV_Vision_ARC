@@ -5,6 +5,7 @@
 
 #include "yolo_cpp/aim_geometry.hpp"
 #include "yolo_cpp/aim_prediction.hpp"
+#include "yolo_cpp/preview_geometry.hpp"
 
 using namespace yolo_cpp;
 
@@ -150,4 +151,13 @@ TEST(AimPrediction, InvalidConfigurationAndRobotStateNeverProduceCommands)
   in.robot.alternating_radius_m = -.4;
   EXPECT_FALSE(predict_aim(in, {}).valid);
   EXPECT_TRUE(std::isinf(minimum_slew_time(.1, nan, 4)));
+}
+
+TEST(PreviewFreshness, RejectsQueuedStaleFutureAndMissingSamples)
+{
+  EXPECT_TRUE(preview_sample_fresh(1000000000, 1010000000));
+  EXPECT_TRUE(preview_sample_fresh(1000000000, 1250000000));
+  EXPECT_FALSE(preview_sample_fresh(1000000000, 1250000001));
+  EXPECT_FALSE(preview_sample_fresh(1000000001, 1000000000));
+  EXPECT_FALSE(preview_sample_fresh(0, 0));
 }

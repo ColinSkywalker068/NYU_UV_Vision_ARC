@@ -259,6 +259,7 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Calibrated static camera fy; no PnP without valid intrinsics",
         ),
         ("camera_cx", "0.0", "Optional static camera cx"),
+        ("calibration_provisional", "false", "Label guessed intrinsics and lock controller TX/fire off"),
         ("camera_cy", "0.0", "Optional static camera cy"),
         ("camera_calibration_width", "0", "Static calibration image width; required with static intrinsics"),
         ("camera_calibration_height", "0", "Static calibration image height; required with static intrinsics"),
@@ -425,6 +426,7 @@ def make_detector_node() -> Node:
                 "camera_frame_id": launch_config("camera_frame_id"),
                 "camera_info_topic": launch_config("camera_info_topic"),
                 "camera_fx": launch_config("camera_fx"),
+                "calibration_provisional": launch_config("calibration_provisional"),
                 "camera_fy": launch_config("camera_fy"),
                 "camera_cx": launch_config("camera_cx"),
                 "camera_cy": launch_config("camera_cy"),
@@ -541,6 +543,7 @@ def make_solver_node() -> Node:
                 "default_image_height": launch_config("basler_height"),
                 "target_topic": "processor/target",
                 "use_3d_solution": launch_config("use_3d_solution"),
+                "calibration_provisional": launch_config("calibration_provisional"),
                 "output_mode": launch_config("solver_output_mode"),
                 "default_bullet_speed_mps": launch_config("default_bullet_speed_mps"),
                 "solver_latency_s": launch_config("solver_latency_s"),
@@ -572,6 +575,7 @@ def make_stm_bridge_node() -> Node:
         parameters=[
             {
                 "transmit_enable": launch_config("transmit_enable"),
+                "calibration_provisional": launch_config("calibration_provisional"),
                 "receive_enable": launch_config("receive_enable"),
                 "attitude_receive_delay_s": launch_config("attitude_receive_delay_s"),
                 "command_output_mode": launch_config("solver_output_mode"),

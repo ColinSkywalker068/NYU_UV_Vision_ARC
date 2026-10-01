@@ -40,6 +40,12 @@ class LaunchParameters(unittest.TestCase):
         self.assertEqual(p["conf"], 0.5)
         self.assertFalse(p["pre_mux_resize"])
 
+    def test_provisional_calibration_reaches_every_safety_consumer(self):
+        self.context.launch_configurations["calibration_provisional"] = "true"
+        for factory in (self.launch.make_detector_node, self.launch.make_solver_node,
+                        self.launch.make_stm_bridge_node):
+            self.assertTrue(self.parameters(factory)["calibration_provisional"])
+
     def test_preview_defaults_and_controller_limits(self):
         bridge = self.parameters(self.launch.make_stm_bridge_node)
         solver = self.parameters(self.launch.make_solver_node)

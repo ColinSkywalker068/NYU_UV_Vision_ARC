@@ -35,7 +35,8 @@ class SerialReconnectTest(unittest.TestCase):
         self.port = self.root / "controller"
         self.master = None
         self.send_valid_solution = True
-        self.tx_enabled = self._testMethodName == "test_atomic_solution_rejects_stale_offset_and_replay"
+        self.provisional = self._testMethodName == "test_provisional_calibration_locks_tx_even_when_requested"
+        self.tx_enabled = self.provisional or self._testMethodName == "test_atomic_solution_rejects_stale_offset_and_replay"
         self.outbound = bytearray()
         self.samples = []
         self.log_path = self.root / "bridge.log"
@@ -54,6 +55,7 @@ class SerialReconnectTest(unittest.TestCase):
         self.bridge = subprocess.Popen(
             [BRIDGE, "--ros-args", "-p", f"serial_port:={self.port}",
              "-p", "receive_enable:=true", "-p", f"transmit_enable:={str(self.tx_enabled).lower()}",
+             "-p", f"calibration_provisional:={str(self.provisional).lower()}",
              "-p", f"runtime_log_dir:={self.root}"],
             stdout=self.log_file, stderr=subprocess.STDOUT,
         )
@@ -159,6 +161,18 @@ class SerialReconnectTest(unittest.TestCase):
         self.assertEqual(self.outbound, b"", "TX disabled must remain silent after reconnect")
         for log in self.root.glob("vision_serial_runtime_*.log"):
             self.assertNotIn("kind=serial_tx", log.read_text())
+
+    def test_provisional_calibration_locks_tx_even_when_requested(self):
+        self.attach()
+        self.await_attitude(0.4, -0.1)
+        self.spin_for(0.5, attitude_packet(0.4, -0.1))
+        self.assertEqual(self.outbound, b"", "guessed calibration must never transmit")
+        self.assertIn("controller TX locked off", self.log_path.read_text())
+        self.detach()
+        self.spin_for(1.4)
+        self.attach()
+        self.await_attitude(0.5, -0.2)
+        self.assertEqual(self.outbound, b"", "reconnect must retain provisional TX lock")
 
     def test_atomic_solution_rejects_stale_offset_and_replay(self):
         self.attach()

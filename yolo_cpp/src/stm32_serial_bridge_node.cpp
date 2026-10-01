@@ -557,6 +557,12 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
   this->declare_parameter<bool>("transmit_angles_in_degrees", false);
 
   transmit_enable_ = this->get_parameter("transmit_enable").as_bool();
+  if (this->declare_parameter<bool>("calibration_provisional", false)) {
+    // Provisional intrinsics are for observation only, even if TX is requested.
+    transmit_enable_ = false;
+    this->set_parameter(rclcpp::Parameter("transmit_enable", false));
+    RCLCPP_WARN(this->get_logger(), "UNCALIBRATED preview: controller TX locked off");
+  }
   serial_verbose_ = this->get_parameter("serial_verbose").as_bool();
   runtime_log_dir_ = this->get_parameter("runtime_log_dir").as_string();
   fire_mode_ = this->get_parameter("fire_mode").as_int();

@@ -19,6 +19,8 @@
 #include <vector>
 
 #include "cv_auto_aim_interfaces/msg/armors.hpp"
+#include "cv_auto_aim_interfaces/msg/aim_solution.hpp"
+#include "cv_auto_aim_interfaces/msg/gimbal_attitude.hpp"
 #include "cv_auto_aim_interfaces/msg/target.hpp"
 #include "yolo_cpp/camera_backend.hpp"
 #include "yolo_cpp/deepstream_runtime.hpp"
@@ -192,22 +194,25 @@ private:
   std::chrono::steady_clock::time_point last_preview_render_time_{};
   bool have_last_preview_render_time_{false};
   std::mutex state_mutex_;
-  rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr preview_command_subscription_;
-  rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr preview_attitude_subscription_;
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr preview_override_subscription_;
-  std::chrono::steady_clock::time_point preview_command_time_{};
-  std::chrono::steady_clock::time_point preview_attitude_time_{};
-  std::chrono::steady_clock::time_point preview_override_time_{};
+  rclcpp::Subscription<cv_auto_aim_interfaces::msg::AimSolution>::SharedPtr preview_command_subscription_;
+  rclcpp::Subscription<cv_auto_aim_interfaces::msg::GimbalAttitude>::SharedPtr preview_attitude_subscription_;
+  std::int64_t preview_command_stamp_ns_{0};
+  std::int64_t preview_attitude_stamp_ns_{0};
+  std::int64_t preview_target_stamp_ns_{0};
   bool preview_command_valid_{false};
   bool preview_attitude_valid_{false};
-  bool preview_override_{false};
+  bool preview_attitude_source_timestamped_{false};
+  bool preview_command_used_3d_{false};
+  std::string preview_solver_status_{"waiting for solver"};
   bool preview_command_is_offset_{false};
   bool preview_absolute_error_arrow_{false};
   bool preview_transmit_enabled_{false};
+  bool calibration_provisional_{false};
   float preview_command_yaw_{0.0F};
   float preview_command_pitch_{0.0F};
   float preview_attitude_yaw_{0.0F};
   float preview_attitude_pitch_{0.0F};
+  float preview_attitude_roll_{0.0F};
 
   CameraConfig camera_config_;
   std::string model_path_;

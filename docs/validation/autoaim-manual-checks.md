@@ -124,6 +124,38 @@ on the host device, then open `http://127.0.0.1:18080/`. Substitute the verified
 wireless hostname/IP to tunnel over Wi-Fi. The preview is not an acknowledgment
 that any packet was transmitted or accepted.
 
+## Uncalibrated preview for development
+
+When measured intrinsics are unavailable, an operator can explicitly supply
+**provisional** values to exercise PnP, tracking and solver output. These are
+not calibration or evidence of accurate range, heading, spin, or motor response.
+Keep `calibration_provisional:=true` with every such configuration. The field
+launch passes this flag to the detector, solver and bridge: it labels the
+preview, forces fire recommendations off, and locks controller transmission off
+even if `transmit_enable:=true` is accidentally requested. RX remains available.
+The lock is applied when nodes start; save the env and run `cv restart`.
+
+For the 1920x1200 full-sensor Basler development setup, the temporary assumption
+is a 79.2-degree horizontal FOV, square pixels and a centered principal point:
+
+```text
+calibration_provisional:=true camera_fx:=1160.440656 camera_fy:=1160.440656 camera_cx:=960.0 camera_cy:=600.0 camera_calibration_width:=1920 camera_calibration_height:=1200 camera_distortion:=[0.0,0.0,0.0,0.0,0.0] hfov_degrees:=79.2 vfov_degrees:=54.681993
+```
+
+The focal length above is `1920 / (2*tan(79.2 degrees/2))`; FOV and zero
+distortion are assumptions, not manufacturer calibration. The existing object
+point templates are 135x55 mm (small) and 225x55 mm (large); check that the
+model's four corners correspond to these light-bar endpoints, not the full
+outer plate. Those sizes do not determine lens focal length or distortion.
+Do not copy this temporary camera profile to a different lens, ROI or resolution.
+Replace it with measured intrinsics before removing the provisional lock.
+
+The live overlay uses yellow for image-center-to-plate pixel error, magenta for
+model keypoints, and cyan for actual atomic `aim_solution` command error. A
+blocked solver displays its exact rejection reason. A fresh attitude label
+reports receive age and whether time comes from the host or MCU. Pixel error
+can remain visible while 3D solving is blocked; it is not a controller command.
+
 ## Calibration and timing before 3D claims
 
 Provide a valid `camera_info` topic for the **actual source image**, or configure
