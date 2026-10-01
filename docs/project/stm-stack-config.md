@@ -183,6 +183,33 @@ When a setting should become the documented team default, update
 credentials, private keys, or machine tokens. The live Git-ignored `services/stm-stack.env` remains the
 runtime source of truth for an individual robot.
 
+## USB disconnect recovery
+
+Set `CV_STM_SERIAL_PORT` to the controller's `/dev/serial/by-id/...` path.
+A `/dev/ttyACM0` name can change after unplugging; the stable identity lets the
+bridge reopen the same controller even when Linux assigns a different number.
+The service mounts the host device directory so newly enumerated ports remain
+visible inside its container.
+
+The bridge detects USB hangups and fatal read/write errors, closes the old
+connection, and retries once per second. It also retries when the controller is
+absent at startup. Partial packets and queued input are discarded between
+connections; commands are not queued for replay. Reconnecting preserves the
+saved `transmit_enable` setting. With TX enabled, fresh commands can resume as
+soon as the link recovers: use `transmit_enable:=false` before recovery tests.
+
+`cv logs` reports disconnect/reconnect events and warns after two seconds
+without valid SP/ST telemetry, then every five seconds. A port that opens
+without telemetry can still indicate a controller stream or protocol problem;
+reopening a port does not guarantee recovery of a stalled controller.
+Fresh attitude is required for the absolute-command preview. Fire development
+remains disabled with `enable_fire_recommendation:=false`.
+
+The virtual-port regression is included in
+`colcon test --packages-select yolo_cpp`. It covers a missing startup port,
+repeated unplug/replug, CRC rejection, partial-frame isolation, silence
+warnings, and zero emitted bytes with TX disabled. It opens no robot hardware.
+
 ## Editing over wireless VS Code SSH
 
 For Orin2, connect VS Code Remote SSH to `jetson-orin2-wifi`

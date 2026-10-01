@@ -417,6 +417,16 @@ install(
 if(BUILD_TESTING)
   find_package(ament_cmake_clang_format REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_test REQUIRED)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+  # Exercise the actual bridge with virtual ports; no controller hardware is opened.
+  ament_add_test(serial_bridge_reconnect
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_serial_reconnect.py
+      --bridge $<TARGET_FILE:stm32_serial_bridge>
+    TIMEOUT 60
+    GENERATE_RESULT_FOR_RETURN_CODE_ZERO
+  )
 
   # The legacy source tree predates the ROS formatting profile. Keep the new standalone tracking
   # core formatted without turning this feature branch into a repository-wide style rewrite.

@@ -4,6 +4,7 @@
 #include "yolo_cpp/stm32_serial_bridge_node.hpp"
 
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
@@ -288,6 +289,8 @@ public:
 
   bool connect()
   {
+    close();
+    next_connect_attempt_ = std::chrono::steady_clock::now() + std::chrono::seconds(1);
     // The bridge stays alive without a serial device so vision can be tested on dev machines.
     fd_ = ::open(port_.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (fd_ < 0) {
@@ -323,7 +326,17 @@ public:
       return false;
     }
 
+    // Discard bytes queued before this connection; new telemetry must be fresh.
+    if (tcflush(fd_, TCIFLUSH) != 0) {
+      RCLCPP_WARN(logger_, "tcflush failed for %s: %s", port_.c_str(), std::strerror(errno));
+      close();
+      return false;
+    }
+
     connected_ = true;
+    last_valid_rx_ = std::chrono::steady_clock::now();
+    next_rx_warning_ = last_valid_rx_ + std::chrono::seconds(2);
+    session_rx_bytes_ = 0;
     RCLCPP_INFO(logger_, "STM32 serial connected: %s @ %d baud", port_.c_str(), baudrate_);
     return true;
   }
@@ -341,8 +354,15 @@ public:
     const auto bytes_written =
       ::write(fd_, reinterpret_cast<const char*>(packet.data()), packet.size());
     if (bytes_written < 0) {
-      connected_ = false;
-      RCLCPP_WARN(logger_, "Serial write error: %s", std::strerror(errno));
+      const int error = errno;
+      if (error != EAGAIN && error != EWOULDBLOCK && error != EINTR) {
+        disconnect("write", error);
+      }
+      return false;
+    }
+    if (static_cast<std::size_t>(bytes_written) != packet.size()) {
+      RCLCPP_WARN(logger_, "Incomplete serial write: %ld/%zu bytes; dropping command",
+        static_cast<long>(bytes_written), packet.size());
       return false;
     }
     ++message_count_;
@@ -358,11 +378,44 @@ public:
   std::vector<AttitudeFrame> read_attitude_frames()
   {
     if (!connected_ || fd_ < 0) {
+      if (std::chrono::steady_clock::now() < next_connect_attempt_ || !connect()) {
+        return {};
+      }
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= next_rx_warning_) {
+      const double idle_seconds = std::chrono::duration<double>(now - last_valid_rx_).count();
+      RCLCPP_WARN(logger_, "Serial open but no valid SP/ST telemetry for %.1f seconds "
+        "(%zu bytes this session); check controller stream/protocol", idle_seconds, session_rx_bytes_);
+      next_rx_warning_ = now + std::chrono::seconds(5);
+    }
+
+    // A removed USB device can keep a valid-looking fd with no available bytes.
+    // Check hangup/error events before FIONREAD, then reopen the stable by-id path.
+    pollfd port_state{fd_, POLLIN, 0};
+    const int poll_result = ::poll(&port_state, 1, 0);
+    if (poll_result < 0) {
+      if (errno != EINTR) {
+        disconnect("poll", errno);
+      }
+      return {};
+    }
+    if (port_state.revents & (POLLHUP | POLLERR | POLLNVAL)) {
+      disconnect("USB hangup", 0);
+      return {};
+    }
+    if (!(port_state.revents & POLLIN)) {
       return {};
     }
 
     int available_bytes = 0;
-    if (ioctl(fd_, FIONREAD, &available_bytes) != 0 || available_bytes <= 0) {
+    if (ioctl(fd_, FIONREAD, &available_bytes) != 0) {
+      if (errno != EINTR) {
+        disconnect("FIONREAD", errno);
+      }
+      return {};
+    }
+    if (available_bytes <= 0) {
       return {};
     }
 
@@ -370,12 +423,24 @@ public:
     rx_buffer_.resize(old_size + static_cast<std::size_t>(available_bytes));
     const auto bytes_read =
       ::read(fd_, rx_buffer_.data() + old_size, static_cast<std::size_t>(available_bytes));
+    const int read_error = errno;
     if (bytes_read <= 0) {
       rx_buffer_.resize(old_size);
+      if (bytes_read == 0) {
+        disconnect("read EOF", 0);
+      } else if (read_error != EAGAIN && read_error != EWOULDBLOCK && read_error != EINTR) {
+        disconnect("read", read_error);
+      }
       return {};
     }
     rx_buffer_.resize(old_size + static_cast<std::size_t>(bytes_read));
-    return parse_sp_st_frames(rx_buffer_);
+    session_rx_bytes_ += static_cast<std::size_t>(bytes_read);
+    auto frames = parse_sp_st_frames(rx_buffer_);
+    if (!frames.empty()) {
+      last_valid_rx_ = std::chrono::steady_clock::now();
+      next_rx_warning_ = last_valid_rx_ + std::chrono::seconds(2);
+    }
+    return frames;
   }
 
   void close()
@@ -385,9 +450,19 @@ public:
       fd_ = -1;
     }
     connected_ = false;
+    // Never combine an incomplete frame from one USB session with the next.
+    rx_buffer_.clear();
   }
 
 private:
+  void disconnect(const char* operation, int error)
+  {
+    RCLCPP_WARN(logger_, "Serial disconnected (%s%s%s); retrying %s in 1 second",
+      operation, error ? ": " : "", error ? std::strerror(error) : "", port_.c_str());
+    close();
+    next_connect_attempt_ = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  }
+
   rclcpp::Logger logger_;
   std::string port_;
   int baudrate_{115200};
@@ -396,6 +471,10 @@ private:
   bool connected_{false};
   int message_count_{0};
   std::vector<uint8_t> rx_buffer_;
+  std::chrono::steady_clock::time_point next_connect_attempt_{};
+  std::chrono::steady_clock::time_point last_valid_rx_{};
+  std::chrono::steady_clock::time_point next_rx_warning_{};
+  std::size_t session_rx_bytes_{0};
 };
 
 constexpr char kVisionLogDirName[] = "vision_logs";
