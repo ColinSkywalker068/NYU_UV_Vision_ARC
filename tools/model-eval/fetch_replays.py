@@ -25,6 +25,8 @@ ITEMS = [
                         "cd66b5e97f8028861acc71909eb3acf4f7f5c5d9"),
     fetcher.github_item(RP, REV, "测试视频/远距离平移.avi", "robotpilots-far-translation.avi", 53402968,
                         "074c54bb948cf9266a544b22a528f92461fa92d0"),
+    fetcher.github_item(RP, REV, "测试视频/远处旋转平移.avi", "robotpilots-far-translation-spin.avi", 64943384,
+                        "179877635e773d596e35550a25849d3b3c3989cb"),
 ]
 
 

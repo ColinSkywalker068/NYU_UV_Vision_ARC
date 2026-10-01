@@ -17,23 +17,27 @@ python tools/model-eval/fetch_replays.py --output /tmp/armor-eval/clips
 tools/run-local-tracking-tests.sh
 ```
 
-The five clips total about 284 MB. Use repeated `--clip` arguments to fetch only
+The six clips total about 349 MB. Use repeated `--clip` arguments to fetch only
 selected files. Downloads are pinned and verified against their repository blob
 hash. The generated manifest records URLs, revisions and SHA256. Keep source
 videos, weights, caches and derived videos outside git.
 
-| Recording | Reason to test it |
-| --- | --- |
-| `tongji-demo.avi` | Real moving camera, low light, partial visibility and multiple plates |
-| `robotpilots-armor.mp4` | Small general armor sample |
-| `robotpilots-medium-spin.avi` | Plate appearance/disappearance during rotation |
-| `robotpilots-near-height-spin.avi` | Rotation plus differing plate heights |
-| `robotpilots-far-translation.avi` | Small, translating armor targets |
+| Recording | Original source file | Reason to test it |
+| --- | --- | --- |
+| `tongji-demo.avi` | Tongji: `assets/demo/demo.avi` | Moving camera, low light, partial visibility and multiple plates |
+| `robotpilots-armor.mp4` | RobotPilots: `测试视频/装甲板.mp4` | Small general armor sample; used for the model benchmark |
+| `robotpilots-medium-spin.avi` | RobotPilots: `测试视频/中距离陀螺.avi` | Plate appearance/disappearance during rotation |
+| `robotpilots-near-height-spin.avi` | RobotPilots: `测试视频/近距离上下陀螺.avi` | Rotation plus differing plate heights |
+| `robotpilots-far-translation.avi` | RobotPilots: `测试视频/远距离平移.avi` | Small, translating armor targets |
+| `robotpilots-far-translation-spin.avi` | RobotPilots: `测试视频/远处旋转平移.avi` | Distant target rotating while translating |
 
 Sources: [Tongji demo](https://github.com/TongjiSuperPower/sp_vision_25/tree/bd9f5e798fa3c6dd3b483ae6627796afb41c608d/assets/demo),
 [RobotPilots test videos](https://github.com/SZURPVision/26_NNDeployment_Lib_and_Detection_Models/tree/ccb5dfe09696edeea445ffb8f99adaa7c383ec3a/%E6%B5%8B%E8%AF%95%E8%A7%86%E9%A2%91).
 These are unlabeled public demonstrations, possibly overlapping training data.
 Proposal counts are not recall, precision or an accuracy ranking.
+The footage comes from these teams; ARUW provides the detector model, and our
+production C++ decoder/tracker produces the replay indicators. Source labels such
+as "far" are qualitative and do not establish a measured distance in meters.
 
 ## Benchmark acceleration and output agreement
 
@@ -129,6 +133,15 @@ increased. The final replay also records the tracker source hash after fixing ac
 to use the same confidence/centering score as lock hysteresis. Spin identity
 churn remains unresolved; fewer selected-ID changes are
 not proof of more accurate association.
+
+The additional [distant translating/spinning replay](../../docs/validation/aruw-distant-spin-replay-2026-10-01.json)
+processed 1,927 frames with the same 0.5 confidence threshold and tracker defaults:
+1,892 frames had detections and 1,922 had a selected track, including coasting.
+It produced 92 plate IDs and 124 selected-ID changes. These counts do not measure
+identity accuracy. The overlay plays at quarter speed while tracking uses the
+original 150 FPS container timing. Fetch it with
+`python tools/model-eval/fetch_replays.py --output /tmp/armor-eval/clips --clip robotpilots-far-translation-spin.avi`,
+then follow the inference/replay/render steps above with that input filename.
 
 Reference: [ARUW parser](https://gitlab.com/aruw/vision/project-otto/-/blob/154035fc34ffb34f99120ffa8e8a2bb098bc6306/project_otto/target_detector/_target_detector.py),
 [Core ML execution provider](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html).
