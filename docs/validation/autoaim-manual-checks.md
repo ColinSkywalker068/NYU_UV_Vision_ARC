@@ -259,14 +259,15 @@ signals to examine the recording. Do not hide them by extending coasting.
 ## Type C reference tested locally
 
 The closed-loop fixture is extracted from local Type C commit
-`9553b7f750a7c202b88f4ddc3974f7aefd1357bc` on
-`codex/autoaim-slew-reference-fix`, based on `6aa98c1`.
+`ac220f6` on
+`codex/autoaim-slew-reference-fix`.
 It preserves the actual final-step slew rate instead of setting it to zero early.
 The old code exceeded its nominal acceleration limit under tiny alternating
 commands. `just verify-consolidation` and `just build sentry` passed for the fix;
-**it has not been flashed**. The SP/ST wire format did not change.
+The 60-degree/s yaw profile was flashed on 2026-10-01 and verified by full SWD
+readback. The SP/ST wire format did not change.
 
-The tested sentry reference uses 120/60 deg/s yaw/pitch limits, 360/240 deg/s²
+The tested sentry reference uses 60/60 deg/s yaw/pitch limits, 360/240 deg/s²
 acceleration limits, and 0.20 target filter alpha. Check the installed firmware
 rather than assuming another branch or main has these values. Re-extract with
 `python3 tools/snapshot-typec-vision.py --typec-repo /path/to/controls_typec` and

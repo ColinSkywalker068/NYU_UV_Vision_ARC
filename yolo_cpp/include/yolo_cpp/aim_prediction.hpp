@@ -13,7 +13,7 @@ struct AimPredictionConfig
   double max_frame_age_s{0.25};
   double max_measurement_age_s{0.15};
   double max_prediction_s{1.0};
-  double yaw_speed_rad_s{2.0943951024};    // Sentry: 120 deg/s.
+  double yaw_speed_rad_s{1.0471975512};    // Sentry: 60 deg/s.
   double pitch_speed_rad_s{1.0471975512};  // Sentry: 60 deg/s.
   double yaw_accel_rad_s2{6.2831853072};
   double pitch_accel_rad_s2{4.1887902048};
