@@ -12,11 +12,15 @@
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/float32_multi_array.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/int32_multi_array.hpp>
 #include <string>
 #include <vector>
 
 #include "cv_auto_aim_interfaces/msg/armors.hpp"
+#include "cv_auto_aim_interfaces/msg/aim_solution.hpp"
+#include "cv_auto_aim_interfaces/msg/gimbal_attitude.hpp"
 #include "cv_auto_aim_interfaces/msg/target.hpp"
 #include "yolo_cpp/camera_backend.hpp"
 #include "yolo_cpp/deepstream_runtime.hpp"
@@ -91,7 +95,7 @@ private:
   void process_detection_cycle(const DetectionBatch &batch,
                                const FramePacket *packet,
                                const DetectorStageTimings &detector_timings,
-                               double capture_ms);
+                               double capture_ms, std::int64_t capture_steady_time_ns = 0);
   /// Publish a cv_auto_aim_interfaces/Armors message for detector output.
   void publish_armors(const std::vector<Candidate> &candidates,
                       const std::string &source_id, const rclcpp::Time &stamp,
@@ -190,6 +194,26 @@ private:
   std::chrono::steady_clock::time_point last_preview_render_time_{};
   bool have_last_preview_render_time_{false};
   std::mutex state_mutex_;
+  rclcpp::Subscription<cv_auto_aim_interfaces::msg::AimSolution>::SharedPtr preview_command_subscription_;
+  rclcpp::Subscription<cv_auto_aim_interfaces::msg::GimbalAttitude>::SharedPtr preview_attitude_subscription_;
+  std::int64_t preview_command_stamp_ns_{0};
+  std::int64_t preview_attitude_stamp_ns_{0};
+  std::int64_t preview_target_stamp_ns_{0};
+  std::int64_t preview_target_measurement_stamp_ns_{0};
+  bool preview_command_valid_{false};
+  bool preview_attitude_valid_{false};
+  bool preview_attitude_source_timestamped_{false};
+  bool preview_command_used_3d_{false};
+  std::string preview_solver_status_{"waiting for solver"};
+  bool preview_command_is_offset_{false};
+  bool preview_absolute_error_arrow_{false};
+  bool preview_transmit_enabled_{false};
+  bool calibration_provisional_{false};
+  float preview_command_yaw_{0.0F};
+  float preview_command_pitch_{0.0F};
+  float preview_attitude_yaw_{0.0F};
+  float preview_attitude_pitch_{0.0F};
+  float preview_attitude_roll_{0.0F};
 
   CameraConfig camera_config_;
   std::string model_path_;
@@ -272,6 +296,7 @@ private:
   double preview_fps_{0.0};
   CameraCalibration camera_calibration_;
   std::optional<ArmorPnPSolver> pnp_solver_;
+  PoseQuality last_pose_quality_;
   std::vector<double> camera_distortion_;
   StageTotals stage_totals_;
   std::ofstream runtime_log_stream_;

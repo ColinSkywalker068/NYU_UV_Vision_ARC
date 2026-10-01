@@ -98,7 +98,7 @@
 | System | Config | Current Behavior |
 |--------|--------|------------------|
 | GitHub Actions | [.github/workflows/main.yml](../../.github/workflows/main.yml) | On push to `main`, bumps a tag and creates a release. |
-| GitLab CI | [.gitlab-ci.yml](../../.gitlab-ci.yml) | Runs pre-commit in a CI image and auto-commits formatting changes when present. |
+| GitLab CI | [.gitlab-ci.yml](../../.gitlab-ci.yml) | Runs deterministic Python tracking tests plus a ROS 2 Humble build and C++ test suite. Publishes JUnit results and never changes the source branch. |
 | pre-commit | [.pre-commit-config.yaml](../../.pre-commit-config.yaml) | Black, pyupgrade, commitlint, YAML/JSON checks, debug statement checks, merge conflict checks, and a local mock assertion grep. |
 
 ## Rationale

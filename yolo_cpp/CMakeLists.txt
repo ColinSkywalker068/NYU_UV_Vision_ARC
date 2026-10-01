@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(YOLO_CPP_BUILD_MANUAL_TOOLS "Build manual hardware smoke tools" OFF)
+option(YOLO_CPP_ENABLE_NATIVE_TENSORRT "Build the TensorRT 8 native backend" ON)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(
@@ -105,7 +106,7 @@ find_library(NVDLA_COMPILER_LIBRARY NAMES nvdla_compiler
     /usr/lib/aarch64-linux-gnu/nvidia
     /usr/lib/aarch64-linux-gnu/tegra
     /usr/local/lib)
-if(TENSORRT_INCLUDE_DIR AND CUDART_INCLUDE_DIR AND TENSORRT_LIBRARY AND CUDART_LIBRARY
+if(YOLO_CPP_ENABLE_NATIVE_TENSORRT AND TENSORRT_INCLUDE_DIR AND CUDART_INCLUDE_DIR AND TENSORRT_LIBRARY AND CUDART_LIBRARY
     AND NVDLA_COMPILER_LIBRARY)
   set(HAVE_TENSORRT TRUE)
   message(STATUS "TensorRT found. Native TensorRT backend enabled.")
@@ -189,6 +190,8 @@ else()
 endif()
 
 set(YOLO_CPP_COMPONENT_SOURCES
+  src/aim_geometry.cpp
+  src/aim_prediction.cpp
   src/utils.cpp
   src/pnp_solver.cpp
   src/tracking_math.cpp
@@ -204,6 +207,8 @@ set(YOLO_CPP_COMPONENT_SOURCES
   src/gst_cuda_bayer_resize.cpp
   src/armor_detector_node.cpp
   src/armor_tracker_node.cpp
+  src/robot_state_estimator.cpp
+  src/robot_ekf.cpp
   src/armor_processor_node.cpp
   src/aim_solver_node.cpp
   src/perception_node.cpp
@@ -358,7 +363,7 @@ target_include_directories(stm32_serial_bridge PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
-ament_target_dependencies(stm32_serial_bridge rclcpp std_msgs)
+ament_target_dependencies(stm32_serial_bridge cv_auto_aim_interfaces rclcpp std_msgs)
 
 if(YOLO_CPP_BUILD_MANUAL_TOOLS)
   add_executable(stm32_yaw_packet_smoke
@@ -415,8 +420,42 @@ install(
 if(BUILD_TESTING)
   find_package(ament_cmake_clang_format REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_test REQUIRED)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
-  ament_clang_format(CONFIG_FILE ${CMAKE_CURRENT_SOURCE_DIR}/../.clang-format)
+  add_executable(armor_replay tools/armor_replay.cpp)
+  target_include_directories(armor_replay PUBLIC include ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(armor_replay yolo_cpp_components ${OpenCV_LIBS})
+  ament_target_dependencies(armor_replay rclcpp cv_auto_aim_interfaces)
+  install(TARGETS armor_replay RUNTIME DESTINATION lib/${PROJECT_NAME})
+
+  ament_add_test(field_launch_parameters
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_launch_parameters.py
+    TIMEOUT 30
+    GENERATE_RESULT_FOR_RETURN_CODE_ZERO
+  )
+
+  # Exercise the actual bridge with virtual ports; no controller hardware is opened.
+  ament_add_test(serial_bridge_reconnect
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_serial_reconnect.py
+      --bridge $<TARGET_FILE:stm32_serial_bridge>
+    TIMEOUT 60
+    GENERATE_RESULT_FOR_RETURN_CODE_ZERO
+  )
+
+  # The legacy source tree predates the ROS formatting profile. Keep the new standalone tracking
+  # core formatted without turning this feature branch into a repository-wide style rewrite.
+  ament_clang_format(
+    include/yolo_cpp/robot_state_estimator.hpp
+    src/robot_state_estimator.cpp
+    test/test_robot_state_estimator.cpp
+    include/yolo_cpp/aim_geometry.hpp
+    src/aim_geometry.cpp
+    include/yolo_cpp/aim_prediction.hpp
+    src/aim_prediction.cpp
+    test/test_aim_geometry.cpp
+    test/test_pose_pipeline.cpp
+  )
 
   ament_add_gtest(test_detection_postprocess
     test/test_detection_postprocess.cpp
@@ -445,6 +484,39 @@ if(BUILD_TESTING)
       ${OpenCV_INCLUDE_DIRS}
     )
     target_link_libraries(test_tracking_core ${OpenCV_LIBS})
+  endif()
+  ament_add_gtest(test_pose_pipeline test/test_pose_pipeline.cpp TIMEOUT 30)
+  if(TARGET test_pose_pipeline)
+    target_include_directories(test_pose_pipeline PUBLIC include ${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(test_pose_pipeline yolo_cpp_components ${OpenCV_LIBS})
+    ament_target_dependencies(test_pose_pipeline rclcpp cv_auto_aim_interfaces)
+    set_tests_properties(test_pose_pipeline PROPERTIES ENVIRONMENT "ROS_LOCALHOST_ONLY=1;ROS_DOMAIN_ID=197")
+  endif()
+  ament_add_gtest(test_closed_loop_pipeline test/test_closed_loop_pipeline.cpp TIMEOUT 120)
+  if(TARGET test_closed_loop_pipeline)
+    target_include_directories(test_closed_loop_pipeline PUBLIC include ${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(test_closed_loop_pipeline yolo_cpp_components ${OpenCV_LIBS})
+    ament_target_dependencies(test_closed_loop_pipeline rclcpp cv_auto_aim_interfaces)
+    set_tests_properties(test_closed_loop_pipeline PROPERTIES ENVIRONMENT "ROS_LOCALHOST_ONLY=1;ROS_DOMAIN_ID=198")
+  endif()
+  ament_add_gtest(test_aim_geometry
+    test/test_aim_geometry.cpp src/aim_geometry.cpp src/aim_prediction.cpp)
+  if(TARGET test_aim_geometry)
+    target_include_directories(test_aim_geometry PUBLIC include ${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(test_aim_geometry ${OpenCV_LIBS})
+  endif()
+  ament_add_gtest(test_robot_state_estimator
+    test/test_robot_state_estimator.cpp
+    src/robot_state_estimator.cpp
+    src/robot_ekf.cpp
+  )
+  if(TARGET test_robot_state_estimator)
+    target_link_libraries(test_robot_state_estimator ${OpenCV_LIBS})
+    target_include_directories(test_robot_state_estimator PUBLIC ${OpenCV_INCLUDE_DIRS})
+    target_include_directories(test_robot_state_estimator PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+    )
   endif()
 endif()
 

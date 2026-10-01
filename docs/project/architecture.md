@@ -208,7 +208,7 @@ No formal ADR files are present in the current repository. When adding formal AD
 | Optional hardware SDKs can be absent at build time. | Runtime features compile out and launch settings may fail if mismatched. | Check CMake configure output and rebuild after installing Pylon or GPU SDKs. |
 | Root scripts and compose paths assume robot-specific host layout. | New machines may need setup work before `uv` commands work. | Keep [runbook.md](runbook.md) aligned with `services/` scripts. |
 | Legacy paths remain in the repository. | Agents may edit reference code instead of active runtime. | Start from `yolo_cpp/docs/overview.md` and this architecture doc for runtime work. |
-| CI release workflow does not build the ROS workspace. | Runtime regressions may not be caught by hosted CI. | Run container/colcon checks before merging runtime changes. |
+| Hosted CI does not provide the Jetson GPU, camera SDKs, or physical serial devices. | TensorRT, Pylon, camera capture, and real STM32 transport can still fail after generic builds pass. | Use the hosted ROS build and unit-test gate first, then run Jetson preflight and hardware validation before deployment. |
 
 ## Maintenance
 

@@ -1,0 +1,79 @@
+{
+  "scope": "CPU inference and unlabeled clip smoke check, not mAP or Jetson throughput",
+  "models": [
+    {
+      "name": "aruw-2026",
+      "input_shape": [
+        1,
+        3,
+        384,
+        640
+      ],
+      "input_type": "tensor(float)",
+      "clips": [
+        {
+          "clip": "demo.avi",
+          "frames": 24,
+          "frames_with_geometry_proposals": 21,
+          "total_geometry_proposals": 21,
+          "median_inference_ms": 45.10758351534605,
+          "p95_inference_ms": 46.15451239515096
+        },
+        {
+          "clip": "\u88c5\u7532\u677f.mp4",
+          "frames": 24,
+          "frames_with_geometry_proposals": 24,
+          "total_geometry_proposals": 45,
+          "median_inference_ms": 44.99954194761813,
+          "p95_inference_ms": 45.361210650298744
+        }
+      ],
+      "first_inference_ms": 47.881332924589515,
+      "output_shape": [
+        1,
+        300,
+        14
+      ],
+      "blank_geometry_proposals": 0,
+      "finite_blank_output": true,
+      "status": "completed"
+    },
+    {
+      "name": "robotpilots-2026",
+      "input_shape": [
+        1,
+        3,
+        480,
+        640
+      ],
+      "input_type": "tensor(float)",
+      "clips": [
+        {
+          "clip": "demo.avi",
+          "frames": 24,
+          "frames_with_geometry_proposals": 23,
+          "total_geometry_proposals": 23,
+          "median_inference_ms": 59.66758308932185,
+          "p95_inference_ms": 60.48378925770521
+        },
+        {
+          "clip": "\u88c5\u7532\u677f.mp4",
+          "frames": 24,
+          "frames_with_geometry_proposals": 24,
+          "total_geometry_proposals": 56,
+          "median_inference_ms": 60.44135452248156,
+          "p95_inference_ms": 60.73908118996769
+        }
+      ],
+      "first_inference_ms": 61.57304206863046,
+      "output_shape": [
+        1,
+        21,
+        6300
+      ],
+      "blank_geometry_proposals": 0,
+      "finite_blank_output": true,
+      "status": "completed"
+    }
+  ]
+}

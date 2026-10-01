@@ -1,0 +1,29 @@
+# Upgrade an existing team C++ image for JetPack 6.0 GA / L4T 36.3.
+# This avoids reinstalling its verified ROS/CUDA/TensorRT build toolchain.
+ARG BASE_IMAGE=nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus
+FROM ${BASE_IMAGE}
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && \
+    if dpkg-query -W deepstream-6.4 >/dev/null 2>&1; then apt-get remove -y deepstream-6.4; fi && \
+    apt-get install -y --no-install-recommends deepstream-7.0 && \
+    rm -rf /var/lib/apt/lists/* && \
+    /opt/nvidia/deepstream/deepstream-7.0/install.sh && ldconfig
+ENV PYLON_ROOT=/opt/pylon
+ENV PATH=${PATH}:/opt/pylon/bin
+ENV GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream-7.0/lib/gst-plugins:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins
+ENV GST_PLUGIN_PATH_1_0=${GST_PLUGIN_PATH}
+ENV LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream-7.0/lib:/opt/pylon/lib:/usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/nvidia:/usr/local/cuda/lib64:/usr/local/cuda/compat:/usr/lib/aarch64-linux-gnu
+ARG PYLON_PACKAGE=""
+ARG PYLON_GSTREAMER_PACKAGE=""
+COPY pylon/ /tmp/pylon-packages/
+# Use the SDK .deb extracted from Basler's ARM64 Debian installer bundle.
+RUN if [ -n "${PYLON_PACKAGE}" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends "/tmp/pylon-packages/$(basename "${PYLON_PACKAGE}")" && \
+      test -f /opt/pylon/include/pylon/PylonIncludes.h; \
+    fi && \
+    if [ -n "${PYLON_GSTREAMER_PACKAGE}" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends "/tmp/pylon-packages/$(basename "${PYLON_GSTREAMER_PACKAGE}")" && \
+      ldconfig && gst-inspect-1.0 pylonsrc >/dev/null; \
+    fi && \
+    rm -rf /tmp/pylon-packages /var/lib/apt/lists/* /root/.cache/gstreamer-1.0
+WORKDIR /home/ultraviolet/CV_Detection

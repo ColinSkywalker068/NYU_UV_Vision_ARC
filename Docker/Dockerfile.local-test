@@ -1,0 +1,6 @@
+FROM ros:humble-ros-base-jammy
+RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    libopencv-dev ros-humble-tf2-geometry-msgs ros-humble-visualization-msgs \
+    ros-humble-ament-cmake-gtest ros-humble-ament-cmake-clang-format \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /ws/out

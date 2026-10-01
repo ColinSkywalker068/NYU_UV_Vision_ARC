@@ -27,6 +27,7 @@
 
 #include "cv_auto_aim_interfaces/msg/armor.hpp"
 #include "vision_node_helpers.hpp"
+#include "yolo_cpp/preview_geometry.hpp"
 
 namespace yolo_cpp {
 
@@ -38,6 +39,22 @@ constexpr int kPreviewMaxHeight = 720;
 constexpr char kVisionLogDirName[] = "vision_logs";
 constexpr char kTargetFrameDirName[] = "pictures";
 constexpr double kPi = 3.14159265358979323846;
+constexpr std::int64_t kMaxCaptureStampAgeNs = 2000000000LL;
+
+rclcpp::Time capture_stamp(const FramePacket *packet,
+                           const rclcpp::Time &processing_stamp, std::int64_t source_steady_ns) {
+  if (source_steady_ns <= 0 && packet != nullptr) {source_steady_ns = packet->capture_steady_time_ns;}
+  if (source_steady_ns <= 0) {return rclcpp::Time(0, 0, processing_stamp.get_clock_type());}
+  const auto steady_now_ns = static_cast<std::int64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count());
+  const auto age_ns = steady_now_ns - source_steady_ns;
+  if (age_ns < 0 || age_ns > kMaxCaptureStampAgeNs) {
+    return rclcpp::Time(0, 0, processing_stamp.get_clock_type());
+  }
+  return processing_stamp - rclcpp::Duration::from_nanoseconds(age_ns);
+}
 
 std::string json_escape(const std::string &value) {
   std::ostringstream escaped;
@@ -215,8 +232,12 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
   this->declare_parameter<double>("camera_fy", 0.0);
   this->declare_parameter<double>("camera_cx", 0.0);
   this->declare_parameter<double>("camera_cy", 0.0);
+  this->declare_parameter<int>("camera_calibration_width", 0);
+  this->declare_parameter<int>("camera_calibration_height", 0);
   this->declare_parameter<std::vector<double>>("camera_distortion",
                                                std::vector<double>{});
+  this->declare_parameter<double>("pose_corner_sigma_model_px", 0.5);
+  this->declare_parameter<double>("pose_max_relative_depth_uncertainty", 0.05);
   this->declare_parameter<double>("small_armor_width_m", 0.135);
   this->declare_parameter<double>("small_armor_height_m", 0.055);
   this->declare_parameter<double>("large_armor_width_m", 0.225);
@@ -230,6 +251,12 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
   this->declare_parameter<std::string>("preview_target_topic",
                                        "tracker/target");
   this->declare_parameter<bool>("debug_publish_image_raw", false);
+  preview_command_is_offset_ = this->declare_parameter<bool>("preview_command_is_offset", false);
+  preview_absolute_error_arrow_ =
+      this->declare_parameter<bool>("preview_absolute_error_arrow", false);
+  preview_transmit_enabled_ =
+      this->declare_parameter<bool>("preview_transmit_enabled", false);
+  calibration_provisional_ = this->declare_parameter<bool>("calibration_provisional", false);
   this->declare_parameter<bool>("save_target_frames", false);
   this->declare_parameter<bool>("pre_mux_resize", false);
   this->declare_parameter<bool>("native_tensorrt_cuda_bayer_preprocess", false);
@@ -403,6 +430,34 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
       "robot_id", 10,
       std::bind(&ArmorDetectorNode::id_listener_callback, this,
                 std::placeholders::_1));
+  // Read the atomic solution used by the bridge, including explicit rejections.
+  preview_command_subscription_ = this->create_subscription<cv_auto_aim_interfaces::msg::AimSolution>(
+      "aim_solution", 1,
+      [this](const cv_auto_aim_interfaces::msg::AimSolution::SharedPtr msg) {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        preview_command_valid_ = msg->has_solution &&
+            (msg->output_mode == "absolute" || msg->output_mode == "offset") &&
+            std::isfinite(msg->yaw) && std::isfinite(msg->pitch);
+        preview_command_yaw_ = msg->yaw;
+        preview_command_pitch_ = msg->pitch;
+        preview_command_used_3d_ = msg->used_3d;
+        preview_command_is_offset_ = msg->output_mode == "offset";
+        preview_solver_status_ = msg->status;
+        preview_command_stamp_ns_ = rclcpp::Time(msg->header.stamp).nanoseconds();
+      });
+  preview_attitude_subscription_ =
+      this->create_subscription<cv_auto_aim_interfaces::msg::GimbalAttitude>(
+          "gimbal/attitude", 10,
+          [this](const cv_auto_aim_interfaces::msg::GimbalAttitude::SharedPtr msg) {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            preview_attitude_valid_ = msg->valid && std::isfinite(msg->yaw) &&
+                std::isfinite(msg->pitch) && std::isfinite(msg->roll);
+            preview_attitude_yaw_ = msg->yaw;
+            preview_attitude_pitch_ = msg->pitch;
+            preview_attitude_roll_ = msg->roll;
+            preview_attitude_stamp_ns_ = msg->receive_stamp_ns;
+            preview_attitude_source_timestamped_ = msg->source_timestamped;
+          });
   attitude_flags_subscription_ =
       this->create_subscription<std_msgs::msg::Int32MultiArray>(
           "attitude_flags", 10,
@@ -555,6 +610,8 @@ void ArmorDetectorNode::handle_preview_target(
   preview_target_bbox_xyxy_ = msg->bbox_xyxy;
   preview_target_image_width_ = msg->image_width;
   preview_target_image_height_ = msg->image_height;
+  preview_target_stamp_ns_ = rclcpp::Time(msg->header.stamp).nanoseconds();
+  preview_target_measurement_stamp_ns_ = msg->measurement_stamp_ns;
 }
 
 void ArmorDetectorNode::handle_camera_info(
@@ -578,21 +635,23 @@ void ArmorDetectorNode::handle_camera_info(
 }
 
 void ArmorDetectorNode::configure_static_camera_model() {
-  if (camera_fx_ <= 0.0 || camera_fy_ <= 0.0) {
+  const int width = this->get_parameter("camera_calibration_width").as_int();
+  const int height = this->get_parameter("camera_calibration_height").as_int();
+  if (camera_fx_ <= 0.0 || camera_fy_ <= 0.0 || width <= 0 || height <= 0) {
     return;
   }
 
   camera_calibration_.model.camera_matrix = cv::Matx33d(
       camera_fx_, 0.0,
-      camera_cx_ > 0.0 ? camera_cx_ : static_cast<double>(imgsz_width_) / 2.0,
+      camera_cx_ > 0.0 ? camera_cx_ : static_cast<double>(width) / 2.0,
       0.0, camera_fy_,
-      camera_cy_ > 0.0 ? camera_cy_ : static_cast<double>(imgsz_height_) / 2.0,
+      camera_cy_ > 0.0 ? camera_cy_ : static_cast<double>(height) / 2.0,
       0.0, 0.0, 1.0);
   camera_calibration_.model.distortion_coefficients = camera_distortion_;
   camera_calibration_.available = true;
   camera_calibration_.from_camera_info = false;
-  camera_calibration_.image_width = imgsz_width_;
-  camera_calibration_.image_height = imgsz_height_;
+  camera_calibration_.image_width = width;
+  camera_calibration_.image_height = height;
   pnp_solver_.emplace(camera_calibration_.model, small_armor_width_m_,
                       small_armor_height_m_, large_armor_width_m_,
                       large_armor_height_m_);
@@ -616,31 +675,37 @@ ArmorDetectorNode::make_fov_camera_model(int image_width,
 std::optional<geometry_msgs::msg::Pose>
 ArmorDetectorNode::solve_candidate_pose(const Candidate &candidate,
                                         int image_width, int image_height) {
-  if (!enable_3d_pose_ || !candidate.has_corners) {
+  last_pose_quality_ = {};
+  if (!enable_3d_pose_ || !candidate.has_corners || !candidate.corners_are_keypoints ||
+      !camera_calibration_.available || camera_calibration_.image_width != image_width ||
+      camera_calibration_.image_height != image_height) {
     return std::nullopt;
   }
 
   const double aspect =
       static_cast<double>(std::max(1, candidate.bbox_source.width)) /
       static_cast<double>(std::max(1, candidate.bbox_source.height));
-  const int armor_type = aspect >= large_armor_min_aspect_ratio_
+  const int armor_type = candidate.armor_type >= 0 ? candidate.armor_type : aspect >= large_armor_min_aspect_ratio_
                              ? cv_auto_aim_interfaces::msg::Armor::ARMOR_LARGE
                              : cv_auto_aim_interfaces::msg::Armor::ARMOR_SMALL;
 
   geometry_msgs::msg::Pose pose;
   if (pnp_solver_.has_value()) {
-    if (pnp_solver_->solve(candidate.corners_source, armor_type, pose)) {
+    // Corners are predicted in model pixels, then restored to source size.
+    // Upsampling them must not make the pose appear more precise.
+    const double sigma = this->get_parameter("pose_corner_sigma_model_px").as_double() *
+      std::max(static_cast<double>(image_width) / imgsz_width_,
+        static_cast<double>(image_height) / imgsz_height_);
+    if (pnp_solver_->solve(candidate.corners_source, armor_type, pose, &last_pose_quality_, sigma,
+        this->get_parameter("pose_max_relative_depth_uncertainty").as_double())) {
       return pose;
     }
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+      "POSE_QUALITY rejected geometry or depth uncertainty (estimated relative uncertainty=%.3f)",
+      last_pose_quality_.relative_depth_uncertainty);
     return std::nullopt;
   }
 
-  const auto fov_model = make_fov_camera_model(image_width, image_height);
-  ArmorPnPSolver solver(fov_model, small_armor_width_m_, small_armor_height_m_,
-                        large_armor_width_m_, large_armor_height_m_);
-  if (solver.solve(candidate.corners_source, armor_type, pose)) {
-    return pose;
-  }
   return std::nullopt;
 }
 
@@ -670,6 +735,7 @@ void ArmorDetectorNode::initialize_deepstream_runtime() {
 
   DeepStreamRuntime::Config config{};
   config.model_path = model_path_;
+  config.model_profile = model_type_;
   config.config_template_path = deepstream_config_path_;
   config.task = task_;
   config.imgsz_width = imgsz_width_;
@@ -732,17 +798,18 @@ void ArmorDetectorNode::handle_deepstream_result(
   const FramePacket *packet =
       result.source_packet.has_value() ? &(*result.source_packet) : nullptr;
   process_detection_cycle(result.batch, packet, result.timings,
-                          result.capture_ms);
+                          result.capture_ms, result.capture_steady_time_ns);
 }
 
 void ArmorDetectorNode::process_detection_cycle(
     const DetectionBatch &batch, const FramePacket *packet,
-    const DetectorStageTimings &detector_timings, double capture_ms) {
+    const DetectorStageTimings &detector_timings, double capture_ms, std::int64_t capture_steady_time_ns) {
   // This is the detector's central data boundary: model outputs become
   // candidates, optional debug images, runtime telemetry, and ROS interface
   // messages.
   std::lock_guard<std::mutex> lock(state_mutex_);
-  const auto stamp = this->get_clock()->now();
+  const auto processing_stamp = this->get_clock()->now();
+  const auto stamp = capture_stamp(packet, processing_stamp, capture_steady_time_ns);
   if (debug_publish_image_raw_ && packet != nullptr) {
     publish_debug_image(*packet, stamp);
   }
@@ -872,6 +939,7 @@ void ArmorDetectorNode::publish_armors(const std::vector<Candidate> &candidates,
     armor.image_width = image_width;
     armor.image_height = image_height;
     armor.has_corners = candidate.has_corners;
+    armor.corners_are_keypoints = candidate.corners_are_keypoints;
     if (candidate.has_corners) {
       for (std::size_t i = 0; i < candidate.corners_source.size(); ++i) {
         armor.corners[i].x = candidate.corners_source[i].x;
@@ -882,10 +950,10 @@ void ArmorDetectorNode::publish_armors(const std::vector<Candidate> &candidates,
     const double aspect =
         static_cast<double>(std::max(1, candidate.bbox_source.width)) /
         static_cast<double>(std::max(1, candidate.bbox_source.height));
-    armor.armor_type = aspect >= large_armor_min_aspect_ratio_
+    armor.armor_type = candidate.armor_type >= 0 ? candidate.armor_type : aspect >= large_armor_min_aspect_ratio_
                            ? cv_auto_aim_interfaces::msg::Armor::ARMOR_LARGE
                            : cv_auto_aim_interfaces::msg::Armor::ARMOR_SMALL;
-    armor.armor_number = -1;
+    armor.armor_number = candidate.armor_number;
     const double principal_x =
         camera_calibration_.available
             ? camera_calibration_.model.camera_matrix(0, 2)
@@ -901,6 +969,8 @@ void ArmorDetectorNode::publish_armors(const std::vector<Candidate> &candidates,
             solve_candidate_pose(candidate, image_width, image_height)) {
       armor.has_pose = true;
       armor.pose_camera = *pose;
+      armor.pose_normal_reliable = last_pose_quality_.normal_reliable;
+      armor.reprojection_rms_px = last_pose_quality_.reprojection_rms_px;
     }
     msg.armors.push_back(std::move(armor));
   }
@@ -948,6 +1018,18 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
         continue;
       }
       cv::rectangle(preview, preview_rect, color, 2);
+      if (candidate.has_corners && candidate.corners_are_keypoints) {
+        std::vector<cv::Point> corners;
+        for (const auto & point : candidate.corners_source) {
+          const double x = packet.flip_180 ? source_width - 1 - point.x : point.x;
+          const double y = packet.flip_180 ? source_height - 1 - point.y : point.y;
+          corners.emplace_back(cvRound(x * scale_x), cvRound(y * scale_y));
+        }
+        cv::polylines(preview, corners, true, cv::Scalar(255, 0, 255), 2, cv::LINE_AA);
+        for (const auto & point : corners) {
+          cv::circle(preview, point, 4, cv::Scalar(255, 0, 255), -1, cv::LINE_AA);
+        }
+      }
       const std::string label = std::to_string(candidate.class_id) + " " +
                                 cv::format("%.2f", candidate.confidence);
       cv::putText(preview, label,
@@ -955,7 +1037,15 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
                   cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv::LINE_AA);
     }
 
-    if (preview_has_target_ && !preview_target_is_coasting_) {
+    const auto now_ns = this->now().nanoseconds();
+    const cv::Point center(preview.cols / 2, preview.rows / 2);
+    std::string visual_label = "VISUAL: no fresh selected plate";
+    const double target_measurement_age_ms =
+        (now_ns - preview_target_measurement_stamp_ns_) * 1e-6;
+    const bool coast_is_recent = preview_target_measurement_stamp_ns_ > 0 &&
+        target_measurement_age_ms >= 0 && target_measurement_age_ms <= 150.0;
+    if (preview_has_target_ && preview_sample_fresh(preview_target_stamp_ns_, now_ns) &&
+        (!preview_target_is_coasting_ || coast_is_recent)) {
       const int x1 = preview_target_bbox_xyxy_[0];
       const int y1 = preview_target_bbox_xyxy_[1];
       const int x2 = preview_target_bbox_xyxy_[2];
@@ -973,33 +1063,121 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
           target_source_width, target_source_height);
       const cv::Rect target_rect = vision_node_helpers::scale_rect_to_preview(
           target_source_rect, target_scale_x, target_scale_y, image_rect);
-      const auto matching_candidate = std::find_if(
-          candidates.begin(), candidates.end(), [&](const Candidate &candidate) {
-            const cv::Rect candidate_source_rect = preview_source_rect(
-                packet, candidate.bbox_source, source_width, source_height);
-            const cv::Rect candidate_rect =
-                vision_node_helpers::scale_rect_to_preview(
-                    candidate_source_rect, scale_x, scale_y, image_rect);
-            return vision_node_helpers::rect_iou(target_rect, candidate_rect) >
-                   0.05;
-          });
-      if (target_rect.width > 0 && target_rect.height > 0 &&
-          matching_candidate != candidates.end()) {
-        const cv::Scalar target_color(0, 0, 255);
+      // A tracked target can outlive a missed detector frame. Its fresh message
+      // and explicit COASTING state are authoritative, not same-frame box overlap.
+      if (target_rect.width > 0 && target_rect.height > 0) {
+        const cv::Point plate_center(target_rect.x + target_rect.width / 2,
+                                      target_rect.y + target_rect.height / 2);
+        // Yellow is image-space error only, never a command or TX indication.
+        cv::arrowedLine(preview, center, plate_center, cv::Scalar(0, 255, 255),
+                        3, cv::LINE_AA, 0, 0.12);
+        visual_label = cv::format("%sIMAGE ERROR: right=%+.0f up=%+.0f source px | visual only",
+            preview_target_is_coasting_ ? "PREDICTED " : "",
+            (plate_center.x - center.x) / target_scale_x,
+            (center.y - plate_center.y) / target_scale_y);
+        const cv::Scalar target_color = preview_target_is_coasting_
+            ? cv::Scalar(0, 165, 255) : cv::Scalar(0, 0, 255);
         cv::rectangle(preview, target_rect, target_color, 4);
         cv::circle(preview,
                    cv::Point(target_rect.x + target_rect.width / 2,
                              target_rect.y + target_rect.height / 2),
                    5, target_color, -1, cv::LINE_AA);
-        const std::string label =
-            preview_target_track_id_ >= 0
-                ? "TARGET #" + std::to_string(preview_target_track_id_)
-                : "TARGET";
+        const std::string label = (preview_target_is_coasting_ ? "COASTING #" : "TARGET #") +
+            std::to_string(preview_target_track_id_) +
+            (preview_target_is_coasting_ ? cv::format(" %.0f ms", target_measurement_age_ms) : "");
         const cv::Point label_origin(target_rect.x,
                                      std::max(22, target_rect.y - 8));
         cv::putText(preview, label, label_origin, cv::FONT_HERSHEY_SIMPLEX, 0.7,
                     target_color, 2, cv::LINE_AA);
       }
+    }
+
+    // Cyan uses actual atomic solver output. Yellow uses the measured plate.
+    cv::drawMarker(preview, center, cv::Scalar(255, 255, 255),
+                   cv::MARKER_CROSS, 24, 2, cv::LINE_AA);
+    const bool fresh_solution = preview_sample_fresh(preview_command_stamp_ns_, now_ns);
+    const bool fresh_command = preview_command_valid_ && fresh_solution;
+    const bool fresh_attitude = preview_attitude_valid_ &&
+        preview_sample_fresh(preview_attitude_stamp_ns_, now_ns);
+    std::string command_label = fresh_solution
+        ? "SOLVER BLOCKED: " + preview_solver_status_
+        : "SOLVER: missing / stale";
+    std::string error_label;
+    if (fresh_command) {
+      double arrow_yaw = preview_command_yaw_;
+      double arrow_pitch = preview_command_pitch_;
+      bool draw_arrow = preview_command_is_offset_;
+      if (preview_command_is_offset_) {
+        command_label = cv::format("OFFSET yaw=%+.3f pitch=%+.3f rad",
+                                   preview_command_yaw_, preview_command_pitch_);
+      } else {
+        command_label = cv::format("%sABS CMD yaw=%+.3f pitch=%+.3f rad | %s",
+                                   calibration_provisional_ ? "UNCALIBRATED " : "",
+                                   preview_command_yaw_, preview_command_pitch_,
+                                   preview_command_used_3d_ ? "3D" : "2D");
+        if (preview_absolute_error_arrow_ && fresh_attitude) {
+          arrow_yaw = std::remainder(
+              static_cast<double>(preview_command_yaw_ - preview_attitude_yaw_),
+              2.0 * CV_PI);
+          arrow_pitch = preview_command_pitch_ - preview_attitude_pitch_;
+          draw_arrow = true;
+          error_label = cv::format(
+              "CUR y=%+.3f p=%+.3f | ERR y=%+.3f p=%+.3f rad",
+              preview_attitude_yaw_, preview_attitude_pitch_, arrow_yaw,
+              arrow_pitch);
+        } else if (preview_absolute_error_arrow_) {
+          error_label = "ABS ERROR ARROW HIDDEN: attitude missing / stale";
+        } else {
+          error_label = "ABS ERROR ARROW DISABLED";
+        }
+      }
+      if (draw_arrow) {
+        // Type C command coordinates: positive yaw is right, pitch is up.
+        // Clamp angles before tan, then scale both axes together to fit.
+        double dx = std::tan(std::clamp(arrow_yaw, -1.4, 1.4)) *
+            center.x / std::tan(hfov_rad_ / 2.0);
+        double dy = -std::tan(std::clamp(arrow_pitch, -1.4, 1.4)) *
+            center.y / std::tan(vfov_rad_ / 2.0);
+        const double fit = std::max({1.0, std::abs(dx) / std::max(1, center.x - 12),
+                                    std::abs(dy) / std::max(1, center.y - 12)});
+        const cv::Point end(center.x + cvRound(dx / fit), center.y + cvRound(dy / fit));
+        if (cv::norm(end - center) >= 2.0) {
+          cv::arrowedLine(preview, center, end, cv::Scalar(255, 255, 0), 3, cv::LINE_AA, 0, 0.15);
+        } else {
+          cv::circle(preview, center, 8, cv::Scalar(255, 255, 0), 2, cv::LINE_AA);
+        }
+      }
+    }
+    const bool effective_tx = preview_transmit_enabled_;
+    const cv::Scalar tx_color = effective_tx
+        ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 255, 0);
+    const std::string tx_label = effective_tx ? "TX CONFIG: ENABLED" : "TX CONFIG: DISABLED";
+    cv::putText(preview, tx_label, cv::Point(12, 58),
+                cv::FONT_HERSHEY_SIMPLEX, 0.75, tx_color, 2, cv::LINE_AA);
+    const std::string attitude_label = fresh_attitude
+        ? cv::format("ATTITUDE LIVE: y=%+.3f p=%+.3f r=%+.3f rad | age %.0f ms (%s time)",
+                     preview_attitude_yaw_, preview_attitude_pitch_, preview_attitude_roll_,
+                     (now_ns - preview_attitude_stamp_ns_) * 1e-6,
+                     preview_attitude_source_timestamped_ ? "MCU" : "host")
+        : "ATTITUDE: missing / stale / invalid";
+    cv::putText(preview, attitude_label, cv::Point(12, 88),
+                cv::FONT_HERSHEY_SIMPLEX, 0.85,
+                fresh_attitude ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
+    if (calibration_provisional_ || !camera_calibration_.available) {
+      cv::putText(preview, calibration_provisional_
+                  ? "PROVISIONAL LENS VALUES: range and angles are estimates"
+                  : "3D BLOCKED: camera calibration missing",
+                  cv::Point(12, 120), cv::FONT_HERSHEY_SIMPLEX, 0.85,
+                  cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
+    }
+    cv::putText(preview, visual_label, cv::Point(12, preview.rows - 66),
+                cv::FONT_HERSHEY_SIMPLEX, 0.85, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
+    cv::putText(preview, command_label, cv::Point(12, preview.rows - 38),
+                cv::FONT_HERSHEY_SIMPLEX, 0.85, cv::Scalar(255, 255, 0), 1, cv::LINE_AA);
+    if (!error_label.empty()) {
+      cv::putText(preview, error_label, cv::Point(12, preview.rows - 18),
+                  cv::FONT_HERSHEY_SIMPLEX, 0.85, cv::Scalar(255, 255, 0), 1,
+                  cv::LINE_AA);
     }
 
     cv::putText(preview, "FPS " + cv::format("%.1f", preview_fps_),
@@ -1099,6 +1277,15 @@ std::string ArmorDetectorNode::build_preview_stats_json(
        << "\"target_class\":" << target_class_ << ','
        << "\"has_target\":" << (preview_has_target_ ? "true" : "false") << ','
        << "\"target_track_id\":" << preview_target_track_id_ << ','
+       << "\"target_coasting\":" << (preview_target_is_coasting_ ? "true" : "false") << ','
+       << "\"transmit_enabled\":" << (preview_transmit_enabled_ ? "true" : "false") << ','
+       << "\"calibration_provisional\":" << (calibration_provisional_ ? "true" : "false") << ','
+       << "\"solver_status\":\"" << json_escape(preview_solver_status_) << "\","
+       << "\"has_command\":" << (preview_command_valid_ &&
+          preview_sample_fresh(preview_command_stamp_ns_, this->now().nanoseconds()) ? "true" : "false") << ','
+       << "\"command_used_3d\":" << (preview_command_used_3d_ ? "true" : "false") << ','
+       << "\"attitude_fresh\":" << (preview_attitude_valid_ &&
+          preview_sample_fresh(preview_attitude_stamp_ns_, this->now().nanoseconds()) ? "true" : "false") << ','
        << "\"latency_ms\":" << latency_ms << ',' << "\"show\":true"
        << "}";
   return json.str();
@@ -1254,6 +1441,9 @@ ArmorDetectorNode::extract_candidates(const DetectionBatch &batch,
                                    detection.obb_angle,
                                    detection.has_corners,
                                    {}});
+    candidates.back().corners_are_keypoints = detection.corners_are_keypoints;
+    candidates.back().armor_number = detection.armor_number;
+    candidates.back().armor_type = detection.armor_type;
     if (detection.has_corners) {
       auto &candidate = candidates.back();
       for (std::size_t i = 0; i < detection.corners_model.size(); ++i) {

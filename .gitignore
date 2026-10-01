@@ -150,3 +150,9 @@ dmypy.json
 !Docker/pylon/.gitkeep
 .cursor
 graphify-out/
+
+# Machine-local saved CV settings; safe template remains tracked.
+/services/stm-stack.env
+
+# Local CPU/ROS validation artifacts
+.local-test-output/

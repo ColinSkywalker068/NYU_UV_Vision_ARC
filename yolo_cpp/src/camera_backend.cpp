@@ -140,6 +140,7 @@ public:
       static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now().time_since_epoch())
           .count());
+    packet.capture_steady_time_ns = packet.capture_time_ns;
     packet.source_id = source_id_;
 
     if (stream_format_ == RS2_FORMAT_BGR8) {
@@ -430,6 +431,7 @@ public:
         static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now().time_since_epoch())
             .count());
+      packet.capture_steady_time_ns = packet.capture_time_ns;
       packet.source_id = source_id_;
       packet.owner = owner;
       packet.flip_180 = config_.basler_flip;
@@ -462,6 +464,7 @@ public:
       static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now().time_since_epoch())
           .count());
+    packet.capture_steady_time_ns = packet.capture_time_ns;
     packet.source_id = source_id_;
     packet.owner = image;
     if (config_.basler_flip) {

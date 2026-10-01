@@ -524,6 +524,7 @@ yolo_cpp::FramePacket make_inference_packet(const Options& options)
   packet.source_id = "synthetic";
   packet.capture_time_ns = static_cast<std::int64_t>(
     std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count());
+  packet.capture_steady_time_ns = packet.capture_time_ns;
   return packet;
 }
 

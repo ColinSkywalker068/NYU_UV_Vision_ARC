@@ -23,6 +23,7 @@ public:
     std::string model_path;
     std::string config_template_path;
     std::string task{"obb"};
+    std::string model_profile;
     int imgsz_width{640};
     int imgsz_height{640};
     int source_width{640};
@@ -56,6 +57,7 @@ public:
     DetectorStageTimings timings;
     std::optional<FramePacket> source_packet;
     double capture_ms{0.0};
+    std::int64_t capture_steady_time_ns{0};
   };
 
   /// Callback invoked from the runtime whenever a frame has detections.

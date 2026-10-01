@@ -2,6 +2,10 @@
 #define YOLO_CPP__AIM_SOLVER_NODE_HPP_
 
 #include <rclcpp/rclcpp.hpp>
+#include <atomic>
+#include <chrono>
+#include <deque>
+#include <mutex>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
@@ -11,6 +15,8 @@
 
 #include "cv_auto_aim_interfaces/msg/aim_solution.hpp"
 #include "cv_auto_aim_interfaces/msg/target.hpp"
+#include "cv_auto_aim_interfaces/msg/gimbal_attitude.hpp"
+#include "yolo_cpp/aim_prediction.hpp"
 #include "yolo_cpp/visibility_control.hpp"
 
 namespace yolo_cpp
@@ -29,20 +35,15 @@ private:
   void handle_target(const cv_auto_aim_interfaces::msg::Target::SharedPtr msg);
 
   /// Update measured robot attitude and bullet speed.
-  void handle_attitude(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
+  void handle_attitude(const cv_auto_aim_interfaces::msg::GimbalAttitude::SharedPtr msg);
 
   /// Update controller-provided flags used by solver behavior.
   void handle_attitude_flags(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
 
-  /// Publish an explicit no-target command state.
-  void publish_no_target(int image_width, int image_height);
-
-  /// Compute yaw/pitch from target pose, velocity, latency, and ballistic settings.
-  std::pair<float, float> solve_3d_angles(
-    const cv_auto_aim_interfaces::msg::Target& target, float* flight_time, float* range) const;
+  void publish_no_target(int image_width, int image_height, const char * reason = "no_target_or_unsynchronized");
 
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::Target>::SharedPtr target_subscription_;
-  rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr attitude_subscription_;
+  rclcpp::Subscription<cv_auto_aim_interfaces::msg::GimbalAttitude>::SharedPtr attitude_subscription_;
   rclcpp::Subscription<std_msgs::msg::Int32MultiArray>::SharedPtr attitude_flags_subscription_;
   rclcpp::Publisher<std_msgs::msg::Int32MultiArray>::SharedPtr bbox_publisher_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr override_publisher_;
@@ -58,6 +59,7 @@ private:
   std_msgs::msg::Float32 obb_angle_msg_;
 
   bool publish_zero_angles_when_no_target_{true};
+  bool enable_fire_recommendation_{false};
   bool use_3d_solution_{true};
   bool compensate_gravity_{true};
   std::string target_topic_{"tracker/target"};
@@ -68,9 +70,13 @@ private:
   float bullet_speed_mps_{15.0F};
   float solver_latency_s_{0.0F};
   float gravity_mps2_{9.80665F};
-  float current_yaw_rad_{0.0F};
-  float current_pitch_rad_{0.0F};
-  bool have_attitude_{false};
+  AttitudeHistory attitude_history_;
+  std::mutex attitude_mutex_;
+  double attitude_sync_tolerance_ms_{30.0};
+  double attitude_max_gap_ms_{50.0};
+  AimPredictionConfig prediction_config_;
+  int previous_slot_{-1};
+  int previous_track_id_{-1};
   float hfov_rad_{0.0F};
   float vfov_rad_{0.0F};
 };

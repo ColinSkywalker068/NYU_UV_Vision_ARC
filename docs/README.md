@@ -21,7 +21,10 @@
 | Runtime pipeline | [../yolo_cpp/docs/pipeline.md](../yolo_cpp/docs/pipeline.md), [../yolo_cpp/docs/nodes.md](../yolo_cpp/docs/nodes.md), [../yolo_cpp/docs/interfaces.md](../yolo_cpp/docs/interfaces.md) | Detector, tracker, processor, solver, STM bridge, and custom messages. |
 | Launch and config | [../yolo_cpp/docs/launch-and-config.md](../yolo_cpp/docs/launch-and-config.md), [../CPP_CONTAINER_RUNBOOK.md](../CPP_CONTAINER_RUNBOOK.md), [../Docker/README.md](../Docker/README.md) | Launch choice, container bring-up, camera backends, and inference runtime. |
 | Standards | [documentation_standards.md](documentation_standards.md), [principles.md](principles.md), [Pre-commit.md](Pre-commit.md) | Documentation rules, development principles, and pre-commit setup. |
-| Roadmaps and next steps | [RM_AUTO_AIM_PARITY_NEXT_STEPS.md](RM_AUTO_AIM_PARITY_NEXT_STEPS.md), [SPIN_AND_ARMOR_OFFSET_NEXT_STEPS.md](SPIN_AND_ARMOR_OFFSET_NEXT_STEPS.md) | Current planning notes for runtime parity and aiming behavior. |
+| Local tracking evaluation | [validation/autoaim-local-upgrade.md](validation/autoaim-local-upgrade.md), [validation/autoaim-manual-checks.md](validation/autoaim-manual-checks.md), [../tools/model-eval/README.md](../tools/model-eval/README.md) | ARUW model evidence, production ROS tests, offline video overlays, and manual Jetson evaluation. |
+| Tracker telemetry plan | [project/tracker-telemetry-plan.md](project/tracker-telemetry-plan.md) | Planned MCU/camera time alignment, quaternion history, diagnostics, paired commits, and validation gates. |
+| Robot tracking plan | [project/robot-tracking-sim2real-plan.md](project/robot-tracking-sim2real-plan.md) | Canonical spin/non-spin tracking, safe observation, simulation, and sim-to-real plan. |
+| Earlier roadmaps | [RM_AUTO_AIM_PARITY_NEXT_STEPS.md](RM_AUTO_AIM_PARITY_NEXT_STEPS.md), [SPIN_AND_ARMOR_OFFSET_NEXT_STEPS.md](SPIN_AND_ARMOR_OFFSET_NEXT_STEPS.md) | Historical planning notes that informed the consolidated robot-tracking plan. |
 | Legacy archive | [../legacy/yolov8_ros](../legacy/yolov8_ros), [../legacy/docs/yolov8_node](../legacy/docs/yolov8_node), [../legacy/docs/Pipeline/Pipeline.md](../legacy/docs/Pipeline/Pipeline.md), [../legacy/docs/setup](../legacy/docs/setup), [../legacy/prototypes/mac](../legacy/prototypes/mac), [../legacy/docker](../legacy/docker), [../legacy/cpp](../legacy/cpp) | Archived Python YOLOv8 ROS package, historical pipeline docs, old setup notes, prototypes, retired containers, archived C++ references, and stale model variants. |
 
 ## Agent Entry
@@ -99,4 +102,6 @@ Use progressive disclosure: start with a navigation table, then provide the mini
 - [ ] Navigation points to active docs before historical material.
 - [ ] Root agent files remain canonical-stub compliant.
 
-**Last Updated:** 2026-05-30
+**Last Updated:** 2026-10-01
+
+- [Local pose/tracking upgrade and validation](validation/autoaim-local-upgrade.md) — development contracts, candidate models, reproducible tests, and remaining deployment checks.

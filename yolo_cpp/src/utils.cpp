@@ -128,9 +128,9 @@ cv::Rect unletterbox_rect(const cv::Rect& rect, const LetterboxResult& lb)
   }
 
   const int x = std::max(0, static_cast<int>((rect.x - lb.pad_x) / lb.scale));
-  const int y = std::max(0, static_cast<int>((rect.y - lb.pad_y) / lb.scale));
+  const int y = std::max(0, static_cast<int>((rect.y - lb.pad_y) / (lb.scale_y > 0 ? lb.scale_y : lb.scale)));
   const int x2 = std::min(lb.src_w, static_cast<int>((rect.x + rect.width - lb.pad_x) / lb.scale));
-  const int y2 = std::min(lb.src_h, static_cast<int>((rect.y + rect.height - lb.pad_y) / lb.scale));
+  const int y2 = std::min(lb.src_h, static_cast<int>((rect.y + rect.height - lb.pad_y) / (lb.scale_y > 0 ? lb.scale_y : lb.scale)));
   return cv::Rect(x, y, std::max(0, x2 - x), std::max(0, y2 - y));
 }
 
@@ -141,7 +141,7 @@ cv::Point2f unletterbox_point(const cv::Point2f& point, const LetterboxMetadata&
   }
 
   const float x = static_cast<float>((static_cast<double>(point.x) - lb.pad_x) / lb.scale);
-  const float y = static_cast<float>((static_cast<double>(point.y) - lb.pad_y) / lb.scale);
+  const float y = static_cast<float>((static_cast<double>(point.y) - lb.pad_y) / (lb.scale_y > 0 ? lb.scale_y : lb.scale));
   return cv::Point2f(std::clamp(x, 0.0F, static_cast<float>(std::max(0, lb.src_w - 1))),
     std::clamp(y, 0.0F, static_cast<float>(std::max(0, lb.src_h - 1))));
 }

@@ -14,6 +14,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Target.msg"
   "msg/SpinInfo.msg"
   "msg/AimSolution.msg"
+  "msg/GimbalAttitude.msg"
   DEPENDENCIES std_msgs geometry_msgs
 )
 

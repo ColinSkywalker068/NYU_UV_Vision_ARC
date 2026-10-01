@@ -44,7 +44,10 @@ struct FramePacket
   cv::Mat frame;
   PixelFormat pixel_format{PixelFormat::kUnknown};
   BackingStoreKind storage_kind{BackingStoreKind::kHost};
+  /// Camera or pipeline timestamp used to associate inference metadata.
   std::int64_t capture_time_ns{0};
+  /// Local steady-clock time when this frame entered the processing pipeline.
+  std::int64_t capture_steady_time_ns{0};
   std::string source_id;
   std::shared_ptr<void> owner;
   bool flip_180{false};

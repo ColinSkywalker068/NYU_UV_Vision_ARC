@@ -1,7 +1,5 @@
+#!/usr/bin/env bash
 HOME_DIR=$HOME
-CV_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"
-CV_PYTHON_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra"
-
 # Resolve symlink to find the actual scripts directory
 SOURCE="${BASH_SOURCE[0]}"
 while [ -L "$SOURCE" ]; do
@@ -10,6 +8,19 @@ while [ -L "$SOURCE" ]; do
   [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
 done
 SCRIPTS_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+
+# Use the same saved runtime image for rebuilds and systemd startup.
+CV_IMAGE_OVERRIDE="${CV_IMAGE:-}"
+CV_STM_ENV_FILE="${CV_STM_ENV_FILE:-${SCRIPTS_DIR}/stm-stack.env}"
+if [ -f "$CV_STM_ENV_FILE" ]; then
+  CV_HAD_ALLEXPORT=false
+  [[ $- == *a* ]] && CV_HAD_ALLEXPORT=true
+  set -a
+  source "$CV_STM_ENV_FILE"
+  [ "$CV_HAD_ALLEXPORT" = true ] || set +a
+fi
+CV_IMAGE="${CV_IMAGE_OVERRIDE:-${CV_STM_IMAGE:-nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon}}"
+CV_PYTHON_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra"
 
 # Check if the script is running in the background
 IS_BACKGROUND=false
@@ -27,11 +38,17 @@ if [[ ($1 == "run" && $# -ge 3) || $1 == "build" || $1 == "topic" || $1 == "exec
     fi
   fi
   # Start Docker container if the host does not have ROS2 installed
-  source /opt/ros/humble/setup.bash 2> /dev/null || source /opt/ros/humble/install/setup.bash 2> /dev/null
+  UV_ROS_DISTRO="${CV_STM_ROS_DISTRO:-${ROS_DISTRO:-humble}}"
+  source "/opt/ros/${UV_ROS_DISTRO}/setup.bash" 2> /dev/null || source "/opt/ros/${UV_ROS_DISTRO}/install/setup.bash" 2> /dev/null
   if [[ $? != 0 ]]; then
     printf -v current_dir '%q' "$(pwd)"
     forwarded_uv=(uv "$@")
     printf -v forwarded_cmd ' %q' "${forwarded_uv[@]}"
+    if [[ $1 == "build" ]]; then
+      # Preserve colcon's result across the host/container boundary.
+      source "$SCRIPTS_DIR/start-container.sh" "$CV_IMAGE" bash -lc "cd ${current_dir} &&${forwarded_cmd}"
+      exit $?
+    fi
     source "$SCRIPTS_DIR/start-container.sh" "$CV_IMAGE" bash -lc "cd ${current_dir};${forwarded_cmd}; exec bash"
     exit 0
   fi
@@ -136,12 +153,12 @@ case $1 in
     if [[ $IS_ROS2_WORKSPACE = true ]]; then
       if (( $# == 2 || $# == 3 )); then
         if [[ $2 == "yolo_cpp" ]]; then
-          colcon build --packages-select cv_auto_aim_interfaces yolo_cpp --symlink-install --cmake-args -DBUILD_TESTING=OFF
+          colcon build --packages-select cv_auto_aim_interfaces yolo_cpp --symlink-install --cmake-args -DBUILD_TESTING=OFF || exit $?
         else
-          colcon build --packages-select $2 --symlink-install --cmake-args -DBUILD_TESTING=OFF
+          colcon build --packages-select $2 --symlink-install --cmake-args -DBUILD_TESTING=OFF || exit $?
         fi
       else
-        colcon build --symlink-install --cmake-args -DBUILD_TESTING=OFF
+        colcon build --symlink-install --cmake-args -DBUILD_TESTING=OFF || exit $?
       fi
     fi
     if (( $# > 2 )); then

@@ -13,7 +13,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SERVICE_NAME="${CV_STM_SERVICE_NAME:-stm-stack.service}"
 SERVICE_SRC="${SCRIPT_DIR}/${SERVICE_NAME}"
 SERVICE_DEST="/etc/systemd/system/${SERVICE_NAME}"
-ENV_DIR="${CV_STM_ENV_DIR:-/etc/cv-detection}"
+ENV_DIR="${CV_STM_ENV_DIR:-${SCRIPT_DIR}}"
 ENV_FILE="${CV_STM_ENV_FILE:-${ENV_DIR}/stm-stack.env}"
 DEFAULT_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"
 LEGACY_CPLUSPLUS_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus"
@@ -77,60 +77,31 @@ container_running() {
 write_default_env_file() {
   local tmp
   tmp="$(mktemp)"
-  cat > "$tmp" <<EOF
-# Optional overrides for stm-stack.service and services/stm-stack.sh.
-# Keep startup prebuilt and deterministic; build explicitly with 'uv build yolo_cpp'.
-CV_STM_IMAGE=${DEFAULT_IMAGE}
-# To test a locally baked Pylon image before pushing:
-# CV_STM_IMAGE=cv-detection-cplusplus-pylon:local
-UV_CONTAINER_NAME=cv-stm-stack
-CV_STM_LAUNCH_PROFILE=basler
-# Keep the competition graph local to this robot by default. Override these
-# when intentionally using remote ROS tools across machines.
-ROS_DOMAIN_ID=37
-ROS_LOCALHOST_ONLY=1
-# Optional. When unset, yolo_cpp/config/default_model_path.txt supplies the robot-local fallback.
-# CV_STM_MODEL_PATH=/path/to/model.engine
-# CV_STM_TARGET_COLOR=blue
-# Default is to trust model color classes and skip HSV verification.
-# Accept both model colors during detector bring-up by setting both false:
-# CV_STM_USE_MODEL_COLOR_CLASSES=false
-# CV_STM_ENABLE_COLOR_VERIFICATION=false
-# CV_STM_SERIAL_PORT=/dev/ttyUSB0
-# CV_STM_REQUIRE_SERIAL=true
-CV_STM_PREVIEW_MAX_FPS=60.0
-# Select detector preview mode. The preview state is applied at startup, so use
-# './services/stm-stack.sh preview-gui', preview-web, or preview-off.
-CV_STM_SHOW=false
-# Save up to 100 compressed target frames in pictures/ next to vision_logs/.
-# CV_STM_SAVE_TARGET_FRAMES=false
-# CV_STM_TARGET_FRAME_SAVE_DIR=
-# CV_STM_TARGET_FRAME_SAVE_MAX=100
-# CV_STM_TARGET_FRAME_JPEG_QUALITY=85
-# RealSense profile skips Basler/DeepStream/Pylon checks and serial by default:
-# CV_STM_LAUNCH_PROFILE=realsense
-# CV_STM_REQUIRE_SERIAL=false
-# Field service defaults intentionally request a deterministic 160 FPS Basler cap
-# while keeping preview off. Other Basler launch knobs stay on launch defaults.
-CV_STM_BASLER_FPS=160
-CV_STM_BASLER_UNCAPPED_FPS=false
-# CV_STM_DEEPSTREAM_PROFILE_STAGES=false
-# Diagnostic A/B for Nano CUDA Bayer crashes; keeps CUDA Bayer but uses synchronous copies.
-# YOLO_CUDA_BAYER_SYNC_MEMCPY=1
-# CV_STM_EXTRA_LAUNCH_ARGS="basler_exposure_us:=5000.0 basler_gain_db:=5.0"
-# CV_STM_REALSENSE_WIDTH=640
-# CV_STM_REALSENSE_HEIGHT=480
-# CV_STM_REALSENSE_FPS=60
-EOF
-  run_sudo install -m 0644 "$tmp" "$ENV_FILE"
+  # Fresh installs must inherit the same explicit preview-only safety gates as
+  # the tracked example, rather than falling through to launch defaults.
+  cp "${SCRIPT_DIR}/stm-stack.env.example" "$tmp"
+  run_sudo install -m 0644 -o "$(stat -c %u "$REPO_ROOT")" \
+    -g "$(stat -c %g "$REPO_ROOT")" "$tmp" "$ENV_FILE"
   rm -f "$tmp"
 }
 
 install_service() {
   [ -f "$SERVICE_SRC" ] || die "Service file not found: ${SERVICE_SRC}"
   run_sudo install -d -m 0755 "$ENV_DIR"
-  run_sudo install -m 0644 "$SERVICE_SRC" "$SERVICE_DEST"
+  local unit_tmp escaped_repo escaped_env
+  unit_tmp="$(mktemp)"
+  escaped_repo="$(printf '%s' "$REPO_ROOT" | sed 's/[&|\\]/\\&/g')"
+  escaped_env="$(printf '%s' "$ENV_FILE" | sed 's/[&|\\]/\\&/g')"
+  sed -e "s|/home/ultraviolet/CV_Detection/services/stm-stack.env|${escaped_env}|g" \
+      -e "s|/home/ultraviolet/CV_Detection|${escaped_repo}|g" \
+      "$SERVICE_SRC" > "$unit_tmp"
+  run_sudo install -m 0644 "$unit_tmp" "$SERVICE_DEST"
+  rm -f "$unit_tmp"
 
+  if [ ! -f "$ENV_FILE" ] && [ -f /etc/cv-detection/stm-stack.env ]; then
+    run_sudo cp -p /etc/cv-detection/stm-stack.env "$ENV_FILE"
+    log "Preserved legacy settings in ${ENV_FILE}"
+  fi
   if [ ! -f "$ENV_FILE" ]; then
     write_default_env_file
     log "Created ${ENV_FILE}"
@@ -150,6 +121,16 @@ install_service() {
 
 systemctl_action() {
   run_sudo systemctl "$1" "$SERVICE_NAME"
+}
+
+enable_boot() {
+  run_sudo systemctl enable "$SERVICE_NAME"
+  log "Enabled ${SERVICE_NAME} at boot; startup will reload ${ENV_FILE}"
+}
+
+disable_boot() {
+  run_sudo systemctl disable "$SERVICE_NAME"
+  log "Disabled ${SERVICE_NAME} at boot; saved settings remain in ${ENV_FILE}"
 }
 
 set_env_value() {
@@ -181,7 +162,13 @@ set_env_value() {
     } > "$tmp"
   fi
 
-  run_sudo install -m 0644 "$tmp" "$ENV_FILE"
+  # Preserve the operator's edit permissions when replacing saved settings.
+  if [ -f "$ENV_FILE" ]; then
+    run_sudo install -m "$(stat -c %a "$ENV_FILE")" \
+      -o "$(stat -c %u "$ENV_FILE")" -g "$(stat -c %g "$ENV_FILE")" "$tmp" "$ENV_FILE"
+  else
+    run_sudo install -m 0644 "$tmp" "$ENV_FILE"
+  fi
   rm -f "$tmp"
 }
 
@@ -212,7 +199,13 @@ unset_env_values() {
     printf '# Optional overrides for stm-stack.service and services/stm-stack.sh.\n' > "$tmp"
   fi
 
-  run_sudo install -m 0644 "$tmp" "$ENV_FILE"
+  # Preserve the operator's edit permissions when replacing saved settings.
+  if [ -f "$ENV_FILE" ]; then
+    run_sudo install -m "$(stat -c %a "$ENV_FILE")" \
+      -o "$(stat -c %u "$ENV_FILE")" -g "$(stat -c %g "$ENV_FILE")" "$tmp" "$ENV_FILE"
+  else
+    run_sudo install -m 0644 "$tmp" "$ENV_FILE"
+  fi
   rm -f "$tmp"
 }
 
@@ -341,8 +334,25 @@ run_health() {
   if ! container_running; then
     die "Container ${UV_CONTAINER_NAME} is not running"
   fi
-  docker_cmd exec "$UV_CONTAINER_NAME" \
+  docker_cmd exec -e "CV_STM_HEALTH_TIMEOUT_S=${1:-${CV_STM_HEALTH_TIMEOUT_S:-10}}" "$UV_CONTAINER_NAME" \
     bash -lc "cd '${CV_STM_REPO_ROOT}' && exec ./services/stm-stack-entrypoint.sh health"
+}
+
+start_checked() {
+  systemctl_action "$1"
+  ensure_docker
+  local attempt
+  for attempt in {1..10}; do
+    if container_running; then
+      break
+    fi
+    sleep 1
+  done
+  log "Service started; waiting for ROS readiness and fresh Type C telemetry"
+  if ! run_health "${CV_STM_STARTUP_TIMEOUT_S:-45}"; then
+    log "Service was left running, but readiness did not pass. Check 'cv logs' and retry 'cv health'. First-time model builds can exceed the readiness timeout."
+    return 1
+  fi
 }
 
 run_yaw_smoke() {
@@ -390,7 +400,7 @@ open_shell() {
     die "Container ${UV_CONTAINER_NAME} is not running"
   fi
   docker_cmd exec -it "$UV_CONTAINER_NAME" \
-    bash -lc "cd '${CV_STM_REPO_ROOT}' && { source /opt/ros/humble/setup.bash 2>/dev/null || source /opt/ros/humble/install/setup.bash 2>/dev/null || true; }; source install/setup.bash 2>/dev/null || true; exec bash"
+    bash -lc "cd '${CV_STM_REPO_ROOT}' && { source /opt/ros/${CV_STM_ROS_DISTRO:-humble}/setup.bash 2>/dev/null || source /opt/ros/${CV_STM_ROS_DISTRO:-humble}/install/setup.bash 2>/dev/null || true; }; source install/setup.bash 2>/dev/null || true; exec bash"
 }
 
 usage() {
@@ -399,10 +409,12 @@ Usage: ./services/stm-stack.sh <command>
 
 Commands:
   install    Install and enable ${SERVICE_NAME}; does not start it.
+  enable     Start ${SERVICE_NAME} automatically at boot using the saved environment file.
+  disable    Disable automatic boot startup without deleting saved settings.
   run        Run the selected launch profile in the foreground without systemd.
-  start      Start ${SERVICE_NAME}.
+  start      Start ${SERVICE_NAME}, then check ROS and live Type C telemetry.
   stop       Stop ${SERVICE_NAME}.
-  restart    Restart ${SERVICE_NAME}.
+  restart    Restart ${SERVICE_NAME}, then check ROS and live Type C telemetry.
   preview-gui
              Persist CV_STM_SHOW=gui and restart ${SERVICE_NAME}.
   preview-web
@@ -416,7 +428,7 @@ Commands:
   status     Show systemd status.
   logs       Follow systemd logs.
   preflight  Validate image, ROS package, model, and selected profile prerequisites.
-  health     Check selected-profile ROS nodes and topics inside ${UV_CONTAINER_NAME}.
+  health     Check ROS nodes/topics and fresh Type C attitude when RX or TX is configured.
   yaw-smoke  Compile and send one yaw-only STM packet without a full ROS build.
   shell      Open a shell inside ${UV_CONTAINER_NAME}.
 
@@ -430,10 +442,12 @@ main() {
   local command="${1:-}"
   case "$command" in
     install) install_service ;;
+    enable) enable_boot ;;
+    disable) disable_boot ;;
     run) run_foreground ;;
-    start) systemctl_action start ;;
+    start) start_checked start ;;
     stop) systemctl_action stop ;;
-    restart) systemctl_action restart ;;
+    restart) start_checked restart ;;
     preview-gui) set_preview gui gui ;;
     preview-web) set_preview web web ;;
     preview-on) set_preview gui gui ;;

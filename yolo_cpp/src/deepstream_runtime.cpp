@@ -557,6 +557,7 @@ struct DeepStreamRuntime::Impl
   GstPad* streammux_sink_pad{nullptr};
   GstPad* tee_color_pad{nullptr};
   std::filesystem::path runtime_config_path;
+  std::filesystem::path runtime_engine_plan_path;
   std::thread infer_thread;
   std::thread color_thread;
   std::thread bus_thread;
@@ -681,6 +682,10 @@ struct DeepStreamRuntime::Impl
     infer_sink = nullptr;
     color_sink = nullptr;
 
+    if (!runtime_engine_plan_path.empty()) {
+      std::error_code ec;
+      std::filesystem::remove(runtime_engine_plan_path, ec);
+    }
     if (!runtime_config_path.empty()) {
       std::error_code ec;
       std::filesystem::remove(runtime_config_path, ec);
@@ -761,12 +766,37 @@ struct DeepStreamRuntime::Impl
   void materialize_config()
   {
     std::string config_text = read_text_file(config.config_template_path);
+    std::string model_engine_path = config.model_path;
+    if (!path_has_extension(config.model_path, ".onnx")) {
+      const auto plan = read_engine_plan_from_file(config.model_path);
+      if (plan.size() != std::filesystem::file_size(config.model_path)) {
+        // nvinfer needs raw TensorRT bytes; our detector reads the preserved
+        // Ultralytics metadata from the original model before this step.
+        const auto unique_id = std::chrono::steady_clock::now().time_since_epoch().count();
+        runtime_engine_plan_path = std::filesystem::temp_directory_path()
+          / ("yolo_cpp_deepstream_plan_" + std::to_string(unique_id) + ".engine");
+        std::ofstream plan_stream(runtime_engine_plan_path, std::ios::binary);
+        plan_stream.write(plan.data(), static_cast<std::streamsize>(plan.size()));
+        if (!plan_stream) {
+          throw std::runtime_error("Failed to materialize raw DeepStream engine plan");
+        }
+        model_engine_path = runtime_engine_plan_path.string();
+      }
+    }
     const auto model_source_config = path_has_extension(config.model_path, ".onnx")
                                        ? ("onnx-file=" + config.model_path
                                            + "\nmodel-engine-file=" + config.model_path + ".engine")
-                                       : ("model-engine-file=" + config.model_path);
+                                       : ("model-engine-file=" + model_engine_path);
+    if (config.model_profile == "aruw_2026_pose") {
+      if (config.imgsz_width != 640 || config.imgsz_height != 384 || config.pre_mux_resize) {
+        throw std::runtime_error("ARUW profile requires 640x384 with pre_mux_resize disabled");
+      }
+      replace_all(config_text, "model-color-format=0", "model-color-format=1");
+      replace_all(config_text, "maintain-aspect-ratio=1", "maintain-aspect-ratio=0");
+      replace_all(config_text, "symmetric-padding=1", "symmetric-padding=0");
+    }
     replace_all(config_text, "__MODEL_SOURCE_CONFIG__", model_source_config);
-    replace_all(config_text, "__MODEL_ENGINE_FILE__", config.model_path);
+    replace_all(config_text, "__MODEL_ENGINE_FILE__", model_engine_path);
     replace_all(config_text, "__INPUT_WIDTH__", std::to_string(config.imgsz_width));
     replace_all(config_text, "__INPUT_HEIGHT__", std::to_string(config.imgsz_height));
     replace_all(config_text, "__NUM_CLASSES__", std::to_string(std::max(1, num_classes)));
@@ -1298,7 +1328,8 @@ struct DeepStreamRuntime::Impl
     gst_caps_unref(infer_caps_value);
 
     g_object_set(G_OBJECT(streammux), "batch-size", 1, "width", config.imgsz_width, "height",
-      config.imgsz_height, "live-source", TRUE, "enable-padding", TRUE, nullptr);
+      config.imgsz_height, "live-source", TRUE, "enable-padding",
+      config.model_profile == "aruw_2026_pose" ? FALSE : TRUE, nullptr);
     g_object_set(G_OBJECT(nvinfer), "config-file-path", runtime_config_path.c_str(), nullptr);
     g_object_set(G_OBJECT(infer_sink_elem), "emit-signals", FALSE, "sync", FALSE, "max-buffers", 1,
       "drop", TRUE, nullptr);
@@ -1481,6 +1512,29 @@ struct DeepStreamRuntime::Impl
     }
   }
 
+  std::int64_t capture_steady_from_pts(GstSample * sample, GstClockTime pts)
+  {
+    if (!GST_CLOCK_TIME_IS_VALID(pts)) {return 0;}
+    const GstSegment * segment = gst_sample_get_segment(sample);
+    if (!segment || segment->format != GST_FORMAT_TIME) {return 0;}
+    const GstClockTime running_time = gst_segment_to_running_time(segment, GST_FORMAT_TIME, pts);
+    GstClock * clock = gst_element_get_clock(pipeline);
+    if (!clock || !GST_CLOCK_TIME_IS_VALID(running_time)) {
+      if (clock) {gst_object_unref(clock);}
+      return 0;
+    }
+    const auto clock_now = gst_clock_get_time(clock);
+    const auto base_time = gst_element_get_base_time(pipeline);
+    gst_object_unref(clock);
+    if (!GST_CLOCK_TIME_IS_VALID(base_time) || running_time > clock_now ||
+      base_time > clock_now - running_time) {return 0;}
+    const auto age = clock_now - base_time - running_time;
+    if (age > 2 * GST_SECOND) {return 0;}
+    const auto steady_now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+    return steady_now - static_cast<std::int64_t>(age);
+  }
+
   FramePacket sample_to_bgr_packet(GstSample* sample)
   {
     FramePacket packet{};
@@ -1513,6 +1567,7 @@ struct DeepStreamRuntime::Impl
     packet.pixel_format = PixelFormat::kBgr8;
     packet.storage_kind = BackingStoreKind::kHost;
     packet.capture_time_ns = static_cast<std::int64_t>(GST_BUFFER_PTS(buffer));
+    packet.capture_steady_time_ns = capture_steady_from_pts(sample, GST_BUFFER_PTS(buffer));
     packet.source_id = config.source_id;
     gst_buffer_unmap(buffer, &map_info);
     return packet;
@@ -1712,6 +1767,7 @@ struct DeepStreamRuntime::Impl
       const auto output_shape = dims_to_shape(output_layer.inferDims);
 
       Result result{};
+      result.capture_steady_time_ns = capture_steady_from_pts(sample, frame_meta->buf_pts);
       if (config.enable_color_verification || config.debug_publish_image_raw
           || config.preview_frame)
       {
@@ -1745,9 +1801,15 @@ struct DeepStreamRuntime::Impl
           : (config.pre_mux_resize ? config.source_height : frame_meta_source_height);
       result.batch.letterbox =
         make_letterbox_metadata(src_w, src_h, config.imgsz_width, config.imgsz_height);
+      if (config.model_profile == "aruw_2026_pose") {
+        result.batch.letterbox = aruw_resize_metadata(src_w, src_h);
+        result.batch.detections = parse_aruw_pose_tensor(tensor_values.data(), output_shape,
+          config.imgsz_width, config.imgsz_height, config.conf_threshold);
+      } else {
       result.batch.detections = parse_yolo_output_tensor(tensor_values.data(), output_shape,
         config.imgsz_width, config.imgsz_height, std::max(1, num_classes), config.conf_threshold,
         task_obb, end2end, export_includes_nms, &logger);
+      }
       const auto parse_done = std::chrono::steady_clock::now();
       result.timings.parse_ms =
         std::chrono::duration<double, std::milli>(parse_done - parse_start).count();

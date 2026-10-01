@@ -11,6 +11,7 @@
 #include <optional>
 #include <rclcpp/logging.hpp>
 #include <string>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -222,11 +223,13 @@ bool looks_like_end2end_shape(const std::vector<int64_t>& shape, int num_classes
   if (shape.size() != 3U) {
     return false;
   }
-  if (export_includes_nms.has_value()) {
-    return *export_includes_nms;
-  }
+  // End-to-end models already emit detection rows. The separate exporter NMS
+  // option can still be false; it does not turn this output into raw channels.
   if (end2end_metadata) {
     return true;
+  }
+  if (export_includes_nms.has_value()) {
+    return *export_includes_nms;
   }
 
   const int expected_attrs = task_obb ? 7 : 6;
@@ -291,7 +294,7 @@ std::vector<Detection> parse_end2end_output_tensor(const float* tensor_data,
 
     float angle = 0.0F;
     float confidence = at(4);
-    int class_id = std::max(0, static_cast<int>(std::lround(at(5))));
+    float class_value = at(5);
     if (task_obb) {
       const auto is_class_like = [&](float value) {
         const float rounded = std::round(value);
@@ -304,17 +307,24 @@ std::vector<Detection> parse_end2end_output_tensor(const float* tensor_data,
         // Some exporters emit OBB rows as [cx, cy, w, h, angle, conf, class].
         angle = at(4);
         confidence = at(5);
-        class_id = std::max(0, static_cast<int>(std::lround(at(6))));
+        class_value = at(6);
       } else {
         // Ultralytics YOLO26 end-to-end OBB rows are [cx, cy, w, h, conf, class, angle].
         confidence = at(4);
-        class_id = std::max(0, static_cast<int>(std::lround(at(5))));
+        class_value = at(5);
         angle = at(6);
       }
     }
-    if (!std::isfinite(confidence) || confidence < conf_threshold) {
+    if (!std::isfinite(confidence) || confidence < conf_threshold || confidence > 1.0F ||
+        !std::isfinite(class_value) || class_value < 0.0F ||
+        class_value >= static_cast<float>(std::max(1, num_classes)) ||
+        std::abs(class_value - std::round(class_value)) > 1e-3F ||
+        !std::isfinite(at(0)) || !std::isfinite(at(1)) ||
+        !std::isfinite(at(2)) || !std::isfinite(at(3)) || !std::isfinite(angle) ||
+        (task_obb && (at(2) <= 0.0F || at(3) <= 0.0F))) {
       continue;
     }
+    const int class_id = static_cast<int>(std::lround(class_value));
 
     const float x1f = task_obb ? clamp_value(
       at(0) - (at(2) * 0.5F), 0.0F, static_cast<float>(img_w - 1))
@@ -333,8 +343,11 @@ std::vector<Detection> parse_end2end_output_tensor(const float* tensor_data,
     const int x2 = static_cast<int>(std::ceil(std::max(x1f, x2f)));
     const int y2 = static_cast<int>(std::ceil(std::max(y1f, y2f)));
 
+    if (x2 <= x1 || y2 <= y1) {
+      continue;
+    }
     Detection detection{};
-    detection.bbox_model = cv::Rect(x1, y1, std::max(0, x2 - x1), std::max(0, y2 - y1));
+    detection.bbox_model = cv::Rect(x1, y1, x2 - x1, y2 - y1);
     detection.confidence = confidence;
     detection.class_id = class_id;
     detection.has_corners = true;
@@ -414,7 +427,7 @@ std::vector<Detection> parse_yolo_output_tensor(const float* tensor_data,
         best_cls = cls;
       }
     }
-    if (best_conf < conf_threshold) {
+    if (!std::isfinite(best_conf) || best_conf < conf_threshold || best_conf > 1.0F) {
       continue;
     }
 
@@ -424,6 +437,11 @@ std::vector<Detection> parse_yolo_output_tensor(const float* tensor_data,
     candidate.width = at(2);
     candidate.height = at(3);
     candidate.angle = (extras > 0) ? at(4 + nc) : 0.0F;
+    if (!std::isfinite(candidate.cx) || !std::isfinite(candidate.cy) ||
+        !std::isfinite(candidate.width) || !std::isfinite(candidate.height) ||
+        !std::isfinite(candidate.angle) || candidate.width <= 0.0F || candidate.height <= 0.0F) {
+      continue;
+    }
     candidate.confidence = best_conf;
     candidate.class_id = best_cls;
     parsed.push_back(candidate);
@@ -492,6 +510,113 @@ std::vector<Detection> parse_yolo_output_tensor(const float* tensor_data,
   }
 
   return detections;
+}
+
+LetterboxMetadata aruw_resize_metadata(int width, int height)
+{
+  LetterboxMetadata metadata;
+  metadata.src_w = width;
+  metadata.src_h = height;
+  metadata.dst_w = 640;
+  metadata.dst_h = 384;
+  metadata.scale = width > 0 ? 640.0 / width : 0;
+  metadata.scale_y = height > 0 ? 384.0 / height : 0;
+  return metadata;
+}
+
+cv::Mat preprocess_aruw_bgr(const cv::Mat & bgr)
+{
+  if (bgr.empty() || bgr.type() != CV_8UC3) {
+    throw std::invalid_argument("ARUW profile requires a BGR8 image");
+  }
+  cv::Mat floating, resized;
+  // Upstream resizes floats in BGR order, with no letterbox or channel swap.
+  bgr.convertTo(floating, CV_32FC3, 1.0 / 255.0);
+  cv::resize(floating, resized, cv::Size(640, 384), 0, 0, cv::INTER_LINEAR);
+  const int dims[] = {1, 3, 384, 640};
+  cv::Mat tensor(4, dims, CV_32F);
+  for (int y = 0; y < 384; ++y) {
+    for (int x = 0; x < 640; ++x) {
+      const auto pixel = resized.at<cv::Vec3f>(y, x);
+      for (int c = 0; c < 3; ++c) {tensor.ptr<float>()[c * 384 * 640 + y * 640 + x] = pixel[c];}
+    }
+  }
+  return tensor;
+}
+
+std::vector<Detection> parse_aruw_pose_tensor(const float * data,
+  const std::vector<int64_t> & shape, int width, int height, float threshold)
+{
+  std::vector<Detection> result;
+  if (!data || shape.size() != 3 || shape[0] != 1 || shape[1] < 1 ||
+    shape[1] > 300 || shape[2] != 14 || width != 640 || height != 384) {return result;}
+  // Metadata identities, not upstream competition-specific remapping of 5 to sentry.
+  const int numbers[] = {0, 2, 1, 6, 7, 3, 4, 5};
+  for (int64_t row = 0; row < shape[1]; ++row) {
+    const float * p = data + row * 14;
+    if (!std::all_of(p, p + 14, [](float v) {return std::isfinite(v);}) ||
+      p[4] < threshold || p[4] > 1 || p[5] < 0 || p[5] >= 16 ||
+      std::abs(p[5] - std::round(p[5])) > 1e-3 || p[2] <= p[0] || p[3] <= p[1]) {continue;}
+    cv::Point2f points[4];
+    bool in_image = true;
+    for (int k = 0; k < 4; ++k) {
+      points[k] = {p[6 + k * 2], p[7 + k * 2]};
+      in_image = in_image && points[k].x >= 0 && points[k].x < width &&
+        points[k].y >= 0 && points[k].y < height;
+    }
+    if (!in_image) {continue;}
+    const auto ordered = order_armor_corners(points);
+    const std::vector<cv::Point2f> polygon(ordered.begin(), ordered.end());
+    if (!cv::isContourConvex(polygon) || cv::contourArea(polygon, true) < 4) {continue;}
+    Detection d;
+    const int cls = static_cast<int>(p[5]);
+    d.class_id = cls < 8 ? RED_CLASS : BLUE_CLASS;
+    d.armor_number = numbers[cls % 8];
+    // Hero/base are large. Engineer/standard/sentry/outpost use small plates.
+    d.armor_type = (cls % 8 == 0 || cls % 8 == 2) ? 1 : 0;
+    d.confidence = p[4];
+    // Project Otto derives its tracked rectangle from the four keypoints. The
+    // separate box head can include extra context and shift the aiming center.
+    float left = width, top = height, right = 0, bottom = 0;
+    for (const auto & point : ordered) {
+      left = std::min(left, point.x);
+      top = std::min(top, point.y);
+      right = std::max(right, point.x);
+      bottom = std::max(bottom, point.y);
+    }
+    const int x = std::clamp(static_cast<int>(std::floor(left)), 0, width - 1);
+    const int y = std::clamp(static_cast<int>(std::floor(top)), 0, height - 1);
+    const int x2 = std::clamp(static_cast<int>(std::ceil(right)), x + 1, width);
+    const int y2 = std::clamp(static_cast<int>(std::ceil(bottom)), y + 1, height);
+    d.bbox_model = {x, y, x2 - x, y2 - y};
+    d.has_corners = d.corners_are_keypoints = true;
+    d.corners_model = ordered;
+    result.push_back(d);
+  }
+  // The end-to-end head still produced near-identical armor quads in public
+  // replay (same physical plate, three rows). Suppress only near-identical
+  // same-color geometry; nearby distinct plates remain separate observations.
+  std::stable_sort(result.begin(), result.end(), [](const auto & a, const auto & b) {
+    return a.confidence > b.confidence;
+  });
+  std::vector<Detection> unique;
+  for (const auto & candidate : result) {
+    bool duplicate = false;
+    const std::vector<cv::Point2f> quad(candidate.corners_model.begin(), candidate.corners_model.end());
+    for (const auto & kept : unique) {
+      if (candidate.class_id != kept.class_id) {continue;}
+      const std::vector<cv::Point2f> other(kept.corners_model.begin(), kept.corners_model.end());
+      std::vector<cv::Point2f> intersection;
+      const double shared_area = cv::intersectConvexConvex(quad, other, intersection);
+      const double union_area = cv::contourArea(quad) + cv::contourArea(other) - shared_area;
+      if (union_area > 0 && shared_area / union_area > 0.85) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) {unique.push_back(candidate);}
+  }
+  return unique;
 }
 
 }  // namespace yolo_cpp

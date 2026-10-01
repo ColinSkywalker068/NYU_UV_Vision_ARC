@@ -94,7 +94,17 @@ struct TrackObservation
   int armor_number{-1};
   float distance_to_image_center{0.0F};
   bool has_pose{false};
-  cv::Point3d position_camera;
+  // Pose used by association/filtering, in a fixed orientation tracking frame.
+  cv::Point3d position;
+  std::array<double, 4> orientation{0.0, 0.0, 0.0, 1.0};
+  // Preserve the detector measurement separately from the filtered state.
+  bool has_camera_pose{false};
+  bool corners_are_keypoints{false};
+  bool pose_normal_reliable{false};
+  float reprojection_rms_px{0.0F};
+  cv::Point3d camera_position;
+  std::array<double, 4> camera_orientation{0.0, 0.0, 0.0, 1.0};
+  std::int64_t measurement_stamp_ns{0};
 };
 
 /// Public view of one track after prediction, association, and state update.
@@ -108,23 +118,27 @@ struct TrackSnapshot
   TrackObservation observation;
   cv::Point2f predicted_center;
   bool has_pose{false};
-  cv::Point3d predicted_position_camera;
+  cv::Point3d predicted_position;
   bool has_velocity{false};
-  cv::Vec3d velocity_camera;
+  cv::Vec3d velocity;
   bool selectable{false};
 };
 
 /// Tunable association, confirmation, coasting, and target-lock parameters.
 struct TrackConfig
 {
-  int track_min_hits{1};
-  int track_max_coast_frames{1};
-  int track_drop_frames{4};
+  int track_min_hits{2};
+  int track_max_coast_frames{6};
+  int track_drop_frames{16};
+  double track_max_coast_s{0.12};
+  double track_drop_s{0.35};
+  double position_filter_tau_s{0.035};
+  double velocity_filter_tau_s{0.10};
   double association_max_center_distance_ratio{0.30};
   double association_min_iou{0.0};
   double association_max_3d_distance_m{0.35};
-  double target_switch_min_score_delta{0.02};
-  int target_lock_hysteresis_frames{0};
+  double target_switch_min_score_delta{0.08};
+  int target_lock_hysteresis_frames{6};
 };
 
 /// Tracker output for one processed frame.
@@ -173,15 +187,20 @@ private:
     TrackObservation observation;
     cv::Point2f predicted_center;
     bool has_3d_state{false};
-    cv::Point3d position_camera;
-    cv::Point3d predicted_position_camera;
-    cv::Vec3d velocity_camera;
+    std::int64_t pose_measurement_stamp_ns{0};
+    cv::Point3d position;
+    cv::Point3d predicted_position;
+    cv::Point3d last_pose_measurement_position;
+    double detection_age_s{0.0};
+    double pose_measurement_age_s{0.0};
+    cv::Vec3d velocity;
   };
 
   struct RankedTrack
   {
     const TrackSnapshot* snapshot{nullptr};
     double center_distance{0.0};
+    double selection_score{0.0};
   };
 
   TrackSnapshot make_snapshot(const TrackRecord& track) const;

@@ -171,8 +171,8 @@ add_cplusplus_env_args() {
 		return
 	fi
 
-	local gst_plugin_path="/opt/nvidia/deepstream/deepstream-6.4/lib/gst-plugins:/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins"
-	local ld_library_path="/opt/nvidia/deepstream/deepstream-6.4/lib:/opt/nvidia/deepstream/deepstream/lib:/usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/nvidia:/opt/pylon/lib:/usr/local/cuda/lib64:/usr/local/cuda/compat:/usr/lib/aarch64-linux-gnu"
+	local gst_plugin_path="/opt/nvidia/deepstream/deepstream/lib/gst-plugins:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/opt/pylon/lib/gstreamer-1.0:/opt/pylon/lib/gst-plugins"
+	local ld_library_path="/opt/nvidia/deepstream/deepstream/lib:/usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/nvidia:/opt/pylon/lib:/usr/local/cuda/lib64:/usr/local/cuda/compat:/usr/lib/aarch64-linux-gnu"
 
 	add_env_value CV_CPLUSPLUS_GST_PLUGIN_PATH "$gst_plugin_path"
 	add_env_value CV_CPLUSPLUS_LD_LIBRARY_PATH "$ld_library_path"
@@ -185,6 +185,7 @@ add_cplusplus_env_args() {
 add_cv_stm_env_args() {
 	local env_names=(
 		CV_STM_REPO_ROOT
+		CV_STM_ROS_DISTRO
 		CV_STM_IMAGE
 		CV_STM_MODEL_PATH
 		CV_STM_LAUNCH_PROFILE
@@ -275,9 +276,15 @@ run_power_script_if_needed() {
 }
 
 write_jetson_model_file() {
-	local model_file="/tmp/cv_detection_nv_jetson_model"
-	rm -rf "$model_file" 2>/dev/null || true
+	local model_file
+	# A boot service runs as root; an operator preflight must not reuse its file.
+	# Keep this bind source for the lifetime of the container, including reuse.
+	model_file="$(mktemp /tmp/cv_detection_nv_jetson_model.XXXXXX)" || {
+		echo "Unable to create Jetson model file; continuing without model bind mount" >&2
+		return 0
+	}
 	if cat /proc/device-tree/model > "$model_file" 2>/dev/null; then
+		chmod 0644 "$model_file"
 		printf '%s' "$model_file"
 	else
 		echo "Unable to write $model_file; continuing without Jetson model bind mount" >&2

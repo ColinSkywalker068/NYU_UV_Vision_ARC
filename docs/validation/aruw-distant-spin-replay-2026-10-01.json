@@ -1,0 +1,72 @@
+{
+  "date": "2026-10-01",
+  "source": {
+    "name": "robotpilots-far-translation-spin.avi",
+    "repo": "SZURPVision/26_NNDeployment_Lib_and_Detection_Models",
+    "revision": "ccb5dfe09696edeea445ffb8f99adaa7c383ec3a",
+    "remote_path": "测试视频/远处旋转平移.avi",
+    "url": "https://raw.githubusercontent.com/SZURPVision/26_NNDeployment_Lib_and_Detection_Models/ccb5dfe09696edeea445ffb8f99adaa7c383ec3a/%E6%B5%8B%E8%AF%95%E8%A7%86%E9%A2%91/%E8%BF%9C%E5%A4%84%E6%97%8B%E8%BD%AC%E5%B9%B3%E7%A7%BB.avi",
+    "size": 64943384,
+    "expected_git_blob_sha1": "179877635e773d596e35550a25849d3b3c3989cb",
+    "sha256": "d630cc615d4cd9b64fb6f45cd7c3cd0ea90d9a423eee771f3061831ad7e3f61d",
+    "verified": true
+  },
+  "pipeline": "Pinned ARUW 2026 ONNX via native Core ML, then production C++ parse_aruw_pose_tensor and TrackManager; no parameter retuning",
+  "runtime_source_revision": "94dec59615b857bad6238a6e85d562b4c0aeb991",
+  "source_file_sha256": {
+    "yolo_cpp/src/tracker.cpp": "c3bd3035438a81e6f1c794637efd6ad3c5fd087050b002fd161ce92034a6aa2a",
+    "yolo_cpp/src/detection_postprocess.cpp": "5a068a18baa99b15893a89f2818764ea3263102f2b512f35303139e375eda895",
+    "yolo_cpp/tools/armor_replay.cpp": "5ec5df03b93975cd53159ffa5f638b142f50aa59f68ad475a9cf8cd81f63cdd0"
+  },
+  "inference": {
+    "video_sha256": "d630cc615d4cd9b64fb6f45cd7c3cd0ea90d9a423eee771f3061831ad7e3f61d",
+    "model_sha256": "3af4e44cc66d0f2a29cb7912c9c8da4cdb902fccbc02df4f5b3c0d5847dcdefe",
+    "fps": 150.0,
+    "frames": 1927,
+    "threshold": 0.5,
+    "provider": "coreml",
+    "registered_providers": [
+      "CoreMLExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "onnxruntime": "1.30.0",
+    "median_inference_ms": 6.872333469800651,
+    "p95_inference_ms": 10.245135868899524,
+    "scope": "Unlabeled prerecorded imagery; image-space tracking only; no 3D commands"
+  },
+  "tracking": {
+    "frames": 1927,
+    "frames_with_detections": 1892,
+    "frames_with_selection": 1922,
+    "distinct_plate_track_ids": 92,
+    "selected_id_changes": 124,
+    "coasting_track_frames": 144,
+    "scope": "No ground truth: ID changes include legitimate plate switches and cannot be called identity errors"
+  },
+  "selected_measured_bbox_median_source_px": {
+    "width": 56.0,
+    "height": 28.0
+  },
+  "render": {
+    "playback_speed": 0.25,
+    "ffprobe": {
+      "codec_name": "h264",
+      "width": 1280,
+      "height": 1110,
+      "r_frame_rate": "75/2",
+      "duration": "51.386667",
+      "nb_read_frames": "1927"
+    },
+    "sha256": "dd9f9619262b3b1a503a2df3db30d810534933b7922b47a35d1bc4bed6913ef9"
+  },
+  "limits": [
+    "Distance is the source author's qualitative label; no verified range in meters.",
+    "No detection/identity ground truth; plate switches are not an error rate.",
+    "No calibrated camera or synchronized gimbal attitude; this exercises image-space tracking, not 3D solver, actuator response or firing.",
+    "The original pinned MJPEG source emitted an overread warning during decoding. Inference, tracking and final rendered video all contain 1927 frames."
+  ],
+  "reproduction": {
+    "fetch": "python tools/model-eval/fetch_replays.py --output /tmp/armor-eval/clips --clip robotpilots-far-translation-spin.avi",
+    "remaining_steps": "Follow tools/model-eval/README.md with this clip, threshold 0.5, and --playback-speed 0.25."
+  }
+}

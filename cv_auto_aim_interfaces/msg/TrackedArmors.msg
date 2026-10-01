@@ -6,3 +6,9 @@ string source_id
 cv_auto_aim_interfaces/TrackedArmor[] tracks
 # Selected target track id, or -1 when no target is selected.
 int32 selected_track_id
+
+# Frame for pose_tracking and camera_pose. Axes: X right, Y down, Z forward
+# at controller zero attitude; independent of current camera rotation.
+string pose_frame_id
+bool camera_pose_valid
+geometry_msgs/Pose camera_pose

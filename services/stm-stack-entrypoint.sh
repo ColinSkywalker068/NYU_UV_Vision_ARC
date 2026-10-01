@@ -47,12 +47,13 @@ source_setup_file() {
 
 source_ros() {
   local setup
-  for setup in /opt/ros/humble/setup.bash /opt/ros/humble/install/setup.bash; do
+  local distro="${CV_STM_ROS_DISTRO:-${ROS_DISTRO:-humble}}"
+  for setup in "/opt/ros/${distro}/setup.bash" "/opt/ros/${distro}/install/setup.bash"; do
     if [ -f "$setup" ] && source_setup_file "$setup"; then
       return
     fi
   done
-  die "ROS 2 Humble setup file was not found under /opt/ros/humble"
+  die "ROS 2 ${distro} setup file was not found under /opt/ros/${distro}"
 }
 
 source_workspace() {
@@ -373,6 +374,9 @@ run_health() {
   while true; do
     if check_graph_once false; then
       log "Health OK: expected $(launch_profile) nodes and topics are present"
+      if [ "$(launch_profile)" != "realsense" ]; then
+        python3 "${REPO_ROOT}/services/check_typec_link.py" --timeout 8 || return $?
+      fi
       return
     fi
 

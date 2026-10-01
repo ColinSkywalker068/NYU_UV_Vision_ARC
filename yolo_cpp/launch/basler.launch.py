@@ -4,6 +4,7 @@ from typing import Any
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import (
     EnvironmentVariable,
     LaunchConfiguration,
@@ -27,6 +28,8 @@ def launch_config(name: str) -> LaunchConfiguration:
 def argument_specs() -> list[tuple[str, Any, str]]:
     """Declare launch arguments in operator-facing order."""
     return [
+        ("start_solver", "true", "Start the aim solver command publisher"),
+        ("start_serial_bridge", "true", "Open the STM serial bridge"),
         (
             "camera_type",
             "basler",
@@ -52,8 +55,15 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             EnvironmentVariable("CV_STM_MODEL_PATH", default_value=""),
             "Path to YOLO weights (.pt / .engine / .onnx); empty uses the package default resolver",
         ),
+        ("model_type", "yolo", "Tensor parser/preprocessing profile: yolo or aruw_2026_pose"),
+        ("task", "obb", "Model task: obb, detect, or pose"),
+        ("half", "true", "Allow reduced precision engine layers; verify output agreement before enabling"),
+        ("confidence_threshold", "0.30", "Minimum detector confidence"),
         ("serial_port", "/dev/ttyUSB0", "Serial port for STM32 connection"),
+        ("transmit_enable", "false", "Explicitly enable absolute SP commands only after bench validation"),
+        ("receive_enable", "false", "Read MCU telemetry without transmitting commands"),
         ("serial_baudrate", "115200", "Baud rate for STM32 serial"),
+        ("tracking_log_enable", "true", "Record target, command and attitude alignment diagnostics"),
         ("serial_verbose", "false", "Enable verbose serial logging"),
         ("basler_width", "640", "Basler frame width"),
         ("basler_height", "640", "Basler frame height"),
@@ -116,6 +126,12 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ("basler_exposure_us", "5000.0", "Basler exposure in microseconds"),
         ("basler_gain_db", "5.0", "Basler gain in dB"),
         ("basler_flip", "true", "Rotate Basler frames 180 degrees"),
+        ("preview_command_is_offset", "false", "Draw command arrow only with solver_output_mode=offset"),
+        (
+            "preview_absolute_error_arrow",
+            "false",
+            "Draw command-minus-attitude arrow for absolute solver output when telemetry is fresh",
+        ),
         (
             "basler_use_full_sensor",
             "true",
@@ -192,9 +208,13 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ),
         ("preview_http_port", "8080", "Preview HTTP port"),
         ("preview_http_jpeg_quality", "80", "Preview HTTP JPEG quality 1-100"),
-        ("track_min_hits", "1", "Frames required to confirm a track"),
-        ("track_max_coast_frames", "1", "Maximum published coast frames"),
-        ("track_drop_frames", "4", "Frames before dropping an unmatched track"),
+        ("track_min_hits", "2", "Frames required to confirm a track"),
+        ("track_max_coast_frames", "6", "Maximum published coast frames"),
+        ("track_drop_frames", "16", "Frames before dropping an unmatched track"),
+        ("track_max_coast_s", "0.12", "Maximum seconds to publish a missed plate prediction"),
+        ("track_drop_s", "0.35", "Maximum seconds to retain an unmatched identity"),
+        ("position_filter_tau_s", "0.035", "3D position filter time constant; zero disables"),
+        ("velocity_filter_tau_s", "0.10", "3D velocity filter time constant; zero disables"),
         (
             "association_max_center_distance_ratio",
             "0.30",
@@ -203,12 +223,12 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ("association_min_iou", "0.0", "Minimum IoU required for matching"),
         (
             "target_switch_min_score_delta",
-            "0.02",
+            "0.08",
             "Confidence delta required to steal target lock",
         ),
         (
             "target_lock_hysteresis_frames",
-            "0",
+            "6",
             "Coast frames allowed before target lock yields",
         ),
         (
@@ -236,18 +256,28 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         (
             "camera_fx",
             "0.0",
-            "Optional static camera fx; FOV fallback is used when unset",
+            "Calibrated static camera fx; no PnP without valid intrinsics",
         ),
         (
             "camera_fy",
             "0.0",
-            "Optional static camera fy; FOV fallback is used when unset",
+            "Calibrated static camera fy; no PnP without valid intrinsics",
         ),
         ("camera_cx", "0.0", "Optional static camera cx"),
+        ("calibration_provisional", "false", "Label guessed intrinsics; TX uses transmit_enable; fire stays blocked"),
         ("camera_cy", "0.0", "Optional static camera cy"),
+        ("camera_calibration_width", "0", "Static calibration image width; required with static intrinsics"),
+        ("camera_calibration_height", "0", "Static calibration image height; required with static intrinsics"),
+        ("camera_distortion", "[0.0,0.0,0.0,0.0,0.0]", "OpenCV distortion coefficients matching the calibrated image"),
+        ("pose_corner_sigma_model_px", "0.5", "Corner localization uncertainty in model pixels; calibrate on labeled frames"),
+        ("pose_max_relative_depth_uncertainty", "0.05", "Reject PnP when estimated relative depth uncertainty exceeds this fraction"),
+        ("small_armor_width_m", "0.135", "Width between the model's small-armor keypoints in metres"),
+        ("small_armor_height_m", "0.055", "Height between the model's small-armor keypoints in metres"),
+        ("large_armor_width_m", "0.225", "Width between the model's large-armor keypoints in metres"),
+        ("large_armor_height_m", "0.055", "Height between the model's large-armor keypoints in metres"),
         (
             "processor_target_frame",
-            "camera_optical_frame",
+            "gimbal_inertial",
             "Frame used for processor target pose output",
         ),
         (
@@ -256,16 +286,52 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Use processor pose/velocity when available for yaw/pitch solving",
         ),
         (
+            "robot_estimator_enable",
+            "true",
+            "Track a shared robot center/phase; a lone plate still uses direct aiming",
+        ),
+        ("robot_armor_radius_m", "0.26", "Robot center-to-armor radius in meters"),
+        ("robot_armor_count", "4", "Number of armor positions around the robot"),
+        ("robot_center_gate_m", "0.45", "Reject plates this far from the tracked center"),
+        (
+            "robot_plate_cluster_gate_m",
+            "0.18",
+            "Maximum inferred-center separation for plates on the same robot",
+        ),
+        ("robot_estimator_min_updates", "5", "Updates required before robot prediction"),
+        ("robot_estimator_use_ekf", "true", "Use uncertainty-aware center/phase/geometry estimation"),
+        ("actuator_delay_s", "0.0", "Measured actuator response delay; do not guess from packet rate"),
+        ("yaw_max_slew_deg_s", "60.0", "Controller yaw reference limit used for reachability diagnostics"),
+        ("pitch_max_slew_deg_s", "60.0", "Controller pitch reference limit used for reachability diagnostics"),
+        ("yaw_max_accel_deg_s2", "360.0", "Controller yaw reference acceleration limit"),
+        ("pitch_max_accel_deg_s2", "240.0", "Controller pitch reference acceleration limit"),
+        ("plate_switch_margin", "0.15", "Facing-score improvement needed to switch a visible robot plate"),
+        ("attitude_max_gap_ms", "50.0", "Maximum telemetry interpolation gap"),
+        ("camera_translation_m", "[0.0,0.0,0.0]", "Camera offset from gimbal pivot, metres in zero-attitude optical axes"),
+        ("camera_mount_yaw_pitch_roll", "[0.0,0.0,0.0]", "Camera mounting rotation in radians"),
+        ("attitude_receive_delay_s", "0.0", "Measured receive-to-sample delay of SP telemetry"),
+        ("robot_estimator_coast_frames", "8", "Frames to predict through missing detections"),
+        (
             "solver_output_mode",
             "absolute",
-            "Aim output mode: offset or absolute. Absolute adds STM attitude yaw/pitch.",
+            "Aim output mode: offset or absolute. Absolute uses the motion-compensated target frame.",
         ),
         (
             "default_bullet_speed_mps",
             "18.0",
             "Fallback bullet speed when STM feedback does not provide one",
         ),
-        ("solver_latency_s", "0.03", "Latency used by the 3D ballistic prediction"),
+        ("solver_latency_s", "0.0", "Residual transport delay added to measured frame age"),
+        (
+            "attitude_history_seconds",
+            "1.0",
+            "Attitude history retained for capture-time interpolation",
+        ),
+        (
+            "attitude_sync_tolerance_ms",
+            "30.0",
+            "Maximum edge extrapolation when aligning attitude to a camera frame",
+        ),
         (
             "compensate_gravity",
             "true",
@@ -275,6 +341,11 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "publish_zero_angles_when_no_target",
             "true",
             "Publish zero yaw/pitch when there is no selected target",
+        ),
+        (
+            "enable_fire_recommendation",
+            "false",
+            "Allow solver fire recommendations; human opt-in for competition only",
         ),
         (
             "transmit_angles_in_degrees",
@@ -312,6 +383,10 @@ def make_detector_node() -> Node:
                     "allow_native_tensorrt_fallback"
                 ),
                 "model_path": launch_config("model_path"),
+                "type": launch_config("model_type"),
+                "task": launch_config("task"),
+                "half": launch_config("half"),
+                "conf": launch_config("confidence_threshold"),
                 "deepstream_config_path": launch_config("deepstream_config_path"),
                 "imgsz_width": launch_config("basler_width"),
                 "imgsz_height": launch_config("basler_height"),
@@ -334,6 +409,11 @@ def make_detector_node() -> Node:
                 "basler_exposure_us": launch_config("basler_exposure_us"),
                 "basler_gain_db": launch_config("basler_gain_db"),
                 "basler_flip": launch_config("basler_flip"),
+                "preview_command_is_offset": launch_config("preview_command_is_offset"),
+                "preview_absolute_error_arrow": launch_config(
+                    "preview_absolute_error_arrow"
+                ),
+                "preview_transmit_enabled": launch_config("transmit_enable"),
                 "basler_use_full_sensor": launch_config("basler_use_full_sensor"),
                 "basler_centered_roi": launch_config("basler_centered_roi"),
                 "realsense_width": launch_config("realsense_width"),
@@ -351,9 +431,19 @@ def make_detector_node() -> Node:
                 "camera_frame_id": launch_config("camera_frame_id"),
                 "camera_info_topic": launch_config("camera_info_topic"),
                 "camera_fx": launch_config("camera_fx"),
+                "calibration_provisional": launch_config("calibration_provisional"),
                 "camera_fy": launch_config("camera_fy"),
                 "camera_cx": launch_config("camera_cx"),
                 "camera_cy": launch_config("camera_cy"),
+                "camera_calibration_width": launch_config("camera_calibration_width"),
+                "camera_calibration_height": launch_config("camera_calibration_height"),
+                "camera_distortion": launch_config("camera_distortion"),
+                "pose_corner_sigma_model_px": launch_config("pose_corner_sigma_model_px"),
+                "pose_max_relative_depth_uncertainty": launch_config("pose_max_relative_depth_uncertainty"),
+                "small_armor_width_m": launch_config("small_armor_width_m"),
+                "small_armor_height_m": launch_config("small_armor_height_m"),
+                "large_armor_width_m": launch_config("large_armor_width_m"),
+                "large_armor_height_m": launch_config("large_armor_height_m"),
                 "show": ParameterValue(launch_config("show"), value_type=str),
                 "preview_max_fps": ParameterValue(
                     launch_config("preview_max_fps"),
@@ -387,8 +477,16 @@ def make_tracker_node() -> Node:
         parameters=[
             {
                 "track_min_hits": launch_config("track_min_hits"),
+                "attitude_sync_tolerance_ms": launch_config("attitude_sync_tolerance_ms"),
+                "attitude_max_gap_ms": launch_config("attitude_max_gap_ms"),
+                "camera_translation_m": launch_config("camera_translation_m"),
+                "camera_mount_yaw_pitch_roll": launch_config("camera_mount_yaw_pitch_roll"),
                 "track_max_coast_frames": launch_config("track_max_coast_frames"),
                 "track_drop_frames": launch_config("track_drop_frames"),
+                "track_max_coast_s": launch_config("track_max_coast_s"),
+                "track_drop_s": launch_config("track_drop_s"),
+                "position_filter_tau_s": launch_config("position_filter_tau_s"),
+                "velocity_filter_tau_s": launch_config("velocity_filter_tau_s"),
                 "association_max_center_distance_ratio": launch_config(
                     "association_max_center_distance_ratio"
                 ),
@@ -414,7 +512,21 @@ def make_processor_node() -> Node:
         executable="armor_processor_node",
         name="armor_processor_node",
         output="screen",
-        parameters=[{"target_frame": launch_config("processor_target_frame")}],
+        parameters=[
+            {
+                "target_frame": launch_config("processor_target_frame"),
+                "robot_estimator.enable": launch_config("robot_estimator_enable"),
+                "robot_estimator.use_ekf": launch_config("robot_estimator_use_ekf"),
+                "robot_estimator.armor_radius_m": launch_config("robot_armor_radius_m"),
+                "robot_estimator.armor_count": launch_config("robot_armor_count"),
+                "robot_estimator.center_gate_m": launch_config("robot_center_gate_m"),
+                "robot_estimator.plate_cluster_gate_m": launch_config(
+                    "robot_plate_cluster_gate_m"
+                ),
+                "robot_estimator.min_updates": launch_config("robot_estimator_min_updates"),
+                "robot_estimator.coast_frames": launch_config("robot_estimator_coast_frames"),
+            }
+        ],
     )
 
 
@@ -425,6 +537,7 @@ def make_solver_node() -> Node:
         executable="aim_solver_node",
         name="aim_solver_node",
         output="screen",
+        condition=IfCondition(launch_config("start_solver")),
         parameters=[
             {
                 "hfov_degrees": launch_config("hfov_degrees"),
@@ -432,13 +545,28 @@ def make_solver_node() -> Node:
                 "publish_zero_angles_when_no_target": launch_config(
                     "publish_zero_angles_when_no_target"
                 ),
+                "enable_fire_recommendation": launch_config(
+                    "enable_fire_recommendation"
+                ),
                 "default_image_width": launch_config("basler_width"),
                 "default_image_height": launch_config("basler_height"),
                 "target_topic": "processor/target",
                 "use_3d_solution": launch_config("use_3d_solution"),
+                "calibration_provisional": launch_config("calibration_provisional"),
                 "output_mode": launch_config("solver_output_mode"),
                 "default_bullet_speed_mps": launch_config("default_bullet_speed_mps"),
                 "solver_latency_s": launch_config("solver_latency_s"),
+                "actuator_delay_s": launch_config("actuator_delay_s"),
+                "yaw_max_slew_deg_s": launch_config("yaw_max_slew_deg_s"),
+                "pitch_max_slew_deg_s": launch_config("pitch_max_slew_deg_s"),
+                "yaw_max_accel_deg_s2": launch_config("yaw_max_accel_deg_s2"),
+                "pitch_max_accel_deg_s2": launch_config("pitch_max_accel_deg_s2"),
+                "plate_switch_margin": launch_config("plate_switch_margin"),
+                "attitude_max_gap_ms": launch_config("attitude_max_gap_ms"),
+                "attitude_history_seconds": launch_config("attitude_history_seconds"),
+                "attitude_sync_tolerance_ms": launch_config(
+                    "attitude_sync_tolerance_ms"
+                ),
                 "compensate_gravity": launch_config("compensate_gravity"),
             }
         ],
@@ -452,11 +580,17 @@ def make_stm_bridge_node() -> Node:
         executable="stm32_serial_bridge",
         name="stm32_serial_bridge_node",
         output="screen",
+        condition=IfCondition(launch_config("start_serial_bridge")),
         parameters=[
             {
-                "transmit_enable": True,
+                "transmit_enable": launch_config("transmit_enable"),
+                "calibration_provisional": launch_config("calibration_provisional"),
+                "receive_enable": launch_config("receive_enable"),
+                "attitude_receive_delay_s": launch_config("attitude_receive_delay_s"),
+                "command_output_mode": launch_config("solver_output_mode"),
                 "serial_port": launch_config("serial_port"),
                 "serial_baudrate": launch_config("serial_baudrate"),
+                "tracking_log_enable": launch_config("tracking_log_enable"),
                 "serial_verbose": launch_config("serial_verbose"),
                 "hold_fire_mode": launch_config("hold_fire_mode"),
                 "transmit_angles_in_degrees": launch_config(

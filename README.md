@@ -1,14 +1,140 @@
 [![pipeline status](https://gitlab.com/nyu-robomaster/CV_Detection/badges/main/pipeline.svg)](https://gitlab.com/nyu-robomaster/CV_Detection/-/commits/main)
 
+Local ARUW pose/tracking evaluation: [results and limitations](docs/validation/autoaim-local-upgrade.md),
+[manual Jetson configuration and checks](docs/validation/autoaim-manual-checks.md), and
+[native Mac inference/replay videos](tools/model-eval/README.md). This evaluation
+includes local tests and Jetson deployment checks; these do not establish reliable
+physical tracking. Begin with TX and firing disabled.
+
+
 # CV Detection
 
 NYU Robomaster ROS 2 C++ auto-aim vision pipeline for camera capture, YOLO/TensorRT/DeepStream armor detection, temporal tracking, 3D target processing, ballistic aim solving, and STM32 serial output.
+
+## Quick Start
+
+### USB → GameLab Wi-Fi SSH
+
+On **your host device**, connect a data cable to the Jetson USB device-mode
+port and log in. SSH keys are optional; enter the current device password
+when prompted.
+
+```bash
+ssh ultraviolet@192.168.55.1
+```
+
+On the **Jetson**, identify the unit and bring up its saved GameLab connection:
+
+```bash
+hostname
+sudo nmcli connection up GameLab
+ip -br -4 addr
+```
+
+If GameLab has not been saved, use `sudo nmcli device wifi connect GameLab --ask`
+and obtain its password from the operator. Connect your host device to
+**GameLab**, then open a second SSH session using the matching hostname:
+
+| Physical label | Wireless SSH | CV checkout |
+|---|---|---|
+| Ramon | `ssh ultraviolet@rm-orin-nano-55306.local` | `/home/ultraviolet/Documents/CV_Detection` |
+| Orin2 | `ssh ultraviolet@rm-orin2.local` | `/home/ultraviolet/CV_Detection` |
+
+Verify `hostname` in the wireless session before unplugging the host-device
+USB cable. If `.local` discovery fails, use the wireless interface address
+printed above: `ssh ultraviolet@WIFI_IP`. DHCP can change the address.
+Both Jetsons use the same USB address; verify the unit and its host key when
+swapping devices. Do not disable SSH host-key checks. See the
+[SSH guide](docs/project/ssh-access.md) for the device registry and troubleshooting.
+
+### Edit the live env and start a safe preview
+
+On the **Jetson**, open your CV checkout from the table above. The live settings
+are in **`services/stm-stack.env` inside that checkout**. The `.env.example`
+file is only a template; editing it does not change the running service.
+
+For a new installation or migration from `/etc/cv-detection`, run once from
+the checkout root:
+
+```bash
+sudo ln -sf "$PWD/services/stm-stack.sh" /usr/local/bin/cv
+cv install
+```
+
+This records the checkout/env paths and enables startup at boot without starting
+CV immediately. It preserves an existing env, otherwise copies the legacy env
+or creates one from the safe template. Review saved settings before starting;
+migration can preserve previously enabled TX. Do not keep editing the old
+`/etc/cv-detection/stm-stack.env` copy.
+
+Open `services/stm-stack.env` in VS Code Remote-SSH, or use:
+
+```bash
+sudoedit services/stm-stack.env
+```
+
+Set `CV_STM_SHOW=web`. Edit the following arguments **inside the existing quoted
+`CV_STM_EXTRA_LAUNCH_ARGS="..."` line**, preserving your camera, model, and tracking
+arguments. Replace existing values rather than adding duplicate arguments:
+
+| Argument | Preview setting / purpose |
+| --- | --- |
+| `transmit_enable:=false` | Disables normal bridge movement TX. Changing this to `true` permits real command transmission when command validity gates pass. |
+| `enable_fire_recommendation:=false` | Keeps solver fire recommendations disabled, including during movement-only tests. |
+| `receive_enable:=true` | Receives Type C attitude for absolute-command calculation and preview. |
+| `solver_output_mode:=absolute` | Selects the command format; does not enable TX. |
+| `preview_command_is_offset:=false` | Displays absolute commands correctly. |
+| `preview_absolute_error_arrow:=true` | Draws the absolute-command error/direction indicator when a valid solution is available. |
+
+`calibration_provisional:=true` marks estimated camera calibration; **it does not
+disable movement TX**. Use `transmit_enable:=false` for preview-only operation.
+Arrows require fresh attitude, a selected target, and a valid solver result;
+a detection box alone is not sufficient. Type C has separate
+[controller acceptance gates](docs/project/stm-stack-config.md#transmission-safety).
+
+Save the file, then run:
+
+```bash
+cv preflight
+cv restart
+cv status
+cv logs
+```
+
+The env is **inside the repo directory but Git-ignored**: it survives ordinary
+pulls, restarts, and reboots. Do not overwrite it with the template to update code.
+
+| What changed? | Apply it with |
+| --- | --- |
+| Env values, web preview, target color, or exposure | Save, then `cv restart`; no rebuild or MCU flash. |
+| CV C++, ROS messages, or launch files | `uv build yolo_cpp`, then `cv restart`, using this Jetson's saved compatible runtime. |
+| Model or JetPack/TensorRT runtime | Follow the [runtime/config guide](docs/project/stm-stack-config.md); regenerate a compatible engine as needed. |
+| Type C firmware or slew/acceleration limits | Separate Type C build and flash; `cv restart` does not apply MCU changes. |
+
+Use `cv start` after stopping CV, `cv health` for a read-only readiness check,
+and `cv enable` / `cv disable` to control startup at boot. Start/restart checks
+ROS and fresh Type C telemetry; a failed check leaves CV running for inspection.
+Inspect `cv logs` rather than assuming a present USB port means telemetry is valid.
+
+On **your host device**, keep the following terminal open (Ramon example),
+then visit `http://127.0.0.1:18080/`:
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes \
+  -L 127.0.0.1:18080:127.0.0.1:8080 ultraviolet@rm-orin-nano-55306.local
+```
+
+For Orin2, substitute `rm-orin2.local`; USB uses `192.168.55.1`. In VS Code,
+use **Remote-SSH: Connect to Host**, connect to the same SSH target, open the
+checkout from the table, then use **File: Open File** to open the live env.
 
 ## For Readers
 
 Several repository docs start with machine-readable metadata and navigation tables because agents use them to route work safely. If you are reading manually, use each doc's `Quick Navigation` table and skip past `SCOPE`, `DOC_KIND`, `Agent Entry`, and maintenance blocks. The fastest human paths are [Quick Start](#quick-start), [Project runbook](docs/project/runbook.md), [Jetson reflash guide](docs/project/jetson-reflash.md), and [Launch and config](yolo_cpp/docs/launch-and-config.md).
 
 ## Active Runtime
+
+Planned timing and telemetry work: [Tracker telemetry implementation plan](docs/project/tracker-telemetry-plan.md), including paired Type C changes and validation gates.
 
 The runtime is centered on:
 
@@ -18,13 +144,14 @@ The runtime is centered on:
 - `Docker/`: active container images and Docker bring-up notes.
 - `docs/` and `yolo_cpp/docs/`: current project, architecture, runbook, and package documentation.
 
-## Quick Start
+## CV Operator Commands
 
 On the robot, use the `cv` operator command for the headless Basler + DeepStream + STM32 service.
 Install or refresh the shortcut once:
 
 ```bash
-sudo ln -sf /home/ultraviolet/CV_Detection/services/stm-stack.sh /usr/local/bin/cv
+# Run from your CV checkout root on the Jetson.
+sudo ln -sf "$PWD/services/stm-stack.sh" /usr/local/bin/cv
 ```
 
 Run the competition stack:
@@ -69,6 +196,13 @@ uv run yolo_cpp basler.launch.py
 uv run yolo_cpp realsense.launch.py
 ```
 
+The persistent, Git-ignored Jetson configuration lives inside the repository at
+`services/stm-stack.env`. A safe copyable template and the complete
+setup/restart/rebuild instructions are in
+[`services/stm-stack.env.example`](services/stm-stack.env.example) and
+[`docs/project/stm-stack-config.md`](docs/project/stm-stack-config.md).
+Keep `transmit_enable:=false` for preview-only operation.
+
 The robot-local fallback model path is configured at:
 
 ```text
@@ -76,6 +210,215 @@ yolo_cpp/config/default_model_path.txt
 ```
 
 Override it with `CV_STM_MODEL_PATH` or a launch `model_path:=...` argument. `cv model-orin` and `cv model-agx` now normalize the service to the same Basler/DeepStream defaults and select `yolo_cpp/models/kushalv2-nano.engine`; `model-nano` remains a backward-compatible alias for `model-orin`.
+
+## View Camera and Bounding Boxes Remotely
+
+The existing web preview shows camera frames with detector bounding boxes and
+the selected target overlay. It does not require Foxglove or a desktop display.
+Connect the Basler camera and use a compatible model first. A running service
+alone does not prove the detector is producing frames.
+
+1. **Jetson:** run `cv preflight`, then `cv preview-web`. This persists web
+   preview mode and **restarts the full CV/STM service**, not just the viewer.
+   Use only with the robot safely disabled; the normal STM bridge remains part
+   of this stack. If `cv` is not installed, use `./services/stm-stack.sh`
+   from the repository root in its place.
+2. **Jetson:** run `cv logs` and check for camera/inference errors. Run
+   `hostname -I` to find its current Wi-Fi address. To distinguish interfaces,
+   use `ip -br -4 addr`; do not use Docker bridge addresses.
+3. **Mac, same Wi-Fi:** open `http://JETSON_WIFI_IP:8080/` in a browser,
+   replacing `JETSON_WIFI_IP` with that address. Confirm frames keep changing
+   and boxes appear when a supported target is detected.
+
+Alternatively, tunnel the preview over either Wi-Fi or USB SSH:
+
+- **Mac, USB:** run `ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:18080:127.0.0.1:8080 ultraviolet@192.168.55.1`.
+- **Mac, Wi-Fi:** use the same command with the Jetson's Wi-Fi IP instead of
+  `192.168.55.1`. Substitute your Linux username or saved SSH alias if different.
+- Keep that terminal open and visit `http://127.0.0.1:18080/` on the Mac.
+  Press Ctrl+C to close the tunnel; this does not stop CV.
+
+USB forwarding requires a working USB network/SSH connection, not merely a
+charging cable. Wi-Fi requires reachability between clients; sharing an SSID
+does not guarantee this on networks with client isolation. If SSH works but
+direct HTTP is blocked, use the tunnel.
+
+**Security:** the current preview binds to `0.0.0.0:8080` and has no login or
+TLS. Use a trusted robot network; do not expose it to the internet. An SSH
+tunnel protects the tunnel connection but does not disable the direct LAN
+listener. This is separate from Nav's restricted Foxglove port 8765.
+
+**Troubleshooting:** on the Jetson, run `curl --fail --max-time 3 -o /dev/null http://127.0.0.1:8080/`
+to check HTTP reachability and `cv logs` for startup failures. A reachable page
+without fresh frames is not a successful camera test. A missing camera, model
+failure, or stale installed binary must be resolved first. After source
+updates, rebuild the active stack with `uv build yolo_cpp` in the configured
+development environment before restarting; pulling source alone does not
+update compiled code.
+
+**Turn off:** `cv preview-off` persists preview-off and restarts the full
+service. Preview mode persists across service restarts; automatic startup
+still depends on whether the service is enabled.
+
+## Command Overlay and Stationary Aiming Checks
+
+The preview draws a white image-center crosshair. Command text reads
+`/bounding_box_angles` (yaw, pitch in radians). The STM bridge consumes the
+atomic `/aim_solution`; preview text is not a serial-transmission acknowledgment. The cyan
+arrow is opt-in: use `solver_output_mode:=offset use_3d_solution:=false
+preview_command_is_offset:=true` together as launch arguments for a 2D
+relative-error test. Set those arguments in `CV_STM_EXTRA_LAUNCH_ARGS` in
+`services/stm-stack.env` for the service, then restart it.
+Do not enable the offset arrow for absolute solver output.
+
+Positive yaw draws right; positive pitch draws up, matching the Type C
+logical command frame. Near-zero correction draws a cyan
+ring. Arrows are bounded to the image; command numbers remain unscaled.
+Invalid commands, missing target authorization, or command/authorization
+updates older than 250 ms hide the arrow. This timeout only affects the
+display; it is not an MCU watchdog. The center is the image center, not a
+verified camera-to-gimbal boresight calibration.
+
+Before motor tests, verify radians, axis signs, and whether firmware expects
+absolute angles, incremental offsets, or rates. Absolute solving rejects
+missing/nonfinite attitude or attitude received more than 250 ms ago. Camera
+frames carry a capture marker mapped into the ROS clock domain. Typed
+`/gimbal/attitude` carries the bridge receipt timestamp for every consumer.
+Interpolation rejects telemetry gaps larger than 50 ms. The default
+`attitude_sync_tolerance_ms:=30.0` allows only bounded edge extrapolation; old,
+future, or out-of-order measurements fail closed. A fresh 2D box does not renew
+the age of an old 3D pose.
+
+`AIM_SYNC` rejection logs and `/aim_solution.status` explain missing poses,
+telemetry alignment, and timestamp failures. `TRACK_STATE` reports robot/direct
+mode and estimator rejections. For record/replay commands and the measured-delay
+workflow, use the [manual evaluation guide](docs/validation/autoaim-manual-checks.md).
+
+Native capture still timestamps host receipt; DeepStream maps buffer PTS through
+its pipeline clock. Neither has been validated against exposure timing on this
+branch. STM attitude is timestamped when received by the Jetson. This removes inference-time mixing but does not remove camera or
+serial transport latency. Calibrate camera intrinsics and boresight, then test
+stationary targets during controlled gimbal motion before increasing rate
+limits or prediction. STLINK supports controller debugging but does not
+replace runtime feedback; halting the MCU can interrupt its control/watchdog
+loops. Keep actuators disabled for debugger bring-up.
+
+### Type C Sentry SP/ST Integration
+
+The bridge uses the SP/ST transport from upstream `cv-dropback-fix` commit
+`4c7a568` (protocol introduced in `e053dd4`), with local safety corrections.
+It sends 29-byte SP packets with absolute yaw/pitch in radians and zero
+velocity/acceleration fields. ST status never overwrites SP attitude, and ST
+shooter heat is not interpreted as bullet speed. No 1.35 angle gain is used.
+
+TX defaults off. `receive_enable:=true transmit_enable:=false` opens the
+serial device for telemetry only. Specify `serial_port:=/dev/ttyACM0` or the
+verified stable device path. `transmit_enable:=true` with offset mode or
+degree units is rejected. Target loss or command/authorization expiry after
+250 ms requests mode 0; this cannot replace the MCU's own safety watchdog.
+Commands must be finite and within the SP firmware's angle range.
+
+#### Safety-critical TX and controller gates
+
+`transmit_enable` is the host-side arming switch. The normal CV bridge can send
+real controller-facing SP commands only when both of these launch arguments are
+present:
+
+```text
+solver_output_mode:=absolute
+transmit_enable:=true
+```
+
+Keep `transmit_enable:=false` for every preview-only session. Absolute solving,
+the displayed command, STM attitude reception, and the command-minus-attitude
+preview arrow continue to work while TX is disabled. `cv yaw-smoke` is a
+separate hardware command tool and must also be treated as real transmission.
+
+For a **real movement TX test with fire recommendations disabled** (including
+Orin2), edit `services/stm-stack.env` on the Jetson. Inside the existing
+`CV_STM_EXTRA_LAUNCH_ARGS` value, change `transmit_enable:=false` to
+`transmit_enable:=true`, keep `enable_fire_recommendation:=false`, and keep
+`solver_output_mode:=absolute`. Save the file, then run `cv restart`.
+
+**Fire recommendations disabled does not disable gimbal movement.** Movement
+still depends on the Type C acceptance gates below. These settings persist
+across restarts and reboots; after the test, restore `transmit_enable:=false`
+and run `cv restart` again. An environment-only change requires no CV rebuild
+or Type C firmware reflash. The tracked `services/stm-stack.env.example` is a
+template; editing it does not change the live service configuration.
+
+The Type C sentry firmware applies a second, independent acceptance gate:
+
+- With the normal DBUS remote, left switch **up** enables vision control.
+- Right switch **middle** selects gimbal auto-rotate and disables vision control.
+- Emergency stop, `ROBOT_STOP`, or a dial value above `300` rejects vision control.
+- A fresh sentry bridge `SX` command with `scan_control_valid=1` overrides the
+  physical left-switch choice; its `allow_vision_control` bit becomes the gate.
+- With the remote offline, the committed sentry config permits vision control
+  only while the vision link is online, but keeps offline automatic firing
+  disabled (`SENTRY_REMOTE_OFFLINE_AUTON_ALLOW_FIRE=0`).
+
+Real gimbal movement therefore requires the host TX condition **and** a Type C
+acceptance condition. SP mode `0` requests no control, mode `1` requests gimbal
+aiming, and mode `2` additionally requests firing subject to the firmware's
+separate firing gates.
+
+The systemd service loads `services/stm-stack.env` every time it
+starts, including after a reboot. Enable automatic boot startup without
+changing the saved preview or launch settings with:
+
+```bash
+cv enable
+```
+
+Use `cv disable` to stop automatic boot startup without deleting the saved
+environment file. Configuration-only changes require only:
+
+```bash
+cv restart
+```
+
+After changing CV C++ or launch source, rebuild and restart:
+
+```bash
+cd /home/ultraviolet/CV_Detection
+uv build yolo_cpp
+cv restart
+```
+
+After changing Type C source or `application/robot_configs/robot_sentry.h`,
+build the sentry target explicitly. With actuators disabled, stop CV before the
+flash so it releases the MCU serial device, then restart CV afterward:
+
+```bash
+cd /home/ultraviolet/controls_typec
+just build sentry
+cv stop
+just flash pyocd sentry --serial 032200157416303030303032
+cv start
+```
+
+The inspected `controls_typec` sentry config has yaw IMU direction +1,
+pitch IMU direction -1, and both gimbal motor directions reversed. Those
+conversions are already applied at the MCU's logical-coordinate boundary:
+do not copy its raw IMU/motor inversions into the Jetson again. The external
+logical convention is positive yaw right and positive pitch up. A flashed
+binary/config match and physical direction check are still required.
+
+The stationary preview can remain in 2D offset mode with TX disabled. Before
+actuation, use absolute mode, verified fresh feedback and calibrated camera
+geometry; disable the offset arrow for absolute output. No firmware flashing
+is needed merely to adopt the existing SP/ST wire format.
+
+Hardware-free regression: in a sourced ROS container run
+`python3 yolo_cpp/tools/test_sp_bridge_pty.py`. It uses a pseudo-terminal and
+isolated ROS domain 89; it never opens the physical board. Tests cover SP
+encoding/CRC, SP attitude, ST isolation, bad CRC rejection, stale-command
+mode 0, and target loss.
+Run `tools/run-local-tracking-tests.sh` on the host device for the current typed
+attitude, PnP, timing, controller-reference, and virtual-serial checks. The older
+`test_solver_sentry.py` and `test_solver_timestamp_sync.py` entries now explain
+the replacement instead of publishing the retired message contract.
 
 ## Documentation
 

@@ -72,7 +72,7 @@ No credentials, private registry URL, or artifact retention policy is declared i
 | Platform | Config | Trigger | Runner Or Image | Behavior |
 |----------|--------|---------|-----------------|----------|
 | GitHub Actions | `.github/workflows/main.yml` | Push to `main` | `ubuntu-latest` | Checks out the repo, bumps a git tag with `mathieudutour/github-tag-action@v6.0`, and creates a GitHub release with `ncipollo/release-action@v1`. |
-| GitLab CI | `.gitlab-ci.yml` | GitLab pipeline trigger for the current branch | `mohanlu/cv_detection_ci:latest` | Runs `pre-commit run --all-files`, then commits and pushes formatter changes back to the branch when the working tree changes. |
+| GitLab CI | `.gitlab-ci.yml` | Branches, tags, and merge requests | `python:3.11-slim` and `ros:humble-ros-base-jammy` | Runs deterministic tracking simulations and launch syntax checks, then builds the active ROS packages and runs the C++ tests. Publishes JUnit results without modifying the source branch. |
 
 No CI deploy job for the robot host is declared in the repository.
 

@@ -21,3 +21,13 @@ float32 flight_time
 float32 range
 # Bullet speed used for this solution in meters per second.
 float32 bullet_speed
+
+# Diagnostics and atomic command contract.
+string output_mode
+string status
+float32 frame_age_s
+float32 measurement_age_s
+float32 prediction_horizon_s
+float32 minimum_slew_s
+bool reachable
+int32 selected_slot

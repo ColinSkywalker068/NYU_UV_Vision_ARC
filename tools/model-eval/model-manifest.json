@@ -1,0 +1,172 @@
+[
+  {
+    "name": "aruw-2026/5_12_icon_detector.onnx",
+    "repo": "aruw/vision/project-otto",
+    "revision": "154035fc34ffb34f99120ffa8e8a2bb098bc6306",
+    "remote_path": "assets/models/5_12_icon_detector.onnx",
+    "url": "https://gitlab.com/api/v4/projects/28205715/repository/files/assets%2Fmodels%2F5_12_icon_detector.onnx/raw?ref=154035fc34ffb34f99120ffa8e8a2bb098bc6306",
+    "size": 10111317,
+    "expected_git_blob_sha1": "0a2c97a0074c758f27afb5b7635cf7e59a21da86",
+    "expected_sha256": "3af4e44cc66d0f2a29cb7912c9c8da4cdb902fccbc02df4f5b3c0d5847dcdefe",
+    "sha256": "3af4e44cc66d0f2a29cb7912c9c8da4cdb902fccbc02df4f5b3c0d5847dcdefe",
+    "verified": true,
+    "onnx_metadata": {
+      "ir_version": 9,
+      "inputs": [
+        {
+          "name": "images",
+          "element_type": 1,
+          "shape": [
+            1,
+            3,
+            384,
+            640
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output0",
+          "element_type": 1,
+          "shape": [
+            1,
+            300,
+            14
+          ]
+        }
+      ],
+      "metadata": {
+        "description": "Ultralytics YOLO26n-pose model trained on dataset.yaml",
+        "author": "Ultralytics",
+        "date": "2026-05-12T14:45:35.501246",
+        "version": "8.4.48",
+        "license": "AGPL-3.0 License (https://ultralytics.com/license)",
+        "docs": "https://docs.ultralytics.com",
+        "stride": "32",
+        "task": "pose",
+        "batch": "1",
+        "imgsz": "[384, 640]",
+        "names": "{0: 'RED_BASE', 1: 'RED_ENGINEER', 2: 'RED_HERO', 3: 'RED_OUTPOST', 4: 'RED_SENTRY', 5: 'RED_STANDARD3', 6: 'RED_STANDARD4', 7: 'RED_STANDARD5', 8: 'BLUE_BASE', 9: 'BLUE_ENGINEER', 10: 'BLUE_HERO', 11: 'BLUE_OUTPOST', 12: 'BLUE_SENTRY', 13: 'BLUE_STANDARD3', 14: 'BLUE_STANDARD4', 15: 'BLUE_STANDARD5'}",
+        "args": "{'batch': 1, 'half': False, 'dynamic': False, 'simplify': True, 'opset': None, 'nms': False}",
+        "channels": "3",
+        "end2end": "True",
+        "kpt_shape": "[4, 2]",
+        "kpt_names": "{0: ['0', '1', '2', '3'], 1: ['0', '1', '2', '3'], 2: ['0', '1', '2', '3'], 3: ['0', '1', '2', '3'], 4: ['0', '1', '2', '3'], 5: ['0', '1', '2', '3'], 6: ['0', '1', '2', '3'], 7: ['0', '1', '2', '3'], 8: ['0', '1', '2', '3'], 9: ['0', '1', '2', '3'], 10: ['0', '1', '2', '3'], 11: ['0', '1', '2', '3'], 12: ['0', '1', '2', '3'], 13: ['0', '1', '2', '3'], 14: ['0', '1', '2', '3'], 15: ['0', '1', '2', '3']}"
+      }
+    }
+  },
+  {
+    "name": "robotpilots-2026/Infantry-v8n-fp16.onnx",
+    "repo": "SZURPVision/26_NNDeployment_Lib_and_Detection_Models",
+    "revision": "ccb5dfe09696edeea445ffb8f99adaa7c383ec3a",
+    "remote_path": "\u6240\u6709\u6a21\u578b/onnx/Infantry-v8n-fp16-20260726-D1.8w-B16.onnx",
+    "url": "https://raw.githubusercontent.com/SZURPVision/26_NNDeployment_Lib_and_Detection_Models/ccb5dfe09696edeea445ffb8f99adaa7c383ec3a/%E6%89%80%E6%9C%89%E6%A8%A1%E5%9E%8B/onnx/Infantry-v8n-fp16-20260726-D1.8w-B16.onnx",
+    "size": 6429469,
+    "expected_git_blob_sha1": "aec315f1ea8aba20f8faaf269a19b881d7514242",
+    "sha256": "8b735d0e68faf330e351e353be9f792954512cfaf64f054123c466f755a6fe1e",
+    "verified": true,
+    "onnx_metadata": {
+      "ir_version": 10,
+      "inputs": [
+        {
+          "name": "images",
+          "element_type": 1,
+          "shape": [
+            1,
+            3,
+            480,
+            640
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output0",
+          "element_type": 1,
+          "shape": [
+            1,
+            21,
+            6300
+          ]
+        }
+      ],
+      "metadata": {
+        "description": "Ultralytics YOLOv8_DarkNet_ArmorDetect model trained on /home/yukang/tasks/26_YK_Infantry_Network/fourPointsDatasets_2026_new.yaml",
+        "author": "Ultralytics",
+        "date": "2026-08-24T12:27:21.352641",
+        "version": "8.4.7",
+        "license": "AGPL-3.0 License (https://ultralytics.com/license)",
+        "docs": "https://docs.ultralytics.com",
+        "stride": "32",
+        "task": "pose",
+        "batch": "1",
+        "imgsz": "[480, 640]",
+        "names": "{0: 'class0', 1: 'class1', 2: 'class2', 3: 'class3', 4: 'class4', 5: 'class5', 6: 'class6', 7: 'class7', 8: 'class8', 9: 'class9', 10: 'class10', 11: 'class11', 12: 'class12', 13: 'class13', 14: 'class14', 15: 'class15', 16: 'class16', 17: 'class17', 18: 'class18', 19: 'class19', 20: 'class20', 21: 'class21', 22: 'class22', 23: 'class23', 24: 'class24', 25: 'class25', 26: 'class26', 27: 'class27', 28: 'class28', 29: 'class29', 30: 'class30', 31: 'class31', 32: 'class32', 33: 'class33', 34: 'class34', 35: 'class35'}",
+        "args": "{'batch': 1, 'half': True, 'dynamic': False, 'simplify': True, 'opset': None, 'nms': False}",
+        "channels": "3",
+        "kpt_shape": "[4, 2]",
+        "kpt_names": "{0: ['point1', 'point2', 'point3', 'point4'], 1: ['point1', 'point2', 'point3', 'point4'], 2: ['point1', 'point2', 'point3', 'point4'], 3: ['point1', 'point2', 'point3', 'point4'], 4: ['point1', 'point2', 'point3', 'point4'], 5: ['point1', 'point2', 'point3', 'point4'], 6: ['point1', 'point2', 'point3', 'point4'], 7: ['point1', 'point2', 'point3', 'point4'], 8: ['point1', 'point2', 'point3', 'point4'], 9: ['point1', 'point2', 'point3', 'point4'], 10: ['point1', 'point2', 'point3', 'point4'], 11: ['point1', 'point2', 'point3', 'point4'], 12: ['point1', 'point2', 'point3', 'point4'], 13: ['point1', 'point2', 'point3', 'point4'], 14: ['point1', 'point2', 'point3', 'point4'], 15: ['point1', 'point2', 'point3', 'point4'], 16: ['point1', 'point2', 'point3', 'point4'], 17: ['point1', 'point2', 'point3', 'point4'], 18: ['point1', 'point2', 'point3', 'point4'], 19: ['point1', 'point2', 'point3', 'point4'], 20: ['point1', 'point2', 'point3', 'point4'], 21: ['point1', 'point2', 'point3', 'point4'], 22: ['point1', 'point2', 'point3', 'point4'], 23: ['point1', 'point2', 'point3', 'point4'], 24: ['point1', 'point2', 'point3', 'point4'], 25: ['point1', 'point2', 'point3', 'point4'], 26: ['point1', 'point2', 'point3', 'point4'], 27: ['point1', 'point2', 'point3', 'point4'], 28: ['point1', 'point2', 'point3', 'point4'], 29: ['point1', 'point2', 'point3', 'point4'], 30: ['point1', 'point2', 'point3', 'point4'], 31: ['point1', 'point2', 'point3', 'point4'], 32: ['point1', 'point2', 'point3', 'point4'], 33: ['point1', 'point2', 'point3', 'point4'], 34: ['point1', 'point2', 'point3', 'point4'], 35: ['point1', 'point2', 'point3', 'point4']}"
+      }
+    }
+  },
+  {
+    "name": "tongji-2025/yolov5.xml",
+    "repo": "TongjiSuperPower/sp_vision_25",
+    "revision": "bd9f5e798fa3c6dd3b483ae6627796afb41c608d",
+    "remote_path": "assets/yolov5.xml",
+    "url": "https://raw.githubusercontent.com/TongjiSuperPower/sp_vision_25/bd9f5e798fa3c6dd3b483ae6627796afb41c608d/assets/yolov5.xml",
+    "size": 349369,
+    "expected_git_blob_sha1": "88b2f682f19dd232172fd8f3b8f5b4e1423bf8e5",
+    "sha256": "1cf9f2eb20e0312e8277ec457cfc67fb6867c4ff634d337c9c441a6aea052f8a",
+    "verified": true
+  },
+  {
+    "name": "tongji-2025/yolov5.bin",
+    "repo": "TongjiSuperPower/sp_vision_25",
+    "revision": "bd9f5e798fa3c6dd3b483ae6627796afb41c608d",
+    "remote_path": "assets/yolov5.bin",
+    "url": "https://raw.githubusercontent.com/TongjiSuperPower/sp_vision_25/bd9f5e798fa3c6dd3b483ae6627796afb41c608d/assets/yolov5.bin",
+    "size": 2836140,
+    "expected_git_blob_sha1": "e5f842740d73ceb9cbd0e21d63f2f166ae175014",
+    "sha256": "aeae1db78494b631ddc1420a04714608b5dcf8bdf11f360ce503309757b1a7de",
+    "verified": true
+  },
+  {
+    "name": "tup-2023/opt-1208-001.onnx",
+    "repo": "tup-robomaster/TUP-Vision-2023-Based",
+    "revision": "40b8269ef8b0b9c3475911a06d6cd13a6e1257f2",
+    "remote_path": "src/vehicle_system/autoaim/armor_detector/model/opt-1208-001.onnx",
+    "url": "https://raw.githubusercontent.com/tup-robomaster/TUP-Vision-2023-Based/40b8269ef8b0b9c3475911a06d6cd13a6e1257f2/src/vehicle_system/autoaim/armor_detector/model/opt-1208-001.onnx",
+    "size": 2167983,
+    "expected_git_blob_sha1": "6a1916c984e729b68da358b38085816893339109",
+    "sha256": "45b240e83ddbf464a7e79090a5065eee88ea8ab300a1448b3b953224ae75d921",
+    "verified": true,
+    "onnx_metadata": {
+      "ir_version": 7,
+      "inputs": [
+        {
+          "name": "images",
+          "element_type": 1,
+          "shape": [
+            1,
+            3,
+            416,
+            416
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "element_type": 1,
+          "shape": [
+            1,
+            3549,
+            21
+          ]
+        }
+      ],
+      "metadata": {}
+    }
+  }
+]
