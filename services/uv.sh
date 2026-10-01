@@ -44,6 +44,11 @@ if [[ ($1 == "run" && $# -ge 3) || $1 == "build" || $1 == "topic" || $1 == "exec
     printf -v current_dir '%q' "$(pwd)"
     forwarded_uv=(uv "$@")
     printf -v forwarded_cmd ' %q' "${forwarded_uv[@]}"
+    if [[ $1 == "build" ]]; then
+      # Preserve colcon's result across the host/container boundary.
+      source "$SCRIPTS_DIR/start-container.sh" "$CV_IMAGE" bash -lc "cd ${current_dir} &&${forwarded_cmd}"
+      exit $?
+    fi
     source "$SCRIPTS_DIR/start-container.sh" "$CV_IMAGE" bash -lc "cd ${current_dir};${forwarded_cmd}; exec bash"
     exit 0
   fi
@@ -148,12 +153,12 @@ case $1 in
     if [[ $IS_ROS2_WORKSPACE = true ]]; then
       if (( $# == 2 || $# == 3 )); then
         if [[ $2 == "yolo_cpp" ]]; then
-          colcon build --packages-select cv_auto_aim_interfaces yolo_cpp --symlink-install --cmake-args -DBUILD_TESTING=OFF
+          colcon build --packages-select cv_auto_aim_interfaces yolo_cpp --symlink-install --cmake-args -DBUILD_TESTING=OFF || exit $?
         else
-          colcon build --packages-select $2 --symlink-install --cmake-args -DBUILD_TESTING=OFF
+          colcon build --packages-select $2 --symlink-install --cmake-args -DBUILD_TESTING=OFF || exit $?
         fi
       else
-        colcon build --symlink-install --cmake-args -DBUILD_TESTING=OFF
+        colcon build --symlink-install --cmake-args -DBUILD_TESTING=OFF || exit $?
       fi
     fi
     if (( $# > 2 )); then
