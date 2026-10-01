@@ -52,6 +52,7 @@ ros_build_and_test:
       --packages-select cv_auto_aim_interfaces yolo_cpp
       --cmake-args -DBUILD_TESTING=ON
     - . install/setup.sh
+    - python3 services/test_typec_link_ros.py
     - colcon test --packages-select yolo_cpp --return-code-on-test-failure
     - colcon test-result --verbose
   artifacts:

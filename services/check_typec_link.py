@@ -40,7 +40,7 @@ def main():
 
     def receive(sample):
         nonlocal accepted, previous_stamp
-        if fresh_attitude(sample, node.get_clock().now().nanoseconds(), previous_stamp):
+        if fresh_attitude(sample, node.get_clock().now().nanoseconds, previous_stamp):
             previous_stamp = sample.receive_stamp_ns
             accepted += 1
 
