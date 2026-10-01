@@ -43,6 +43,18 @@ with `systemctl cat stm-stack` when migrating an old installation.
 container image compatible with that Jetson's JetPack; the Mac ROS test image is
 not the Jetson deployment image. `cv start` does not repair or rebuild packages.
 
+`cv start` and `cv restart` now wait for the ROS graph and check for fresh, valid
+Type C SP attitude samples when the running bridge has RX or TX enabled.
+`cv health` repeats the check without restarting anything. A present serial port
+alone does not pass. The check only subscribes to decoded telemetry; it never
+sends packets, changes safety settings, calibrates sensors, resets the MCU, or
+flashes firmware. If readiness fails, the service remains running for inspection
+and the command returns a failure status. A first-time engine build may still
+be progressing: inspect `cv logs`, then retry `cv health`.
+`CV_STM_STARTUP_TIMEOUT_S` controls the ROS startup wait (default 45 seconds);
+the telemetry check allows up to eight additional seconds. Camera calibration
+and synchronized MCU source timestamps remain separate requirements.
+
 ## ARUW model and parser
 
 Fetch the pinned model with `python3 tools/model-eval/fetch_candidates.py --output /tmp/armor-models --candidate aruw-2026`.

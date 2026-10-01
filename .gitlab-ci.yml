@@ -16,6 +16,7 @@ python_tracking_tests:
   script:
     - bash services/test-stm-env.sh
     - bash services/test-uv-build-exit.sh
+    - python3 -m unittest discover -s services -p 'test_typec_link.py'
     - cd yolo_cpp/tools
     - >-
       python3 -m unittest

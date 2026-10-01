@@ -334,8 +334,25 @@ run_health() {
   if ! container_running; then
     die "Container ${UV_CONTAINER_NAME} is not running"
   fi
-  docker_cmd exec "$UV_CONTAINER_NAME" \
+  docker_cmd exec -e "CV_STM_HEALTH_TIMEOUT_S=${1:-${CV_STM_HEALTH_TIMEOUT_S:-10}}" "$UV_CONTAINER_NAME" \
     bash -lc "cd '${CV_STM_REPO_ROOT}' && exec ./services/stm-stack-entrypoint.sh health"
+}
+
+start_checked() {
+  systemctl_action "$1"
+  ensure_docker
+  local attempt
+  for attempt in {1..10}; do
+    if container_running; then
+      break
+    fi
+    sleep 1
+  done
+  log "Service started; waiting for ROS readiness and fresh Type C telemetry"
+  if ! run_health "${CV_STM_STARTUP_TIMEOUT_S:-45}"; then
+    log "Service was left running, but readiness did not pass. Check 'cv logs' and retry 'cv health'. First-time model builds can exceed the readiness timeout."
+    return 1
+  fi
 }
 
 run_yaw_smoke() {
@@ -395,9 +412,9 @@ Commands:
   enable     Start ${SERVICE_NAME} automatically at boot using the saved environment file.
   disable    Disable automatic boot startup without deleting saved settings.
   run        Run the selected launch profile in the foreground without systemd.
-  start      Start ${SERVICE_NAME}.
+  start      Start ${SERVICE_NAME}, then check ROS and live Type C telemetry.
   stop       Stop ${SERVICE_NAME}.
-  restart    Restart ${SERVICE_NAME}.
+  restart    Restart ${SERVICE_NAME}, then check ROS and live Type C telemetry.
   preview-gui
              Persist CV_STM_SHOW=gui and restart ${SERVICE_NAME}.
   preview-web
@@ -411,7 +428,7 @@ Commands:
   status     Show systemd status.
   logs       Follow systemd logs.
   preflight  Validate image, ROS package, model, and selected profile prerequisites.
-  health     Check selected-profile ROS nodes and topics inside ${UV_CONTAINER_NAME}.
+  health     Check ROS nodes/topics and fresh Type C attitude when RX or TX is configured.
   yaw-smoke  Compile and send one yaw-only STM packet without a full ROS build.
   shell      Open a shell inside ${UV_CONTAINER_NAME}.
 
@@ -428,9 +445,9 @@ main() {
     enable) enable_boot ;;
     disable) disable_boot ;;
     run) run_foreground ;;
-    start) systemctl_action start ;;
+    start) start_checked start ;;
     stop) systemctl_action stop ;;
-    restart) systemctl_action restart ;;
+    restart) start_checked restart ;;
     preview-gui) set_preview gui gui ;;
     preview-web) set_preview web web ;;
     preview-on) set_preview gui gui ;;

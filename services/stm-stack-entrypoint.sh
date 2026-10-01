@@ -374,6 +374,9 @@ run_health() {
   while true; do
     if check_graph_once false; then
       log "Health OK: expected $(launch_profile) nodes and topics are present"
+      if [ "$(launch_profile)" != "realsense" ]; then
+        python3 "${REPO_ROOT}/services/check_typec_link.py" --timeout 8 || return $?
+      fi
       return
     fi
 
