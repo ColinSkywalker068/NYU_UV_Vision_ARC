@@ -51,6 +51,14 @@ then set `CV_STM_MODEL_PATH` to its absolute path. The file produced by the fetc
 is `downloads/aruw-2026/5_12_icon_detector.onnx` under the selected output directory.
 Keep weights and generated engines out of git.
 
+After the first successful DeepStream build, read the exact serialized engine
+path from `cv logs` and set `CV_STM_MODEL_PATH` to that file. DeepStream may
+generate a name such as `5_12_icon_detector.onnx_b1_gpu0_fp32.engine` rather
+than the requested `.onnx.engine` name. Restart and verify a successful
+`deserialized trt engine` message, so later starts reuse the validated engine.
+Keep the original ONNX for rebuilding after a TensorRT/JetPack change; an engine
+validated on one Jetson runtime is not automatically portable to another.
+
 For initial DeepStream evaluation, set `CV_STM_DETECTOR_BACKEND=deepstream`,
 `CV_STM_ALLOW_NATIVE_TENSORRT_FALLBACK=false`,
 `CV_STM_DEEPSTREAM_PRE_MUX_RESIZE=false`, and `CV_STM_SHOW=web`.
