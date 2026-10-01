@@ -1,0 +1,88 @@
+{
+  "date": "2026-10-01",
+  "tested_code_commit": "27258801",
+  "device": "rm-orin-nano-55306",
+  "build": {
+    "package": "yolo_cpp",
+    "testing_enabled": true,
+    "status": "passed",
+    "duration_s": 412
+  },
+  "test_results": {
+    "ctest_targets_passed": 9,
+    "colcon_reported_checks": 73,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "virtual_serial_tests": 4,
+    "tracking_core_tests": 13,
+    "closed_loop_scenarios": [
+      "stationary_solo",
+      "nonspinning_robot",
+      "spinning_robot",
+      "multiple_robots",
+      "far_noisy_spin_rejected",
+      "near_nonspinning"
+    ]
+  },
+  "live_verification_seconds": 12,
+  "live": {
+    "parameters": {
+      "/armor_tracker_node": {
+        "track_max_coast_frames": 6,
+        "track_max_coast_s": 0.12,
+        "track_drop_frames": 16,
+        "track_drop_s": 0.35,
+        "position_filter_tau_s": 0.035,
+        "velocity_filter_tau_s": 0.1,
+        "target_lock_hysteresis_frames": 6
+      },
+      "/armor_detector_node": {
+        "calibration_provisional": true,
+        "camera_fx": 1160.440656,
+        "camera_fy": 1160.440656,
+        "camera_calibration_width": 1920,
+        "camera_calibration_height": 1200
+      },
+      "/aim_solver_node": {
+        "calibration_provisional": true,
+        "enable_fire_recommendation": false,
+        "use_3d_solution": true
+      },
+      "/stm32_serial_bridge_node": {
+        "calibration_provisional": true,
+        "transmit_enable": false,
+        "receive_enable": true
+      }
+    },
+    "solver_messages": 811,
+    "solver_statuses": {
+      "ok": 811
+    },
+    "coasting_targets": 24,
+    "target_ids": [
+      1
+    ],
+    "valid_commands": 811,
+    "valid_3d_commands": 811,
+    "fire_recommendations": 0,
+    "detector_messages": 804,
+    "armors_with_pose": 780,
+    "valid_attitudes": 1011,
+    "source_timestamped": false,
+    "latest_attitude_age_ms": 14.394259,
+    "latest_command": {
+      "yaw": 0.03630208596587181,
+      "pitch": 0.027290796861052513,
+      "range_m": 0.7133753299713135,
+      "used_3d": true,
+      "frame_age_s": 0.047304604202508926
+    }
+  },
+  "limits": [
+    "Live sample is one stationary scene, not a physical closed-loop motion test.",
+    "Camera intrinsics remain provisional; range and heading accuracy are unverified.",
+    "Sentry simulation uses the firmware reference limiter and an assumed motor response, not an identified physical plant.",
+    "Type C attitude uses host receive timestamps; source-clock synchronization remains future work."
+  ]
+}
