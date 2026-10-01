@@ -146,13 +146,13 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   this->declare_parameter<bool>("use_robot_id_targeting", false);
   this->declare_parameter<int>("enemy_color_red_value", 0);
   this->declare_parameter<int>("enemy_color_blue_value", 1);
-  this->declare_parameter<int>("track_min_hits", 1);
-  this->declare_parameter<int>("track_max_coast_frames", 1);
-  this->declare_parameter<int>("track_drop_frames", 4);
+  this->declare_parameter<int>("track_min_hits", 2);
+  this->declare_parameter<int>("track_max_coast_frames", 6);
+  this->declare_parameter<int>("track_drop_frames", 16);
   this->declare_parameter<double>("association_max_center_distance_ratio", 0.30);
   this->declare_parameter<double>("association_min_iou", 0.0);
-  this->declare_parameter<double>("target_switch_min_score_delta", 0.02);
-  this->declare_parameter<int>("target_lock_hysteresis_frames", 0);
+  this->declare_parameter<double>("target_switch_min_score_delta", 0.08);
+  this->declare_parameter<int>("target_lock_hysteresis_frames", 6);
   this->declare_parameter<int>("stage_log_interval", 300);
 
   use_robot_id_targeting_ = this->get_parameter("use_robot_id_targeting").as_bool();
@@ -165,6 +165,10 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   config.track_min_hits = this->get_parameter("track_min_hits").as_int();
   config.track_max_coast_frames = this->get_parameter("track_max_coast_frames").as_int();
   config.track_drop_frames = this->get_parameter("track_drop_frames").as_int();
+  config.track_max_coast_s = this->declare_parameter<double>("track_max_coast_s", 0.12);
+  config.track_drop_s = this->declare_parameter<double>("track_drop_s", 0.35);
+  config.position_filter_tau_s = this->declare_parameter<double>("position_filter_tau_s", 0.035);
+  config.velocity_filter_tau_s = this->declare_parameter<double>("velocity_filter_tau_s", 0.10);
   config.association_max_center_distance_ratio =
     this->get_parameter("association_max_center_distance_ratio").as_double();
   config.association_min_iou = this->get_parameter("association_min_iou").as_double();

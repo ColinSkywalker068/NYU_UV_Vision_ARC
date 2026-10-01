@@ -207,9 +207,13 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ),
         ("preview_http_port", "8080", "Preview HTTP port"),
         ("preview_http_jpeg_quality", "80", "Preview HTTP JPEG quality 1-100"),
-        ("track_min_hits", "1", "Frames required to confirm a track"),
-        ("track_max_coast_frames", "1", "Maximum published coast frames"),
-        ("track_drop_frames", "4", "Frames before dropping an unmatched track"),
+        ("track_min_hits", "2", "Frames required to confirm a track"),
+        ("track_max_coast_frames", "6", "Maximum published coast frames"),
+        ("track_drop_frames", "16", "Frames before dropping an unmatched track"),
+        ("track_max_coast_s", "0.12", "Maximum seconds to publish a missed plate prediction"),
+        ("track_drop_s", "0.35", "Maximum seconds to retain an unmatched identity"),
+        ("position_filter_tau_s", "0.035", "3D position filter time constant; zero disables"),
+        ("velocity_filter_tau_s", "0.10", "3D velocity filter time constant; zero disables"),
         (
             "association_max_center_distance_ratio",
             "0.30",
@@ -218,12 +222,12 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ("association_min_iou", "0.0", "Minimum IoU required for matching"),
         (
             "target_switch_min_score_delta",
-            "0.02",
+            "0.08",
             "Confidence delta required to steal target lock",
         ),
         (
             "target_lock_hysteresis_frames",
-            "0",
+            "6",
             "Coast frames allowed before target lock yields",
         ),
         (
@@ -259,7 +263,7 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Calibrated static camera fy; no PnP without valid intrinsics",
         ),
         ("camera_cx", "0.0", "Optional static camera cx"),
-        ("calibration_provisional", "false", "Label guessed intrinsics and lock controller TX/fire off"),
+        ("calibration_provisional", "false", "Label guessed intrinsics; TX uses transmit_enable; fire stays blocked"),
         ("camera_cy", "0.0", "Optional static camera cy"),
         ("camera_calibration_width", "0", "Static calibration image width; required with static intrinsics"),
         ("camera_calibration_height", "0", "Static calibration image height; required with static intrinsics"),
@@ -478,6 +482,10 @@ def make_tracker_node() -> Node:
                 "camera_mount_yaw_pitch_roll": launch_config("camera_mount_yaw_pitch_roll"),
                 "track_max_coast_frames": launch_config("track_max_coast_frames"),
                 "track_drop_frames": launch_config("track_drop_frames"),
+                "track_max_coast_s": launch_config("track_max_coast_s"),
+                "track_drop_s": launch_config("track_drop_s"),
+                "position_filter_tau_s": launch_config("position_filter_tau_s"),
+                "velocity_filter_tau_s": launch_config("velocity_filter_tau_s"),
                 "association_max_center_distance_ratio": launch_config(
                     "association_max_center_distance_ratio"
                 ),

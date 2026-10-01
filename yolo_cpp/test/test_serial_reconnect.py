@@ -35,8 +35,8 @@ class SerialReconnectTest(unittest.TestCase):
         self.port = self.root / "controller"
         self.master = None
         self.send_valid_solution = True
-        self.provisional = self._testMethodName == "test_provisional_calibration_locks_tx_even_when_requested"
-        self.tx_enabled = self.provisional or self._testMethodName == "test_atomic_solution_rejects_stale_offset_and_replay"
+        self.provisional = self._testMethodName.startswith("test_provisional_calibration_")
+        self.tx_enabled = self._testMethodName in ("test_provisional_calibration_respects_enabled_tx", "test_atomic_solution_rejects_stale_offset_and_replay")
         self.outbound = bytearray()
         self.samples = []
         self.log_path = self.root / "bridge.log"
@@ -162,17 +162,29 @@ class SerialReconnectTest(unittest.TestCase):
         for log in self.root.glob("vision_serial_runtime_*.log"):
             self.assertNotIn("kind=serial_tx", log.read_text())
 
-    def test_provisional_calibration_locks_tx_even_when_requested(self):
+    def check_provisional_tx(self):
         self.attach()
         self.await_attitude(0.4, -0.1)
         self.spin_for(0.5, attitude_packet(0.4, -0.1))
-        self.assertEqual(self.outbound, b"", "guessed calibration must never transmit")
-        self.assertIn("controller TX locked off", self.log_path.read_text())
+        if self.tx_enabled:
+            self.assertGreaterEqual(len(self.outbound), 29)
+            packets = [self.outbound[i:i+29] for i in range(0, len(self.outbound)-28, 29)]
+            self.assertTrue(any(packet[2] == 1 for packet in packets))
+        else:
+            self.assertEqual(self.outbound, b"", "TX false must always stay silent")
+        self.outbound.clear()
         self.detach()
         self.spin_for(1.4)
         self.attach()
         self.await_attitude(0.5, -0.2)
-        self.assertEqual(self.outbound, b"", "reconnect must retain provisional TX lock")
+        self.spin_for(0.2)
+        self.assertEqual(bool(self.outbound), self.tx_enabled)
+
+    def test_provisional_calibration_respects_enabled_tx(self):
+        self.check_provisional_tx()
+
+    def test_provisional_calibration_respects_disabled_tx(self):
+        self.check_provisional_tx()
 
     def test_atomic_solution_rejects_stale_offset_and_replay(self):
         self.attach()

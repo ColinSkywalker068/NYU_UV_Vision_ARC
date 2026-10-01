@@ -40,11 +40,15 @@ class LaunchParameters(unittest.TestCase):
         self.assertEqual(p["conf"], 0.5)
         self.assertFalse(p["pre_mux_resize"])
 
-    def test_provisional_calibration_reaches_every_safety_consumer(self):
+    def test_provisional_calibration_is_independent_of_transmit_enable(self):
         self.context.launch_configurations["calibration_provisional"] = "true"
         for factory in (self.launch.make_detector_node, self.launch.make_solver_node,
                         self.launch.make_stm_bridge_node):
             self.assertTrue(self.parameters(factory)["calibration_provisional"])
+        self.context.launch_configurations["transmit_enable"] = "true"
+        self.assertTrue(self.parameters(self.launch.make_stm_bridge_node)["transmit_enable"])
+        self.context.launch_configurations["transmit_enable"] = "false"
+        self.assertFalse(self.parameters(self.launch.make_stm_bridge_node)["transmit_enable"])
 
     def test_preview_defaults_and_controller_limits(self):
         bridge = self.parameters(self.launch.make_stm_bridge_node)
@@ -57,6 +61,10 @@ class LaunchParameters(unittest.TestCase):
         self.assertEqual(solver["yaw_max_slew_deg_s"], 120.0)
         self.assertEqual(solver["pitch_max_accel_deg_s2"], 240.0)
         self.assertEqual(tracker["camera_translation_m"], (0.0, 0.0, 0.0))
+        self.assertEqual(tracker["track_max_coast_frames"], 6)
+        self.assertEqual(tracker["track_max_coast_s"], 0.12)
+        self.assertEqual(tracker["track_drop_frames"], 16)
+        self.assertEqual(tracker["velocity_filter_tau_s"], 0.10)
 
 
 if __name__ == "__main__":

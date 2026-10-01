@@ -611,6 +611,7 @@ void ArmorDetectorNode::handle_preview_target(
   preview_target_image_width_ = msg->image_width;
   preview_target_image_height_ = msg->image_height;
   preview_target_stamp_ns_ = rclcpp::Time(msg->header.stamp).nanoseconds();
+  preview_target_measurement_stamp_ns_ = msg->measurement_stamp_ns;
 }
 
 void ArmorDetectorNode::handle_camera_info(
@@ -1039,8 +1040,12 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
     const auto now_ns = this->now().nanoseconds();
     const cv::Point center(preview.cols / 2, preview.rows / 2);
     std::string visual_label = "VISUAL: no fresh selected plate";
-    if (preview_has_target_ && !preview_target_is_coasting_ &&
-        preview_sample_fresh(preview_target_stamp_ns_, now_ns)) {
+    const double target_measurement_age_ms =
+        (now_ns - preview_target_measurement_stamp_ns_) * 1e-6;
+    const bool coast_is_recent = preview_target_measurement_stamp_ns_ > 0 &&
+        target_measurement_age_ms >= 0 && target_measurement_age_ms <= 150.0;
+    if (preview_has_target_ && preview_sample_fresh(preview_target_stamp_ns_, now_ns) &&
+        (!preview_target_is_coasting_ || coast_is_recent)) {
       const int x1 = preview_target_bbox_xyxy_[0];
       const int y1 = preview_target_bbox_xyxy_[1];
       const int x2 = preview_target_bbox_xyxy_[2];
@@ -1058,36 +1063,28 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
           target_source_width, target_source_height);
       const cv::Rect target_rect = vision_node_helpers::scale_rect_to_preview(
           target_source_rect, target_scale_x, target_scale_y, image_rect);
-      const auto matching_candidate = std::find_if(
-          candidates.begin(), candidates.end(), [&](const Candidate &candidate) {
-            const cv::Rect candidate_source_rect = preview_source_rect(
-                packet, candidate.bbox_source, source_width, source_height);
-            const cv::Rect candidate_rect =
-                vision_node_helpers::scale_rect_to_preview(
-                    candidate_source_rect, scale_x, scale_y, image_rect);
-            return candidate.is_enemy &&
-                vision_node_helpers::rect_iou(target_rect, candidate_rect) > 0.05;
-          });
-      if (target_rect.width > 0 && target_rect.height > 0 &&
-          matching_candidate != candidates.end()) {
+      // A tracked target can outlive a missed detector frame. Its fresh message
+      // and explicit COASTING state are authoritative, not same-frame box overlap.
+      if (target_rect.width > 0 && target_rect.height > 0) {
         const cv::Point plate_center(target_rect.x + target_rect.width / 2,
                                       target_rect.y + target_rect.height / 2);
         // Yellow is image-space error only, never a command or TX indication.
         cv::arrowedLine(preview, center, plate_center, cv::Scalar(0, 255, 255),
                         3, cv::LINE_AA, 0, 0.12);
-        visual_label = cv::format("IMAGE ERROR: right=%+.0f up=%+.0f source px | yellow = visual only",
+        visual_label = cv::format("%sIMAGE ERROR: right=%+.0f up=%+.0f source px | visual only",
+            preview_target_is_coasting_ ? "PREDICTED " : "",
             (plate_center.x - center.x) / target_scale_x,
             (center.y - plate_center.y) / target_scale_y);
-        const cv::Scalar target_color(0, 0, 255);
+        const cv::Scalar target_color = preview_target_is_coasting_
+            ? cv::Scalar(0, 165, 255) : cv::Scalar(0, 0, 255);
         cv::rectangle(preview, target_rect, target_color, 4);
         cv::circle(preview,
                    cv::Point(target_rect.x + target_rect.width / 2,
                              target_rect.y + target_rect.height / 2),
                    5, target_color, -1, cv::LINE_AA);
-        const std::string label =
-            preview_target_track_id_ >= 0
-                ? "TARGET #" + std::to_string(preview_target_track_id_)
-                : "TARGET";
+        const std::string label = (preview_target_is_coasting_ ? "COASTING #" : "TARGET #") +
+            std::to_string(preview_target_track_id_) +
+            (preview_target_is_coasting_ ? cv::format(" %.0f ms", target_measurement_age_ms) : "");
         const cv::Point label_origin(target_rect.x,
                                      std::max(22, target_rect.y - 8));
         cv::putText(preview, label, label_origin, cv::FONT_HERSHEY_SIMPLEX, 0.7,
@@ -1151,12 +1148,10 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
         }
       }
     }
-    const bool effective_tx = preview_transmit_enabled_ && !calibration_provisional_;
+    const bool effective_tx = preview_transmit_enabled_;
     const cv::Scalar tx_color = effective_tx
         ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 255, 0);
-    const std::string tx_label = calibration_provisional_
-        ? "TX LOCKED OFF: UNCALIBRATED PREVIEW"
-        : (effective_tx ? "TX CONFIG: ENABLED" : "TX CONFIG: DISABLED");
+    const std::string tx_label = effective_tx ? "TX CONFIG: ENABLED" : "TX CONFIG: DISABLED";
     cv::putText(preview, tx_label, cv::Point(12, 58),
                 cv::FONT_HERSHEY_SIMPLEX, 0.75, tx_color, 2, cv::LINE_AA);
     const std::string attitude_label = fresh_attitude
@@ -1282,6 +1277,8 @@ std::string ArmorDetectorNode::build_preview_stats_json(
        << "\"target_class\":" << target_class_ << ','
        << "\"has_target\":" << (preview_has_target_ ? "true" : "false") << ','
        << "\"target_track_id\":" << preview_target_track_id_ << ','
+       << "\"target_coasting\":" << (preview_target_is_coasting_ ? "true" : "false") << ','
+       << "\"transmit_enabled\":" << (preview_transmit_enabled_ ? "true" : "false") << ','
        << "\"calibration_provisional\":" << (calibration_provisional_ ? "true" : "false") << ','
        << "\"solver_status\":\"" << json_escape(preview_solver_status_) << "\","
        << "\"has_command\":" << (preview_command_valid_ &&

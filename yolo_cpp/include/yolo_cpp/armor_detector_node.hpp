@@ -199,6 +199,7 @@ private:
   std::int64_t preview_command_stamp_ns_{0};
   std::int64_t preview_attitude_stamp_ns_{0};
   std::int64_t preview_target_stamp_ns_{0};
+  std::int64_t preview_target_measurement_stamp_ns_{0};
   bool preview_command_valid_{false};
   bool preview_attitude_valid_{false};
   bool preview_attitude_source_timestamped_{false};

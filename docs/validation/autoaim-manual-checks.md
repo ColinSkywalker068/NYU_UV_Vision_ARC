@@ -129,11 +129,12 @@ that any packet was transmitted or accepted.
 When measured intrinsics are unavailable, an operator can explicitly supply
 **provisional** values to exercise PnP, tracking and solver output. These are
 not calibration or evidence of accurate range, heading, spin, or motor response.
-Keep `calibration_provisional:=true` with every such configuration. The field
-launch passes this flag to the detector, solver and bridge: it labels the
-preview, forces fire recommendations off, and locks controller transmission off
-even if `transmit_enable:=true` is accidentally requested. RX remains available.
-The lock is applied when nodes start; save the env and run `cv restart`.
+Keep `calibration_provisional:=true` with guessed intrinsics so the preview
+clearly labels them. This flag does **not** change TX. `transmit_enable` is the
+sole configuration switch for controller transmission. Fire recommendations
+remain separately opt-in and blocked while calibration is provisional.
+Normal freshness, finite-value and protocol checks still reject invalid commands.
+For preview-only work keep both switches false. Save the env, then `cv restart`.
 
 For the 1920x1200 full-sensor Basler development setup, the temporary assumption
 is a 79.2-degree horizontal FOV, square pixels and a centered principal point:
@@ -148,13 +149,38 @@ point templates are 135x55 mm (small) and 225x55 mm (large); check that the
 model's four corners correspond to these light-bar endpoints, not the full
 outer plate. Those sizes do not determine lens focal length or distortion.
 Do not copy this temporary camera profile to a different lens, ROI or resolution.
-Replace it with measured intrinsics before removing the provisional lock.
+Replace it with measured intrinsics before treating the resulting angles or range as accurate.
 
 The live overlay uses yellow for image-center-to-plate pixel error, magenta for
 model keypoints, and cyan for actual atomic `aim_solution` command error. A
 blocked solver displays its exact rejection reason. A fresh attitude label
 reports receive age and whether time comes from the host or MCU. Pixel error
 can remain visible while 3D solving is blocked; it is not a controller command.
+
+## Brief detection gaps and smoothing
+
+The tracker confirms after two hits, predicts through at most six missed frames
+**and** 120 ms, and retains an unmatched identity for at most 16 frames and
+350 ms so short gaps can reacquire the same ID. The first limit reached wins.
+`target_lock_hysteresis_frames:=6` and `target_switch_min_score_delta:=0.08`
+reduce switches caused by small confidence fluctuations. Color and armor-number
+association checks remain in effect.
+
+Tune `track_max_coast_frames`, `track_max_coast_s`, `track_drop_frames`, and
+`track_drop_s` in `CV_STM_EXTRA_LAUNCH_ARGS`, then `cv restart`. The independent
+solver measurement-age cutoff remains 150 ms; increasing tracker coast time
+does not bypass it. Coasting never refreshes the last real measurement time,
+and coasted targets cannot recommend fire.
+
+`position_filter_tau_s:=0.035` and `velocity_filter_tau_s:=0.10` smooth 3D
+measurements with time-based gains. Larger values smooth more but add lag;
+zero disables that filter. Velocity uses successive real measurements over
+their actual interval, including missed frames, to avoid a reacquisition kick.
+
+The preview retains predicted targets in amber with **COASTING** and the age of
+the real measurement. Raw detection boxes/keypoints still represent real model
+outputs and can blink during a miss. The selected-target outline and command
+continue through permitted short gaps; neither is held indefinitely.
 
 ## Calibration and timing before 3D claims
 

@@ -127,14 +127,18 @@ struct TrackSnapshot
 /// Tunable association, confirmation, coasting, and target-lock parameters.
 struct TrackConfig
 {
-  int track_min_hits{1};
-  int track_max_coast_frames{1};
-  int track_drop_frames{4};
+  int track_min_hits{2};
+  int track_max_coast_frames{6};
+  int track_drop_frames{16};
+  double track_max_coast_s{0.12};
+  double track_drop_s{0.35};
+  double position_filter_tau_s{0.035};
+  double velocity_filter_tau_s{0.10};
   double association_max_center_distance_ratio{0.30};
   double association_min_iou{0.0};
   double association_max_3d_distance_m{0.35};
-  double target_switch_min_score_delta{0.02};
-  int target_lock_hysteresis_frames{0};
+  double target_switch_min_score_delta{0.08};
+  int target_lock_hysteresis_frames{6};
 };
 
 /// Tracker output for one processed frame.
@@ -186,6 +190,9 @@ private:
     std::int64_t pose_measurement_stamp_ns{0};
     cv::Point3d position;
     cv::Point3d predicted_position;
+    cv::Point3d last_pose_measurement_position;
+    double detection_age_s{0.0};
+    double pose_measurement_age_s{0.0};
     cv::Vec3d velocity;
   };
 

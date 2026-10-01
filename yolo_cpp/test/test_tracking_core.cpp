@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cmath>
 
 #include "yolo_cpp/tracker.hpp"
 
@@ -204,4 +205,97 @@ TEST(TrackManagerTest, AcquisitionUsesTheSameCenterAndConfidenceScoreAsTargetLoc
   ASSERT_TRUE(result.selected_target);
   EXPECT_FLOAT_EQ(result.selected_target->observation.center.x, 320);
   EXPECT_FLOAT_EQ(result.selected_target->observation.center.y, 240);
+}
+
+TEST(TrackManagerTest, ShortDropoutsKeepIdentityAndNeverRefreshMeasurementTime)
+{
+  yolo_cpp::TrackManager manager;
+  auto observation = make_detection_3d(320, 240, .9, {.1, 0, 2});
+  observation.measurement_stamp_ns = 1000000000;
+  manager.update({observation}, .01);
+  observation.measurement_stamp_ns += 10000000;
+  auto result = manager.update({observation}, .01);
+  const int id = result.selected_target->track_id;
+  for (int missed = 1; missed <= 6; ++missed) {
+    result = manager.update({}, .01);
+    ASSERT_TRUE(result.selected_target);
+    EXPECT_EQ(result.selected_target->track_id, id);
+    EXPECT_EQ(result.selected_target->state, yolo_cpp::TrackState::kCoasting);
+    EXPECT_EQ(result.selected_target->observation.measurement_stamp_ns, 1010000000);
+  }
+  result = manager.update({}, .01);
+  EXPECT_FALSE(result.selected_target);
+  observation.measurement_stamp_ns = 1090000000;
+  result = manager.update({observation}, .01);
+  ASSERT_TRUE(result.selected_target);
+  EXPECT_EQ(result.selected_target->track_id, id);
+  EXPECT_EQ(result.selected_target->observation.measurement_stamp_ns, 1090000000);
+}
+
+TEST(TrackManagerTest, TimeLimitStopsCoastingEvenWhenFrameBudgetIsLarge)
+{
+  yolo_cpp::TrackConfig config;
+  config.track_max_coast_frames = 100;
+  config.track_drop_frames = 200;
+  yolo_cpp::TrackManager manager(config);
+  auto observation = make_detection(320, 240, .9);
+  manager.update({observation}, .01);
+  manager.update({observation}, .01);
+  EXPECT_TRUE(manager.update({}, .05).selected_target);
+  EXPECT_TRUE(manager.update({}, .05).selected_target);
+  auto result = manager.update({}, .05);
+  EXPECT_FALSE(result.selected_target);
+  EXPECT_EQ(result.tracks.size(), 1U);
+  result = manager.update({}, .21);
+  EXPECT_TRUE(result.tracks.empty());
+}
+
+TEST(TrackManagerTest, ReacquisitionVelocityUsesTheActualMeasurementGap)
+{
+  yolo_cpp::TrackConfig config;
+  config.position_filter_tau_s = 0;
+  config.velocity_filter_tau_s = 0;
+  yolo_cpp::TrackManager manager(config);
+  auto observation = make_detection_3d(320, 240, .9, {0, 0, 2});
+  observation.measurement_stamp_ns = 1000000000;
+  manager.update({observation}, .02);
+  observation.position.x = .02;
+  observation.measurement_stamp_ns += 20000000;
+  auto result = manager.update({observation}, .02);
+  EXPECT_NEAR(result.selected_target->velocity[0], 1.0, 1e-9);
+  for (int i = 0; i < 4; ++i) {manager.update({}, .02);}
+  observation.position.x = .12;
+  observation.measurement_stamp_ns += 100000000;
+  result = manager.update({observation}, .02);
+  ASSERT_EQ(result.tracks.size(), 1U);
+  EXPECT_NEAR(result.selected_target->velocity[0], 1.0, 1e-9);
+  EXPECT_NEAR(result.selected_target->observation.position.x, .12, 1e-9);
+}
+
+TEST(TrackManagerTest, TimeBasedFilteringReducesJitterWhileFollowingTranslation)
+{
+  for (double dt : {1.0 / 30, 1.0 / 75, 1.0 / 120}) {
+    yolo_cpp::TrackManager manager;
+    double raw_error = 0, filtered_error = 0, velocity_error = 0;
+    int count = 0;
+    for (int frame = 0; frame < 250; ++frame) {
+      const double truth = .4 * frame * dt;
+      const double noise = frame % 2 ? .015 : -.015;
+      auto observation = make_detection_3d(320, 240, .9, {truth + noise, 0, 4});
+      observation.measurement_stamp_ns = 1000000000 + static_cast<int64_t>(frame * dt * 1e9);
+      const auto result = manager.update({observation}, dt);
+      ASSERT_EQ(result.tracks.size(), 1U);
+      ASSERT_TRUE(result.selected_target);
+      if (frame > 50) {
+        const double error = result.selected_target->observation.position.x - truth;
+        const double speed_error = result.selected_target->velocity[0] - .4;
+        raw_error += noise * noise;
+        filtered_error += error * error;
+        velocity_error += speed_error * speed_error;
+        ++count;
+      }
+    }
+    EXPECT_LT(std::sqrt(filtered_error / count), .75 * std::sqrt(raw_error / count));
+    EXPECT_LT(std::sqrt(velocity_error / count), .3);
+  }
 }

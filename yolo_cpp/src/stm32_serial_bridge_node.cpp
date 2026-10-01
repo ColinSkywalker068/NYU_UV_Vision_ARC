@@ -558,10 +558,9 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
 
   transmit_enable_ = this->get_parameter("transmit_enable").as_bool();
   if (this->declare_parameter<bool>("calibration_provisional", false)) {
-    // Provisional intrinsics are for observation only, even if TX is requested.
-    transmit_enable_ = false;
-    this->set_parameter(rclcpp::Parameter("transmit_enable", false));
-    RCLCPP_WARN(this->get_logger(), "UNCALIBRATED preview: controller TX locked off");
+    RCLCPP_WARN(this->get_logger(),
+      "Provisional camera calibration: TX is controlled only by transmit_enable=%s",
+      transmit_enable_ ? "true" : "false");
   }
   serial_verbose_ = this->get_parameter("serial_verbose").as_bool();
   runtime_log_dir_ = this->get_parameter("runtime_log_dir").as_string();

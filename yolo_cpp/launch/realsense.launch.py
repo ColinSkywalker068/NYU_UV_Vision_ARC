@@ -91,9 +91,13 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ("target_frame_jpeg_quality", "85", "JPEG quality for saved target frames"),
         ("hfov_degrees", "69.4", "Horizontal FOV deg"),
         ("vfov_degrees", "42.5", "Vertical FOV deg"),
-        ("track_min_hits", "1", "Frames required to confirm a track"),
-        ("track_max_coast_frames", "1", "Maximum published coast frames"),
-        ("track_drop_frames", "4", "Frames before dropping an unmatched track"),
+        ("track_min_hits", "2", "Frames required to confirm a track"),
+        ("track_max_coast_frames", "6", "Maximum published coast frames"),
+        ("track_drop_frames", "16", "Frames before dropping an unmatched track"),
+        ("track_max_coast_s", "0.12", "Maximum seconds to publish a missed plate prediction"),
+        ("track_drop_s", "0.35", "Maximum seconds to retain an unmatched identity"),
+        ("position_filter_tau_s", "0.035", "3D position filter time constant; zero disables"),
+        ("velocity_filter_tau_s", "0.10", "3D velocity filter time constant; zero disables"),
         (
             "association_max_center_distance_ratio",
             "0.30",
@@ -102,12 +106,12 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ("association_min_iou", "0.0", "Minimum IoU required for matching"),
         (
             "target_switch_min_score_delta",
-            "0.02",
+            "0.08",
             "Confidence delta required to steal target lock",
         ),
         (
             "target_lock_hysteresis_frames",
-            "0",
+            "6",
             "Coast frames allowed before target lock yields",
         ),
         (
@@ -268,6 +272,10 @@ def make_tracker_node() -> Node:
                 "camera_mount_yaw_pitch_roll": launch_config("camera_mount_yaw_pitch_roll"),
                 "track_max_coast_frames": launch_config("track_max_coast_frames"),
                 "track_drop_frames": launch_config("track_drop_frames"),
+                "track_max_coast_s": launch_config("track_max_coast_s"),
+                "track_drop_s": launch_config("track_drop_s"),
+                "position_filter_tau_s": launch_config("position_filter_tau_s"),
+                "velocity_filter_tau_s": launch_config("velocity_filter_tau_s"),
                 "association_max_center_distance_ratio": launch_config(
                     "association_max_center_distance_ratio"
                 ),

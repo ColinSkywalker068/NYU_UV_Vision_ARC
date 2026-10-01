@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <stdexcept>
 #include <unordered_map>
 
 #include "tracking_math.hpp"
@@ -148,10 +149,16 @@ double ArmorPlateTracker::height() const
   return height_;
 }
 
-TrackManager::TrackManager(TrackConfig config) : config_(std::move(config)) {}
+TrackManager::TrackManager(TrackConfig config) {set_config(config);}
 
 void TrackManager::set_config(const TrackConfig& config)
 {
+  if (!std::isfinite(config.track_max_coast_s) || config.track_max_coast_s < 0 ||
+      !std::isfinite(config.track_drop_s) || config.track_drop_s < config.track_max_coast_s ||
+      !std::isfinite(config.position_filter_tau_s) || config.position_filter_tau_s < 0 ||
+      !std::isfinite(config.velocity_filter_tau_s) || config.velocity_filter_tau_s < 0) {
+    throw std::invalid_argument("Invalid tracker coast/drop/filter time constants");
+  }
   config_ = config;
 }
 
@@ -180,6 +187,8 @@ TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& de
 
   for (auto& track : tracks_) {
     ++track.age;
+    track.detection_age_s += dt_safe;
+    track.pose_measurement_age_s += dt_safe;
     const auto predicted = track.tracker.predict(dt_safe);
     track.predicted_center = clamp_center(
       cv::Point2f(static_cast<float>(predicted.first), static_cast<float>(predicted.second)),
@@ -245,26 +254,31 @@ TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& de
         static_cast<double>(detection.bbox.height));
       track.hit_streak += 1U;
       track.lost_frames = 0;
+      track.detection_age_s = 0.0;
       if (detection.has_pose) {
-        track.pose_measurement_stamp_ns = detection.measurement_stamp_ns;
+        const double pose_dt = std::max(track.pose_measurement_age_s, kMinimumDt);
         if (track.has_3d_state) {
+          // Difference real measurements over their actual gap. Differencing
+          // filtered/predicted positions over one frame produces reacquisition kicks.
           const cv::Vec3d measured_velocity(
-            (detection.position.x - track.position.x) / dt_safe,
-            (detection.position.y - track.position.y) / dt_safe,
-            (detection.position.z - track.position.z) / dt_safe);
-          track.velocity =
-            cv::Vec3d((0.5 * track.velocity[0]) + (0.5 * measured_velocity[0]),
-              (0.5 * track.velocity[1]) + (0.5 * measured_velocity[1]),
-              (0.5 * track.velocity[2]) + (0.5 * measured_velocity[2]));
-          track.position = cv::Point3d(
-            (0.3 * track.predicted_position.x) + (0.7 * detection.position.x),
-            (0.3 * track.predicted_position.y) + (0.7 * detection.position.y),
-            (0.3 * track.predicted_position.z) + (0.7 * detection.position.z));
+            (detection.position.x - track.last_pose_measurement_position.x) / pose_dt,
+            (detection.position.y - track.last_pose_measurement_position.y) / pose_dt,
+            (detection.position.z - track.last_pose_measurement_position.z) / pose_dt);
+          const double velocity_gain = config_.velocity_filter_tau_s > 0
+            ? -std::expm1(-pose_dt / config_.velocity_filter_tau_s) : 1.0;
+          const double position_gain = config_.position_filter_tau_s > 0
+            ? -std::expm1(-pose_dt / config_.position_filter_tau_s) : 1.0;
+          track.velocity = (1 - velocity_gain) * track.velocity + velocity_gain * measured_velocity;
+          track.position = (1 - position_gain) * track.predicted_position +
+            position_gain * detection.position;
         } else {
           track.position = detection.position;
           track.velocity = cv::Vec3d(0.0, 0.0, 0.0);
           track.has_3d_state = true;
         }
+        track.pose_measurement_stamp_ns = detection.measurement_stamp_ns;
+        track.last_pose_measurement_position = detection.position;
+        track.pose_measurement_age_s = 0.0;
         track.predicted_position =
           cv::Point3d(track.position.x + (track.velocity[0] * dt_safe),
             track.position.y + (track.velocity[1] * dt_safe),
@@ -313,6 +327,7 @@ TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& de
       record.has_3d_state = true;
       record.pose_measurement_stamp_ns = detection.measurement_stamp_ns;
       record.position = detection.position;
+      record.last_pose_measurement_position = detection.position;
       record.predicted_position = detection.position;
       record.velocity = cv::Vec3d(0.0, 0.0, 0.0);
     }
@@ -322,7 +337,8 @@ TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& de
   tracks_.erase(std::remove_if(tracks_.begin(), tracks_.end(),
                   [this](const TrackRecord& track) {
                     return track.lost_frames
-                           > static_cast<std::uint32_t>(config_.track_drop_frames);
+                           > static_cast<std::uint32_t>(config_.track_drop_frames) ||
+                           track.detection_age_s > config_.track_drop_s;
                   }),
     tracks_.end());
 
@@ -385,7 +401,8 @@ bool TrackManager::is_selectable(const TrackRecord& track) const
     case TrackState::kDetecting:
       return track.lost_frames == 0U;
     case TrackState::kCoasting:
-      return track.lost_frames <= static_cast<std::uint32_t>(config_.track_max_coast_frames);
+      return track.lost_frames <= static_cast<std::uint32_t>(config_.track_max_coast_frames) &&
+             track.detection_age_s <= config_.track_max_coast_s;
   }
   return false;
 }
