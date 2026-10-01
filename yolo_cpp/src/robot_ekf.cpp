@@ -30,7 +30,6 @@ void RobotEkf::reset()
   state_ = {};
   x_ = {};
   covariance_ = Covariance::eye();
-  seen_slots_ = 0;
   confident_rotation_updates_ = 0;
   multiple_plate_evidence_ = false;
 }
@@ -194,7 +193,6 @@ void RobotEkf::update(const std::vector<RobotPlateObservation> & observations, d
     covariance_ = correction * covariance_ * correction.t() + gain * noise * gain.t();
     covariance_ = (covariance_ + covariance_.t()) * 0.5;
     accepted_slots.insert(best_slot);
-    seen_slots_ |= 1U << best_slot;
     ++accepted;
   }
   synchronize(stamp);

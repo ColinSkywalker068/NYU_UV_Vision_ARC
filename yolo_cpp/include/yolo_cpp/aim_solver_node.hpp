@@ -40,7 +40,7 @@ private:
   /// Update controller-provided flags used by solver behavior.
   void handle_attitude_flags(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
 
-  void publish_no_target(int image_width, int image_height);
+  void publish_no_target(int image_width, int image_height, const char * reason = "no_target_or_unsynchronized");
 
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::Target>::SharedPtr target_subscription_;
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::GimbalAttitude>::SharedPtr attitude_subscription_;

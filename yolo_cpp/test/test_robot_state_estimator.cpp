@@ -251,6 +251,7 @@ TEST(RobotEkf, LearnsSpinWithNoisyNormalsAndAlternatingPlateGeometry)
   RobotStateEstimator estimator(config);
   std::mt19937 rng(846);
   std::normal_distribution<double> noise(0, 0.005);
+  std::normal_distribution<double> normal_noise(0, 0.08);
   for (int frame = 0; frame < 600; ++frame) {
     const double t = frame / 120.0;
     std::vector<RobotPlateObservation> visible;
@@ -263,6 +264,8 @@ TEST(RobotEkf, LearnsSpinWithNoisyNormalsAndAlternatingPlateGeometry)
       p.position.x += noise(rng);
       p.position.y = slot % 2 ? 0.06 : 0;
       p.position.z += noise(rng);
+      const double measured_angle = angle + normal_noise(rng);
+      p.outward_normal = {std::sin(measured_angle), 0, -std::cos(measured_angle)};
       p.normal_reliable = false;  // Conservative planar normal uncertainty.
       visible.push_back(p);
     }

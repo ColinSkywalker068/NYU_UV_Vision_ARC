@@ -59,7 +59,7 @@ TEST(ArmorPose, RealCornerDecodeAndPnPRecoverPose)
   EXPECT_TRUE(detections[0].corners_are_keypoints);
   geometry_msgs::msg::Pose pose;
   PoseQuality quality;
-  ASSERT_TRUE(solver.solve(detections[0].corners_model, 0, pose, &quality));
+  ASSERT_TRUE(solver.solve(detections[0].corners_model, 0, pose, &quality, 0.05));
   EXPECT_NEAR(pose.position.x, ground_truth.x, 1e-4);
   EXPECT_NEAR(pose.position.y, ground_truth.y, 1e-4);
   EXPECT_NEAR(pose.position.z, ground_truth.z, 1e-4);
@@ -68,7 +68,7 @@ TEST(ArmorPose, RealCornerDecodeAndPnPRecoverPose)
   // do not use a weakly constrained normal as confident spin evidence.
   EXPECT_FALSE(quality.normal_reliable);
   const auto near_points = project({0.1, -0.05, 1.0}, rotation);
-  ASSERT_TRUE(solver.solve(near_points, 0, pose, &quality));
+  ASSERT_TRUE(solver.solve(near_points, 0, pose, &quality, 0.05));
   EXPECT_TRUE(quality.normal_reliable);
   auto crossed = points;
   std::swap(crossed[1], crossed[2]);
@@ -89,6 +89,30 @@ TEST(ModelProfile, AruwUsesBgrStretchWithCorrectCoordinateInverse)
   const auto point = unletterbox_point({320, 192}, metadata);
   EXPECT_FLOAT_EQ(point.x, 500);
   EXPECT_FLOAT_EQ(point.y, 400);
+}
+
+TEST(ArmorPose, TinyPlateDepthUncertaintyDoesNotBecomeAConfidentPose)
+{
+  ArmorPnPSolver solver({kCamera, {}}, .135, .055, .225, .055);
+  geometry_msgs::msg::Pose pose;
+  PoseQuality quality;
+  const auto rotation = camera_to_inertial_rotation({1, .3, .1, 0});
+  const auto far_corners = project({.2, 0, 6}, rotation);
+  // A perfect reprojection does not remove uncertainty from tiny keypoints.
+  EXPECT_FALSE(solver.solve(far_corners, 0, pose, &quality));
+  EXPECT_GT(quality.relative_depth_uncertainty, .05);
+  const auto near_corners = project({.2, 0, 1.0}, rotation);
+  ASSERT_TRUE(solver.solve(near_corners, 0, pose, &quality));
+  EXPECT_LT(quality.relative_depth_uncertainty, .05);
+  // Enlarging source coordinates must scale the model's pixel noise as well.
+  auto enlarged = far_corners;
+  for (auto & point : enlarged) {
+    point *= 3;
+  }
+  auto enlarged_camera = kCamera * 3;
+  enlarged_camera(2, 2) = 1;
+  ArmorPnPSolver source_solver({enlarged_camera, {}}, .135, .055, .225, .055);
+  EXPECT_FALSE(source_solver.solve(enlarged, 0, pose, &quality, 1.5));
 }
 
 TEST(ModelProfile, AruwTracksKeypointRectangleInsteadOfContextBox)
@@ -185,7 +209,7 @@ TEST(ProductionPosePipeline, CameraPanDoesNotCreateTargetMotionOrChangeAbsoluteC
     const auto & d = decoded.front();
     cv_auto_aim_interfaces::msg::Armor armor;
     PoseQuality quality;
-    armor.has_pose = pnp.solve(d.corners_model, 0, armor.pose_camera, &quality);
+    armor.has_pose = pnp.solve(d.corners_model, 0, armor.pose_camera, &quality, 0.05);
     EXPECT_TRUE(armor.has_pose);
     armor.pose_normal_reliable = quality.normal_reliable;
     armor.corners_are_keypoints = true;

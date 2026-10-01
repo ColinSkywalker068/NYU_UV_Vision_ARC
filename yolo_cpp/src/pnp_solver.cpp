@@ -80,7 +80,8 @@ ArmorPnPSolver::ArmorPnPSolver(PnPCameraModel camera_model, double small_armor_w
 }
 
 bool ArmorPnPSolver::solve(const std::array<cv::Point2f, 4>& image_points, int armor_type,
-  geometry_msgs::msg::Pose& pose, PoseQuality * quality) const
+  geometry_msgs::msg::Pose& pose, PoseQuality * quality, double corner_sigma_px,
+  double max_relative_depth_uncertainty) const
 {
   // SOLVEPNP_IPPE is appropriate for planar rectangular armor targets.
   const auto& object_points = armor_type == 1 ? large_armor_points_ : small_armor_points_;
@@ -99,6 +100,21 @@ bool ArmorPnPSolver::solve(const std::array<cv::Point2f, 4>& image_points, int a
     !cv::checkRange(camera_matrix) || camera_model_.camera_matrix(0, 0) <= 0 ||
     camera_model_.camera_matrix(1, 1) <= 0 || object_points.size() != 4)
   {return false;}
+  // Range from a small plate is ill-conditioned even when reprojection error
+  // is tiny. Propagate endpoint pixel noise through z ~ f*height/pixel_height.
+  // Use the shorter observed edge conservatively (including foreshortening).
+  double shortest_edge = std::numeric_limits<double>::infinity();
+  for (std::size_t i = 0; i < image_points.size(); ++i) {
+    shortest_edge = std::min(shortest_edge,
+      cv::norm(image_points[i] - image_points[(i + 1) % image_points.size()]));
+  }
+  const double relative_uncertainty = std::sqrt(2.0) * corner_sigma_px / shortest_edge;
+  if (quality) {quality->relative_depth_uncertainty = relative_uncertainty;}
+  if (!std::isfinite(corner_sigma_px) || corner_sigma_px <= 0 ||
+    !std::isfinite(max_relative_depth_uncertainty) || max_relative_depth_uncertainty <= 0 ||
+    !std::isfinite(relative_uncertainty) || relative_uncertainty > max_relative_depth_uncertainty) {
+    return false;
+  }
   std::vector<cv::Mat> rotations, translations;
   try {
     if (!cv::solvePnPGeneric(object_points, image_vector, camera_matrix, dist_coeffs,
@@ -147,7 +163,7 @@ bool ArmorPnPSolver::solve(const std::array<cv::Point2f, 4>& image_points, int a
       const double normal_dot = best.rotation.col(2).dot(hypotheses[1].rotation.col(2));
       // A plausible translation can coexist with an ambiguous planar normal.
       quality->normal_reliable = normal_dot > std::cos(15.0 * 3.141592653589793 / 180) ||
-        quality->alternative_error_gap_px >= 0.25;
+        quality->alternative_error_gap_px >= std::max(0.5, 2.0 * best.error);
     }
   }
   return true;

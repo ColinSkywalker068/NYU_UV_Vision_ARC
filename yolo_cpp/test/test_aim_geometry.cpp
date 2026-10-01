@@ -123,3 +123,31 @@ TEST(AimPrediction, ReportsSentryMotionLimitsAndPlateHysteresis)
   in.robot.phase_rad = 0;
   EXPECT_EQ(predict_aim(in, config).selected_slot, 0);
 }
+
+TEST(AimPrediction, InvalidConfigurationAndRobotStateNeverProduceCommands)
+{
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  auto in = input_at_4m();
+  for (double invalid : {nan, -1.0, 0.0}) {
+    AimPredictionConfig c;
+    c.max_prediction_s = invalid;
+    EXPECT_FALSE(predict_aim(in, c).valid);
+    c = AimPredictionConfig();
+    c.yaw_accel_rad_s2 = invalid;
+    EXPECT_FALSE(predict_aim(in, c).valid);
+    c = AimPredictionConfig();
+    c.max_measurement_age_s = invalid;
+    EXPECT_FALSE(predict_aim(in, c).valid);
+  }
+  in.has_robot_state = true;
+  in.robot.center = {0, 0, 4};
+  in.robot.phase_rad = nan;
+  EXPECT_FALSE(predict_aim(in, {}).valid);
+  in.robot.phase_rad = 0;
+  in.robot.center.x = nan;
+  EXPECT_FALSE(predict_aim(in, {}).valid);
+  in.robot.center.x = 0;
+  in.robot.alternating_radius_m = -.4;
+  EXPECT_FALSE(predict_aim(in, {}).valid);
+  EXPECT_TRUE(std::isinf(minimum_slew_time(.1, nan, 4)));
+}

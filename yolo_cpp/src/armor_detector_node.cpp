@@ -231,8 +231,12 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
   this->declare_parameter<double>("camera_fy", 0.0);
   this->declare_parameter<double>("camera_cx", 0.0);
   this->declare_parameter<double>("camera_cy", 0.0);
+  this->declare_parameter<int>("camera_calibration_width", 0);
+  this->declare_parameter<int>("camera_calibration_height", 0);
   this->declare_parameter<std::vector<double>>("camera_distortion",
                                                std::vector<double>{});
+  this->declare_parameter<double>("pose_corner_sigma_model_px", 0.5);
+  this->declare_parameter<double>("pose_max_relative_depth_uncertainty", 0.05);
   this->declare_parameter<double>("small_armor_width_m", 0.135);
   this->declare_parameter<double>("small_armor_height_m", 0.055);
   this->declare_parameter<double>("large_armor_width_m", 0.225);
@@ -630,21 +634,23 @@ void ArmorDetectorNode::handle_camera_info(
 }
 
 void ArmorDetectorNode::configure_static_camera_model() {
-  if (camera_fx_ <= 0.0 || camera_fy_ <= 0.0) {
+  const int width = this->get_parameter("camera_calibration_width").as_int();
+  const int height = this->get_parameter("camera_calibration_height").as_int();
+  if (camera_fx_ <= 0.0 || camera_fy_ <= 0.0 || width <= 0 || height <= 0) {
     return;
   }
 
   camera_calibration_.model.camera_matrix = cv::Matx33d(
       camera_fx_, 0.0,
-      camera_cx_ > 0.0 ? camera_cx_ : static_cast<double>(imgsz_width_) / 2.0,
+      camera_cx_ > 0.0 ? camera_cx_ : static_cast<double>(width) / 2.0,
       0.0, camera_fy_,
-      camera_cy_ > 0.0 ? camera_cy_ : static_cast<double>(imgsz_height_) / 2.0,
+      camera_cy_ > 0.0 ? camera_cy_ : static_cast<double>(height) / 2.0,
       0.0, 0.0, 1.0);
   camera_calibration_.model.distortion_coefficients = camera_distortion_;
   camera_calibration_.available = true;
   camera_calibration_.from_camera_info = false;
-  camera_calibration_.image_width = imgsz_width_;
-  camera_calibration_.image_height = imgsz_height_;
+  camera_calibration_.image_width = width;
+  camera_calibration_.image_height = height;
   pnp_solver_.emplace(camera_calibration_.model, small_armor_width_m_,
                       small_armor_height_m_, large_armor_width_m_,
                       large_armor_height_m_);
@@ -684,18 +690,21 @@ ArmorDetectorNode::solve_candidate_pose(const Candidate &candidate,
 
   geometry_msgs::msg::Pose pose;
   if (pnp_solver_.has_value()) {
-    if (pnp_solver_->solve(candidate.corners_source, armor_type, pose, &last_pose_quality_)) {
+    // Corners are predicted in model pixels, then restored to source size.
+    // Upsampling them must not make the pose appear more precise.
+    const double sigma = this->get_parameter("pose_corner_sigma_model_px").as_double() *
+      std::max(static_cast<double>(image_width) / imgsz_width_,
+        static_cast<double>(image_height) / imgsz_height_);
+    if (pnp_solver_->solve(candidate.corners_source, armor_type, pose, &last_pose_quality_, sigma,
+        this->get_parameter("pose_max_relative_depth_uncertainty").as_double())) {
       return pose;
     }
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+      "POSE_QUALITY rejected geometry or depth uncertainty (estimated relative uncertainty=%.3f)",
+      last_pose_quality_.relative_depth_uncertainty);
     return std::nullopt;
   }
 
-  const auto fov_model = make_fov_camera_model(image_width, image_height);
-  ArmorPnPSolver solver(fov_model, small_armor_width_m_, small_armor_height_m_,
-                        large_armor_width_m_, large_armor_height_m_);
-  if (solver.solve(candidate.corners_source, armor_type, pose, &last_pose_quality_)) {
-    return pose;
-  }
   return std::nullopt;
 }
 

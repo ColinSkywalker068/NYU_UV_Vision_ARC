@@ -41,6 +41,7 @@ ros_build_and_test:
       ros-humble-visualization-msgs
       ros-humble-ament-cmake-gtest
       ros-humble-ament-cmake-clang-format
+      ros-humble-launch-ros
     - rm -rf /var/lib/apt/lists/*
   script:
     - . /opt/ros/humble/setup.sh
@@ -48,6 +49,7 @@ ros_build_and_test:
       colcon build
       --packages-select cv_auto_aim_interfaces yolo_cpp
       --cmake-args -DBUILD_TESTING=ON
+    - . install/setup.sh
     - colcon test --packages-select yolo_cpp --return-code-on-test-failure
     - colcon test-result --verbose
   artifacts:

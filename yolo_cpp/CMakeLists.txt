@@ -429,6 +429,12 @@ if(BUILD_TESTING)
   ament_target_dependencies(armor_replay rclcpp cv_auto_aim_interfaces)
   install(TARGETS armor_replay RUNTIME DESTINATION lib/${PROJECT_NAME})
 
+  ament_add_test(field_launch_parameters
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_launch_parameters.py
+    TIMEOUT 30
+    GENERATE_RESULT_FOR_RETURN_CODE_ZERO
+  )
+
   # Exercise the actual bridge with virtual ports; no controller hardware is opened.
   ament_add_test(serial_bridge_reconnect
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_serial_reconnect.py
@@ -485,6 +491,13 @@ if(BUILD_TESTING)
     target_link_libraries(test_pose_pipeline yolo_cpp_components ${OpenCV_LIBS})
     ament_target_dependencies(test_pose_pipeline rclcpp cv_auto_aim_interfaces)
     set_tests_properties(test_pose_pipeline PROPERTIES ENVIRONMENT "ROS_LOCALHOST_ONLY=1;ROS_DOMAIN_ID=197")
+  endif()
+  ament_add_gtest(test_closed_loop_pipeline test/test_closed_loop_pipeline.cpp TIMEOUT 120)
+  if(TARGET test_closed_loop_pipeline)
+    target_include_directories(test_closed_loop_pipeline PUBLIC include ${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(test_closed_loop_pipeline yolo_cpp_components ${OpenCV_LIBS})
+    ament_target_dependencies(test_closed_loop_pipeline rclcpp cv_auto_aim_interfaces)
+    set_tests_properties(test_closed_loop_pipeline PROPERTIES ENVIRONMENT "ROS_LOCALHOST_ONLY=1;ROS_DOMAIN_ID=198")
   endif()
   ament_add_gtest(test_aim_geometry
     test/test_aim_geometry.cpp src/aim_geometry.cpp src/aim_prediction.cpp)

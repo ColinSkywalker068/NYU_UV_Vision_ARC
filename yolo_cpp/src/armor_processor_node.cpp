@@ -2,6 +2,7 @@
 /// @brief Implements 3D target filtering, TF transforms, spin observation, and markers.
 
 #include "yolo_cpp/armor_processor_node.hpp"
+#include "yolo_cpp/aim_geometry.hpp"
 
 #include <tf2/exceptions.h>
 
@@ -148,13 +149,27 @@ void ArmorProcessorNode::handle_tracks(
     // Anchor a new robot state to the selected plate. Once anchored, the center gate rejects
     // plates belonging to other robots while allowing multiple plates from this robot.
     for (const auto& track : msg->tracks) {
-      if (!track.has_pose || (!track.armor.pose_normal_reliable && !robot_estimator_use_ekf_) || track.lost_frames != 0) {
+      if (!track.has_pose || !track.armor.has_pose || (!track.armor.pose_normal_reliable && !robot_estimator_use_ekf_) || track.lost_frames != 0) {
         continue;
       }
+      // Robot-state filtering must consume the detector measurement, not the
+      // already smoothed plate position. Both use the same capture-time camera
+      // transform; filtering a moving plate twice delays rotation estimation.
       geometry_msgs::msg::Pose pose;
-      if (!transform_pose(pose_header, track.pose_tracking, pose)) {
-        continue;
-      }
+      const auto & camera_q = target.camera_pose.orientation;
+      const auto camera_rotation = quaternion_rotation({camera_q.x, camera_q.y, camera_q.z, camera_q.w});
+      const auto & raw = track.armor.pose_camera;
+      const auto position = rotate_point(camera_rotation, {raw.position.x, raw.position.y, raw.position.z});
+      pose.position.x = position.x + target.camera_pose.position.x;
+      pose.position.y = position.y + target.camera_pose.position.y;
+      pose.position.z = position.z + target.camera_pose.position.z;
+      const auto & raw_q = raw.orientation;
+      const auto orientation = rotation_quaternion(camera_rotation *
+        quaternion_rotation({raw_q.x, raw_q.y, raw_q.z, raw_q.w}));
+      pose.orientation.x = orientation[0];
+      pose.orientation.y = orientation[1];
+      pose.orientation.z = orientation[2];
+      pose.orientation.w = orientation[3];
       const auto& q = pose.orientation;
       // Rotate the armor object's +Z axis into the target frame.
       Vector3d normal{
@@ -204,7 +219,6 @@ void ArmorProcessorNode::handle_tracks(
   // The tracker owns plate filtering; filtering again here adds avoidable lag.
   if (target.has_target && selected->has_pose && target.camera_pose_valid) {
     geometry_msgs::msg::Pose pose = selected->pose_tracking;
-    if (selected->lost_frames > 0) {pose.position = selected->predicted_position_tracking;}
     target.has_pose = transform_pose(pose_header, pose, target.pose);
     if (target_frame_ == pose_header.frame_id) {
       target.has_velocity = selected->has_velocity;

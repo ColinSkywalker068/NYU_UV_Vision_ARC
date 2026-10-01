@@ -94,5 +94,114 @@
       "model_sha256": "3af4e44cc66d0f2a29cb7912c9c8da4cdb902fccbc02df4f5b3c0d5847dcdefe",
       "median_inference_ms": 5.74250053614378
     }
+  },
+  "final_center_score_tracker": {
+    "tracker_source_sha256": "c3bd3035438a81e6f1c794637efd6ad3c5fd087050b002fd161ce92034a6aa2a",
+    "results": {
+      "tongji-demo": {
+        "tracking": {
+          "frames": 687,
+          "frames_with_detections": 421,
+          "frames_with_selection": 505,
+          "distinct_plate_track_ids": 47,
+          "selected_id_changes": 74,
+          "coasting_track_frames": 157,
+          "scope": "No ground truth: ID changes include legitimate plate switches and cannot be called identity errors"
+        },
+        "video": {
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "codec_name": "h264",
+              "width": 1280,
+              "height": 1110,
+              "nb_frames": "687"
+            }
+          ],
+          "format": {
+            "duration": "91.600000"
+          }
+        }
+      },
+      "robotpilots-far-translation": {
+        "tracking": {
+          "frames": 1546,
+          "frames_with_detections": 1536,
+          "frames_with_selection": 1545,
+          "distinct_plate_track_ids": 1,
+          "selected_id_changes": 0,
+          "coasting_track_frames": 9,
+          "scope": "No ground truth: ID changes include legitimate plate switches and cannot be called identity errors"
+        },
+        "video": {
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "codec_name": "h264",
+              "width": 1280,
+              "height": 1110,
+              "nb_frames": "1546"
+            }
+          ],
+          "format": {
+            "duration": "41.226667"
+          }
+        }
+      },
+      "robotpilots-medium-spin": {
+        "tracking": {
+          "frames": 2550,
+          "frames_with_detections": 2547,
+          "frames_with_selection": 2550,
+          "distinct_plate_track_ids": 105,
+          "selected_id_changes": 386,
+          "coasting_track_frames": 362,
+          "scope": "No ground truth: ID changes include legitimate plate switches and cannot be called identity errors"
+        },
+        "video": {
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "codec_name": "h264",
+              "width": 1280,
+              "height": 1110,
+              "nb_frames": "2550"
+            }
+          ],
+          "format": {
+            "duration": "68.000000"
+          }
+        }
+      },
+      "robotpilots-near-height-spin": {
+        "tracking": {
+          "frames": 2111,
+          "frames_with_detections": 2108,
+          "frames_with_selection": 2111,
+          "distinct_plate_track_ids": 67,
+          "selected_id_changes": 354,
+          "coasting_track_frames": 345,
+          "scope": "No ground truth: ID changes include legitimate plate switches and cannot be called identity errors"
+        },
+        "video": {
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "codec_name": "h264",
+              "width": 1280,
+              "height": 1110,
+              "nb_frames": "2111"
+            }
+          ],
+          "format": {
+            "duration": "56.293333"
+          }
+        }
+      }
+    }
   }
 }

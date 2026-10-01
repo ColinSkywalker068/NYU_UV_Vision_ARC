@@ -127,13 +127,21 @@ void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::Sha
     capture = attitude_history_.at(stamp_ns, now_ns,
       attitude_sync_tolerance_ms_ / 1000.0, attitude_max_gap_ms_ / 1000.0);
   }
-  if (!msg->has_target || !current || !capture || !msg->camera_pose_valid ||
-    msg->header.frame_id != "gimbal_inertial" || stamp_ns <= 0 || stamp_ns > now_ns ||
-    (now_ns - stamp_ns) * 1e-9 > prediction_config_.max_frame_age_s ||
-    msg->measurement_stamp_ns <= 0 || msg->measurement_stamp_ns > stamp_ns ||
+  const char * rejection = nullptr;
+  if (!msg->has_target) {rejection = "no_target";}
+  else if (use_3d_solution_ && !msg->has_pose) {rejection = "missing_3d_pose";}
+  else if (!current) {rejection = "stale_or_missing_attitude";}
+  else if (!capture || !msg->camera_pose_valid) {rejection = "capture_attitude_mismatch";}
+  else if (msg->header.frame_id != "gimbal_inertial") {rejection = "wrong_tracking_frame";}
+  else if (stamp_ns <= 0 || stamp_ns > now_ns ||
+    (now_ns - stamp_ns) * 1e-9 > prediction_config_.max_frame_age_s) {rejection = "invalid_frame_time";}
+  else if (msg->measurement_stamp_ns <= 0 || msg->measurement_stamp_ns > stamp_ns ||
     (now_ns - msg->measurement_stamp_ns) * 1e-9 > prediction_config_.max_measurement_age_s)
-  {
-    publish_no_target(image_width, image_height);
+  {rejection = "stale_or_invalid_measurement";}
+  if (rejection) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+      "AIM_SYNC rejected: %s", rejection);
+    publish_no_target(image_width, image_height, rejection);
     return;
   }
   const int selected_identity = msg->has_robot_state ? -(msg->robot_track_id + 2) : msg->track_id;
@@ -183,7 +191,7 @@ void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::Sha
       RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
         "AIM rejected: %s frame_age=%.3f measurement_age=%.3f", result.reason,
         result.frame_age_s, result.measurement_age_s);
-      publish_no_target(image_width, image_height);
+      publish_no_target(image_width, image_height, result.reason);
       return;
     }
     yaw = result.yaw;
@@ -256,7 +264,7 @@ void AimSolverNode::handle_attitude_flags(const std_msgs::msg::Int32MultiArray::
   }
 }
 
-void AimSolverNode::publish_no_target(int image_width, int image_height)
+void AimSolverNode::publish_no_target(int image_width, int image_height, const char * reason)
 {
   previous_slot_ = -1;
   const int cx = std::max(0, image_width / 2);
@@ -278,7 +286,7 @@ void AimSolverNode::publish_no_target(int image_width, int image_height)
   cv_auto_aim_interfaces::msg::AimSolution solution;
   solution.header.stamp = this->now();
   solution.output_mode = output_mode_;
-  solution.status = "no_target_or_unsynchronized";
+  solution.status = reason;
   solution.has_solution = false;
   solution.used_3d = false;
   solution.suggest_fire = false;

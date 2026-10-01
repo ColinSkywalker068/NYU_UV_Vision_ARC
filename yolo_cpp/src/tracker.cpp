@@ -246,6 +246,7 @@ TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& de
       track.hit_streak += 1U;
       track.lost_frames = 0;
       if (detection.has_pose) {
+        track.pose_measurement_stamp_ns = detection.measurement_stamp_ns;
         if (track.has_3d_state) {
           const cv::Vec3d measured_velocity(
             (detection.position.x - track.position.x) / dt_safe,
@@ -310,6 +311,7 @@ TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& de
     record.predicted_center = detection.center;
     if (detection.has_pose) {
       record.has_3d_state = true;
+      record.pose_measurement_stamp_ns = detection.measurement_stamp_ns;
       record.position = detection.position;
       record.predicted_position = detection.position;
       record.velocity = cv::Vec3d(0.0, 0.0, 0.0);
@@ -353,6 +355,8 @@ TrackSnapshot TrackManager::make_snapshot(const TrackRecord& track) const
   if (track.has_3d_state) {
     snapshot.has_pose = true;
     snapshot.observation.has_pose = true;
+    // Fresh 2D boxes must not make a stale retained 3D pose look newly measured.
+    snapshot.observation.measurement_stamp_ns = track.pose_measurement_stamp_ns;
     snapshot.observation.position = track.position;
     snapshot.predicted_position = track.predicted_position;
     snapshot.has_velocity = true;
@@ -418,8 +422,8 @@ std::optional<int> TrackManager::choose_selected_track_id(const std::vector<Trac
     if (state_priority(lhs.snapshot->state) != state_priority(rhs.snapshot->state)) {
       return state_priority(lhs.snapshot->state) > state_priority(rhs.snapshot->state);
     }
-    if (lhs.snapshot->observation.confidence != rhs.snapshot->observation.confidence) {
-      return lhs.snapshot->observation.confidence > rhs.snapshot->observation.confidence;
+    if (lhs.selection_score != rhs.selection_score) {
+      return lhs.selection_score > rhs.selection_score;
     }
     if (lhs.center_distance != rhs.center_distance) {
       return lhs.center_distance < rhs.center_distance;

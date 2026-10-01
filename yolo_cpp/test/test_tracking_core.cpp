@@ -99,17 +99,17 @@ TEST(TrackManagerTest, RetainsLockedTargetUntilChallengerClearlyWins)
   yolo_cpp::TrackManager manager(config);
 
   auto result = manager.update(
-    {make_detection(120.0F, 220.0F, 0.70F), make_detection(310.0F, 220.0F, 0.60F)}, 1.0 / 60.0);
+    {make_detection(120.0F, 220.0F, 0.90F), make_detection(310.0F, 220.0F, 0.60F)}, 1.0 / 60.0);
   ASSERT_EQ(result.tracks.size(), 2U);
   const int initially_selected = result.selected_target->track_id;
 
   result = manager.update(
-    {make_detection(125.0F, 220.0F, 0.72F), make_detection(305.0F, 220.0F, 0.65F)}, 1.0 / 60.0);
+    {make_detection(125.0F, 220.0F, 0.90F), make_detection(305.0F, 220.0F, 0.70F)}, 1.0 / 60.0);
   ASSERT_TRUE(result.selected_target.has_value());
   EXPECT_EQ(result.selected_target->track_id, initially_selected);
 
   result = manager.update(
-    {make_detection(130.0F, 220.0F, 0.70F), make_detection(300.0F, 220.0F, 0.80F)}, 1.0 / 60.0);
+    {make_detection(130.0F, 220.0F, 0.70F), make_detection(300.0F, 220.0F, 0.85F)}, 1.0 / 60.0);
   ASSERT_TRUE(result.selected_target.has_value());
   EXPECT_NE(result.selected_target->track_id, initially_selected);
 }
@@ -172,4 +172,36 @@ TEST(TrackManagerTest, DifferentArmorNumbersDoNotSwapIdentitiesAtCrossing)
     EXPECT_EQ(track.observation.armor_number, track.track_id == first_id ? 3 : 4);
     EXPECT_TRUE(track.track_id == first_id || track.track_id == second_id);
   }
+}
+
+TEST(TrackManagerTest, FreshBoxesCannotRefreshAnOldThreeDimensionalMeasurement)
+{
+  yolo_cpp::TrackManager manager;
+  auto observation = make_detection_3d(300, 200, .9, {.1, 0, 4});
+  observation.measurement_stamp_ns = 1000000000;
+  auto result = manager.update({observation}, .02);
+  ASSERT_TRUE(result.tracks[0].has_pose);
+  for (int i = 1; i < 20; ++i) {
+    observation.has_pose = false;
+    observation.has_camera_pose = false;
+    observation.measurement_stamp_ns += 20000000;
+    result = manager.update({observation}, .02);
+    ASSERT_EQ(result.tracks.size(), 1U);
+    EXPECT_EQ(result.tracks[0].observation.measurement_stamp_ns, 1000000000);
+  }
+  observation.has_pose = true;
+  observation.measurement_stamp_ns += 20000000;
+  result = manager.update({observation}, .02);
+  EXPECT_EQ(result.tracks[0].observation.measurement_stamp_ns, observation.measurement_stamp_ns);
+}
+
+TEST(TrackManagerTest, AcquisitionUsesTheSameCenterAndConfidenceScoreAsTargetLock)
+{
+  yolo_cpp::TrackManager manager;
+  auto center = make_detection(320, 240, .80);
+  auto edge = make_detection(40, 40, .85);
+  const auto result = manager.update({edge, center}, .02);
+  ASSERT_TRUE(result.selected_target);
+  EXPECT_FLOAT_EQ(result.selected_target->observation.center.x, 320);
+  EXPECT_FLOAT_EQ(result.selected_target->observation.center.y, 240);
 }

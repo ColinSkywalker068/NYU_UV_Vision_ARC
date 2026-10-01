@@ -1,5 +1,11 @@
 [![pipeline status](https://gitlab.com/nyu-robomaster/CV_Detection/badges/main/pipeline.svg)](https://gitlab.com/nyu-robomaster/CV_Detection/-/commits/main)
 
+Local ARUW pose/tracking evaluation: [results and limitations](docs/validation/autoaim-local-upgrade.md),
+[manual Jetson configuration and checks](docs/validation/autoaim-manual-checks.md), and
+[native Mac inference/replay videos](tools/model-eval/README.md). This evaluation
+branch has not been validated on live Basler/Jetson hardware; keep TX and firing disabled.
+
+
 # CV Detection
 
 NYU Robomaster ROS 2 C++ auto-aim vision pipeline for camera capture, YOLO/TensorRT/DeepStream armor detection, temporal tracking, 3D target processing, ballistic aim solving, and STM32 serial output.
@@ -204,8 +210,8 @@ still depends on whether the service is enabled.
 ## Command Overlay and Stationary Aiming Checks
 
 The preview draws a white image-center crosshair. Command text reads
-`/bounding_box_angles` (yaw, pitch in radians), the same topic consumed by
-the STM bridge; it is not a serial-transmission acknowledgment. The cyan
+`/bounding_box_angles` (yaw, pitch in radians). The STM bridge consumes the
+atomic `/aim_solution`; preview text is not a serial-transmission acknowledgment. The cyan
 arrow is opt-in: use `solver_output_mode:=offset use_3d_solution:=false
 preview_command_is_offset:=true` together as launch arguments for a 2D
 relative-error test. Set those arguments in `CV_STM_EXTRA_LAUNCH_ARGS` in
@@ -223,21 +229,21 @@ verified camera-to-gimbal boresight calibration.
 Before motor tests, verify radians, axis signs, and whether firmware expects
 absolute angles, incremental offsets, or rates. Absolute solving rejects
 missing/nonfinite attitude or attitude received more than 250 ms ago. Camera
-frames carry a local steady-clock capture marker, and the solver interpolates
-a one-second attitude history at the resulting frame timestamp. The default
-`attitude_sync_tolerance_ms:=30.0` applies only when the frame is just outside
-the stored history; frames bracketed by two attitude samples are interpolated.
-Anything farther outside the history fails closed.
+frames carry a capture marker mapped into the ROS clock domain. Typed
+`/gimbal/attitude` carries the bridge receipt timestamp for every consumer.
+Interpolation rejects telemetry gaps larger than 50 ms. The default
+`attitude_sync_tolerance_ms:=30.0` allows only bounded edge extrapolation; old,
+future, or out-of-order measurements fail closed. A fresh 2D box does not renew
+the age of an old 3D pose.
 
-The solver emits throttled `AIM_SYNC` log lines with `aligned`, `rejected`,
-alignment mode, and nearest-sample offset. Inspect them with
-`journalctl -u stm-stack -f | grep AIM_SYNC`. For an offline dump, record
-`/detector/armors`, `/tracker/target`, `/attitude_data`, `/aim_solution`,
-`/bounding_box_angles`, and `/override` with `ros2 bag record`.
+`AIM_SYNC` rejection logs and `/aim_solution.status` explain missing poses,
+telemetry alignment, and timestamp failures. `TRACK_STATE` reports robot/direct
+mode and estimator rejections. For record/replay commands and the measured-delay
+workflow, use the [manual evaluation guide](docs/validation/autoaim-manual-checks.md).
 
-The capture marker records when a frame enters host processing rather than a
-hardware exposure timestamp, and STM attitude is timestamped when received by
-the Jetson. This removes inference-time mixing but does not remove camera or
+Native capture still timestamps host receipt; DeepStream maps buffer PTS through
+its pipeline clock. Neither has been validated against exposure timing on this
+branch. STM attitude is timestamped when received by the Jetson. This removes inference-time mixing but does not remove camera or
 serial transport latency. Calibrate camera intrinsics and boresight, then test
 stationary targets during controlled gimbal motion before increasing rate
 limits or prediction. STLINK supports controller debugging but does not
@@ -356,9 +362,10 @@ Hardware-free regression: in a sourced ROS container run
 isolated ROS domain 89; it never opens the physical board. Tests cover SP
 encoding/CRC, SP attitude, ST isolation, bad CRC rejection, stale-command
 mode 0, and target loss.
-Run `python3 yolo_cpp/tools/test_solver_sentry.py` in the same sourced
-container to verify sentry right/up command signs and absolute-mode feedback
-expiry in isolated ROS domain 90. Neither test needs a camera or physical MCU.
+Run `tools/run-local-tracking-tests.sh` on the host device for the current typed
+attitude, PnP, timing, controller-reference, and virtual-serial checks. The older
+`test_solver_sentry.py` and `test_solver_timestamp_sync.py` entries now explain
+the replacement instead of publishing the retired message contract.
 
 ## Documentation
 

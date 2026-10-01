@@ -183,6 +183,7 @@ private:
     TrackObservation observation;
     cv::Point2f predicted_center;
     bool has_3d_state{false};
+    std::int64_t pose_measurement_stamp_ns{0};
     cv::Point3d position;
     cv::Point3d predicted_position;
     cv::Vec3d velocity;

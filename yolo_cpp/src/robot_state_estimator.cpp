@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <stdexcept>
 
 #include "yolo_cpp/robot_ekf.hpp"
 
@@ -35,8 +36,10 @@ Vector3d scale(const Vector3d & value, double factor)
 
 Vector3d inferred_center(const RobotPlateObservation & observation, double radius)
 {
-  const double length = std::max(1e-9, norm(observation.outward_normal));
-  return subtract(observation.position, scale(observation.outward_normal, radius / length));
+  // Plate lean is not radial height; the robot's spin axis is tracking-frame Y.
+  const Vector3d horizontal{observation.outward_normal.x, 0, observation.outward_normal.z};
+  const double length = std::max(1e-9, norm(horizontal));
+  return subtract(observation.position, scale(horizontal, radius / length));
 }
 
 double observation_phase(const RobotPlateObservation & observation)
@@ -81,6 +84,13 @@ FutureArmor select_future_armor(
 
 RobotStateEstimator::RobotStateEstimator(RobotEstimatorConfig config) : config_(config)
 {
+  if (
+    config_.armor_count < 1 || config_.armor_count > 8 || !std::isfinite(config_.armor_radius_m) ||
+    config_.armor_radius_m < 0.08 || config_.armor_radius_m > 0.45 ||
+    !std::isfinite(config_.center_gate_m) || config_.center_gate_m <= 0 ||
+    !std::isfinite(config_.max_angular_speed_rad_s) || config_.max_angular_speed_rad_s <= 0) {
+    throw std::invalid_argument("Invalid robot geometry, association gate or angular-speed bound");
+  }
   config_.armor_count = std::max(1, config_.armor_count);
   config_.min_updates = std::max(1, config_.min_updates);
   config_.coast_frames = std::max(0, config_.coast_frames);

@@ -29,7 +29,6 @@ private:
   State x_{};
   Covariance covariance_{Covariance::eye()};
   RobotEstimate state_;
-  unsigned seen_slots_{0};
   int confident_rotation_updates_{0};
   bool multiple_plate_evidence_{false};
 };

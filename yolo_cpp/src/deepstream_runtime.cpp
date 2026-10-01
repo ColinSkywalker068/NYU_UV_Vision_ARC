@@ -1328,7 +1328,8 @@ struct DeepStreamRuntime::Impl
     gst_caps_unref(infer_caps_value);
 
     g_object_set(G_OBJECT(streammux), "batch-size", 1, "width", config.imgsz_width, "height",
-      config.imgsz_height, "live-source", TRUE, "enable-padding", TRUE, nullptr);
+      config.imgsz_height, "live-source", TRUE, "enable-padding",
+      config.model_profile == "aruw_2026_pose" ? FALSE : TRUE, nullptr);
     g_object_set(G_OBJECT(nvinfer), "config-file-path", runtime_config_path.c_str(), nullptr);
     g_object_set(G_OBJECT(infer_sink_elem), "emit-signals", FALSE, "sync", FALSE, "max-buffers", 1,
       "drop", TRUE, nullptr);

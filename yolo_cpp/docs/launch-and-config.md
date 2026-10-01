@@ -1,5 +1,10 @@
 # Launch and Config
 
+For the ARUW pose/tracking branch, use the [manual evaluation guide](../../docs/validation/autoaim-manual-checks.md)
+for parser selection, source-resolution calibration, timing, quality limits, and
+preview-only settings. Its setup differs from the older OBB model defaults.
+
+
 Related pages: [Overview](./overview.md) | [Pipeline](./pipeline.md) | [Nodes](./nodes.md) | [Interfaces](./interfaces.md) | [Legacy Pipeline Notes](./legacy-pipeline-notes.md) | [Development Notes](./development-notes.md)
 
 ## Launch Files
@@ -14,7 +19,7 @@ Related pages: [Overview](./overview.md) | [Pipeline](./pipeline.md) | [Nodes](.
 Build just this package:
 
 ```bash
-colcon build --packages-select yolo_cpp --symlink-install
+colcon build --packages-select cv_auto_aim_interfaces yolo_cpp --symlink-install
 ```
 
 Launch the Basler field stack:
