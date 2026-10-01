@@ -15,6 +15,8 @@
 
 #include "cv_auto_aim_interfaces/msg/aim_solution.hpp"
 #include "cv_auto_aim_interfaces/msg/target.hpp"
+#include "cv_auto_aim_interfaces/msg/gimbal_attitude.hpp"
+#include "yolo_cpp/aim_prediction.hpp"
 #include "yolo_cpp/visibility_control.hpp"
 
 namespace yolo_cpp
@@ -33,25 +35,15 @@ private:
   void handle_target(const cv_auto_aim_interfaces::msg::Target::SharedPtr msg);
 
   /// Update measured robot attitude and bullet speed.
-  void handle_attitude(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
+  void handle_attitude(const cv_auto_aim_interfaces::msg::GimbalAttitude::SharedPtr msg);
 
   /// Update controller-provided flags used by solver behavior.
   void handle_attitude_flags(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
 
-  /// Interpolate controller attitude at a camera-frame timestamp.
-  bool attitude_at(
-    const rclcpp::Time& frame_stamp, float* yaw, float* pitch,
-    double* nearest_offset_ms, bool* interpolated);
-
-  /// Publish an explicit no-target command state.
   void publish_no_target(int image_width, int image_height);
 
-  /// Compute yaw/pitch from target pose, velocity, latency, and ballistic settings.
-  std::pair<float, float> solve_3d_angles(
-    const cv_auto_aim_interfaces::msg::Target& target, float* flight_time, float* range) const;
-
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::Target>::SharedPtr target_subscription_;
-  rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr attitude_subscription_;
+  rclcpp::Subscription<cv_auto_aim_interfaces::msg::GimbalAttitude>::SharedPtr attitude_subscription_;
   rclcpp::Subscription<std_msgs::msg::Int32MultiArray>::SharedPtr attitude_flags_subscription_;
   rclcpp::Publisher<std_msgs::msg::Int32MultiArray>::SharedPtr bbox_publisher_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr override_publisher_;
@@ -66,13 +58,6 @@ private:
   std_msgs::msg::Float32MultiArray angle_msg_;
   std_msgs::msg::Float32 obb_angle_msg_;
 
-  struct AttitudeSample
-  {
-    rclcpp::Time stamp;
-    float yaw{0.0F};
-    float pitch{0.0F};
-  };
-
   bool publish_zero_angles_when_no_target_{true};
   bool enable_fire_recommendation_{false};
   bool use_3d_solution_{true};
@@ -85,16 +70,13 @@ private:
   float bullet_speed_mps_{15.0F};
   float solver_latency_s_{0.0F};
   float gravity_mps2_{9.80665F};
-  float current_yaw_rad_{0.0F};
-  float current_pitch_rad_{0.0F};
-  bool have_attitude_{false};
-  std::chrono::steady_clock::time_point attitude_received_{};
-  std::deque<AttitudeSample> attitude_history_;
+  AttitudeHistory attitude_history_;
   std::mutex attitude_mutex_;
-  double attitude_history_seconds_{1.0};
   double attitude_sync_tolerance_ms_{30.0};
-  std::atomic<std::uint64_t> attitude_sync_aligned_{0};
-  std::atomic<std::uint64_t> attitude_sync_rejected_{0};
+  double attitude_max_gap_ms_{50.0};
+  AimPredictionConfig prediction_config_;
+  int previous_slot_{-1};
+  int previous_track_id_{-1};
   float hfov_rad_{0.0F};
   float vfov_rad_{0.0F};
 };

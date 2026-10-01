@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <stdexcept>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <utility>
 #include <vector>
@@ -21,6 +22,11 @@ namespace yolo_cpp
 
 namespace
 {
+
+void assign_orientation(geometry_msgs::msg::Quaternion & q, const std::array<double, 4> & values)
+{
+  q.x = values[0]; q.y = values[1]; q.z = values[2]; q.w = values[3];
+}
 
 /// Convert internal TrackState values to cv_auto_aim_interfaces constants.
 std::uint8_t to_msg_state(TrackState state)
@@ -62,12 +68,15 @@ cv_auto_aim_interfaces::msg::Armor make_armor_message(const TrackObservation& ob
   armor.armor_type = static_cast<uint8_t>(observation.armor_type);
   armor.armor_number = observation.armor_number;
   armor.distance_to_image_center = observation.distance_to_image_center;
-  armor.has_pose = observation.has_pose;
-  if (observation.has_pose) {
-    armor.pose_camera.position.x = observation.position_camera.x;
-    armor.pose_camera.position.y = observation.position_camera.y;
-    armor.pose_camera.position.z = observation.position_camera.z;
-    armor.pose_camera.orientation.w = 1.0;
+  armor.corners_are_keypoints = observation.corners_are_keypoints;
+  armor.pose_normal_reliable = observation.pose_normal_reliable;
+  armor.reprojection_rms_px = observation.reprojection_rms_px;
+  armor.has_pose = observation.has_camera_pose;
+  if (observation.has_camera_pose) {
+    armor.pose_camera.position.x = observation.camera_position.x;
+    armor.pose_camera.position.y = observation.camera_position.y;
+    armor.pose_camera.position.z = observation.camera_position.z;
+    assign_orientation(armor.pose_camera.orientation, observation.camera_orientation);
   }
   return armor;
 }
@@ -100,9 +109,17 @@ TrackObservation make_track_observation(const cv_auto_aim_interfaces::msg::Armor
   observation.armor_number = armor.armor_number;
   observation.distance_to_image_center = armor.distance_to_image_center;
   observation.has_pose = armor.has_pose;
+  observation.has_camera_pose = armor.has_pose;
+  observation.corners_are_keypoints = armor.corners_are_keypoints;
+  observation.pose_normal_reliable = armor.pose_normal_reliable;
+  observation.reprojection_rms_px = armor.reprojection_rms_px;
   if (armor.has_pose) {
-    observation.position_camera = cv::Point3d(
+    observation.position = cv::Point3d(
       armor.pose_camera.position.x, armor.pose_camera.position.y, armor.pose_camera.position.z);
+    observation.camera_position = observation.position;
+    const auto & q = armor.pose_camera.orientation;
+    observation.orientation = {q.x, q.y, q.z, q.w};
+    observation.camera_orientation = observation.orientation;
   }
   return observation;
 }
@@ -113,6 +130,19 @@ TrackObservation make_track_observation(const cv_auto_aim_interfaces::msg::Armor
 ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     : rclcpp::Node("armor_tracker_node", options)
 {
+  tracking_frame_ = this->declare_parameter<std::string>("tracking_frame", "gimbal_inertial");
+  attitude_edge_tolerance_s_ = this->declare_parameter<double>("attitude_sync_tolerance_ms", 30.0) / 1000.0;
+  attitude_max_gap_s_ = this->declare_parameter<double>("attitude_max_gap_ms", 50.0) / 1000.0;
+  max_frame_age_s_ = this->declare_parameter<double>("max_frame_age_s", 0.25);
+  const auto translation = this->declare_parameter<std::vector<double>>("camera_translation_m", {0.0, 0.0, 0.0});
+  const auto rotation = this->declare_parameter<std::vector<double>>("camera_mount_yaw_pitch_roll", {0.0, 0.0, 0.0});
+  if (translation.size() != 3 || rotation.size() != 3 ||
+    !std::all_of(translation.begin(), translation.end(), [](double v) {return std::isfinite(v);}) ||
+    !std::all_of(rotation.begin(), rotation.end(), [](double v) {return std::isfinite(v);})) {
+    throw std::runtime_error("Camera extrinsics require three values each");
+  }
+  camera_mount_translation_ = {translation[0], translation[1], translation[2]};
+  camera_mount_rotation_ = camera_to_inertial_rotation({1, rotation[0], rotation[1], rotation[2]});
   this->declare_parameter<bool>("use_robot_id_targeting", false);
   this->declare_parameter<int>("enemy_color_red_value", 0);
   this->declare_parameter<int>("enemy_color_blue_value", 1);
@@ -150,6 +180,8 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   armors_subscription_ =
     this->create_subscription<cv_auto_aim_interfaces::msg::Armors>("detector/armors", 10,
       std::bind(&ArmorTrackerNode::armors_callback, this, std::placeholders::_1));
+  attitude_subscription_ = this->create_subscription<cv_auto_aim_interfaces::msg::GimbalAttitude>(
+    "gimbal/attitude", 100, std::bind(&ArmorTrackerNode::handle_attitude, this, std::placeholders::_1));
   robot_id_subscription_ = this->create_subscription<std_msgs::msg::Int32>("robot_id", 10,
     std::bind(&ArmorTrackerNode::id_listener_callback, this, std::placeholders::_1));
   attitude_flags_subscription_ =
@@ -169,8 +201,24 @@ void ArmorTrackerNode::armors_callback(const cv_auto_aim_interfaces::msg::Armors
   std::lock_guard<std::mutex> lock(state_mutex_);
 
   rclcpp::Time stamp(msg->header.stamp);
-  if (stamp.nanoseconds() == 0) {
-    stamp = this->get_clock()->now();
+  const auto now = this->get_clock()->now();
+  if (stamp.nanoseconds() <= 0 || stamp > now || (now-stamp).seconds() > max_frame_age_s_ ||
+      (have_last_frame_time_ && stamp <= last_frame_time_)) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+      "TRACK_TIME rejected zero, future, stale or out-of-order image");
+    return;
+  }
+  const auto attitude = attitude_history_.at(stamp.nanoseconds(), now.nanoseconds(),
+    attitude_edge_tolerance_s_, attitude_max_gap_s_);
+  if ((!attitude && frame_camera_pose_valid_) ||
+      (have_last_frame_time_ && (stamp - last_frame_time_).seconds() > max_frame_age_s_)) {
+    track_manager_.reset();
+  }
+  frame_camera_pose_valid_ = attitude.has_value();
+  if (attitude) {
+    const auto pivot_rotation = camera_to_inertial_rotation(*attitude);
+    frame_rotation_ = pivot_rotation * camera_mount_rotation_;
+    frame_camera_position_ = rotate_point(pivot_rotation, camera_mount_translation_);
   }
   double dt = 1.0 / 60.0;
   if (have_last_frame_time_) {
@@ -185,7 +233,19 @@ void ArmorTrackerNode::armors_callback(const cv_auto_aim_interfaces::msg::Armors
   std::vector<TrackObservation> observations;
   observations.reserve(msg->armors.size());
   for (const auto& armor : msg->armors) {
-    observations.push_back(make_track_observation(armor));
+    auto observation = make_track_observation(armor);
+    observation.measurement_stamp_ns = stamp.nanoseconds();
+    if (observation.has_pose && frame_camera_pose_valid_) {
+      observation.position = rotate_point(frame_rotation_, observation.camera_position) + frame_camera_position_;
+      const auto rotation = frame_rotation_ * quaternion_rotation(observation.camera_orientation);
+      observation.orientation = rotation_quaternion(rotation);
+      observation.has_pose = finite_point(observation.position) &&
+        std::all_of(observation.orientation.begin(), observation.orientation.end(),
+          [](double value) {return std::isfinite(value);});
+    } else {
+      observation.has_pose = false;
+    }
+    observations.push_back(std::move(observation));
   }
 
   const auto tracking_start = std::chrono::steady_clock::now();
@@ -205,6 +265,13 @@ void ArmorTrackerNode::armors_callback(const cv_auto_aim_interfaces::msg::Armors
   if (frame_count_ % stage_log_interval_ == 0) {
     log_stage_timing();
   }
+}
+
+void ArmorTrackerNode::handle_attitude(const cv_auto_aim_interfaces::msg::GimbalAttitude::SharedPtr msg)
+{
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  if (!msg->valid) {attitude_history_.clear(); return;}
+  attitude_history_.insert({rclcpp::Time(msg->header.stamp).nanoseconds(), msg->yaw, msg->pitch, msg->roll});
 }
 
 void ArmorTrackerNode::id_listener_callback(const std_msgs::msg::Int32::SharedPtr msg)
@@ -244,6 +311,12 @@ void ArmorTrackerNode::publish_tracked_armors(
   msg.header = source_msg.header;
   msg.source_id = source_msg.source_id;
   msg.selected_track_id = result.selected_track_id.value_or(-1);
+  msg.pose_frame_id = tracking_frame_;
+  msg.camera_pose_valid = frame_camera_pose_valid_;
+  msg.camera_pose.position.x = frame_camera_position_.x;
+  msg.camera_pose.position.y = frame_camera_position_.y;
+  msg.camera_pose.position.z = frame_camera_position_.z;
+  assign_orientation(msg.camera_pose.orientation, rotation_quaternion(frame_rotation_));
   msg.tracks.reserve(result.tracks.size());
   for (const auto& track : result.tracks) {
     cv_auto_aim_interfaces::msg::TrackedArmor tracked;
@@ -255,21 +328,31 @@ void ArmorTrackerNode::publish_tracked_armors(
     tracked.lost_frames = track.lost_frames;
     tracked.predicted_center_x = track.predicted_center.x;
     tracked.predicted_center_y = track.predicted_center.y;
-    tracked.has_pose = track.has_pose;
-    if (track.has_pose) {
-      tracked.pose_camera.position.x = track.observation.position_camera.x;
-      tracked.pose_camera.position.y = track.observation.position_camera.y;
-      tracked.pose_camera.position.z = track.observation.position_camera.z;
-      tracked.pose_camera.orientation.w = 1.0;
-      tracked.predicted_position_camera.x = track.predicted_position_camera.x;
-      tracked.predicted_position_camera.y = track.predicted_position_camera.y;
-      tracked.predicted_position_camera.z = track.predicted_position_camera.z;
+    tracked.measurement_stamp_ns = track.observation.measurement_stamp_ns;
+    tracked.has_pose = track.has_pose && frame_camera_pose_valid_;
+    tracked.pose_camera = tracked.armor.pose_camera;
+    if (tracked.has_pose) {
+      tracked.pose_tracking.position.x = track.observation.position.x;
+      tracked.pose_tracking.position.y = track.observation.position.y;
+      tracked.pose_tracking.position.z = track.observation.position.z;
+      assign_orientation(tracked.pose_tracking.orientation, track.observation.orientation);
+      tracked.predicted_position_tracking.x = track.predicted_position.x;
+      tracked.predicted_position_tracking.y = track.predicted_position.y;
+      tracked.predicted_position_tracking.z = track.predicted_position.z;
+      const auto camera_prediction = rotate_point(frame_rotation_.t(), track.predicted_position-frame_camera_position_);
+      tracked.predicted_position_camera.x = camera_prediction.x;
+      tracked.predicted_position_camera.y = camera_prediction.y;
+      tracked.predicted_position_camera.z = camera_prediction.z;
     }
-    tracked.has_velocity = track.has_velocity;
-    if (track.has_velocity) {
-      tracked.velocity_camera.x = track.velocity_camera[0];
-      tracked.velocity_camera.y = track.velocity_camera[1];
-      tracked.velocity_camera.z = track.velocity_camera[2];
+    tracked.has_velocity = track.has_velocity && tracked.has_pose;
+    if (tracked.has_velocity) {
+      tracked.velocity_tracking.x = track.velocity[0];
+      tracked.velocity_tracking.y = track.velocity[1];
+      tracked.velocity_tracking.z = track.velocity[2];
+      const auto camera_velocity = frame_rotation_.t() * track.velocity;
+      tracked.velocity_camera.x = camera_velocity[0];
+      tracked.velocity_camera.y = camera_velocity[1];
+      tracked.velocity_camera.z = camera_velocity[2];
     }
     msg.tracks.push_back(std::move(tracked));
   }
@@ -281,6 +364,12 @@ void ArmorTrackerNode::publish_target(
 {
   cv_auto_aim_interfaces::msg::Target msg;
   msg.header = source_msg.header;
+  msg.header.frame_id = tracking_frame_;
+  msg.camera_pose_valid = frame_camera_pose_valid_;
+  msg.camera_pose.position.x = frame_camera_position_.x;
+  msg.camera_pose.position.y = frame_camera_position_.y;
+  msg.camera_pose.position.z = frame_camera_position_.z;
+  assign_orientation(msg.camera_pose.orientation, rotation_quaternion(frame_rotation_));
   msg.source_id = source_msg.source_id;
   if (!target.has_value()) {
     msg.has_target = false;
@@ -321,22 +410,23 @@ void ArmorTrackerNode::publish_target(
   msg.state = to_msg_state(snapshot.state);
   msg.image_width = snapshot.observation.image_width;
   msg.image_height = snapshot.observation.image_height;
-  msg.has_pose = snapshot.has_pose;
-  if (snapshot.has_pose) {
-    msg.pose.position.x = snapshot.observation.position_camera.x;
-    msg.pose.position.y = snapshot.observation.position_camera.y;
-    msg.pose.position.z = snapshot.observation.position_camera.z;
-    msg.pose.orientation.w = 1.0;
+  msg.measurement_stamp_ns = snapshot.observation.measurement_stamp_ns;
+  msg.has_pose = snapshot.has_pose && frame_camera_pose_valid_;
+  if (msg.has_pose) {
+    msg.pose.position.x = snapshot.observation.position.x;
+    msg.pose.position.y = snapshot.observation.position.y;
+    msg.pose.position.z = snapshot.observation.position.z;
+    assign_orientation(msg.pose.orientation, snapshot.observation.orientation);
     msg.range = static_cast<float>(std::sqrt(
-      (snapshot.observation.position_camera.x * snapshot.observation.position_camera.x)
-      + (snapshot.observation.position_camera.y * snapshot.observation.position_camera.y)
-      + (snapshot.observation.position_camera.z * snapshot.observation.position_camera.z)));
+      (snapshot.observation.position.x * snapshot.observation.position.x)
+      + (snapshot.observation.position.y * snapshot.observation.position.y)
+      + (snapshot.observation.position.z * snapshot.observation.position.z)));
   }
-  msg.has_velocity = snapshot.has_velocity;
+  msg.has_velocity = snapshot.has_velocity && msg.has_pose;
   if (snapshot.has_velocity) {
-    msg.velocity.x = snapshot.velocity_camera[0];
-    msg.velocity.y = snapshot.velocity_camera[1];
-    msg.velocity.z = snapshot.velocity_camera[2];
+    msg.velocity.x = snapshot.velocity[0];
+    msg.velocity.y = snapshot.velocity[1];
+    msg.velocity.z = snapshot.velocity[2];
   }
   target_publisher_->publish(std::move(msg));
 }

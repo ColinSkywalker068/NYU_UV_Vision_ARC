@@ -11,6 +11,7 @@
 #include <optional>
 #include <rclcpp/logging.hpp>
 #include <string>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -509,6 +510,81 @@ std::vector<Detection> parse_yolo_output_tensor(const float* tensor_data,
   }
 
   return detections;
+}
+
+LetterboxMetadata aruw_resize_metadata(int width, int height)
+{
+  LetterboxMetadata metadata;
+  metadata.src_w = width;
+  metadata.src_h = height;
+  metadata.dst_w = 640;
+  metadata.dst_h = 384;
+  metadata.scale = width > 0 ? 640.0 / width : 0;
+  metadata.scale_y = height > 0 ? 384.0 / height : 0;
+  return metadata;
+}
+
+cv::Mat preprocess_aruw_bgr(const cv::Mat & bgr)
+{
+  if (bgr.empty() || bgr.type() != CV_8UC3) {
+    throw std::invalid_argument("ARUW profile requires a BGR8 image");
+  }
+  cv::Mat floating, resized;
+  // Upstream resizes floats in BGR order, with no letterbox or channel swap.
+  bgr.convertTo(floating, CV_32FC3, 1.0 / 255.0);
+  cv::resize(floating, resized, cv::Size(640, 384), 0, 0, cv::INTER_LINEAR);
+  const int dims[] = {1, 3, 384, 640};
+  cv::Mat tensor(4, dims, CV_32F);
+  for (int y = 0; y < 384; ++y) {
+    for (int x = 0; x < 640; ++x) {
+      const auto pixel = resized.at<cv::Vec3f>(y, x);
+      for (int c = 0; c < 3; ++c) {tensor.ptr<float>()[c * 384 * 640 + y * 640 + x] = pixel[c];}
+    }
+  }
+  return tensor;
+}
+
+std::vector<Detection> parse_aruw_pose_tensor(const float * data,
+  const std::vector<int64_t> & shape, int width, int height, float threshold)
+{
+  std::vector<Detection> result;
+  if (!data || shape.size() != 3 || shape[0] != 1 || shape[1] < 1 ||
+    shape[1] > 300 || shape[2] != 14 || width != 640 || height != 384) {return result;}
+  // Metadata identities, not upstream competition-specific remapping of 5 to sentry.
+  const int numbers[] = {0, 2, 1, 6, 7, 3, 4, 5};
+  for (int64_t row = 0; row < shape[1]; ++row) {
+    const float * p = data + row * 14;
+    if (!std::all_of(p, p + 14, [](float v) {return std::isfinite(v);}) ||
+      p[4] < threshold || p[4] > 1 || p[5] < 0 || p[5] >= 16 ||
+      std::abs(p[5] - std::round(p[5])) > 1e-3 || p[2] <= p[0] || p[3] <= p[1]) {continue;}
+    cv::Point2f points[4];
+    bool in_image = true;
+    for (int k = 0; k < 4; ++k) {
+      points[k] = {p[6 + k * 2], p[7 + k * 2]};
+      in_image = in_image && points[k].x >= 0 && points[k].x < width &&
+        points[k].y >= 0 && points[k].y < height;
+    }
+    if (!in_image) {continue;}
+    const auto ordered = order_armor_corners(points);
+    const std::vector<cv::Point2f> polygon(ordered.begin(), ordered.end());
+    if (!cv::isContourConvex(polygon) || cv::contourArea(polygon, true) < 4) {continue;}
+    Detection d;
+    const int cls = static_cast<int>(p[5]);
+    d.class_id = cls < 8 ? RED_CLASS : BLUE_CLASS;
+    d.armor_number = numbers[cls % 8];
+    // Hero/base are large. Engineer/standard/sentry/outpost use small plates.
+    d.armor_type = (cls % 8 == 0 || cls % 8 == 2) ? 1 : 0;
+    d.confidence = p[4];
+    const int x = std::clamp(static_cast<int>(std::floor(p[0])), 0, width - 1);
+    const int y = std::clamp(static_cast<int>(std::floor(p[1])), 0, height - 1);
+    const int x2 = std::clamp(static_cast<int>(std::ceil(p[2])), x + 1, width);
+    const int y2 = std::clamp(static_cast<int>(std::ceil(p[3])), y + 1, height);
+    d.bbox_model = {x, y, x2 - x, y2 - y};
+    d.has_corners = d.corners_are_keypoints = true;
+    d.corners_model = ordered;
+    result.push_back(d);
+  }
+  return result;
 }
 
 }  // namespace yolo_cpp

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import rclpy
 from std_msgs.msg import Bool, Float32MultiArray
+from cv_auto_aim_interfaces.msg import AimSolution
 
 
 def attitude_packet(yaw, pitch):
@@ -33,6 +34,8 @@ class SerialReconnectTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.port = self.root / "controller"
         self.master = None
+        self.send_valid_solution = True
+        self.tx_enabled = self._testMethodName == "test_atomic_solution_rejects_stale_offset_and_replay"
         self.outbound = bytearray()
         self.samples = []
         self.log_path = self.root / "bridge.log"
@@ -46,10 +49,11 @@ class SerialReconnectTest(unittest.TestCase):
             Float32MultiArray, "attitude_data", lambda msg: self.samples.append(msg.data), 10
         )
         self.angles = self.node.create_publisher(Float32MultiArray, "bounding_box_angles", 10)
+        self.solutions = self.node.create_publisher(AimSolution, "aim_solution", 10)
         self.override = self.node.create_publisher(Bool, "override", 10)
         self.bridge = subprocess.Popen(
             [BRIDGE, "--ros-args", "-p", f"serial_port:={self.port}",
-             "-p", "receive_enable:=true", "-p", "transmit_enable:=false",
+             "-p", "receive_enable:=true", "-p", f"transmit_enable:={str(self.tx_enabled).lower()}",
              "-p", f"runtime_log_dir:={self.root}"],
             stdout=self.log_file, stderr=subprocess.STDOUT,
         )
@@ -83,6 +87,15 @@ class SerialReconnectTest(unittest.TestCase):
 
     def step(self, packet=None):
         self.assertIsNone(self.bridge.poll(), "bridge exited during disconnect")
+        solution = AimSolution()
+        solution.header.stamp = self.node.get_clock().now().to_msg()
+        solution.header.frame_id = "gimbal_inertial"
+        solution.output_mode = "absolute"
+        solution.has_solution = True
+        solution.yaw = 0.2
+        solution.pitch = 0.1
+        if self.send_valid_solution:
+            self.solutions.publish(solution)
         self.override.publish(Bool(data=True))
         self.angles.publish(Float32MultiArray(data=[0.2, 0.1]))
         if self.master is not None:
@@ -146,6 +159,38 @@ class SerialReconnectTest(unittest.TestCase):
         self.assertEqual(self.outbound, b"", "TX disabled must remain silent after reconnect")
         for log in self.root.glob("vision_serial_runtime_*.log"):
             self.assertNotIn("kind=serial_tx", log.read_text())
+
+    def test_atomic_solution_rejects_stale_offset_and_replay(self):
+        self.attach()
+        self.await_attitude(0.4, -0.1)
+        self.spin_for(0.2)
+        self.assertGreaterEqual(len(self.outbound), 29)
+        valid = [self.outbound[i:i+29] for i in range(0, len(self.outbound)-28, 29)]
+        self.assertTrue(any(packet[2] == 1 for packet in valid), "no active auto-aim packet")
+        self.send_valid_solution = False
+        self.spin_for(0.35)  # Expire the active command before independent cases.
+        for kind in ("stale", "future", "offset", "nan", "replay"):
+            solution = AimSolution()
+            stamp = self.node.get_clock().now().nanoseconds
+            if kind == "stale": stamp -= 1_000_000_000
+            if kind == "future": stamp += 1_000_000_000
+            solution.header.stamp.sec = stamp // 1_000_000_000
+            solution.header.stamp.nanosec = stamp % 1_000_000_000
+            solution.header.frame_id = "gimbal_inertial"
+            solution.output_mode = "offset" if kind == "offset" else "absolute"
+            solution.has_solution = True
+            solution.yaw = float("nan") if kind == "nan" else 0.3
+            solution.pitch = 0.1
+            if kind == "replay":
+                self.solutions.publish(solution)
+                self.spin_for(0.1)
+            self.outbound.clear()
+            self.solutions.publish(solution)
+            self.spin_for(0.1)
+            packets = [self.outbound[i:i+29] for i in range(0, len(self.outbound)-28, 29)]
+            self.assertTrue(packets, f"{kind}: missing explicit no-target packet")
+            self.assertTrue(all(packet[2] == 0 for packet in packets),
+                            f"{kind}: invalid solution enabled control")
 
 
 if __name__ == "__main__":

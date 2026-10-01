@@ -94,7 +94,17 @@ struct TrackObservation
   int armor_number{-1};
   float distance_to_image_center{0.0F};
   bool has_pose{false};
-  cv::Point3d position_camera;
+  // Pose used by association/filtering, in a fixed orientation tracking frame.
+  cv::Point3d position;
+  std::array<double, 4> orientation{0.0, 0.0, 0.0, 1.0};
+  // Preserve the detector measurement separately from the filtered state.
+  bool has_camera_pose{false};
+  bool corners_are_keypoints{false};
+  bool pose_normal_reliable{false};
+  float reprojection_rms_px{0.0F};
+  cv::Point3d camera_position;
+  std::array<double, 4> camera_orientation{0.0, 0.0, 0.0, 1.0};
+  std::int64_t measurement_stamp_ns{0};
 };
 
 /// Public view of one track after prediction, association, and state update.
@@ -108,9 +118,9 @@ struct TrackSnapshot
   TrackObservation observation;
   cv::Point2f predicted_center;
   bool has_pose{false};
-  cv::Point3d predicted_position_camera;
+  cv::Point3d predicted_position;
   bool has_velocity{false};
-  cv::Vec3d velocity_camera;
+  cv::Vec3d velocity;
   bool selectable{false};
 };
 
@@ -173,9 +183,9 @@ private:
     TrackObservation observation;
     cv::Point2f predicted_center;
     bool has_3d_state{false};
-    cv::Point3d position_camera;
-    cv::Point3d predicted_position_camera;
-    cv::Vec3d velocity_camera;
+    cv::Point3d position;
+    cv::Point3d predicted_position;
+    cv::Vec3d velocity;
   };
 
   struct RankedTrack

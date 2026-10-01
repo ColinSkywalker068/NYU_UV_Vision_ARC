@@ -68,6 +68,12 @@ std::vector<Detection> parse_yolo_output_tensor(const float* tensor_data,
   bool task_obb, bool end2end, std::optional<bool> export_includes_nms = std::nullopt,
   const rclcpp::Logger* logger = nullptr);
 
+// Explicit contract for ARUW's pinned 2026 16-class, four-corner model.
+std::vector<Detection> parse_aruw_pose_tensor(const float * data,
+  const std::vector<int64_t> & shape, int width, int height, float confidence);
+LetterboxMetadata aruw_resize_metadata(int source_width, int source_height);
+cv::Mat preprocess_aruw_bgr(const cv::Mat & bgr);
+
 }  // namespace yolo_cpp
 
 #endif

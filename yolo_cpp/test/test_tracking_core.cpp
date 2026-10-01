@@ -21,11 +21,11 @@ yolo_cpp::TrackObservation make_detection(float center_x, float center_y, float 
 }
 
 yolo_cpp::TrackObservation make_detection_3d(
-  float center_x, float center_y, float confidence, cv::Point3d position_camera)
+  float center_x, float center_y, float confidence, cv::Point3d position)
 {
   auto observation = make_detection(center_x, center_y, confidence);
   observation.has_pose = true;
-  observation.position_camera = position_camera;
+  observation.position = position;
   return observation;
 }
 

@@ -12,6 +12,8 @@
 #include "cv_auto_aim_interfaces/msg/armors.hpp"
 #include "cv_auto_aim_interfaces/msg/target.hpp"
 #include "cv_auto_aim_interfaces/msg/tracked_armors.hpp"
+#include "cv_auto_aim_interfaces/msg/gimbal_attitude.hpp"
+#include "yolo_cpp/aim_geometry.hpp"
 #include "yolo_cpp/tracker.hpp"
 #include "yolo_cpp/utils.hpp"
 #include "yolo_cpp/visibility_control.hpp"
@@ -42,6 +44,7 @@ private:
 
   /// Update controller-sourced color/targeting flags.
   void handle_attitude_flags(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
+  void handle_attitude(const cv_auto_aim_interfaces::msg::GimbalAttitude::SharedPtr msg);
 
   /// Publish every active track for downstream processor/debug consumers.
   void publish_tracked_armors(
@@ -55,6 +58,7 @@ private:
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::Armors>::SharedPtr armors_subscription_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr robot_id_subscription_;
   rclcpp::Subscription<std_msgs::msg::Int32MultiArray>::SharedPtr attitude_flags_subscription_;
+  rclcpp::Subscription<cv_auto_aim_interfaces::msg::GimbalAttitude>::SharedPtr attitude_subscription_;
   rclcpp::Publisher<cv_auto_aim_interfaces::msg::TrackedArmors>::SharedPtr
     tracked_armors_publisher_;
   rclcpp::Publisher<cv_auto_aim_interfaces::msg::Target>::SharedPtr target_publisher_;
@@ -65,6 +69,16 @@ private:
   std::chrono::steady_clock::time_point last_stage_log_wall_time_{};
   bool have_last_stage_log_wall_time_{false};
   std::mutex state_mutex_;
+  AttitudeHistory attitude_history_;
+  std::string tracking_frame_{"gimbal_inertial"};
+  double attitude_edge_tolerance_s_{0.03};
+  double attitude_max_gap_s_{0.05};
+  double max_frame_age_s_{0.25};
+  cv::Matx33d camera_mount_rotation_{cv::Matx33d::eye()};
+  cv::Point3d camera_mount_translation_;
+  cv::Matx33d frame_rotation_{cv::Matx33d::eye()};
+  cv::Point3d frame_camera_position_;
+  bool frame_camera_pose_valid_{false};
 
   bool use_robot_id_targeting_{false};
   bool stm_color_locked_{false};

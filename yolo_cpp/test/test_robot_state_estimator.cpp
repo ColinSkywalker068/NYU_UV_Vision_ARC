@@ -10,6 +10,7 @@
 namespace
 {
 using yolo_cpp::RobotPlateObservation;
+using yolo_cpp::RobotStateBank;
 using yolo_cpp::RobotStateEstimator;
 using yolo_cpp::Vector3d;
 
@@ -202,3 +203,43 @@ TEST(RobotStateEstimator, NonFiniteTimestampDoesNotAdvanceState)
   EXPECT_NEAR(estimator.state().center.x, 0.0, 1e-6);
 }
 }  // namespace
+
+TEST(RobotStateBank, KeepsTwoSameColorRobotsSeparateWhenSelectedTrackChanges)
+{
+  RobotStateBank bank;
+  for (int frame = 0; frame < 120; ++frame) {
+    const double t = frame / 60.0;
+    bank.update(
+      {plate(-1, 4, 3 * t, 0, 1), plate(-1, 4, 3 * t, 1, 2), plate(1, 5, -2 * t, 0, 3),
+       plate(1, 5, -2 * t, 1, 4)},
+      t);
+  }
+  ASSERT_EQ(bank.size(), 2U);
+  ASSERT_NE(bank.for_track(1), nullptr);
+  ASSERT_NE(bank.for_track(3), nullptr);
+  EXPECT_TRUE(bank.for_track(1)->model_confirmed);
+  EXPECT_TRUE(bank.for_track(3)->model_confirmed);
+  EXPECT_NEAR(bank.for_track(1)->center.x, -1, 1e-5);
+  EXPECT_NEAR(bank.for_track(3)->center.x, 1, 1e-5);
+  EXPECT_GT(bank.for_track(1)->angular_velocity_rad_s, 2.5);
+  EXPECT_LT(bank.for_track(3)->angular_velocity_rad_s, -1.5);
+  bank.update({}, 3.0);
+  EXPECT_EQ(bank.size(), 0U);
+  EXPECT_EQ(bank.for_track(1), nullptr);
+}
+
+TEST(RobotStateEstimator, RejectedMeasurementsExpireConfirmationAndDuplicateTimeIsIgnored)
+{
+  RobotStateEstimator estimator;
+  for (int i = 0; i < 20; ++i) {
+    estimator.update({plate(0, 4, 0, 0, 1), plate(0, 4, 0, 1, 2)}, i / 60.0);
+  }
+  ASSERT_TRUE(estimator.state().model_confirmed);
+  const auto before = estimator.state().update_count;
+  estimator.update({plate(0.2, 4, 0, 0, 1)}, 19.0 / 60);
+  EXPECT_EQ(estimator.state().update_count, before);
+  for (int i = 20; i < 30; ++i) {
+    estimator.update({plate(3, 4, 0, 0, 99)}, i / 60.0);
+  }
+  EXPECT_FALSE(estimator.state().model_confirmed);
+}

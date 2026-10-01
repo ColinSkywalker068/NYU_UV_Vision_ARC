@@ -41,17 +41,16 @@ constexpr double kPi = 3.14159265358979323846;
 constexpr std::int64_t kMaxCaptureStampAgeNs = 2000000000LL;
 
 rclcpp::Time capture_stamp(const FramePacket *packet,
-                           const rclcpp::Time &processing_stamp) {
-  if (packet == nullptr || packet->capture_steady_time_ns <= 0) {
-    return processing_stamp;
-  }
+                           const rclcpp::Time &processing_stamp, std::int64_t source_steady_ns) {
+  if (source_steady_ns <= 0 && packet != nullptr) {source_steady_ns = packet->capture_steady_time_ns;}
+  if (source_steady_ns <= 0) {return rclcpp::Time(0, 0, processing_stamp.get_clock_type());}
   const auto steady_now_ns = static_cast<std::int64_t>(
       std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now().time_since_epoch())
           .count());
-  const auto age_ns = steady_now_ns - packet->capture_steady_time_ns;
+  const auto age_ns = steady_now_ns - source_steady_ns;
   if (age_ns < 0 || age_ns > kMaxCaptureStampAgeNs) {
-    return processing_stamp;
+    return rclcpp::Time(0, 0, processing_stamp.get_clock_type());
   }
   return processing_stamp - rclcpp::Duration::from_nanoseconds(age_ns);
 }
@@ -669,20 +668,23 @@ ArmorDetectorNode::make_fov_camera_model(int image_width,
 std::optional<geometry_msgs::msg::Pose>
 ArmorDetectorNode::solve_candidate_pose(const Candidate &candidate,
                                         int image_width, int image_height) {
-  if (!enable_3d_pose_ || !candidate.has_corners) {
+  last_pose_quality_ = {};
+  if (!enable_3d_pose_ || !candidate.has_corners || !candidate.corners_are_keypoints ||
+      !camera_calibration_.available || camera_calibration_.image_width != image_width ||
+      camera_calibration_.image_height != image_height) {
     return std::nullopt;
   }
 
   const double aspect =
       static_cast<double>(std::max(1, candidate.bbox_source.width)) /
       static_cast<double>(std::max(1, candidate.bbox_source.height));
-  const int armor_type = aspect >= large_armor_min_aspect_ratio_
+  const int armor_type = candidate.armor_type >= 0 ? candidate.armor_type : aspect >= large_armor_min_aspect_ratio_
                              ? cv_auto_aim_interfaces::msg::Armor::ARMOR_LARGE
                              : cv_auto_aim_interfaces::msg::Armor::ARMOR_SMALL;
 
   geometry_msgs::msg::Pose pose;
   if (pnp_solver_.has_value()) {
-    if (pnp_solver_->solve(candidate.corners_source, armor_type, pose)) {
+    if (pnp_solver_->solve(candidate.corners_source, armor_type, pose, &last_pose_quality_)) {
       return pose;
     }
     return std::nullopt;
@@ -691,7 +693,7 @@ ArmorDetectorNode::solve_candidate_pose(const Candidate &candidate,
   const auto fov_model = make_fov_camera_model(image_width, image_height);
   ArmorPnPSolver solver(fov_model, small_armor_width_m_, small_armor_height_m_,
                         large_armor_width_m_, large_armor_height_m_);
-  if (solver.solve(candidate.corners_source, armor_type, pose)) {
+  if (solver.solve(candidate.corners_source, armor_type, pose, &last_pose_quality_)) {
     return pose;
   }
   return std::nullopt;
@@ -723,6 +725,7 @@ void ArmorDetectorNode::initialize_deepstream_runtime() {
 
   DeepStreamRuntime::Config config{};
   config.model_path = model_path_;
+  config.model_profile = model_type_;
   config.config_template_path = deepstream_config_path_;
   config.task = task_;
   config.imgsz_width = imgsz_width_;
@@ -785,18 +788,18 @@ void ArmorDetectorNode::handle_deepstream_result(
   const FramePacket *packet =
       result.source_packet.has_value() ? &(*result.source_packet) : nullptr;
   process_detection_cycle(result.batch, packet, result.timings,
-                          result.capture_ms);
+                          result.capture_ms, result.capture_steady_time_ns);
 }
 
 void ArmorDetectorNode::process_detection_cycle(
     const DetectionBatch &batch, const FramePacket *packet,
-    const DetectorStageTimings &detector_timings, double capture_ms) {
+    const DetectorStageTimings &detector_timings, double capture_ms, std::int64_t capture_steady_time_ns) {
   // This is the detector's central data boundary: model outputs become
   // candidates, optional debug images, runtime telemetry, and ROS interface
   // messages.
   std::lock_guard<std::mutex> lock(state_mutex_);
   const auto processing_stamp = this->get_clock()->now();
-  const auto stamp = capture_stamp(packet, processing_stamp);
+  const auto stamp = capture_stamp(packet, processing_stamp, capture_steady_time_ns);
   if (debug_publish_image_raw_ && packet != nullptr) {
     publish_debug_image(*packet, stamp);
   }
@@ -926,6 +929,7 @@ void ArmorDetectorNode::publish_armors(const std::vector<Candidate> &candidates,
     armor.image_width = image_width;
     armor.image_height = image_height;
     armor.has_corners = candidate.has_corners;
+    armor.corners_are_keypoints = candidate.corners_are_keypoints;
     if (candidate.has_corners) {
       for (std::size_t i = 0; i < candidate.corners_source.size(); ++i) {
         armor.corners[i].x = candidate.corners_source[i].x;
@@ -936,10 +940,10 @@ void ArmorDetectorNode::publish_armors(const std::vector<Candidate> &candidates,
     const double aspect =
         static_cast<double>(std::max(1, candidate.bbox_source.width)) /
         static_cast<double>(std::max(1, candidate.bbox_source.height));
-    armor.armor_type = aspect >= large_armor_min_aspect_ratio_
+    armor.armor_type = candidate.armor_type >= 0 ? candidate.armor_type : aspect >= large_armor_min_aspect_ratio_
                            ? cv_auto_aim_interfaces::msg::Armor::ARMOR_LARGE
                            : cv_auto_aim_interfaces::msg::Armor::ARMOR_SMALL;
-    armor.armor_number = -1;
+    armor.armor_number = candidate.armor_number;
     const double principal_x =
         camera_calibration_.available
             ? camera_calibration_.model.camera_matrix(0, 2)
@@ -955,6 +959,8 @@ void ArmorDetectorNode::publish_armors(const std::vector<Candidate> &candidates,
             solve_candidate_pose(candidate, image_width, image_height)) {
       armor.has_pose = true;
       armor.pose_camera = *pose;
+      armor.pose_normal_reliable = last_pose_quality_.normal_reliable;
+      armor.reprojection_rms_px = last_pose_quality_.reprojection_rms_px;
     }
     msg.armors.push_back(std::move(armor));
   }
@@ -1378,6 +1384,9 @@ ArmorDetectorNode::extract_candidates(const DetectionBatch &batch,
                                    detection.obb_angle,
                                    detection.has_corners,
                                    {}});
+    candidates.back().corners_are_keypoints = detection.corners_are_keypoints;
+    candidates.back().armor_number = detection.armor_number;
+    candidates.back().armor_type = detection.armor_type;
     if (detection.has_corners) {
       auto &candidate = candidates.back();
       for (std::size_t i = 0; i < detection.corners_model.size(); ++i) {

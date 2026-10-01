@@ -31,6 +31,9 @@ struct Detection
   bool has_corners{false};
   /// Oriented armor corners in model coordinates.
   std::array<cv::Point2f, 4> corners_model{};
+  bool corners_are_keypoints{false};
+  int armor_number{-1};
+  int armor_type{-1};
 };
 
 /// Per-stage timing emitted by detector backends for runtime logs.

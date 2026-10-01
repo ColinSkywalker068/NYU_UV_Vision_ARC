@@ -154,7 +154,7 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ("camera_cy", "0.0", "Optional static camera cy"),
         (
             "processor_target_frame",
-            "camera_optical_frame",
+            "gimbal_inertial",
             "Frame used for processor target pose output",
         ),
         (

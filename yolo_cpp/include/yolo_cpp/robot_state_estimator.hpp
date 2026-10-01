@@ -2,6 +2,7 @@
 #define YOLO_CPP__ROBOT_STATE_ESTIMATOR_HPP_
 
 #include <cstddef>
+#include <unordered_map>
 #include <vector>
 
 namespace yolo_cpp
@@ -20,6 +21,8 @@ struct RobotPlateObservation
   // Unit vector from the robot center toward this plate.
   Vector3d outward_normal;
   int track_id{-1};
+  int armor_number{-1};
+  int color_class{-1};
 };
 
 struct RobotEstimatorConfig
@@ -84,6 +87,32 @@ private:
   RobotEstimatorConfig config_;
   RobotEstimate state_;
   bool robot_geometry_evidence_{false};
+};
+
+// Separate estimates for distinct robots; selecting another plate does not attach
+// the previously selected robot's center/phase to an unrelated target.
+class RobotStateBank
+{
+public:
+  explicit RobotStateBank(RobotEstimatorConfig config = RobotEstimatorConfig());
+  void update(const std::vector<RobotPlateObservation> & observations, double timestamp_s);
+  const RobotEstimate * for_track(int track_id) const;
+  std::size_t size() const;
+  void reset();
+
+private:
+  struct Entry
+  {
+    int id;
+    int armor_number;
+    int color_class;
+    RobotStateEstimator estimator;
+  };
+  RobotEstimatorConfig config_;
+  std::vector<Entry> entries_;
+  std::unordered_map<int, int> track_to_robot_;
+  double last_timestamp_s_{-1.0};
+  int next_id_{0};
 };
 
 }  // namespace yolo_cpp

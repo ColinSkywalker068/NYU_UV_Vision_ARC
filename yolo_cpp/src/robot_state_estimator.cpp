@@ -92,7 +92,7 @@ void RobotStateEstimator::update(
     return;
   }
   if (state_.initialized && timestamp_s <= state_.timestamp_s) {
-    timestamp_s = state_.timestamp_s + 1e-4;
+    return;
   }
 
   RobotEstimate prior = predicted(timestamp_s);
@@ -139,6 +139,9 @@ void RobotStateEstimator::update(
       state_ = prior;
       ++state_.coast_frames;
       state_.rejected_observations += rejected;
+      if (state_.coast_frames > config_.coast_frames) {
+        state_.model_confirmed = false;
+      }
     }
     return;
   }
@@ -227,5 +230,101 @@ RobotEstimate RobotStateEstimator::predicted(double timestamp_s) const
   result.timestamp_s = timestamp_s;
   return result;
 }
+
+RobotStateBank::RobotStateBank(RobotEstimatorConfig config) : config_(config) {}
+
+void RobotStateBank::reset()
+{
+  entries_.clear();
+  track_to_robot_.clear();
+  last_timestamp_s_ = -1.0;
+}
+
+void RobotStateBank::update(
+  const std::vector<RobotPlateObservation> & observations, double timestamp_s)
+{
+  if (!std::isfinite(timestamp_s) || timestamp_s <= last_timestamp_s_) {
+    return;
+  }
+  last_timestamp_s_ = timestamp_s;
+  entries_.erase(
+    std::remove_if(
+      entries_.begin(), entries_.end(),
+      [timestamp_s](const auto & e) {
+        return timestamp_s - e.estimator.state().last_observation_s > 0.4;
+      }),
+    entries_.end());
+  std::unordered_map<int, std::vector<RobotPlateObservation>> groups;
+  std::unordered_map<int, Vector3d> new_centers;
+  for (const auto & observation : observations) {
+    const double n = norm(observation.outward_normal);
+    if (!std::isfinite(n) || n < 1e-6) {
+      continue;
+    }
+    const auto center = inferred_center(observation, config_.armor_radius_m);
+    if (!std::isfinite(norm(center))) {
+      continue;
+    }
+    Entry * best = nullptr;
+    double distance = config_.center_gate_m;
+    for (auto & entry : entries_) {
+      if (
+        (entry.color_class >= 0 && observation.color_class >= 0 &&
+         entry.color_class != observation.color_class) ||
+        (entry.armor_number >= 0 && observation.armor_number >= 0 &&
+         entry.armor_number != observation.armor_number)) {
+        continue;
+      }
+      const auto predicted_center = entry.estimator.state().initialized
+                                      ? entry.estimator.predicted(timestamp_s).center
+                                      : new_centers.at(entry.id);
+      const double d = norm(subtract(center, predicted_center));
+      if (d < distance) {
+        best = &entry;
+        distance = d;
+      }
+    }
+    if (!best) {
+      if (entries_.size() >= 16) {
+        continue;
+      }
+      entries_.push_back(
+        {next_id_++, observation.armor_number, observation.color_class,
+         RobotStateEstimator(config_)});
+      best = &entries_.back();
+      new_centers[best->id] = center;
+    }
+    groups[best->id].push_back(observation);
+    track_to_robot_[observation.track_id] = best->id;
+  }
+  for (auto & entry : entries_) {
+    entry.estimator.update(groups[entry.id], timestamp_s);
+  }
+  for (auto it = track_to_robot_.begin(); it != track_to_robot_.end();) {
+    const bool exists = std::any_of(
+      entries_.begin(), entries_.end(), [&](const auto & e) { return e.id == it->second; });
+    if (!exists) {
+      it = track_to_robot_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
+const RobotEstimate * RobotStateBank::for_track(int track_id) const
+{
+  const auto mapped = track_to_robot_.find(track_id);
+  if (mapped == track_to_robot_.end()) {
+    return nullptr;
+  }
+  for (const auto & entry : entries_) {
+    if (entry.id == mapped->second) {
+      return &entry.estimator.state();
+    }
+  }
+  return nullptr;
+}
+
+std::size_t RobotStateBank::size() const { return entries_.size(); }
 
 }  // namespace yolo_cpp

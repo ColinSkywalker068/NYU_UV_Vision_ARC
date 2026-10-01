@@ -101,3 +101,5 @@ Use progressive disclosure: start with a navigation table, then provide the mini
 - [ ] Root agent files remain canonical-stub compliant.
 
 **Last Updated:** 2026-05-30
+
+- [Local pose/tracking upgrade and validation](validation/autoaim-local-upgrade.md) — development contracts, candidate models, reproducible tests, and remaining deployment checks.

@@ -93,7 +93,7 @@ private:
   void process_detection_cycle(const DetectionBatch &batch,
                                const FramePacket *packet,
                                const DetectorStageTimings &detector_timings,
-                               double capture_ms);
+                               double capture_ms, std::int64_t capture_steady_time_ns = 0);
   /// Publish a cv_auto_aim_interfaces/Armors message for detector output.
   void publish_armors(const std::vector<Candidate> &candidates,
                       const std::string &source_id, const rclcpp::Time &stamp,
@@ -290,6 +290,7 @@ private:
   double preview_fps_{0.0};
   CameraCalibration camera_calibration_;
   std::optional<ArmorPnPSolver> pnp_solver_;
+  PoseQuality last_pose_quality_;
   std::vector<double> camera_distortion_;
   StageTotals stage_totals_;
   std::ofstream runtime_log_stream_;

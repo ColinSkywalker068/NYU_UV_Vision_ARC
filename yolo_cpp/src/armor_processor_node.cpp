@@ -87,7 +87,7 @@ ArmorProcessorNode::ArmorProcessorNode(const rclcpp::NodeOptions& options)
     1, static_cast<int>(this->get_parameter("robot_estimator.min_updates").as_int()));
   estimator_config.coast_frames = std::max(
     0, static_cast<int>(this->get_parameter("robot_estimator.coast_frames").as_int()));
-  robot_estimator_ = std::make_unique<RobotStateEstimator>(estimator_config);
+  robot_estimator_ = std::make_unique<RobotStateBank>(estimator_config);
 
   tf2_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
   tf2_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf2_buffer_);
@@ -112,9 +112,11 @@ void ArmorProcessorNode::handle_tracks(
 {
   rclcpp::Time stamp(msg->header.stamp);
   if (stamp.nanoseconds() == 0) {
-    stamp = this->get_clock()->now();
+    return;
   }
 
+  auto pose_header = msg->header;
+  pose_header.frame_id = msg->pose_frame_id;
   const cv_auto_aim_interfaces::msg::TrackedArmor* selected = nullptr;
   if (msg->selected_track_id >= 0) {
     for (const auto& track : msg->tracks) {
@@ -129,28 +131,26 @@ void ArmorProcessorNode::handle_tracks(
   target.header.stamp = stamp;
   target.header.frame_id = target_frame_;
   target.source_id = msg->source_id;
+  target.camera_pose_valid = msg->camera_pose_valid &&
+    transform_pose(pose_header, msg->camera_pose, target.camera_pose);
+  target.measurement_stamp_ns = selected != nullptr ? selected->measurement_stamp_ns : 0;
   target.track_id = selected != nullptr ? selected->track_id : -1;
   target.state =
     selected != nullptr ? selected->state : cv_auto_aim_interfaces::msg::Target::DETECTING;
   target.suggest_fire = false;
 
-  bool valid_measurement = false;
-  geometry_msgs::msg::Point measurement;
   std::vector<RobotPlateObservation> robot_observations;
-  if (selected != nullptr && selected->has_pose) {
-    valid_measurement = transform_point(msg->header, selected->pose_camera.position, measurement);
-  }
 
-  if (robot_estimator_enable_ && robot_estimator_ != nullptr) {
+  if (!target.camera_pose_valid && robot_estimator_) {robot_estimator_->reset();}
+  if (target.camera_pose_valid && robot_estimator_enable_ && robot_estimator_ != nullptr) {
     // Anchor a new robot state to the selected plate. Once anchored, the center gate rejects
     // plates belonging to other robots while allowing multiple plates from this robot.
-    const bool initialized = robot_estimator_->state().initialized;
     for (const auto& track : msg->tracks) {
-      if (!track.has_pose || (!initialized && (&track != selected))) {
+      if (!track.has_pose || !track.armor.pose_normal_reliable || track.lost_frames != 0) {
         continue;
       }
       geometry_msgs::msg::Pose pose;
-      if (!transform_pose(msg->header, track.pose_camera, pose)) {
+      if (!transform_pose(pose_header, track.pose_tracking, pose)) {
         continue;
       }
       const auto& q = pose.orientation;
@@ -160,31 +160,24 @@ void ArmorProcessorNode::handle_tracks(
         2.0 * ((q.y * q.z) - (q.w * q.x)),
         1.0 - 2.0 * ((q.x * q.x) + (q.y * q.y))};
       const double facing_dot =
-        normal.x * pose.position.x + normal.y * pose.position.y + normal.z * pose.position.z;
+        normal.x * (pose.position.x - target.camera_pose.position.x) +
+        normal.y * (pose.position.y - target.camera_pose.position.y) +
+        normal.z * (pose.position.z - target.camera_pose.position.z);
       if (facing_dot > 0.0) {
         normal.x = -normal.x;
         normal.y = -normal.y;
         normal.z = -normal.z;
       }
       robot_observations.push_back({
-        {pose.position.x, pose.position.y, pose.position.z}, normal, track.track_id});
+        {pose.position.x, pose.position.y, pose.position.z}, normal, track.track_id,
+        track.armor.armor_number, track.armor.class_id});
     }
     robot_estimator_->update(robot_observations, stamp.seconds());
   }
 
-  if (valid_measurement) {
-    update_filter(selected->track_id, stamp, measurement);
-  } else {
-    predict_without_measurement(stamp);
-  }
-
-  const bool stable_track =
-    selected != nullptr
-    && (selected->state == cv_auto_aim_interfaces::msg::TrackedArmor::TRACKING
-        || selected->state == cv_auto_aim_interfaces::msg::TrackedArmor::COASTING);
-  const bool can_publish_filtered =
-    filter_.initialized && filter_.lost_frames <= processor_lost_threshold_;
-
+  const bool stable_track = selected != nullptr &&
+    (selected->state == cv_auto_aim_interfaces::msg::TrackedArmor::TRACKING ||
+     selected->state == cv_auto_aim_interfaces::msg::TrackedArmor::COASTING);
   target.has_target = stable_track;
   target.tracking = target.has_target;
   target.suggest_fire = target.has_target;
@@ -206,18 +199,23 @@ void ArmorProcessorNode::handle_tracks(
     target.image_height = selected->armor.image_height;
   }
 
-  if (target.has_target && can_publish_filtered) {
-    target.has_pose = true;
-    target.pose.position = filter_.position;
-    target.pose.orientation.w = 1.0;
-    target.has_velocity = true;
-    target.velocity = filter_.velocity;
-    target.range = static_cast<float>(point_range(filter_.position));
+  // The tracker owns plate filtering; filtering again here adds avoidable lag.
+  if (target.has_target && selected->has_pose && target.camera_pose_valid) {
+    geometry_msgs::msg::Pose pose = selected->pose_tracking;
+    if (selected->lost_frames > 0) {pose.position = selected->predicted_position_tracking;}
+    target.has_pose = transform_pose(pose_header, pose, target.pose);
+    if (target_frame_ == pose_header.frame_id) {
+      target.has_velocity = selected->has_velocity;
+      target.velocity = selected->velocity_tracking;
+    }
+    target.range = static_cast<float>(point_range(target.pose.position));
   }
 
   if (robot_estimator_enable_ && robot_estimator_ != nullptr) {
-    const auto& robot = robot_estimator_->state();
-    if (robot.initialized && robot.model_confirmed) {
+    const RobotEstimate empty;
+    const auto * selected_robot = robot_estimator_->for_track(target.track_id);
+    const auto & robot = selected_robot ? *selected_robot : empty;
+    if (robot.initialized && robot.model_confirmed && target.has_pose) {
       target.has_robot_state = true;
       target.robot_center.x = robot.center.x;
       target.robot_center.y = robot.center.y;
@@ -251,6 +249,13 @@ void ArmorProcessorNode::handle_tracks(
 bool ArmorProcessorNode::transform_pose(const std_msgs::msg::Header& header,
   const geometry_msgs::msg::Pose& pose, geometry_msgs::msg::Pose& transformed)
 {
+  if (header.frame_id == target_frame_) {
+    transformed = pose;
+    const auto & p = pose.position;
+    const auto & q = pose.orientation;
+    return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z) &&
+      std::isfinite(q.x) && std::isfinite(q.y) && std::isfinite(q.z) && std::isfinite(q.w);
+  }
   geometry_msgs::msg::PoseStamped source;
   source.header = header;
   source.pose = pose;
@@ -271,6 +276,10 @@ bool ArmorProcessorNode::transform_pose(const std_msgs::msg::Header& header,
 bool ArmorProcessorNode::transform_point(const std_msgs::msg::Header& header,
   const geometry_msgs::msg::Point& point, geometry_msgs::msg::Point& transformed)
 {
+  if (header.frame_id == target_frame_) {
+    transformed = point;
+    return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
+  }
   geometry_msgs::msg::PointStamped source;
   source.header = header;
   source.point = point;

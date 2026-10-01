@@ -13,6 +13,8 @@
 #include <vector>
 
 #include "yolo_cpp/visibility_control.hpp"
+#include "cv_auto_aim_interfaces/msg/gimbal_attitude.hpp"
+#include "cv_auto_aim_interfaces/msg/aim_solution.hpp"
 
 namespace yolo_cpp
 {
@@ -41,6 +43,7 @@ private:
 
   /// Poll serial RX for attitude frames from the STM32.
   void handle_rx_poll();
+  void handle_solution(const cv_auto_aim_interfaces::msg::AimSolution::SharedPtr msg);
 
   /// Send the latest vision command when transmission is enabled.
   void maybe_send();
@@ -63,11 +66,15 @@ private:
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr suggest_fire_subscription_;
   rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr angle_subscription_;
   rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr attitude_publisher_;
+  rclcpp::Publisher<cv_auto_aim_interfaces::msg::GimbalAttitude>::SharedPtr stamped_attitude_publisher_;
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr robot_id_publisher_;
   rclcpp::Publisher<std_msgs::msg::Int32MultiArray>::SharedPtr attitude_flags_publisher_;
   rclcpp::TimerBase::SharedPtr rx_timer_;
 
-  bool transmit_enable_{true};
+  rclcpp::Subscription<cv_auto_aim_interfaces::msg::AimSolution>::SharedPtr solution_subscription_;
+  std::int64_t last_solution_stamp_ns_{0};
+  bool transmit_enable_{false};
+  double attitude_receive_delay_s_{0.0};
   bool serial_verbose_{false};
   bool has_target_{false};
   bool suggest_fire_{false};

@@ -17,6 +17,13 @@ struct PnPCameraModel
   std::vector<double> distortion_coefficients;
 };
 
+struct PoseQuality
+{
+  double reprojection_rms_px{0.0};
+  double alternative_error_gap_px{0.0};
+  bool normal_reliable{false};
+};
+
 /// Solves armor corner observations into camera-frame poses.
 class ArmorPnPSolver
 {
@@ -37,7 +44,7 @@ public:
   /// Returns:
   ///   True when OpenCV solvePnP produced a finite pose.
   bool solve(const std::array<cv::Point2f, 4>& image_points, int armor_type,
-    geometry_msgs::msg::Pose& pose) const;
+    geometry_msgs::msg::Pose& pose, PoseQuality * quality = nullptr) const;
 
 private:
   PnPCameraModel camera_model_;

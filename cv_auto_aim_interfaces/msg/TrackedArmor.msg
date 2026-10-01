@@ -28,3 +28,10 @@ geometry_msgs/Point predicted_position_camera
 bool has_velocity
 # Estimated camera-frame target velocity in meters per second.
 geometry_msgs/Vector3 velocity_camera
+
+# Filtered pose, prediction and velocity in TrackedArmors.pose_frame_id.
+geometry_msgs/Pose pose_tracking
+geometry_msgs/Point predicted_position_tracking
+geometry_msgs/Vector3 velocity_tracking
+# Time of the most recent real detector observation; unchanged during coasting.
+int64 measurement_stamp_ns

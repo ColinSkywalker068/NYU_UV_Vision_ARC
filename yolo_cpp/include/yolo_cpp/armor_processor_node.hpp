@@ -75,9 +75,9 @@ private:
   /// Publish visualization markers for the selected processed target.
   void publish_markers(const cv_auto_aim_interfaces::msg::Target& target);
 
-  std::string target_frame_{"shooter_link"};
+  std::string target_frame_{"gimbal_inertial"};
   int processor_lost_threshold_{5};
-  bool allow_spin_observer_{true};
+  bool allow_spin_observer_{false};
   double spin_max_jump_angle_{0.2};
   double spin_max_jump_period_{0.8};
   double spin_allow_following_range_{0.3};
@@ -96,7 +96,7 @@ private:
 
   FilterState filter_;
   SpinState spin_;
-  std::unique_ptr<RobotStateEstimator> robot_estimator_;
+  std::unique_ptr<RobotStateBank> robot_estimator_;
 };
 
 }  // namespace yolo_cpp

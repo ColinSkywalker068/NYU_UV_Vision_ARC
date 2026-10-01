@@ -33,6 +33,8 @@ struct LetterboxResult
   int src_h{0};
   int dst_w{0};
   int dst_h{0};
+  // Nonuniform resize profiles use a separate Y scale; zero means uniform.
+  double scale_y{0.0};
 };
 
 using LetterboxMetadata = LetterboxResult;
@@ -51,6 +53,9 @@ struct Candidate
   std::optional<float> obb_angle;
   bool has_corners{false};
   std::array<cv::Point2f, 4> corners_source{};
+  bool corners_are_keypoints{false};
+  int armor_number{-1};
+  int armor_type{-1};
 };
 
 /// Resize and pad frame to target dimensions while preserving aspect ratio.

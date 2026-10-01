@@ -50,7 +50,17 @@ AimSolverNode::AimSolverNode(const rclcpp::NodeOptions& options)
   this->declare_parameter<double>("default_bullet_speed_mps", default_bullet_speed_mps_);
   this->declare_parameter<double>("solver_latency_s", solver_latency_s_);
   this->declare_parameter<bool>("compensate_gravity", compensate_gravity_);
-  this->declare_parameter<double>("attitude_history_seconds", attitude_history_seconds_);
+  // Retain the old launch argument; the shared history now retains two seconds.
+  this->declare_parameter<double>("attitude_history_seconds", 2.0);
+  attitude_max_gap_ms_ = this->declare_parameter<double>("attitude_max_gap_ms", 50.0);
+  prediction_config_.actuator_delay_s = this->declare_parameter<double>("actuator_delay_s", 0.0);
+  prediction_config_.max_frame_age_s = this->declare_parameter<double>("max_frame_age_s", 0.25);
+  prediction_config_.max_measurement_age_s = this->declare_parameter<double>("max_measurement_age_s", 0.15);
+  prediction_config_.yaw_speed_rad_s = this->declare_parameter<double>("yaw_max_slew_deg_s", 120.0) * kPi / 180;
+  prediction_config_.pitch_speed_rad_s = this->declare_parameter<double>("pitch_max_slew_deg_s", 60.0) * kPi / 180;
+  prediction_config_.yaw_accel_rad_s2 = this->declare_parameter<double>("yaw_max_accel_deg_s2", 360.0) * kPi / 180;
+  prediction_config_.pitch_accel_rad_s2 = this->declare_parameter<double>("pitch_max_accel_deg_s2", 240.0) * kPi / 180;
+  prediction_config_.plate_switch_margin = this->declare_parameter<double>("plate_switch_margin", 0.15);
   this->declare_parameter<double>("attitude_sync_tolerance_ms", attitude_sync_tolerance_ms_);
   this->declare_parameter<double>("gravity_mps2", gravity_mps2_);
 
@@ -71,15 +81,14 @@ AimSolverNode::AimSolverNode(const rclcpp::NodeOptions& options)
   solver_latency_s_ = static_cast<float>(this->get_parameter("solver_latency_s").as_double());
   compensate_gravity_ = this->get_parameter("compensate_gravity").as_bool();
   gravity_mps2_ = static_cast<float>(this->get_parameter("gravity_mps2").as_double());
-  attitude_history_seconds_ = std::max(
-    0.1, this->get_parameter("attitude_history_seconds").as_double());
+
   attitude_sync_tolerance_ms_ = std::max(
     0.0, this->get_parameter("attitude_sync_tolerance_ms").as_double());
 
   target_subscription_ = this->create_subscription<cv_auto_aim_interfaces::msg::Target>(
     target_topic_, 10, std::bind(&AimSolverNode::handle_target, this, std::placeholders::_1));
-  attitude_subscription_ = this->create_subscription<std_msgs::msg::Float32MultiArray>(
-    "attitude_data", 10, std::bind(&AimSolverNode::handle_attitude, this, std::placeholders::_1));
+  attitude_subscription_ = this->create_subscription<cv_auto_aim_interfaces::msg::GimbalAttitude>(
+    "gimbal/attitude", 100, std::bind(&AimSolverNode::handle_attitude, this, std::placeholders::_1));
   attitude_flags_subscription_ =
     this->create_subscription<std_msgs::msg::Int32MultiArray>("attitude_flags", 10,
       std::bind(&AimSolverNode::handle_attitude_flags, this, std::placeholders::_1));
@@ -106,78 +115,89 @@ AimSolverNode::AimSolverNode(const rclcpp::NodeOptions& options)
 
 void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::SharedPtr msg)
 {
-  // Keep legacy command topics populated even when the richer AimSolution message is used.
   const int image_width = msg->image_width > 0 ? msg->image_width : default_image_width_;
   const int image_height = msg->image_height > 0 ? msg->image_height : default_image_height_;
-
-  if (!msg->has_target) {
+  const auto now_ns = this->now().nanoseconds();
+  const auto stamp_ns = rclcpp::Time(msg->header.stamp).nanoseconds();
+  std::optional<AttitudeSample> current;
+  std::optional<AttitudeSample> capture;
+  {
+    std::lock_guard<std::mutex> lock(attitude_mutex_);
+    current = attitude_history_.latest(now_ns);
+    capture = attitude_history_.at(stamp_ns, now_ns,
+      attitude_sync_tolerance_ms_ / 1000.0, attitude_max_gap_ms_ / 1000.0);
+  }
+  if (!msg->has_target || !current || !capture || !msg->camera_pose_valid ||
+    msg->header.frame_id != "gimbal_inertial" || stamp_ns <= 0 || stamp_ns > now_ns ||
+    (now_ns - stamp_ns) * 1e-9 > prediction_config_.max_frame_age_s ||
+    msg->measurement_stamp_ns <= 0 || msg->measurement_stamp_ns > stamp_ns ||
+    (now_ns - msg->measurement_stamp_ns) * 1e-9 > prediction_config_.max_measurement_age_s)
+  {
     publish_no_target(image_width, image_height);
     return;
   }
-
-  float frame_yaw_rad = 0.0F;
-  float frame_pitch_rad = 0.0F;
-  if (output_mode_ == "absolute") {
-    const rclcpp::Time frame_stamp(msg->header.stamp, this->get_clock()->get_clock_type());
-    double nearest_offset_ms = -1.0;
-    bool interpolated = false;
-    if (!attitude_at(
-        frame_stamp, &frame_yaw_rad, &frame_pitch_rad, &nearest_offset_ms, &interpolated))
-    {
-      const auto rejected = ++attitude_sync_rejected_;
-      RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), 1000,
-        "AIM_SYNC rejected: nearest_offset_ms=%.2f tolerance_ms=%.2f aligned=%llu rejected=%llu",
-        nearest_offset_ms, attitude_sync_tolerance_ms_,
-        static_cast<unsigned long long>(attitude_sync_aligned_.load()),
-        static_cast<unsigned long long>(rejected));
+  if (previous_track_id_ != msg->track_id) {
+    previous_slot_ = -1;
+    previous_track_id_ = msg->track_id;
+  }
+  const auto bbox = rect_from_xyxy(msg->bbox_xyxy);
+  const auto & q = msg->camera_pose.orientation;
+  const auto camera_rotation = quaternion_rotation({q.x, q.y, q.z, q.w});
+  // Pinhole angular geometry, rather than a linear degrees-per-pixel approximation.
+  const double cx = bbox.x + bbox.width * 0.5;
+  const double cy = bbox.y + bbox.height * 0.5;
+  const cv::Point3d ray((2 * cx / image_width - 1) * std::tan(hfov_rad_ / 2),
+    (2 * cy / image_height - 1) * std::tan(vfov_rad_ / 2), 1.0);
+  const auto inertial_ray = rotate_point(camera_rotation, ray);
+  double yaw = std::atan2(inertial_ray.x, inertial_ray.z);
+  double pitch = std::atan2(-inertial_ray.y, std::hypot(inertial_ray.x, inertial_ray.z));
+  AimPredictionResult result;
+  const bool used_3d = use_3d_solution_ && msg->has_pose;
+  if (used_3d) {
+    AimPredictionInput input;
+    input.frame_stamp_ns = stamp_ns;
+    input.measurement_stamp_ns = msg->measurement_stamp_ns;
+    input.now_ns = now_ns;
+    input.position = {msg->pose.position.x, msg->pose.position.y, msg->pose.position.z};
+    input.velocity = {msg->velocity.x, msg->velocity.y, msg->velocity.z};
+    input.has_velocity = msg->has_velocity;
+    input.has_robot_state = msg->has_robot_state;
+    input.robot.center = {msg->robot_center.x, msg->robot_center.y, msg->robot_center.z};
+    input.robot.velocity = {msg->robot_velocity.x, msg->robot_velocity.y, msg->robot_velocity.z};
+    input.robot.phase_rad = msg->robot_phase;
+    input.robot.angular_velocity_rad_s = msg->robot_angular_velocity;
+    input.armor_radius_m = msg->armor_radius;
+    input.armor_count = msg->armor_count;
+    input.current_attitude = *current;
+    input.previous_slot = previous_slot_;
+    auto config = prediction_config_;
+    config.transport_delay_s = solver_latency_s_;
+    config.bullet_speed_mps = bullet_speed_mps_;
+    config.compensate_gravity = compensate_gravity_;
+    config.gravity_mps2 = gravity_mps2_;
+    result = predict_aim(input, config);
+    if (!result.valid) {
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+        "AIM rejected: %s frame_age=%.3f measurement_age=%.3f", result.reason,
+        result.frame_age_s, result.measurement_age_s);
       publish_no_target(image_width, image_height);
       return;
     }
-    const auto aligned = ++attitude_sync_aligned_;
-    RCLCPP_INFO_THROTTLE(
-      this->get_logger(), *this->get_clock(), 2000,
-      "AIM_SYNC aligned: mode=%s nearest_offset_ms=%.2f aligned=%llu rejected=%llu",
-      interpolated ? "interpolated" : "edge", nearest_offset_ms,
-      static_cast<unsigned long long>(aligned),
-      static_cast<unsigned long long>(attitude_sync_rejected_.load()));
+    yaw = result.yaw;
+    pitch = result.pitch;
+    previous_slot_ = result.selected_slot;
   }
-
-  const auto bbox = rect_from_xyxy(msg->bbox_xyxy);
-  bbox_msg_.data = {bbox.x, bbox.y, bbox.x + bbox.width, bbox.y + bbox.height};
-  override_msg_.data = true;
-  bbox_publisher_->publish(bbox_msg_);
-  override_publisher_->publish(override_msg_);
-
-  float flight_time = 0.0F;
-  float range = 0.0F;
-  bool used_3d = false;
-  auto [yaw, pitch] = calculate_angles(bbox, image_width, image_height, hfov_rad_, vfov_rad_);
-  if (use_3d_solution_ && msg->has_pose) {
-    auto solved = solve_3d_angles(*msg, &flight_time, &range);
-    yaw = solved.first;
-    pitch = solved.second;
-    used_3d = true;
+  if (output_mode_ == "offset") {
+    yaw = angle_difference(yaw, current->yaw);
+    pitch -= current->pitch;
   }
-  // Type C logical coordinates are +yaw right, +pitch up. Image solver
-  // coordinates have both signs reversed. Convert before adding attitude.
-  yaw = -yaw;
-  pitch = -pitch;
-  if (output_mode_ == "absolute") {
-    yaw += frame_yaw_rad;
-    pitch += frame_pitch_rad;
-    yaw = std::remainder(yaw, static_cast<float>(2.0 * kPi));
+  if (!std::isfinite(yaw) || !std::isfinite(pitch)) {
+    publish_no_target(image_width, image_height);
+    return;
   }
-  angle_msg_.data = {yaw, pitch};
-  angle_publisher_->publish(angle_msg_);
-
-  const bool suggest_fire = enable_fire_recommendation_ && msg->suggest_fire;
-  suggest_fire_msg_.data = suggest_fire;
-  suggest_fire_publisher_->publish(suggest_fire_msg_);
-
-  obb_angle_msg_.data = msg->has_obb_angle ? msg->obb_angle : 0.0F;
-  obb_angle_publisher_->publish(obb_angle_msg_);
-
+  // Fire remains opt-in; coasting and an unreachable command never qualify.
+  const bool suggest_fire = enable_fire_recommendation_ && msg->suggest_fire &&
+    !msg->is_coasting && used_3d && result.reachable;
   cv_auto_aim_interfaces::msg::AimSolution solution;
   solution.header = msg->header;
   solution.has_solution = true;
@@ -185,106 +205,40 @@ void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::Sha
   solution.suggest_fire = suggest_fire;
   solution.yaw = yaw;
   solution.pitch = pitch;
-  solution.yaw_degrees = static_cast<float>(yaw * 180.0 / kPi);
-  solution.pitch_degrees = static_cast<float>(pitch * 180.0 / kPi);
-  solution.flight_time = flight_time;
-  solution.range = used_3d ? range : msg->range;
+  solution.yaw_degrees = yaw * 180 / kPi;
+  solution.pitch_degrees = pitch * 180 / kPi;
+  solution.flight_time = result.flight_time_s;
+  solution.range = result.range_m;
   solution.bullet_speed = bullet_speed_mps_;
+  solution.frame_age_s = (now_ns - stamp_ns) * 1e-9;
+  solution.measurement_age_s = (now_ns - msg->measurement_stamp_ns) * 1e-9;
+  solution.prediction_horizon_s = result.horizon_s;
+  solution.minimum_slew_s = result.minimum_slew_s;
+  solution.reachable = result.reachable;
+  solution.selected_slot = result.selected_slot;
+  solution.output_mode = output_mode_;
+  solution.status = used_3d ? result.reason : "2d_preview";
   aim_solution_publisher_->publish(solution);
+
+  // Compatibility preview topics; the serial bridge consumes the atomic solution.
+  bbox_msg_.data = {bbox.x, bbox.y, bbox.x + bbox.width, bbox.y + bbox.height};
+  override_msg_.data = true;
+  suggest_fire_msg_.data = suggest_fire;
+  angle_msg_.data = {static_cast<float>(yaw), static_cast<float>(pitch)};
+  obb_angle_msg_.data = msg->has_obb_angle ? msg->obb_angle : 0;
+  bbox_publisher_->publish(bbox_msg_);
+  override_publisher_->publish(override_msg_);
+  suggest_fire_publisher_->publish(suggest_fire_msg_);
+  angle_publisher_->publish(angle_msg_);
+  obb_angle_publisher_->publish(obb_angle_msg_);
 }
 
-bool AimSolverNode::attitude_at(
-  const rclcpp::Time& frame_stamp, float* yaw, float* pitch,
-  double* nearest_offset_ms, bool* interpolated)
+void AimSolverNode::handle_attitude(const cv_auto_aim_interfaces::msg::GimbalAttitude::SharedPtr msg)
 {
   std::lock_guard<std::mutex> lock(attitude_mutex_);
-  *nearest_offset_ms = -1.0;
-  *interpolated = false;
-  if (!have_attitude_ || attitude_history_.empty() ||
-    std::chrono::steady_clock::now() - attitude_received_ > std::chrono::milliseconds(250))
-  {
-    return false;
-  }
-
-  if (frame_stamp.nanoseconds() == 0) {
-    *yaw = current_yaw_rad_;
-    *pitch = current_pitch_rad_;
-    *nearest_offset_ms = 0.0;
-    return true;
-  }
-
-  const auto tolerance_ns = static_cast<std::int64_t>(attitude_sync_tolerance_ms_ * 1.0e6);
-  const auto use_sample = [&](const AttitudeSample& sample) {
-      *yaw = sample.yaw;
-      *pitch = sample.pitch;
-    };
-
-  if (frame_stamp <= attitude_history_.front().stamp) {
-    const auto offset_ns = (attitude_history_.front().stamp - frame_stamp).nanoseconds();
-    *nearest_offset_ms = static_cast<double>(offset_ns) / 1.0e6;
-    if (offset_ns > tolerance_ns) {
-      return false;
-    }
-    use_sample(attitude_history_.front());
-    return true;
-  }
-  if (frame_stamp >= attitude_history_.back().stamp) {
-    const auto offset_ns = (frame_stamp - attitude_history_.back().stamp).nanoseconds();
-    *nearest_offset_ms = static_cast<double>(offset_ns) / 1.0e6;
-    if (offset_ns > tolerance_ns) {
-      return false;
-    }
-    use_sample(attitude_history_.back());
-    return true;
-  }
-
-  for (std::size_t i = 1; i < attitude_history_.size(); ++i) {
-    const auto& upper = attitude_history_[i];
-    if (upper.stamp < frame_stamp) {
-      continue;
-    }
-    const auto& lower = attitude_history_[i - 1];
-    const auto lower_offset_ns = (frame_stamp - lower.stamp).nanoseconds();
-    const auto upper_offset_ns = (upper.stamp - frame_stamp).nanoseconds();
-    *nearest_offset_ms = static_cast<double>(
-      std::min(lower_offset_ns, upper_offset_ns)) / 1.0e6;
-    *interpolated = true;
-    const auto span_ns = (upper.stamp - lower.stamp).nanoseconds();
-    if (span_ns <= 0) {
-      use_sample(upper);
-      return true;
-    }
-    const auto ratio =
-      static_cast<float>(lower_offset_ns) / static_cast<float>(span_ns);
-    const auto yaw_delta = std::remainder(
-      upper.yaw - lower.yaw, static_cast<float>(2.0 * kPi));
-    *yaw = std::remainder(
-      lower.yaw + (yaw_delta * ratio), static_cast<float>(2.0 * kPi));
-    *pitch = lower.pitch + ((upper.pitch - lower.pitch) * ratio);
-    return true;
-  }
-  return false;
-}
-
-void AimSolverNode::handle_attitude(const std_msgs::msg::Float32MultiArray::SharedPtr msg)
-{
-  std::lock_guard<std::mutex> lock(attitude_mutex_);
-  if (msg->data.size() < 2 || !std::isfinite(msg->data[0]) || !std::isfinite(msg->data[1])) {
-    have_attitude_ = false;
-    attitude_history_.clear();
-    return;
-  }
-  current_yaw_rad_ = msg->data[0];
-  current_pitch_rad_ = msg->data[1];
-  have_attitude_ = true;
-  attitude_received_ = std::chrono::steady_clock::now();
-  const auto stamp = this->get_clock()->now();
-  attitude_history_.push_back(AttitudeSample{stamp, current_yaw_rad_, current_pitch_rad_});
-  const auto history_ns = static_cast<std::int64_t>(attitude_history_seconds_ * 1.0e9);
-  const auto cutoff = stamp - rclcpp::Duration::from_nanoseconds(history_ns);
-  while (!attitude_history_.empty() && attitude_history_.front().stamp < cutoff) {
-    attitude_history_.pop_front();
-  }
+  if (!msg->valid) {attitude_history_.clear(); return;}
+  attitude_history_.insert({rclcpp::Time(msg->header.stamp).nanoseconds(),
+    msg->yaw, msg->pitch, msg->roll});
 }
 
 void AimSolverNode::handle_attitude_flags(const std_msgs::msg::Int32MultiArray::SharedPtr msg)
@@ -299,60 +253,9 @@ void AimSolverNode::handle_attitude_flags(const std_msgs::msg::Int32MultiArray::
   }
 }
 
-std::pair<float, float> AimSolverNode::solve_3d_angles(
-  const cv_auto_aim_interfaces::msg::Target& target, float* flight_time, float* range) const
-{
-  // Iterate because target lead depends on flight time, and flight time depends on led range.
-  const float speed = std::max(1.0F, bullet_speed_mps_);
-  double x = target.pose.position.x;
-  double y = target.pose.position.y;
-  double z = target.pose.position.z;
-  double t = 0.0;
-
-  RobotEstimate robot;
-  if (target.has_robot_state) {
-    robot.initialized = true;
-    robot.center = {target.robot_center.x, target.robot_center.y, target.robot_center.z};
-    robot.velocity = {
-      target.robot_velocity.x, target.robot_velocity.y, target.robot_velocity.z};
-    robot.phase_rad = target.robot_phase;
-    robot.angular_velocity_rad_s = target.robot_angular_velocity;
-  }
-
-  for (int i = 0; i < 3; ++i) {
-    const double distance = std::sqrt((x * x) + (y * y) + (z * z));
-    t = distance / speed;
-    const double predict_dt = solver_latency_s_ + t;
-    if (target.has_robot_state && target.armor_count > 0 && target.armor_radius > 0.0F) {
-      const auto armor = select_future_armor(
-        robot, predict_dt, target.armor_radius, target.armor_count);
-      x = armor.position.x;
-      y = armor.position.y;
-      z = armor.position.z;
-    } else if (target.has_velocity) {
-      x = target.pose.position.x + (target.velocity.x * predict_dt);
-      y = target.pose.position.y + (target.velocity.y * predict_dt);
-      z = target.pose.position.z + (target.velocity.z * predict_dt);
-    }
-  }
-
-  const double horizontal = std::hypot(x, z);
-  const double final_range = std::sqrt((x * x) + (y * y) + (z * z));
-  const double drop = compensate_gravity_ ? 0.5 * gravity_mps2_ * t * t : 0.0;
-  const double yaw = -std::atan2(x, z);
-  const double pitch = std::atan2(y - drop, horizontal);
-
-  if (flight_time != nullptr) {
-    *flight_time = static_cast<float>(t);
-  }
-  if (range != nullptr) {
-    *range = static_cast<float>(final_range);
-  }
-  return {static_cast<float>(yaw), static_cast<float>(pitch)};
-}
-
 void AimSolverNode::publish_no_target(int image_width, int image_height)
 {
+  previous_slot_ = -1;
   const int cx = std::max(0, image_width / 2);
   const int cy = std::max(0, image_height / 2);
   bbox_msg_.data = {cx, cy, cx, cy};
@@ -370,6 +273,9 @@ void AimSolverNode::publish_no_target(int image_width, int image_height)
   obb_angle_publisher_->publish(obb_angle_msg_);
 
   cv_auto_aim_interfaces::msg::AimSolution solution;
+  solution.header.stamp = this->now();
+  solution.output_mode = output_mode_;
+  solution.status = "no_target_or_unsynchronized";
   solution.has_solution = false;
   solution.used_3d = false;
   solution.suggest_fire = false;

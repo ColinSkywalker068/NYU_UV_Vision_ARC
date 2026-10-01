@@ -138,6 +138,8 @@ struct AttitudeFrame
   float yaw{0.0F};
   float pitch{0.0F};
   float roll{0.0F};
+  float yaw_rate{0.0F};
+  float pitch_rate{0.0F};
   int enemy_color{-1};
   int work_mode{WORK_MODE_AIM};
   int bullet_speed{0};
@@ -185,7 +187,25 @@ std::optional<AttitudeFrame> parse_sp_frame(const std::vector<uint8_t>& frame)
   parsed.work_mode = std::max(0, static_cast<int>(frame[2]) - 1);
   parsed.yaw = read_float_le(frame, 19);
   parsed.pitch = read_float_le(frame, 27);
-  parsed.bullet_speed = static_cast<int>(read_float_le(frame, 35));
+  parsed.yaw_rate = read_float_le(frame, 23);
+  parsed.pitch_rate = read_float_le(frame, 31);
+  const float speed = read_float_le(frame, 35);
+  if (!std::isfinite(parsed.yaw) || !std::isfinite(parsed.pitch) ||
+      !std::isfinite(parsed.yaw_rate) || !std::isfinite(parsed.pitch_rate) ||
+      !std::isfinite(speed) || speed < 0.0F || speed > 100.0F) {
+    return std::nullopt;
+  }
+  // SP already includes the controller's wxyz quaternion. Older test/firmware
+  // streams may leave it zero; yaw and pitch remain authoritative in that case.
+  const double w = read_float_le(frame, 3), x = read_float_le(frame, 7);
+  const double y = read_float_le(frame, 11), z = read_float_le(frame, 15);
+  const double qnorm2 = w*w + x*x + y*y + z*z;
+  if (!std::isfinite(qnorm2)) {return std::nullopt;}
+  if (qnorm2 > 1e-12) {
+    if (qnorm2 < 0.25 || qnorm2 > 4.0) {return std::nullopt;}
+    parsed.roll = static_cast<float>(std::atan2(2.0*(w*x+y*z), qnorm2-2.0*(x*x+y*y)));
+  }
+  parsed.bullet_speed = static_cast<int>(speed);
   parsed.flags_register = (parsed.work_mode & 0x0003) | ((parsed.bullet_speed & 0x00FF) << 8);
   return parsed;
 }
@@ -520,6 +540,11 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
     : rclcpp::Node("stm32_serial_bridge_node", options)
 {
   this->declare_parameter<bool>("transmit_enable", false);
+  attitude_receive_delay_s_ = this->declare_parameter<double>("attitude_receive_delay_s", 0.0);
+  if (!std::isfinite(attitude_receive_delay_s_) || attitude_receive_delay_s_ < 0.0 ||
+      attitude_receive_delay_s_ > 0.25) {
+    throw std::runtime_error("attitude_receive_delay_s must be in [0, 0.25]");
+  }
   const bool receive_enable = this->declare_parameter<bool>("receive_enable", false);
   const auto command_mode = this->declare_parameter<std::string>("command_output_mode", "absolute");
   this->declare_parameter<std::string>("serial_port", "/dev/ttyUSB0");
@@ -563,6 +588,8 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
     RCLCPP_INFO(this->get_logger(), "Transmit disabled. Set transmit_enable:=true to enable TX.");
   }
 
+  const bool legacy_commands = this->declare_parameter<bool>("use_legacy_command_topics", false);
+  if (legacy_commands) {
   override_subscription_ = this->create_subscription<std_msgs::msg::Bool>("override", 10,
     std::bind(&STM32SerialBridgeNode::handle_override, this, std::placeholders::_1));
   suggest_fire_subscription_ = this->create_subscription<std_msgs::msg::Bool>("suggest_fire", 10,
@@ -571,8 +598,14 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
     this->create_subscription<std_msgs::msg::Float32MultiArray>("bounding_box_angles", 10,
       std::bind(&STM32SerialBridgeNode::handle_angles, this, std::placeholders::_1));
 
+  } else {
+    solution_subscription_ = this->create_subscription<cv_auto_aim_interfaces::msg::AimSolution>(
+      "aim_solution", 10, std::bind(&STM32SerialBridgeNode::handle_solution, this, std::placeholders::_1));
+  }
   attitude_publisher_ =
     this->create_publisher<std_msgs::msg::Float32MultiArray>("attitude_data", 10);
+  stamped_attitude_publisher_ =
+    this->create_publisher<cv_auto_aim_interfaces::msg::GimbalAttitude>("gimbal/attitude", 100);
   robot_id_publisher_ = this->create_publisher<std_msgs::msg::Int32>("robot_id", 10);
   attitude_flags_publisher_ =
     this->create_publisher<std_msgs::msg::Int32MultiArray>("attitude_flags", 10);
@@ -634,6 +667,28 @@ void STM32SerialBridgeNode::handle_angles(const std_msgs::msg::Float32MultiArray
   maybe_send();
 }
 
+void STM32SerialBridgeNode::handle_solution(
+  const cv_auto_aim_interfaces::msg::AimSolution::SharedPtr msg)
+{
+  const auto stamp_ns = rclcpp::Time(msg->header.stamp).nanoseconds();
+  const auto age_ns = this->now().nanoseconds() - stamp_ns;
+  const bool valid = msg->has_solution && msg->output_mode == "absolute" &&
+    msg->header.frame_id == "gimbal_inertial" &&
+    stamp_ns > last_solution_stamp_ns_ && stamp_ns > 0 && age_ns >= 0 && age_ns <= 250000000 &&
+    std::isfinite(msg->yaw) && std::isfinite(msg->pitch);
+  // A replayed or malformed solution must not revive a previous command.
+  has_target_ = valid;
+  have_command_ = valid;
+  suggest_fire_ = valid && msg->suggest_fire;
+  if (valid) {
+    last_solution_stamp_ns_ = stamp_ns;
+    latest_yaw_ = msg->yaw;
+    latest_pitch_ = msg->pitch;
+    command_time_ = override_time_ = std::chrono::steady_clock::now();
+  }
+  maybe_send();
+}
+
 void STM32SerialBridgeNode::handle_rx_poll()
 {
   if (!transport_) {
@@ -647,13 +702,34 @@ void STM32SerialBridgeNode::handle_rx_poll()
     maybe_send();
   }
   const auto frames = transport_->read_attitude_frames();
+  const auto received = this->get_clock()->now();
+  const AttitudeFrame * newest_sp = nullptr;
+  for (const auto & frame : frames) {
+    if (frame.command_id == static_cast<int>((SP_HEADER_0 << 8U) | SP_HEADER_1)) {
+      newest_sp = &frame;
+    }
+  }
+  // The wire has no device clock. Discard older samples in a read batch instead
+  // of assigning multiple historical poses the same receive timestamp.
   for (const auto& frame : frames) {
     std_msgs::msg::Float32MultiArray attitude_msg;
     attitude_msg.data = {frame.yaw, frame.pitch, frame.roll};
     // ST carries status, not attitude. Never replace real SP angles with zeros.
-    if (frame.command_id == static_cast<int>((SP_HEADER_0 << 8U) | SP_HEADER_1) &&
+    if (&frame == newest_sp &&
         std::isfinite(frame.yaw) && std::isfinite(frame.pitch)) {
       attitude_publisher_->publish(attitude_msg);
+      cv_auto_aim_interfaces::msg::GimbalAttitude sample;
+      sample.header.stamp = received - rclcpp::Duration::from_seconds(attitude_receive_delay_s_);
+      sample.header.frame_id = "gimbal_inertial";
+      sample.receive_stamp_ns = received.nanoseconds();
+      sample.source_timestamped = false;
+      sample.valid = true;
+      sample.yaw = frame.yaw;
+      sample.pitch = frame.pitch;
+      sample.roll = frame.roll;
+      sample.yaw_rate = frame.yaw_rate;
+      sample.pitch_rate = frame.pitch_rate;
+      stamped_attitude_publisher_->publish(sample);
     }
 
     if (frame.robot_id > 0) {
@@ -687,7 +763,9 @@ void STM32SerialBridgeNode::maybe_send()
   target_state_ = active
                     ? (suggest_fire_ ? TARGET_STATE_READY_TO_FIRE : TARGET_STATE_CONVERGING)
                     : TARGET_STATE_NO_TARGET;
-  const int fire_mode = active ? fire_mode_ : FIRE_MODE_NO_FIRE;
+  const int configured_mode = (fire_mode_ == FIRE_MODE_AUTO_FIRE && !suggest_fire_) ?
+    FIRE_MODE_AUTO_AIM : fire_mode_;
+  const int fire_mode = active ? configured_mode : FIRE_MODE_NO_FIRE;
   const bool success =
     transport_->send_vision_data(pitch_tx, yaw_tx, fire_mode, target_state_, target_type_);
   log_tx_event(yaw_tx, pitch_tx, success, fire_mode);

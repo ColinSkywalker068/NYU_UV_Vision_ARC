@@ -34,3 +34,8 @@ float32 distance_to_image_center
 bool has_pose
 # Camera-frame armor pose from detector-side PnP.
 geometry_msgs/Pose pose_camera
+
+# Real model keypoints and pose-quality provenance; synthetic box corners are not pose measurements.
+bool corners_are_keypoints
+bool pose_normal_reliable
+float32 reprojection_rms_px

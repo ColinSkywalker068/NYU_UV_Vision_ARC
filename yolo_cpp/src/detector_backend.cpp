@@ -605,6 +605,9 @@ DetectionBatch NativeTensorRTBackend::infer(const FramePacket &packet,
   }
 
   const auto preprocess_start = std::chrono::steady_clock::now();
+  if (model_type_ == "aruw_2026_pose" && is_bayer_format(packet.pixel_format)) {
+    throw std::runtime_error("ARUW native profile requires camera_pixel_format=bgr8");
+  }
   if (is_bayer_format(packet.pixel_format)) {
     if (packet.frame.empty() || packet.frame.type() != CV_8UC1) {
       throw std::runtime_error("Expected non-empty Bayer8 frame for TensorRT CUDA preprocessing");
@@ -637,7 +640,22 @@ DetectionBatch NativeTensorRTBackend::infer(const FramePacket &packet,
   } else {
     const void* input_ptr = impl_->host_input;
     std::size_t input_bytes = impl_->input_volume * sizeof(float);
-    if (impl_->input_dtype == nvinfer1::DataType::kHALF) {
+    if (model_type_ == "aruw_2026_pose") {
+      if (impl_->img_w != 640 || impl_->img_h != 384) {
+        throw std::runtime_error("ARUW profile requires input [1,3,384,640]");
+      }
+      const auto tensor = preprocess_aruw_bgr(packet.frame);
+      batch.letterbox = aruw_resize_metadata(packet.width(), packet.height());
+      if (impl_->input_dtype == nvinfer1::DataType::kHALF) {
+        for (std::size_t i = 0; i < impl_->input_volume; ++i) {
+          impl_->host_input_half[i] = float_to_half_bits(tensor.ptr<float>()[i]);
+        }
+        input_ptr = impl_->host_input_half;
+        input_bytes = impl_->input_volume * sizeof(std::uint16_t);
+      } else {
+        std::memcpy(impl_->host_input, tensor.ptr<float>(), impl_->input_volume * sizeof(float));
+      }
+    } else if (impl_->input_dtype == nvinfer1::DataType::kHALF) {
       preprocess_bgr_frame_half(packet, impl_->host_input_half, impl_->img_w,
                                 impl_->img_h, batch.letterbox,
                                 impl_->resized_input);
@@ -692,10 +710,15 @@ DetectionBatch NativeTensorRTBackend::infer(const FramePacket &packet,
   }
 
   const auto parse_start = std::chrono::steady_clock::now();
+  if (model_type_ == "aruw_2026_pose") {
+    batch.detections = parse_aruw_pose_tensor(impl_->parsed_output.data(),
+      impl_->runtime_output_shape, impl_->img_w, impl_->img_h, conf_threshold_);
+  } else {
   batch.detections = parse_yolo_output_tensor(
       impl_->parsed_output.data(), impl_->runtime_output_shape, impl_->img_w,
       impl_->img_h, impl_->nc, conf_threshold_, impl_->task_obb, impl_->end2end,
       impl_->export_includes_nms, &logger);
+  }
   const auto parse_done = std::chrono::steady_clock::now();
 
   if (timings != nullptr) {

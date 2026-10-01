@@ -4,6 +4,9 @@
 #include "yolo_cpp/pnp_solver.hpp"
 
 #include <cmath>
+#include <algorithm>
+#include <limits>
+#include <opencv2/imgproc.hpp>
 #include <opencv2/calib3d.hpp>
 #include <utility>
 
@@ -77,7 +80,7 @@ ArmorPnPSolver::ArmorPnPSolver(PnPCameraModel camera_model, double small_armor_w
 }
 
 bool ArmorPnPSolver::solve(const std::array<cv::Point2f, 4>& image_points, int armor_type,
-  geometry_msgs::msg::Pose& pose) const
+  geometry_msgs::msg::Pose& pose, PoseQuality * quality) const
 {
   // SOLVEPNP_IPPE is appropriate for planar rectangular armor targets.
   const auto& object_points = armor_type == 1 ? large_armor_points_ : small_armor_points_;
@@ -87,21 +90,66 @@ bool ArmorPnPSolver::solve(const std::array<cv::Point2f, 4>& image_points, int a
     dist_coeffs = cv::Mat::zeros(1, 5, CV_64F);
   }
 
-  cv::Mat rvec;
-  cv::Mat tvec;
+  if (quality) {*quality = {};}
   const std::vector<cv::Point2f> image_vector(image_points.begin(), image_points.end());
-  const bool ok = cv::solvePnP(
-    object_points, image_vector, camera_matrix, dist_coeffs, rvec, tvec, false, cv::SOLVEPNP_IPPE);
-  if (!ok) {
-    return false;
+  if (!std::all_of(image_points.begin(), image_points.end(), [](const auto & p) {
+      return std::isfinite(p.x) && std::isfinite(p.y);
+    }) || !cv::isContourConvex(image_vector) ||
+    cv::contourArea(image_vector, true) < 4.0 ||
+    !cv::checkRange(camera_matrix) || camera_model_.camera_matrix(0, 0) <= 0 ||
+    camera_model_.camera_matrix(1, 1) <= 0 || object_points.size() != 4)
+  {return false;}
+  std::vector<cv::Mat> rotations, translations;
+  try {
+    if (!cv::solvePnPGeneric(object_points, image_vector, camera_matrix, dist_coeffs,
+        rotations, translations, false, cv::SOLVEPNP_IPPE)) {return false;}
+  } catch (const cv::Exception &) {return false;}
+  struct Hypothesis {cv::Mat rotation; cv::Mat translation; double error;};
+  std::vector<Hypothesis> hypotheses;
+  for (std::size_t i = 0; i < rotations.size(); ++i) {
+    if (!cv::checkRange(rotations[i]) || !cv::checkRange(translations[i])) {continue;}
+    cv::Mat rotation;
+    cv::Rodrigues(rotations[i], rotation);
+    bool positive_depth = true;
+    for (const auto & corner : object_points) {
+      const double depth = rotation.at<double>(2, 0) * corner.x +
+        rotation.at<double>(2, 1) * corner.y + translations[i].at<double>(2);
+      positive_depth = positive_depth && depth > 0.05;
+    }
+    if (!positive_depth || cv::norm(translations[i]) > 30.0) {continue;}
+    std::vector<cv::Point2f> reprojections;
+    cv::projectPoints(object_points, rotations[i], translations[i], camera_matrix,
+      dist_coeffs, reprojections);
+    double squared_error = 0;
+    for (std::size_t j = 0; j < image_points.size(); ++j) {
+      const auto residual = reprojections[j] - image_points[j];
+      squared_error += residual.dot(residual);
+    }
+    const double error = std::sqrt(squared_error / image_points.size());
+    if (std::isfinite(error) && error <= 3.0) {
+      hypotheses.push_back({rotation, translations[i], error});
+    }
   }
-
-  pose.position.x = tvec.at<double>(0);
-  pose.position.y = tvec.at<double>(1);
-  pose.position.z = tvec.at<double>(2);
-  cv::Mat rotation;
-  cv::Rodrigues(rvec, rotation);
-  rotation_matrix_to_quaternion(rotation, pose);
+  if (hypotheses.empty()) {return false;}
+  std::sort(hypotheses.begin(), hypotheses.end(), [](const auto & a, const auto & b) {
+    return a.error < b.error;
+  });
+  const auto & best = hypotheses.front();
+  pose.position.x = best.translation.at<double>(0);
+  pose.position.y = best.translation.at<double>(1);
+  pose.position.z = best.translation.at<double>(2);
+  rotation_matrix_to_quaternion(best.rotation, pose);
+  if (quality) {
+    quality->reprojection_rms_px = best.error;
+    quality->normal_reliable = true;
+    if (hypotheses.size() > 1) {
+      quality->alternative_error_gap_px = hypotheses[1].error - best.error;
+      const double normal_dot = best.rotation.col(2).dot(hypotheses[1].rotation.col(2));
+      // A plausible translation can coexist with an ambiguous planar normal.
+      quality->normal_reliable = normal_dot > std::cos(15.0 * 3.141592653589793 / 180) ||
+        quality->alternative_error_gap_px >= 0.25;
+    }
+  }
   return true;
 }
 

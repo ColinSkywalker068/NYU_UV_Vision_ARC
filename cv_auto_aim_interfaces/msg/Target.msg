@@ -61,3 +61,9 @@ float32 robot_angular_velocity
 # Geometry used to reconstruct future armor positions.
 float32 armor_radius
 uint8 armor_count
+
+# Camera pose at this frame's capture time, in the same frame as target pose.
+bool camera_pose_valid
+geometry_msgs/Pose camera_pose
+# Last real detection time. A prediction does not refresh this timestamp.
+int64 measurement_stamp_ns

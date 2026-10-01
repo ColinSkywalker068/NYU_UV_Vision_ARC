@@ -190,6 +190,8 @@ else()
 endif()
 
 set(YOLO_CPP_COMPONENT_SOURCES
+  src/aim_geometry.cpp
+  src/aim_prediction.cpp
   src/utils.cpp
   src/pnp_solver.cpp
   src/tracking_math.cpp
@@ -360,7 +362,7 @@ target_include_directories(stm32_serial_bridge PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
-ament_target_dependencies(stm32_serial_bridge rclcpp std_msgs)
+ament_target_dependencies(stm32_serial_bridge cv_auto_aim_interfaces rclcpp std_msgs)
 
 if(YOLO_CPP_BUILD_MANUAL_TOOLS)
   add_executable(stm32_yaw_packet_smoke
@@ -434,6 +436,12 @@ if(BUILD_TESTING)
     include/yolo_cpp/robot_state_estimator.hpp
     src/robot_state_estimator.cpp
     test/test_robot_state_estimator.cpp
+    include/yolo_cpp/aim_geometry.hpp
+    src/aim_geometry.cpp
+    include/yolo_cpp/aim_prediction.hpp
+    src/aim_prediction.cpp
+    test/test_aim_geometry.cpp
+    test/test_pose_pipeline.cpp
   )
 
   ament_add_gtest(test_detection_postprocess
@@ -463,6 +471,19 @@ if(BUILD_TESTING)
       ${OpenCV_INCLUDE_DIRS}
     )
     target_link_libraries(test_tracking_core ${OpenCV_LIBS})
+  endif()
+  ament_add_gtest(test_pose_pipeline test/test_pose_pipeline.cpp TIMEOUT 30)
+  if(TARGET test_pose_pipeline)
+    target_include_directories(test_pose_pipeline PUBLIC include ${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(test_pose_pipeline yolo_cpp_components ${OpenCV_LIBS})
+    ament_target_dependencies(test_pose_pipeline rclcpp cv_auto_aim_interfaces)
+    set_tests_properties(test_pose_pipeline PROPERTIES ENVIRONMENT "ROS_LOCALHOST_ONLY=1;ROS_DOMAIN_ID=197")
+  endif()
+  ament_add_gtest(test_aim_geometry
+    test/test_aim_geometry.cpp src/aim_geometry.cpp src/aim_prediction.cpp)
+  if(TARGET test_aim_geometry)
+    target_include_directories(test_aim_geometry PUBLIC include ${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(test_aim_geometry ${OpenCV_LIBS})
   endif()
   ament_add_gtest(test_robot_state_estimator
     test/test_robot_state_estimator.cpp

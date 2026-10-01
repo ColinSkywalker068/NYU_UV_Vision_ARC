@@ -1,0 +1,20 @@
+{
+  "date": "2026-09-30",
+  "branch": "codex/autoaim-pose-tracking",
+  "hardware_connected": false,
+  "ros": "Humble / Ubuntu 22.04 ARM64 Docker",
+  "ros_checks": 50,
+  "ros_failures": 0,
+  "legacy_python_tests": 12,
+  "service_env_regression": "passed in Linux",
+  "production_pose_pipeline": {
+    "valid_commands": "79",
+    "max_yaw_error_rad": "1.5579025962331183e-07",
+    "max_phantom_velocity_mps": "0.00013209618151466761"
+  },
+  "limitations": [
+    "Synthetic exact corners, not labeled camera data",
+    "TensorRT/CUDA/DeepStream code not executed on Jetson",
+    "Spin ambiguity and full sentry actuation validation remain in progress"
+  ]
+}
