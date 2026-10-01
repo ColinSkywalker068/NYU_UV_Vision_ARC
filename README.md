@@ -3,7 +3,8 @@
 Local ARUW pose/tracking evaluation: [results and limitations](docs/validation/autoaim-local-upgrade.md),
 [manual Jetson configuration and checks](docs/validation/autoaim-manual-checks.md), and
 [native Mac inference/replay videos](tools/model-eval/README.md). This evaluation
-branch has not been validated on live Basler/Jetson hardware; keep TX and firing disabled.
+includes local tests and Jetson deployment checks; these do not establish reliable
+physical tracking. Begin with TX and firing disabled.
 
 
 # CV Detection
@@ -46,13 +47,52 @@ Both Jetsons use the same USB address; verify the unit and its host key when
 swapping devices. Do not disable SSH host-key checks. See the
 [SSH guide](docs/project/ssh-access.md) for the device registry and troubleshooting.
 
-### Safe CV preview
+### Edit the live env and start a safe preview
 
-On the **Jetson**, open `services/stm-stack.env`. For preview-only
-checks, keep `transmit_enable:=false` and `enable_fire_recommendation:=false`
-in `CV_STM_EXTRA_LAUNCH_ARGS`, and select `CV_STM_SHOW=web`. Absolute output
-and preview arrows do not enable transmission. Command arrows also require
-fresh Type C attitude telemetry and an authorized target.
+On the **Jetson**, open your CV checkout from the table above. The live settings
+are in **`services/stm-stack.env` inside that checkout**. The `.env.example`
+file is only a template; editing it does not change the running service.
+
+For a new installation or migration from `/etc/cv-detection`, run once from
+the checkout root:
+
+```bash
+sudo ln -sf "$PWD/services/stm-stack.sh" /usr/local/bin/cv
+cv install
+```
+
+This records the checkout/env paths and enables startup at boot without starting
+CV immediately. It preserves an existing env, otherwise copies the legacy env
+or creates one from the safe template. Review saved settings before starting;
+migration can preserve previously enabled TX. Do not keep editing the old
+`/etc/cv-detection/stm-stack.env` copy.
+
+Open `services/stm-stack.env` in VS Code Remote-SSH, or use:
+
+```bash
+sudoedit services/stm-stack.env
+```
+
+Set `CV_STM_SHOW=web`. Edit the following arguments **inside the existing quoted
+`CV_STM_EXTRA_LAUNCH_ARGS="..."` line**, preserving your camera, model, and tracking
+arguments. Replace existing values rather than adding duplicate arguments:
+
+| Argument | Preview setting / purpose |
+| --- | --- |
+| `transmit_enable:=false` | Disables normal bridge movement TX. Changing this to `true` permits real command transmission when command validity gates pass. |
+| `enable_fire_recommendation:=false` | Keeps solver fire recommendations disabled, including during movement-only tests. |
+| `receive_enable:=true` | Receives Type C attitude for absolute-command calculation and preview. |
+| `solver_output_mode:=absolute` | Selects the command format; does not enable TX. |
+| `preview_command_is_offset:=false` | Displays absolute commands correctly. |
+| `preview_absolute_error_arrow:=true` | Draws the absolute-command error/direction indicator when a valid solution is available. |
+
+`calibration_provisional:=true` marks estimated camera calibration; **it does not
+disable movement TX**. Use `transmit_enable:=false` for preview-only operation.
+Arrows require fresh attitude, a selected target, and a valid solver result;
+a detection box alone is not sufficient. Type C has separate
+[controller acceptance gates](docs/project/stm-stack-config.md#transmission-safety).
+
+Save the file, then run:
 
 ```bash
 cv preflight
@@ -61,10 +101,20 @@ cv status
 cv logs
 ```
 
-The saved env is outside Git and survives restarts/reboots. Saving a setting
-requires `cv restart` to apply it. Pulling source requires a compatible rebuild
-before restart; use the runtime matched to this Jetson's JetPack release.
-[Config and safety details](docs/project/stm-stack-config.md).
+The env is **inside the repo directory but Git-ignored**: it survives ordinary
+pulls, restarts, and reboots. Do not overwrite it with the template to update code.
+
+| What changed? | Apply it with |
+| --- | --- |
+| Env values, web preview, target color, or exposure | Save, then `cv restart`; no rebuild or MCU flash. |
+| CV C++, ROS messages, or launch files | `uv build yolo_cpp`, then `cv restart`, using this Jetson's saved compatible runtime. |
+| Model or JetPack/TensorRT runtime | Follow the [runtime/config guide](docs/project/stm-stack-config.md); regenerate a compatible engine as needed. |
+| Type C firmware or slew/acceleration limits | Separate Type C build and flash; `cv restart` does not apply MCU changes. |
+
+Use `cv start` after stopping CV, `cv health` for a read-only readiness check,
+and `cv enable` / `cv disable` to control startup at boot. Start/restart checks
+ROS and fresh Type C telemetry; a failed check leaves CV running for inspection.
+Inspect `cv logs` rather than assuming a present USB port means telemetry is valid.
 
 On **your host device**, keep the following terminal open (Ramon example),
 then visit `http://127.0.0.1:18080/`:
@@ -100,7 +150,8 @@ On the robot, use the `cv` operator command for the headless Basler + DeepStream
 Install or refresh the shortcut once:
 
 ```bash
-sudo ln -sf /home/ultraviolet/CV_Detection/services/stm-stack.sh /usr/local/bin/cv
+# Run from your CV checkout root on the Jetson.
+sudo ln -sf "$PWD/services/stm-stack.sh" /usr/local/bin/cv
 ```
 
 Run the competition stack:
