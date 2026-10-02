@@ -17,6 +17,9 @@ NYU Robomaster ROS 2 C++ auto-aim vision pipeline for camera capture, YOLO/Tenso
 | Project requirements | [docs/project/requirements.md](docs/project/requirements.md) |
 | Project architecture | [docs/project/architecture.md](docs/project/architecture.md) |
 | Tech stack | [docs/project/tech_stack.md](docs/project/tech_stack.md) |
+| Saved env and startup | [docs/project/stm-stack-config.md](docs/project/stm-stack-config.md) |
+| Tracking deployment and diagnostics | [docs/validation/autoaim-manual-checks.md](docs/validation/autoaim-manual-checks.md) |
+| Local inference and replay | [tools/model-eval/README.md](tools/model-eval/README.md) |
 | Operations runbook | [docs/project/runbook.md](docs/project/runbook.md) |
 | Jetson SSH access | [docs/project/ssh-access.md](docs/project/ssh-access.md) |
 | Jetson Orin Nano reflash | [docs/project/jetson-reflash.md](docs/project/jetson-reflash.md) |
@@ -50,9 +53,20 @@ NYU Robomaster ROS 2 C++ auto-aim vision pipeline for camera capture, YOLO/Tenso
 | Pipeline | Preserve the detector -> tracker -> processor -> solver -> STM bridge boundary unless the task proves a cross-stage change is needed. | Behavior changes in the active stack. |
 | Hardware | Verify optional camera and inference backends at configure and launch time: RealSense, Basler Pylon, TensorRT, CUDA, DeepStream, and GStreamer are environment-dependent. | Container, Jetson, camera, or detector backend work. |
 | Documentation | Link to canonical docs instead of duplicating long implementation detail. | Documentation and agent-instruction edits. |
-| Testing | Run the narrowest meaningful build or test for the touched area; use `colcon test --packages-select yolo_cpp` for C++ tests when available. | Before calling code changes complete. |
+| Testing | Run the narrowest meaningful check. ROS tests require a build with `BUILD_TESTING=ON`, a sourced install, `colcon test --packages-select yolo_cpp --return-code-on-test-failure`, and `colcon test-result --verbose`. | Before calling code changes complete. |
 | Formatting | Use existing project tooling and pre-commit hooks for mechanical formatting. | Before committing broad text or script changes. |
 | Safety | Do not transmit controller-facing assumptions to STM32 without checking unit conventions; current controls firmware expects CV->STM pitch/yaw as radians, so `transmit_angles_in_degrees` defaults false. | Solver, serial bridge, and protocol work. |
+
+### Current runtime contracts
+
+- The live env is Git-ignored `services/stm-stack.env` in the Jetson checkout; `.env.example` is a template. `cv install` preserves or migrates existing settings and records the service paths. Do not overwrite a tuned env or keep editing the old `/etc/cv-detection` copy. See the [config guide](docs/project/stm-stack-config.md).
+- Env-only changes need save + `cv restart`. Source, message, and launch changes need a compatible rebuild first. JetPack 6/Humble and JetPack 7.2/Jazzy use different runtimes; do not assume TensorRT engines are portable between them.
+- `transmit_enable:=false` keeps normal bridge command TX off while preview and RX can run. Absolute/offset display mode and provisional calibration are not TX switches. Keep fire recommendations disabled unless the operator explicitly enables them; MCU acceptance gates are separate.
+- `cv start` / `cv restart` check ROS readiness and fresh decoded attitude when RX/TX is enabled. A failed check leaves CV running for inspection. These commands do not calibrate or flash the Type C. `cv health` repeats the read-only check.
+- Preserve image capture time, attitude alignment, frame conventions, measurement age, and bounded coasting across detector/tracker/processor/solver changes. Host receive timestamps do not prove MCU source-clock synchronization. See the [telemetry plan](docs/project/tracker-telemetry-plan.md).
+- Older models in `yolo_cpp/models/` and `legacy/models/` remain available. Preserve them when adding a backend; switching requires matching model path, parser/task, class mapping, and engine runtime, not just a filename change.
+- Jetson owns perception and solver configuration; Type C owns motor control, slew limits, and acceptance. The test fixture is a recorded controller reference, not proof of currently flashed firmware. Simulation and fresh telemetry do not establish physical tracking stability.
+- Diagnose with saved `vision_logs/` alignment records and `tools/analyze-tracking-alignment.py`; serial write success is not proof of MCU acceptance or motor response. See [manual validation](docs/validation/autoaim-manual-checks.md).
 
 ### Key Principles
 
@@ -98,12 +112,13 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 | Launch zero-copy experiment | `uv run yolo_cpp zerocopy.launch.py` | Component-container path for the combined perception node. |
 | Install competition service | `./services/stm-stack.sh install` | Installs and enables the headless STM systemd service without starting it. |
 | Competition preflight | `./services/stm-stack.sh preflight` | Checks image, package, model, DeepStream/Pylon plugins, and serial path before startup. |
-| Restart competition stack | `./services/stm-stack.sh restart` | Restarts the `cv-stm-stack` service container through systemd. |
-| Toggle service preview | `./services/stm-stack.sh preview-on` / `./services/stm-stack.sh preview-off` | Persists `CV_STM_SHOW` and restarts the service to show or hide the OpenCV frame window. |
-| Competition logs and health | `./services/stm-stack.sh logs` / `./services/stm-stack.sh health` | Follows service logs or checks expected ROS nodes and topics. |
+| Restart competition stack | `./services/stm-stack.sh restart` | Restarts through systemd, then checks ROS and fresh Type C telemetry. |
+| Toggle service preview | `./services/stm-stack.sh preview-web` / `preview-gui` / `preview-off` | Persists `CV_STM_SHOW` and restarts; does not change TX configuration. |
+| Competition logs and health | `./services/stm-stack.sh logs` / `./services/stm-stack.sh health` | Follows service logs or checks ROS readiness and fresh decoded attitude. |
 | Jetson FPS isolation benchmark | `./services/fps-benchmark.sh --mode all` | Measures synthetic TensorRT inference, camera capture-only, and Basler+DeepStream result FPS using STM defaults. |
-| Native build | `colcon build --packages-select cv_auto_aim_interfaces yolo_cpp --symlink-install --cmake-args -DBUILD_TESTING=OFF` | Use in an environment with ROS 2 Humble and dependencies installed. |
-| C++ tests | `colcon test --packages-select yolo_cpp` | Uses the package test targets. |
+| Native build | `colcon build --packages-select cv_auto_aim_interfaces yolo_cpp --symlink-install --cmake-args -DBUILD_TESTING=OFF` | Source the matching Humble or Jazzy runtime; this production build does not build tests. |
+| Local ROS build/tests without hardware | `bash tools/run-local-tracking-tests.sh` | Docker Humble build, live ROS health scenarios, and package tests using synthetic inputs/PTYs. |
+| Health-check integration test | `python3 services/test_typec_link_ros.py` | Run in a sourced ROS test workspace; synthetic publishers, no hardware. |
 | Pre-commit | `pre-commit run --all-files` | Runs configured repository hooks. |
 
 ## Repo Map
@@ -112,11 +127,13 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 |------|------|
 | `yolo_cpp/include/yolo_cpp/` | C++ public headers for nodes, backends, tracking, solving, and protocol helpers. |
 | `yolo_cpp/src/` | Active ROS 2 C++ runtime implementations. |
-| `yolo_cpp/launch/` | `basler.launch.py`, compatibility alias `stm.launch.py`, `realsense.launch.py`, and `zerocopy.launch.py`. |
+| `yolo_cpp/launch/` | Field Basler/RealSense launches, compatibility aliases, `tracking_observe.launch.py` (no solver/serial), and zero-copy experiment. |
 | `yolo_cpp/config/` | DeepStream and detector configuration assets. |
 | `yolo_cpp/config/default_model_path.txt` | Robot-local fallback model path used when launch arguments and `CV_STM_MODEL_PATH` are empty. |
-| `yolo_cpp/test/` | Focused C++ tests for tracking and detection postprocess behavior. |
+| `yolo_cpp/test/` | Geometry, tracking, closed-loop ROS, launch, and serial reconnect tests; recorded Type C reference fixture. |
 | `cv_auto_aim_interfaces/msg/` | Custom ROS 2 messages for detections, tracks, targets, spin state, and aim solutions. |
+| `tools/model-eval/` | Active Mac inference/replay evaluation and model candidate tooling; not legacy. |
+| `.gitlab-ci.yml` | Python tracking checks and ROS Humble build/health/package tests. |
 | `Docker/` and `services/` | Container images, compose config, and helper scripts. |
 | `legacy/models/` | Stale or experimental model variants and archived export utilities. |
 | `legacy/yolov8_ros/` | Archived Python ROS 2 YOLOv8 package from the former main branch. |
@@ -138,4 +155,4 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 - [ ] The file remains under 200 lines.
 - [ ] Shared guidance appears here rather than being duplicated in `CLAUDE.md`.
 
-**Last Updated:** 2026-05-30
+**Last Updated:** 2026-10-01

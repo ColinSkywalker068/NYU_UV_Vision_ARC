@@ -128,6 +128,27 @@ For Orin2, substitute `rm-orin2.local`; USB uses `192.168.55.1`. In VS Code,
 use **Remote-SSH: Connect to Host**, connect to the same SSH target, open the
 checkout from the table, then use **File: Open File** to open the live env.
 
+### Switching detector models
+
+Older models are retained: `yolo_cpp/models/` includes Kushal and Nitish engines
+and `latest_best.pt` / `latest_best.onnx`; `legacy/models/` contains earlier
+weights, ONNX exports, and engines. ARUW support does not remove the YOLO parser.
+
+To evaluate another model, keep TX/fire disabled and edit `CV_STM_MODEL_PATH`
+in the live env to the compatible engine's absolute path. In the existing
+`CV_STM_EXTRA_LAUNCH_ARGS`, match `model_type` and `task` to the export:
+`model_type:=yolo` with the appropriate `task:=obb`, `detect`, or `pose`, versus
+`model_type:=aruw_2026_pose task:=pose` for the ARUW export. Also verify input
+size, class/color mapping, and calibration/pose requirements. A box-only model
+may show detections without supplying the geometry needed for 3D commands.
+
+Old `.engine` files are not universally portable: regenerate from the matching
+source export for the target Jetson/TensorRT runtime when necessary. `.pt`
+weights are not a drop-in runtime engine. Run `cv preflight`, then `cv restart`
+and check the preview/logs before considering movement. See the
+[model evaluation guide](tools/model-eval/README.md) and
+[manual configuration checks](docs/validation/autoaim-manual-checks.md).
+
 ## For Readers
 
 Several repository docs start with machine-readable metadata and navigation tables because agents use them to route work safely. If you are reading manually, use each doc's `Quick Navigation` table and skip past `SCOPE`, `DOC_KIND`, `Agent Entry`, and maintenance blocks. The fastest human paths are [Quick Start](#quick-start), [Project runbook](docs/project/runbook.md), [Jetson reflash guide](docs/project/jetson-reflash.md), and [Launch and config](yolo_cpp/docs/launch-and-config.md).

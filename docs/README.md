@@ -14,8 +14,9 @@
 | Root map | [../AGENTS.md](../AGENTS.md), [../CLAUDE.md](../CLAUDE.md) | Agent entry points; `AGENTS.md` is canonical and `CLAUDE.md` imports it. |
 | Project overview | [../README.md](../README.md), [../yolo_cpp/docs/overview.md](../yolo_cpp/docs/overview.md) | High-level project purpose, quick start, and active C++ package overview. |
 | Canonical project docs | [project/requirements.md](project/requirements.md), [project/architecture.md](project/architecture.md), [project/tech_stack.md](project/tech_stack.md), [project/infrastructure.md](project/infrastructure.md), [project/runbook.md](project/runbook.md) | Requirements, architecture, stack inventory, infrastructure, and operations. |
-| Jetson SSH access | [project/ssh-access.md](project/ssh-access.md) | Same-Wi-Fi `.local` SSH for `rm-standard.local` and `rm-sentry.local`, plus wired SSH through `192.168.55.1`. |
+| Jetson SSH access | [project/ssh-access.md](project/ssh-access.md) | Device registry for Ramon and Orin2, USB SSH through `192.168.55.1`, and wireless discovery. |
 | Jetson reflash | [project/jetson-reflash.md](project/jetson-reflash.md) | Optimized Orin Nano reflash and first-boot recovery for the current DeepStream 6.4 container stack. |
+| Saved service configuration | [project/stm-stack-config.md](project/stm-stack-config.md) | Repo-local env, migration, preview/TX settings, restart/rebuild boundaries, and startup health checks. |
 | Jetson operator access | [project/jetson-vnc.md](project/jetson-vnc.md) | Free non-RealVNC remote desktop setup for configuring one or more Jetsons on the same Wi-Fi or lab LAN. |
 | Pattern catalog | [architecture/patterns_catalog.md](architecture/patterns_catalog.md) | Recurring runtime patterns and audit points. |
 | Runtime pipeline | [../yolo_cpp/docs/pipeline.md](../yolo_cpp/docs/pipeline.md), [../yolo_cpp/docs/nodes.md](../yolo_cpp/docs/nodes.md), [../yolo_cpp/docs/interfaces.md](../yolo_cpp/docs/interfaces.md) | Detector, tracker, processor, solver, STM bridge, and custom messages. |

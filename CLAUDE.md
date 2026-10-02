@@ -26,8 +26,8 @@
 
 ## Claude Code
 
-- `/compact` preservation order: architecture decisions, modified files, verification status, unresolved follow-ups, and summarized tool evidence.
-- Auto memory is on by default. Claude writes learnings to `~/.claude/projects/<project>/memory/`; run `/memory` to inspect or edit.
+- `/compact` preservation order: active branch/checkout, saved env path, TX/fire state, hardware authorization, deployed versus merely built revisions, verification status, and unresolved follow-ups.
+- Treat remembered device paths and deployment state as historical context; verify them against the current task and repository before acting.
 - Put path-specific Claude rules in `.claude/rules/*.md` with `paths:` frontmatter instead of expanding this stub.
 - Nested `CLAUDE.md` files in subdirectories load on demand; prefer them for area-specific Claude guidance.
 
@@ -37,4 +37,4 @@
 
 **Verification:** exactly one `@AGENTS.md` import; total file stays under 50 lines.
 
-**Last Updated:** 2026-05-15
+**Last Updated:** 2026-10-01
