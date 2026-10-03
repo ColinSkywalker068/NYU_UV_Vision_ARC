@@ -1,0 +1,72 @@
+# Auto-aim tracking, prediction and solver parameters in one file, for runs outside basler.launch.py
+# (the Gazebo auto-aim simulation in controls_odin1_nav, sentry_autoaim_sim). Values are the robot's
+# current configuration: the basler.launch.py defaults with services/stm-stack.env.example
+# CV_STM_EXTRA_LAUNCH_ARGS applied. The robot launch path does not read this file; keep the two in step
+# when a value is tuned.
+#
+#   ros2 run yolo_cpp aim_solver_node --ros-args --params-file aim_params.yaml
+#
+# Runtime tuning: the parameters marked [live] can be changed while the node runs, e.g.
+#   ros2 param set /aim_solver_node actuator_delay_s 0.04
+# Everything else is read at start-up.
+
+armor_tracker_node:
+  ros__parameters:
+    tracking_frame: gimbal_inertial
+    attitude_sync_tolerance_ms: 30.0
+    attitude_max_gap_ms: 50.0
+    max_frame_age_s: 0.25
+    camera_translation_m: [0.0, 0.0, 0.0]
+    camera_mount_yaw_pitch_roll: [0.0, 0.0, 0.0]
+    track_min_hits: 2
+    track_max_coast_frames: 6
+    track_drop_frames: 16
+    track_max_coast_s: 0.12                    # [live]
+    track_drop_s: 0.35                         # [live]
+    position_filter_tau_s: 0.035               # [live]
+    velocity_filter_tau_s: 0.10                # [live]
+    association_max_center_distance_ratio: 0.30
+    association_min_iou: 0.0
+    association_max_3d_distance_m: 0.35
+    target_switch_min_score_delta: 0.08        # [live]
+    target_lock_hysteresis_frames: 6           # [live]
+
+armor_processor_node:
+  ros__parameters:
+    target_frame: gimbal_inertial
+    robot_estimator.enable: true
+    robot_estimator.use_ekf: true
+    robot_estimator.armor_radius_m: 0.26
+    robot_estimator.armor_count: 4
+    robot_estimator.center_gate_m: 0.45
+    robot_estimator.plate_cluster_gate_m: 0.18
+    robot_estimator.min_updates: 5
+    robot_estimator.coast_frames: 8
+
+aim_solver_node:
+  ros__parameters:
+    target_topic: processor/target
+    output_mode: absolute
+    use_3d_solution: true
+    publish_zero_angles_when_no_target: false  # stm-stack.env.example overrides the launch default (true)
+    enable_fire_recommendation: false
+    calibration_provisional: false
+    hfov_degrees: 79.2
+    vfov_degrees: 63.78
+    default_image_width: 640
+    default_image_height: 640
+    default_bullet_speed_mps: 18.0             # [live]
+    compensate_gravity: true                   # [live]
+    gravity_mps2: 9.80665                      # [live]
+    solver_latency_s: 0.0                      # [live] latency compensation
+    actuator_delay_s: 0.0                      # [live] latency compensation
+    max_frame_age_s: 0.25                      # [live]
+    max_measurement_age_s: 0.15                # [live]
+    yaw_max_slew_deg_s: 60.0                   # [live]
+    pitch_max_slew_deg_s: 60.0                 # [live]
+    yaw_max_accel_deg_s2: 360.0                # [live]
+    pitch_max_accel_deg_s2: 240.0              # [live]
+    plate_switch_margin: 0.15                  # [live]
+    attitude_sync_tolerance_ms: 30.0
+    attitude_max_gap_ms: 50.0
+    attitude_history_seconds: 1.0
