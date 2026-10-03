@@ -31,6 +31,9 @@ public:
   ~AimSolverNode() override = default;
 
 private:
+  /// Apply live tuning of the prediction parameters (ros2 param set); rejects start-up-only ones.
+  rcl_interfaces::msg::SetParametersResult on_parameters(const std::vector<rclcpp::Parameter>& parameters);
+
   /// Solve and publish aim output for one target message.
   void handle_target(const cv_auto_aim_interfaces::msg::Target::SharedPtr msg);
 
@@ -72,6 +75,7 @@ private:
   float gravity_mps2_{9.80665F};
   AttitudeHistory attitude_history_;
   std::mutex attitude_mutex_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr parameter_callback_handle_;
   double attitude_sync_tolerance_ms_{30.0};
   double attitude_max_gap_ms_{50.0};
   AimPredictionConfig prediction_config_;

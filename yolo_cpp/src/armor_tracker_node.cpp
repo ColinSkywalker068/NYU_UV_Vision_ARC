@@ -196,7 +196,41 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   target_publisher_ =
     this->create_publisher<cv_auto_aim_interfaces::msg::Target>("tracker/target", 10);
 
+  parameter_callback_handle_ = this->add_on_set_parameters_callback(
+    std::bind(&ArmorTrackerNode::on_parameters, this, std::placeholders::_1));
   RCLCPP_INFO(this->get_logger(), "Initialized ArmorTrackerNode");
+}
+
+rcl_interfaces::msg::SetParametersResult ArmorTrackerNode::on_parameters(
+  const std::vector<rclcpp::Parameter>& parameters)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  auto config = track_manager_.config();
+  for (const auto& parameter : parameters) {
+    const auto& name = parameter.get_name();
+    if (name == "track_max_coast_s") {config.track_max_coast_s = parameter.as_double();}
+    else if (name == "track_drop_s") {config.track_drop_s = parameter.as_double();}
+    else if (name == "position_filter_tau_s") {config.position_filter_tau_s = parameter.as_double();}
+    else if (name == "velocity_filter_tau_s") {config.velocity_filter_tau_s = parameter.as_double();}
+    else if (name == "target_switch_min_score_delta") {
+      config.target_switch_min_score_delta = parameter.as_double();
+    } else if (name == "target_lock_hysteresis_frames") {
+      config.target_lock_hysteresis_frames = parameter.as_int();
+    } else {
+      result.successful = false;
+      result.reason = name + " is read at start-up; restart the node to change it";
+      return result;
+    }
+  }
+  try {
+    track_manager_.set_config(config);
+  } catch (const std::invalid_argument& error) {
+    result.successful = false;
+    result.reason = error.what();
+  }
+  return result;
 }
 
 void ArmorTrackerNode::armors_callback(const cv_auto_aim_interfaces::msg::Armors::SharedPtr msg)

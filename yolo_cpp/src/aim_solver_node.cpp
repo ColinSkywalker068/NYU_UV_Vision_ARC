@@ -115,7 +115,69 @@ AimSolverNode::AimSolverNode(const rclcpp::NodeOptions& options)
       this->get_logger(),
       "Fire recommendations disabled. Set enable_fire_recommendation:=true only for competition");
   }
+  parameter_callback_handle_ = this->add_on_set_parameters_callback(
+    std::bind(&AimSolverNode::on_parameters, this, std::placeholders::_1));
   RCLCPP_INFO(this->get_logger(), "Initialized AimSolverNode");
+}
+
+rcl_interfaces::msg::SetParametersResult AimSolverNode::on_parameters(
+  const std::vector<rclcpp::Parameter>& parameters)
+{
+  // Validate every value first, then apply them together, so a rejected set changes nothing.
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  auto config = prediction_config_;
+  auto bullet_speed = default_bullet_speed_mps_;
+  auto latency = solver_latency_s_;
+  auto gravity = gravity_mps2_;
+  auto compensate = compensate_gravity_;
+  const auto reject = [&result](const std::string& reason) {
+    result.successful = false;
+    result.reason = reason;
+  };
+  for (const auto& parameter : parameters) {
+    const auto& name = parameter.get_name();
+    if (name == "compensate_gravity") {
+      compensate = parameter.as_bool();
+      continue;
+    }
+    const bool is_live = name == "default_bullet_speed_mps" || name == "gravity_mps2" ||
+      name == "solver_latency_s" || name == "actuator_delay_s" || name == "max_frame_age_s" ||
+      name == "max_measurement_age_s" || name == "yaw_max_slew_deg_s" ||
+      name == "pitch_max_slew_deg_s" || name == "yaw_max_accel_deg_s2" ||
+      name == "pitch_max_accel_deg_s2" || name == "plate_switch_margin";
+    if (!is_live) {
+      reject(name + " is read at start-up; restart the node to change it");
+      break;
+    }
+    const double value = parameter.as_double();
+    const bool positive_only = name == "default_bullet_speed_mps" || name == "max_frame_age_s" ||
+      name == "max_measurement_age_s" || name.find("_max_") != std::string::npos;
+    if (!std::isfinite(value) || value < 0.0 || (positive_only && value == 0.0)) {
+      reject(name + " must be finite and " + (positive_only ? "positive" : "non-negative"));
+      break;
+    }
+    if (name == "default_bullet_speed_mps") {bullet_speed = static_cast<float>(value);}
+    else if (name == "gravity_mps2") {gravity = static_cast<float>(value);}
+    else if (name == "solver_latency_s") {latency = static_cast<float>(value);}
+    else if (name == "actuator_delay_s") {config.actuator_delay_s = value;}
+    else if (name == "max_frame_age_s") {config.max_frame_age_s = value;}
+    else if (name == "max_measurement_age_s") {config.max_measurement_age_s = value;}
+    else if (name == "yaw_max_slew_deg_s") {config.yaw_speed_rad_s = value * kPi / 180;}
+    else if (name == "pitch_max_slew_deg_s") {config.pitch_speed_rad_s = value * kPi / 180;}
+    else if (name == "yaw_max_accel_deg_s2") {config.yaw_accel_rad_s2 = value * kPi / 180;}
+    else if (name == "pitch_max_accel_deg_s2") {config.pitch_accel_rad_s2 = value * kPi / 180;}
+    else if (name == "plate_switch_margin") {config.plate_switch_margin = value;}
+  }
+  if (result.successful) {
+    prediction_config_ = config;
+    if (bullet_speed_mps_ == default_bullet_speed_mps_) {bullet_speed_mps_ = bullet_speed;}
+    default_bullet_speed_mps_ = bullet_speed;
+    solver_latency_s_ = latency;
+    gravity_mps2_ = gravity;
+    compensate_gravity_ = compensate;
+  }
+  return result;
 }
 
 void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::SharedPtr msg)

@@ -36,6 +36,9 @@ private:
     double publish_ms{0.0};
   };
 
+  /// Apply live tuning of the track timing and filter parameters; rejects start-up-only ones.
+  rcl_interfaces::msg::SetParametersResult on_parameters(const std::vector<rclcpp::Parameter>& parameters);
+
   /// Process one detector output frame.
   void armors_callback(const cv_auto_aim_interfaces::msg::Armors::SharedPtr msg);
 
@@ -69,6 +72,7 @@ private:
   std::chrono::steady_clock::time_point last_stage_log_wall_time_{};
   bool have_last_stage_log_wall_time_{false};
   std::mutex state_mutex_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr parameter_callback_handle_;
   AttitudeHistory attitude_history_;
   std::string tracking_frame_{"gimbal_inertial"};
   double attitude_edge_tolerance_s_{0.03};
