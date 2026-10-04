@@ -195,15 +195,17 @@ std::optional<AttitudeFrame> parse_sp_frame(const std::vector<uint8_t>& frame)
       !std::isfinite(speed) || speed < 0.0F || speed > 100.0F) {
     return std::nullopt;
   }
-  // SP already includes the controller's wxyz quaternion. Older test/firmware
-  // streams may leave it zero; yaw and pitch remain authoritative in that case.
+  // SP scalar yaw/pitch are authoritative. The Type C wxyz quaternion uses
+  // Rz(yaw) * Ry(roll) * Rx(pitch), so its named roll is the Y Euler angle.
+  // Older test/firmware streams may leave the quaternion zero (roll stays zero).
   const double w = read_float_le(frame, 3), x = read_float_le(frame, 7);
   const double y = read_float_le(frame, 11), z = read_float_le(frame, 15);
   const double qnorm2 = w*w + x*x + y*y + z*z;
   if (!std::isfinite(qnorm2)) {return std::nullopt;}
   if (qnorm2 > 1e-12) {
     if (qnorm2 < 0.25 || qnorm2 > 4.0) {return std::nullopt;}
-    parsed.roll = static_cast<float>(std::atan2(2.0*(w*x+y*z), qnorm2-2.0*(x*x+y*y)));
+    const double sin_roll = 2.0 * (w * y - x * z) / qnorm2;
+    parsed.roll = static_cast<float>(std::asin(std::clamp(sin_roll, -1.0, 1.0)));
   }
   parsed.bullet_speed = static_cast<int>(speed);
   parsed.flags_register = (parsed.work_mode & 0x0003) | ((parsed.bullet_speed & 0x00FF) << 8);
@@ -829,7 +831,12 @@ void STM32SerialBridgeNode::write_runtime_log_line(const std::string& line)
     runtime_log_stream_.open(runtime_log_path_, std::ios::trunc);
     if (!runtime_log_stream_.is_open()) {return;}
   }
-  runtime_log_stream_ << "ros_ns=" << this->now().nanoseconds() << " ts=" << timestamp_now_iso8601_ms() << ' ' << line << '\n';
+  const auto steady_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+    std::chrono::steady_clock::now().time_since_epoch()).count();
+  // Same-host interval clock only; neither UTC nor an MCU source timestamp.
+  runtime_log_stream_ << "steady_ns=" << steady_ns
+                     << " ros_ns=" << this->now().nanoseconds()
+                     << " ts=" << timestamp_now_iso8601_ms() << ' ' << line << '\n';
   runtime_log_stream_.flush();
 }
 
@@ -847,6 +854,8 @@ void STM32SerialBridgeNode::log_alignment(
        << " tx_enabled=" << transmit_enable_ << " status=" << std::quoted(msg.status)
        << " output_mode=" << std::quoted(msg.output_mode) << " used_3d=" << msg.used_3d
        << " command_yaw=" << msg.yaw << " command_pitch=" << msg.pitch
+       << " bridge_frame_age_s="
+       << (now_ns - rclcpp::Time(msg.header.stamp).nanoseconds()) * 1e-9
        << " frame_age_s=" << msg.frame_age_s << " measurement_age_s=" << msg.measurement_age_s
        << " prediction_horizon_s=" << msg.prediction_horizon_s << " range_m=" << msg.range
        << " selected_slot=" << msg.selected_slot << " suggest_fire=" << msg.suggest_fire
@@ -854,7 +863,8 @@ void STM32SerialBridgeNode::log_alignment(
        << " attitude_stamp_ns=" << rclcpp::Time(a.header.stamp).nanoseconds()
        << " attitude_receive_ns=" << a.receive_stamp_ns << " attitude_age_s=" << age_ns * 1e-9
        << " source_timestamped=" << a.source_timestamped
-       << " measured_yaw=" << a.yaw << " measured_pitch=" << a.pitch;
+       << " measured_yaw=" << a.yaw << " measured_pitch=" << a.pitch
+       << " measured_yaw_rate=" << a.yaw_rate << " measured_pitch_rate=" << a.pitch_rate;
   if (fresh && accepted) {
     line << " yaw_error=" << std::remainder(msg.yaw - a.yaw, 6.283185307179586)
          << " pitch_error=" << msg.pitch - a.pitch;

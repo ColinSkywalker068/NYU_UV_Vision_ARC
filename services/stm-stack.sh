@@ -338,6 +338,12 @@ run_health() {
     bash -lc "cd '${CV_STM_REPO_ROOT}' && exec ./services/stm-stack-entrypoint.sh health"
 }
 
+preview_health() {
+  CV_STM_SHOW="${CV_STM_SHOW:-false}" \
+  CV_STM_EXTRA_LAUNCH_ARGS="${CV_STM_EXTRA_LAUNCH_ARGS:-}" \
+    python3 "${SCRIPT_DIR}/preview-health.py"
+}
+
 start_checked() {
   systemctl_action "$1"
   ensure_docker
@@ -349,10 +355,13 @@ start_checked() {
     sleep 1
   done
   log "Service started; waiting for ROS readiness and fresh Type C telemetry"
+  local health_status=0 preview_status=0
   if ! run_health "${CV_STM_STARTUP_TIMEOUT_S:-45}"; then
     log "Service was left running, but readiness did not pass. Check 'cv logs' and retry 'cv health'. First-time model builds can exceed the readiness timeout."
-    return 1
+    health_status=1
   fi
+  preview_health || preview_status=$?
+  return "$((health_status || preview_status))"
 }
 
 run_yaw_smoke() {
@@ -415,6 +424,8 @@ Commands:
   start      Start ${SERVICE_NAME}, then check ROS and live Type C telemetry.
   stop       Stop ${SERVICE_NAME}.
   restart    Restart ${SERVICE_NAME}, then check ROS and live Type C telemetry.
+  preview-check
+             Check HTTP preview freshness and show forwarding instructions; no restart.
   preview-gui
              Persist CV_STM_SHOW=gui and restart ${SERVICE_NAME}.
   preview-web
@@ -448,6 +459,7 @@ main() {
     start) start_checked start ;;
     stop) systemctl_action stop ;;
     restart) start_checked restart ;;
+    preview-check) preview_health ;;
     preview-gui) set_preview gui gui ;;
     preview-web) set_preview web web ;;
     preview-on) set_preview gui gui ;;

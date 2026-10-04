@@ -49,6 +49,23 @@ swapping devices. Do not disable SSH host-key checks. See the
 
 ### Edit the live env and start a safe preview
 
+For the browser preview, keep an SSH tunnel open **on your host device**:
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -L 127.0.0.1:18080:127.0.0.1:8080 ultraviolet@192.168.55.1
+```
+
+Open **http://127.0.0.1:18080/**. For Wi-Fi, replace the USB IP with the
+verified Jetson hostname/IP. Alternatively, from a host-side clone run
+`bash services/preview-tunnel.sh YOUR_SSH_ALIAS`. If your SSH alias already
+forwards port 18080, use that connection instead of starting a second tunnel.
+The tunnel survives `cv restart`; reconnect it after unplugging USB or losing
+the SSH connection. A Jetson-side command cannot establish host-side forwarding.
+
+`cv start` and `cv restart` now check advancing preview frames when the saved
+mode is `web`. `cv preview-check` repeats only that read-only check and prints
+the forwarding instructions. A preview check failure does not stop CV or alter TX.
+
 On the **Jetson**, open your CV checkout from the table above. The live settings
 are in **`services/stm-stack.env` inside that checkout**. The `.env.example`
 file is only a template; editing it does not change the running service.

@@ -443,6 +443,13 @@ if(BUILD_TESTING)
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO
   )
 
+  ament_add_test(serial_bridge_quaternion
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_serial_quaternion.py
+      --bridge $<TARGET_FILE:stm32_serial_bridge>
+    TIMEOUT 45
+    GENERATE_RESULT_FOR_RETURN_CODE_ZERO
+  )
+
   # The legacy source tree predates the ROS formatting profile. Keep the new standalone tracking
   # core formatted without turning this feature branch into a repository-wide style rewrite.
   ament_clang_format(
