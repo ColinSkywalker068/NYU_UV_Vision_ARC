@@ -75,6 +75,11 @@ Add `--typec-repo /home/ultraviolet/Documents/Controls_TypeC` to capture J-Link
 RTT in the same session. Do not flash while that RTT recorder is running.
 Ctrl+C stops the session. Neither recorder enables TX or starts/restarts CV.
 
+For an operator-ended session with no preset duration or file-size cutoff, use
+`python3 tools/record-tracking-session.py --seconds 0 --max-mib 0 --video-max-mib 0 --record-video --typec-repo /home/ultraviolet/Documents/Controls_TypeC`.
+Stop with Ctrl+C when testing is complete. Zero disables each corresponding
+limit; the default command remains bounded. Check available disk space first.
+
 The recorder requires `ffmpeg` on the Jetson host. It reads the existing HTTP
 preview using Python and copies JPEG packets into Matroska without re-encoding
 or opening the camera. This supports the NVIDIA FFmpeg package, which lacks
@@ -122,3 +127,34 @@ recording, not real-time alignment with MCU source timestamps.
 The live solver reachability settings can differ from the flashed Type C limits.
 Check both before interpreting reachability; changing solver metadata does not
 change the MCU's motor limits. Do not silently change them in a logging patch.
+
+## Moving-plate diagnostic findings
+
+The operator-ended `20261004T005520Z-960e6185` session was captured on October 3,
+2026 (Eastern time), after the SP roll-decoding correction and Type C v10 flash.
+The recording and raw logs are deployment artifacts, not repository assets.
+
+- During the moving-plate interval (118–161 seconds), 596 of 2,670 processed
+  frames were coasting. There were 32 command-disable episodes totaling 5.51
+  seconds. Preview snapshots inside three pauses showed zero detector candidates.
+- These pauses followed six coasting frames, selection loss, or the independent
+  150 ms measurement-age cutoff. Target-message gaps remained below 42 ms and
+  accepted frame age below 77 ms during this interval; there was no sustained
+  processing backlog explaining those particular pauses.
+- Reacquisition changed commands by several degrees, including about 7.05 degrees
+  yaw at 155.747 seconds. The Type C's explicit mode-0 hold synchronizes its
+  reference to measured pose, so repeated loss/reacquisition can also change
+  motor effort abruptly. Serial-write success does not establish MCU acceptance.
+- The separate upward pitch shortfall persisted: at 95–98 seconds, reference was
+  about 2.69 degrees and actual pitch about -0.26 degrees with roughly -11,200
+  raw motor command. Another interval reached the existing -20,000 command limit
+  while measured pitch remained near 18.1 degrees against a 25-degree reference.
+  A controller-load or mechanical/electrical investigation is required; reducing
+  reference braking cannot establish a cure for these stationary errors.
+
+Next validation should distinguish detector misses from association failures,
+retain measurement-age and fire restrictions, and measure command continuity
+through reacquisition. Increasing a frame-based coast budget can cover only
+brief losses within the existing time limits; it cannot justify commanding
+through a one-second loss. Verify travel, balance and actuator power before
+adding pitch load compensation or bounded integral with anti-windup and resets.

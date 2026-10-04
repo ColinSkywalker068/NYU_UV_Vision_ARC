@@ -22,11 +22,15 @@ import uuid
 def video_command(executable, port, seconds, max_mib, output):
     # Stream-copy the already-rendered JPEGs. No second camera client, inference,
     # encoder, or controller access. Wall time preserves irregular arrival spacing.
-    return [executable, "-nostdin", "-hide_banner", "-loglevel", "warning",
+    command = [executable, "-nostdin", "-hide_banner", "-loglevel", "warning",
             "-use_wallclock_as_timestamps", "1", "-analyzeduration", "1000000",
             "-probesize", "1048576", "-f", "mjpeg", "-i", "pipe:0",
-            "-map", "0:v:0", "-c:v", "copy", "-t", str(seconds),
-            "-fs", str(max_mib * 1024 * 1024), "-f", "matroska", str(output)]
+            "-map", "0:v:0", "-c:v", "copy"]
+    if seconds:
+        command += ["-t", str(seconds)]
+    if max_mib:
+        command += ["-fs", str(max_mib * 1024 * 1024)]
+    return command + ["-f", "matroska", str(output)]
 
 
 def feed_video(process, port, output, stop, state):
@@ -80,16 +84,16 @@ def stop_child(process):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--seconds", type=float, default=120)
-    ap.add_argument("--max-mib", type=int, default=128)
+    ap.add_argument("--seconds", type=float, default=120, help="Duration; 0 records until Ctrl+C")
+    ap.add_argument("--max-mib", type=int, default=128, help="Bridge log size cap; 0 disables it")
     ap.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[1])
     ap.add_argument("--preview-port", type=int, default=8080)
     ap.add_argument("--typec-repo", type=Path, help="Also record Type C RTT through J-Link/OpenOCD")
     ap.add_argument("--record-video", action="store_true", help="Save the existing overlay stream as overlay.mkv (requires ffmpeg)")
-    ap.add_argument("--video-max-mib", type=int, default=1024, help="Separate video size cap; logs have their own --max-mib cap")
+    ap.add_argument("--video-max-mib", type=int, default=1024, help="Separate video size cap; 0 disables it")
     args = ap.parse_args()
-    if not math.isfinite(args.seconds) or args.seconds <= 0 or min(args.max_mib, args.video_max_mib) < 1 or not 1 <= args.preview_port <= 65535:
-        ap.error("positive duration/size and valid port required")
+    if not math.isfinite(args.seconds) or args.seconds < 0 or min(args.max_mib, args.video_max_mib) < 0 or not 1 <= args.preview_port <= 65535:
+        ap.error("nonnegative duration/size and valid port required")
     if args.typec_repo and not (args.typec_repo / "scripts/logger/typec_diagnostics.py").is_file():
         ap.error("Type C diagnostics script is missing from --typec-repo")
     ffmpeg = shutil.which("ffmpeg") if args.record_video else None
@@ -106,6 +110,7 @@ def main():
         return {"utc_ns": time.time_ns(), "monotonic_ns": time.monotonic_ns()}
     manifest = {"start": clock(), "revision": git("rev-parse", "HEAD"),
                 "working_tree": git("status", "--short"), "duration_requested_s": args.seconds,
+                "capture_until_stopped": args.seconds == 0,
                 "clock_note": "Host clocks are not synchronized MCU source timestamps.",
                 "scope": "New bytes appended to existing bridge logs plus HTTP stats; no configuration copied."}
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -119,7 +124,7 @@ def main():
             continue
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     start = time.monotonic()
-    limit = args.max_mib * 1024 * 1024
+    limit = args.max_mib * 1024 * 1024 if args.max_mib else None
     copied = 0
     next_preview = start
     reason = "duration_complete"
@@ -151,7 +156,7 @@ def main():
                 stdout=typec_console, stderr=subprocess.STDOUT, start_new_session=True)
             print("Type C RTT capture requested; status in typec-console.log. No reset/flash or control packets.", flush=True)
         with (out / "bridge.log").open("wb") as bridge, (out / "preview.jsonl").open("w") as preview:
-            while time.monotonic() - start < args.seconds and copied < limit:
+            while (args.seconds == 0 or time.monotonic() - start < args.seconds) and (limit is None or copied < limit):
                 if typec_process and typec_process.poll() not in (None, 0):
                     raise RuntimeError("Type C capture failed; inspect typec-console.log and typec/*/openocd.log")
                 if video_process and video_process.poll() not in (None, 0):
@@ -171,7 +176,7 @@ def main():
                             if offset > stat.st_size:
                                 offset = 0
                             source.seek(offset)
-                            data = source.read(min(1024 * 1024, limit - copied))
+                            data = source.read(1024 * 1024 if limit is None else min(1024 * 1024, limit - copied))
                             bridge.write(data)
                             copied += len(data)
                             offsets[key] = source.tell()
@@ -190,7 +195,7 @@ def main():
                     preview.flush()
                     next_preview = time.monotonic() + 1
                 time.sleep(.2)
-        if copied >= limit:
+        if limit is not None and copied >= limit:
             reason = "bridge_log_size_limit"
     except KeyboardInterrupt:
         reason = "stopped_by_user"
