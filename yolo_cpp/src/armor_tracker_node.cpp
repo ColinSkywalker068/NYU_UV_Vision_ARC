@@ -147,8 +147,8 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   this->declare_parameter<int>("enemy_color_red_value", 0);
   this->declare_parameter<int>("enemy_color_blue_value", 1);
   this->declare_parameter<int>("track_min_hits", 2);
-  this->declare_parameter<int>("track_max_coast_frames", 6);
-  this->declare_parameter<int>("track_drop_frames", 16);
+  this->declare_parameter<int>("track_max_coast_frames", 0);
+  this->declare_parameter<int>("track_drop_frames", 0);
   this->declare_parameter<double>("association_max_center_distance_ratio", 0.30);
   this->declare_parameter<double>("association_min_iou", 0.0);
   this->declare_parameter<double>("target_switch_min_score_delta", 0.08);
@@ -175,6 +175,8 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   this->declare_parameter<double>("association_max_3d_distance_m", 0.35);
   config.association_max_3d_distance_m =
     this->get_parameter("association_max_3d_distance_m").as_double();
+  config.pose_innovation_confirm_m = this->declare_parameter<double>("pose_innovation_confirm_m", 0.20);
+  config.pose_max_reprojection_rms_px = this->declare_parameter<double>("pose_max_reprojection_rms_px", 5.0);
   config.target_switch_min_score_delta =
     this->get_parameter("target_switch_min_score_delta").as_double();
   config.target_lock_hysteresis_frames =
@@ -321,6 +323,12 @@ void ArmorTrackerNode::publish_tracked_armors(
   msg.camera_pose.position.y = frame_camera_position_.y;
   msg.camera_pose.position.z = frame_camera_position_.z;
   assign_orientation(msg.camera_pose.orientation, rotation_quaternion(frame_rotation_));
+  msg.raw_count = result.raw_count;
+  msg.enemy_count = result.enemy_count;
+  msg.posed_count = result.posed_count;
+  msg.matched_count = result.matched_count;
+  msg.quality_rejected_count = result.quality_rejected_count;
+  msg.innovation_rejected_count = result.innovation_rejected_count;
   msg.tracks.reserve(result.tracks.size());
   for (const auto& track : result.tracks) {
     cv_auto_aim_interfaces::msg::TrackedArmor tracked;
@@ -330,6 +338,9 @@ void ArmorTrackerNode::publish_tracked_armors(
     tracked.age = track.age;
     tracked.hit_streak = track.hit_streak;
     tracked.lost_frames = track.lost_frames;
+    tracked.real_measurement_age_s = track.real_measurement_age_s;
+    tracked.innovation_m = track.innovation_m;
+    tracked.association_reason = track.association_reason;
     tracked.predicted_center_x = track.predicted_center.x;
     tracked.predicted_center_y = track.predicted_center.y;
     tracked.measurement_stamp_ns = track.observation.measurement_stamp_ns;
@@ -396,7 +407,7 @@ void ArmorTrackerNode::publish_target(
   const auto& snapshot = *target;
   msg.has_target = true;
   msg.tracking = true;
-  msg.suggest_fire = true;
+  msg.suggest_fire = snapshot.state == TrackState::kTracking && snapshot.real_measurement_age_s == 0.0;
   msg.is_coasting = snapshot.state == TrackState::kCoasting;
   msg.track_id = snapshot.track_id;
   msg.bbox_xyxy = {snapshot.observation.bbox.x, snapshot.observation.bbox.y,

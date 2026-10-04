@@ -176,6 +176,29 @@ just flash pyocd sentry --serial 032200157416303030303032
 Editing the Jetson env does not rebuild or flash the STM32. Editing Type C
 firmware does not take effect until that firmware is built and flashed.
 
+## Bounded tracking gaps and reacquisition
+
+After building the updated workspace, the tracker defaults to time-based
+coasting/identity retention. Optional settings in `CV_STM_EXTRA_LAUNCH_ARGS`:
+
+```text
+track_max_coast_frames:=0 track_max_coast_s:=0.12
+track_drop_frames:=0 track_drop_s:=0.35
+pose_innovation_confirm_m:=0.20 pose_max_reprojection_rms_px:=5.0
+```
+
+Zero frame caps make the time budgets authoritative; positive caps retain the
+legacy additional frame limit. Saved positive overrides are preserved; remove
+or deliberately change them to use the new policy. The solver's independent
+150 ms last-real-measurement limit remains, including pipeline latency.
+Increasing coasting does not make old data fresh. Fire remains disabled on
+coasted targets and opt-in overall. See [manual validation](../validation/autoaim-manual-checks.md#brief-detection-gaps-and-smoothing)
+for quality gates, spin transitions and diagnostic interpretation.
+
+This update changes tracked ROS messages, so rebuild both active packages via
+`uv build yolo_cpp` before restarting; an env-only restart cannot apply source
+changes. Neither installing nor updating this code edits the live env.
+
 ## Keeping the example current
 
 When a setting should become the documented team default, update

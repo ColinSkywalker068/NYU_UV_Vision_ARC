@@ -158,3 +158,25 @@ through reacquisition. Increasing a frame-based coast budget can cover only
 brief losses within the existing time limits; it cannot justify commanding
 through a one-second loss. Verify travel, balance and actuator power before
 adding pitch load compensation or bounded integral with anti-windup and resets.
+
+## Offline follow-up implementation
+
+The next local revision makes 120 ms coasting and 350 ms identity retention
+time-authoritative by default, with optional positive legacy frame caps.
+Reacquisition quarantines inconsistent pose jumps, requires confirmation,
+and avoids turning a confirmed discontinuity into a velocity impulse.
+Measured confirmed plates outrank coast predictions during spin transitions.
+The solver's 150 ms real-measurement limit and no-fire-on-coast contract remain.
+
+The bridge now records compact `tracking_association` rows in the same rotating
+runtime log. Frame timestamps/source IDs connect raw candidate counts, quality
+rejections, association state and missed-frame ages to the target/command rows.
+The existing recorder includes them without another camera client or ROS bag.
+Per-track PnP residual is the last accepted observation; use rejection counts
+to identify a quality failure rather than treating that residual as the rejected
+candidate's fit. Counters describe tracker input, not unseen detector proposals.
+
+These changes are local software candidates until built and deployed on the
+robot. Synthetic tests cannot establish detector recall, camera calibration,
+motor health or physical stability. Existing recordings lack the new per-frame
+association diagnostics; they cannot be retroactively reconstructed.

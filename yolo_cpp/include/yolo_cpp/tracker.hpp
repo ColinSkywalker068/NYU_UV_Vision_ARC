@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <opencv2/core.hpp>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -122,14 +123,18 @@ struct TrackSnapshot
   bool has_velocity{false};
   cv::Vec3d velocity;
   bool selectable{false};
+  double real_measurement_age_s{0.0};
+  double innovation_m{-1.0};
+  // Stable diagnostic tokens; no per-frame text logging.
+  std::string association_reason{"new_track"};
 };
 
 /// Tunable association, confirmation, coasting, and target-lock parameters.
 struct TrackConfig
 {
   int track_min_hits{2};
-  int track_max_coast_frames{6};
-  int track_drop_frames{16};
+  int track_max_coast_frames{0};  // Optional extra cap; zero uses time only.
+  int track_drop_frames{0};
   double track_max_coast_s{0.12};
   double track_drop_s{0.35};
   double position_filter_tau_s{0.035};
@@ -137,6 +142,8 @@ struct TrackConfig
   double association_max_center_distance_ratio{0.30};
   double association_min_iou{0.0};
   double association_max_3d_distance_m{0.35};
+  double pose_innovation_confirm_m{0.20};
+  double pose_max_reprojection_rms_px{5.0};
   double target_switch_min_score_delta{0.08};
   int target_lock_hysteresis_frames{6};
 };
@@ -144,6 +151,12 @@ struct TrackConfig
 /// Tracker output for one processed frame.
 struct TrackingFrameResult
 {
+  std::uint32_t raw_count{0};
+  std::uint32_t enemy_count{0};
+  std::uint32_t posed_count{0};
+  std::uint32_t matched_count{0};
+  std::uint32_t quality_rejected_count{0};
+  std::uint32_t innovation_rejected_count{0};
   std::vector<TrackSnapshot> tracks;
   std::optional<TrackSnapshot> selected_target;
   std::optional<int> selected_track_id;
@@ -194,6 +207,10 @@ private:
     double detection_age_s{0.0};
     double pose_measurement_age_s{0.0};
     cv::Vec3d velocity;
+    std::optional<cv::Point3d> pending_position;
+    double pending_age_s{0.0};
+    double innovation_m{-1.0};
+    std::string association_reason{"new_track"};
   };
 
   struct RankedTrack

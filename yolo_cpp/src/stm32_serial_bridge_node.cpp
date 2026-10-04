@@ -621,6 +621,9 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
     tracking_log_subscription_ = this->create_subscription<cv_auto_aim_interfaces::msg::Target>(
       "processor/target", 100, std::bind(&STM32SerialBridgeNode::log_tracking_target, this,
       std::placeholders::_1));
+    association_log_subscription_ = this->create_subscription<cv_auto_aim_interfaces::msg::TrackedArmors>(
+      "tracker/tracked_armors", rclcpp::SensorDataQoS(),
+      std::bind(&STM32SerialBridgeNode::log_tracking_association, this, std::placeholders::_1));
   }
   stamped_attitude_publisher_ =
     this->create_publisher<cv_auto_aim_interfaces::msg::GimbalAttitude>("gimbal/attitude", 100);
@@ -891,6 +894,39 @@ void STM32SerialBridgeNode::log_tracking_target(
        << " camera_qy=" << msg->camera_pose.orientation.y
        << " camera_qz=" << msg->camera_pose.orientation.z
        << " camera_qw=" << msg->camera_pose.orientation.w;
+  write_runtime_log_line(line.str());
+}
+
+void STM32SerialBridgeNode::log_tracking_association(
+  const cv_auto_aim_interfaces::msg::TrackedArmors::SharedPtr msg)
+{
+  // One bounded summary per detector frame, including misses. The existing
+  // session recorder copies this rotating log without a second ROS capture.
+  std::ostringstream line;
+  line << std::setprecision(8) << "kind=tracking_association frame_ns="
+       << rclcpp::Time(msg->header.stamp).nanoseconds()
+       << " source_id=" << std::quoted(msg->source_id)
+       << " selected_track_id=" << msg->selected_track_id
+       << " camera_pose_valid=" << msg->camera_pose_valid
+       << " raw_count=" << msg->raw_count << " enemy_count=" << msg->enemy_count
+       << " posed_count=" << msg->posed_count << " matched_count=" << msg->matched_count
+       << " quality_rejected_count=" << msg->quality_rejected_count
+       << " innovation_rejected_count=" << msg->innovation_rejected_count
+       << " track_count=" << msg->tracks.size();
+  std::size_t logged = 0;
+  for (const auto& track : msg->tracks) {
+    // Always include the selected track; bound other records to four.
+    if (logged >= 4 && track.track_id != msg->selected_track_id) {continue;}
+    line << " track" << logged << "_id=" << track.track_id
+         << " track" << logged << "_reason=" << std::quoted(track.association_reason)
+         << " track" << logged << "_lost_frames=" << track.lost_frames
+         << " track" << logged << "_measurement_ns=" << track.measurement_stamp_ns
+         << " track" << logged << "_real_age_s=" << track.real_measurement_age_s
+         << " track" << logged << "_innovation_m=" << track.innovation_m
+         << " track" << logged << "_pnp_rms_px=" << track.armor.reprojection_rms_px;
+    ++logged;
+  }
+  line << " logged_tracks=" << logged;
   write_runtime_log_line(line.str());
 }
 

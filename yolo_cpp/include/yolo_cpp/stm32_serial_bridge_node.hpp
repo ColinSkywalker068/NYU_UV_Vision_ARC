@@ -16,6 +16,7 @@
 #include "cv_auto_aim_interfaces/msg/gimbal_attitude.hpp"
 #include "cv_auto_aim_interfaces/msg/aim_solution.hpp"
 #include "cv_auto_aim_interfaces/msg/target.hpp"
+#include "cv_auto_aim_interfaces/msg/tracked_armors.hpp"
 
 namespace yolo_cpp
 {
@@ -47,6 +48,7 @@ private:
   void handle_solution(const cv_auto_aim_interfaces::msg::AimSolution::SharedPtr msg);
   void log_alignment(const cv_auto_aim_interfaces::msg::AimSolution& msg, bool accepted);
   void log_tracking_target(const cv_auto_aim_interfaces::msg::Target::SharedPtr msg);
+  void log_tracking_association(const cv_auto_aim_interfaces::msg::TrackedArmors::SharedPtr msg);
 
   /// Send the latest vision command when transmission is enabled.
   void maybe_send();
@@ -76,6 +78,7 @@ private:
 
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::AimSolution>::SharedPtr solution_subscription_;
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::Target>::SharedPtr tracking_log_subscription_;
+  rclcpp::Subscription<cv_auto_aim_interfaces::msg::TrackedArmors>::SharedPtr association_log_subscription_;
   cv_auto_aim_interfaces::msg::GimbalAttitude latest_attitude_sample_;
   bool tracking_log_enable_{true};
   std::int64_t runtime_log_max_bytes_{67108864};

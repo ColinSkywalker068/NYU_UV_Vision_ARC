@@ -15,7 +15,7 @@ from pathlib import Path
 
 import rclpy
 from std_msgs.msg import Bool, Float32MultiArray
-from cv_auto_aim_interfaces.msg import AimSolution, Target
+from cv_auto_aim_interfaces.msg import AimSolution, Target, TrackedArmor, TrackedArmors
 
 
 def attitude_packet(yaw, pitch):
@@ -52,6 +52,7 @@ class SerialReconnectTest(unittest.TestCase):
         self.angles = self.node.create_publisher(Float32MultiArray, "bounding_box_angles", 10)
         self.solutions = self.node.create_publisher(AimSolution, "aim_solution", 10)
         self.targets = self.node.create_publisher(Target, "processor/target", 10)
+        self.associations = self.node.create_publisher(TrackedArmors, "tracker/tracked_armors", 10)
         self.override = self.node.create_publisher(Bool, "override", 10)
         self.bridge = subprocess.Popen(
             [BRIDGE, "--ros-args", "-p", f"serial_port:={self.port}",
@@ -213,6 +214,52 @@ class SerialReconnectTest(unittest.TestCase):
         self.assertTrue(all(p.stat().st_size < 6000 for p in logs))
         self.assertNotIn("kind=serial_tx", content)
         self.assertEqual(self.outbound, b"")
+
+    def test_association_logging_without_tx(self):
+        self.attach()
+        self.await_attitude(0.4, -0.1)
+        frame = TrackedArmors()
+        frame.source_id = "test_camera"
+        frame.selected_track_id = 99
+        frame.raw_count = 3
+        frame.enemy_count = 2
+        frame.posed_count = 1
+        frame.matched_count = 0
+        frame.innovation_rejected_count = 1
+        for index in range(9):
+            track = TrackedArmor()
+            track.track_id = 99 if index == 8 else index
+            track.association_reason = "innovation_pending"
+            track.lost_frames = 3
+            track.real_measurement_age_s = 0.05
+            track.innovation_m = 0.3
+            track.armor.reprojection_rms_px = 1.2
+            frame.tracks.append(track)
+        end = time.monotonic() + 0.8
+        while time.monotonic() < end:
+            frame.header.stamp = self.node.get_clock().now().to_msg()
+            self.associations.publish(frame)
+            self.step(attitude_packet(0.4, -0.1))
+        content = "\n".join(
+            p.read_text() for p in self.root.glob("vision_serial_runtime_*")
+        )
+        rows = [
+            line
+            for line in content.splitlines()
+            if "kind=tracking_association " in line
+        ]
+        self.assertTrue(rows, content[-4000:])
+        self.assertIn(
+            "raw_count=3 enemy_count=2 posed_count=1 matched_count=0", rows[-1]
+        )
+        self.assertIn("innovation_rejected_count=1", rows[-1])
+        self.assertIn("track4_id=99", rows[-1])
+        self.assertIn('track4_reason="innovation_pending"', rows[-1])
+        self.assertIn("logged_tracks=5", rows[-1])
+        self.assertNotIn("track5_", rows[-1])
+        self.assertEqual(
+            self.outbound, b"", "diagnostic subscriptions must not enable TX"
+        )
 
     def test_atomic_solution_rejects_stale_offset_and_replay(self):
         self.attach()

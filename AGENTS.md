@@ -64,6 +64,7 @@ NYU Robomaster ROS 2 C++ auto-aim vision pipeline for camera capture, YOLO/Tenso
 - `transmit_enable:=false` keeps normal bridge command TX off while preview and RX can run. Absolute/offset display mode and provisional calibration are not TX switches. Keep fire recommendations disabled unless the operator explicitly enables them; MCU acceptance gates are separate.
 - `cv start` / `cv restart` check ROS readiness and fresh decoded attitude when RX/TX is enabled. A failed check leaves CV running for inspection. These commands do not calibrate or flash the Type C. `cv health` repeats the read-only check.
 - Preserve image capture time, attitude alignment, frame conventions, measurement age, and bounded coasting across detector/tracker/processor/solver changes. Host receive timestamps do not prove MCU source-clock synchronization. See the [telemetry plan](docs/project/tracker-telemetry-plan.md).
+- Tracker defaults use 120 ms coasting and 350 ms identity retention; zero frame caps use time alone, positive caps add legacy limits. The solver still rejects real measurements older than 150 ms. Per-frame `tracking_association` diagnostics share the existing log/recorder; source/message updates require rebuilding both active packages. See [manual validation](docs/validation/autoaim-manual-checks.md).
 - Older models in `yolo_cpp/models/` and `legacy/models/` remain available. Preserve them when adding a backend; switching requires matching model path, parser/task, class mapping, and engine runtime, not just a filename change.
 - Jetson owns perception and solver configuration; Type C owns motor control, slew limits, and acceptance. The test fixture is a recorded controller reference, not proof of currently flashed firmware. Simulation and fresh telemetry do not establish physical tracking stability.
 - Diagnose with saved `vision_logs/` alignment records and `tools/analyze-tracking-alignment.py`; serial write success is not proof of MCU acceptance or motor response. See [manual validation](docs/validation/autoaim-manual-checks.md).
@@ -155,4 +156,4 @@ Use each document's `SCOPE`, `READ_WHEN`, and `SKIP_WHEN` metadata before readin
 - [ ] The file remains under 200 lines.
 - [ ] Shared guidance appears here rather than being duplicated in `CLAUDE.md`.
 
-**Last Updated:** 2026-10-01
+**Last Updated:** 2026-10-03

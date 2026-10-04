@@ -12,3 +12,11 @@ int32 selected_track_id
 string pose_frame_id
 bool camera_pose_valid
 geometry_msgs/Pose camera_pose
+
+# Cheap frame diagnostics before enemy/pose filtering; matched excludes new tracks.
+uint32 raw_count
+uint32 enemy_count
+uint32 posed_count
+uint32 matched_count
+uint32 quality_rejected_count
+uint32 innovation_rejected_count

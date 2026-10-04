@@ -35,3 +35,13 @@ geometry_msgs/Point predicted_position_tracking
 geometry_msgs/Vector3 velocity_tracking
 # Time of the most recent real detector observation; unchanged during coasting.
 int64 measurement_stamp_ns
+
+# Age of last real 3D measurement, or last detection for a 2D-only track.
+float64 real_measurement_age_s
+# Candidate distance from predicted 3D position; -1 when unavailable.
+float64 innovation_m
+# new_track, matched_3d/2d, no_detection, identity_gate, distance_gate,
+# pose_quality, innovation_pending/confirmed, or new_plate_confirmed.
+# pose_quality means the frame contained rejected poses, not proof that a
+# particular rejected candidate belonged to this track.
+string association_reason
