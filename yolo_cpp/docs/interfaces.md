@@ -81,11 +81,21 @@ The tracker publishes a 2D-compatible target on `tracker/target`. The processor 
 
 ## AimSolution
 
-`AimSolution.msg` is the solver debug output:
+`AimSolution.msg` is the atomic solver output consumed by the STM bridge:
 
 - `has_solution`, `used_3d`, `suggest_fire`
 - yaw and pitch in radians plus degree copies for inspection
 - estimated `flight_time`, `range`, and `bullet_speed`
+- `has_angular_velocity`, `yaw_velocity`, `pitch_velocity`: rates in rad/s of
+  the same absolute ballistic aim point, sharing its capture timestamp and
+  `gimbal_inertial` frame; zero on acquisition, identity/slot changes, coasting,
+  stale/invalid input, 2D/offset mode, or rate/innovation guard failure
+
+Unavailable rates do not invalidate an otherwise valid angle solution. The
+bridge requires rate capture age at most 100 ms and maps the rates to existing
+SP velocity fields; acceleration fields remain zero. A zero wire rate can mean
+stationary or unavailable, since the wire format has no rate-valid flag.
+Rebuild both active ROS packages after changing this message.
 
 ## How the Interfaces Fit Together
 

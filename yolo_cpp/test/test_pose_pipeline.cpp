@@ -233,6 +233,7 @@ TEST(ProductionPosePipeline, CameraPanDoesNotCreateTargetMotionOrChangeAbsoluteC
     spin();
   }
   std::size_t valid_count = 0;
+  std::size_t valid_rate_count = 0;
   double max_yaw_error = 0;
   double max_velocity = 0;
   for (const auto & result : solutions) {
@@ -241,6 +242,11 @@ TEST(ProductionPosePipeline, CameraPanDoesNotCreateTargetMotionOrChangeAbsoluteC
       continue;
     }
     ++valid_count;
+    if (result.has_angular_velocity) {
+      ++valid_rate_count;
+      EXPECT_LT(std::abs(result.yaw_velocity), .03);
+      EXPECT_LT(std::abs(result.pitch_velocity), .03);
+    }
     max_yaw_error = std::max(max_yaw_error, std::abs(result.yaw - std::atan2(fixed.x, fixed.z)));
   }
   for (const auto & target : targets) {
@@ -254,6 +260,7 @@ TEST(ProductionPosePipeline, CameraPanDoesNotCreateTargetMotionOrChangeAbsoluteC
     }
   }
   EXPECT_GE(valid_count, 70U);
+  EXPECT_GE(valid_rate_count, 60U);
   EXPECT_LT(max_yaw_error, 0.001);  // <0.06 deg, no phantom pan correction.
   EXPECT_LT(max_velocity, 0.01);
   RecordProperty("valid_commands", static_cast<int>(valid_count));

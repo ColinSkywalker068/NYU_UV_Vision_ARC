@@ -341,7 +341,7 @@ The recorded reference fixture above retains its historical 60 degrees/s and
 360/240 degrees/s² profile. It does not represent later tuning or establish
 which firmware is installed on a connected controller.
 
-## Moving-target following: measured limits and next changes
+## Moving-target following: motion-aware braking and rate feedforward
 
 The October 3 offline review separates three errors: detection/estimate versus
 the real target, received command versus the MCU's applied reference, and
@@ -382,34 +382,43 @@ Globally lowering smoothing trades that reversal lag for substantially more
 jitter. The benchmark changes no runtime defaults and validates no physical
 motor response or camera calibration.
 
-The local Sentry profile has a second filter (`VISION_TARGET_FILTER_ALPHA=0.20`),
-which adds approximately four packet intervals of ramp delay. Its reference
-governor uses stationary-target stopping distance, which also produces separation
-when following a moving target. Both axes lack active target-rate feedforward;
-pitch's newly staged static load support is a different function and defaults
-disabled. The Type C benchmark in `scripts/tests/benchmark_vision_following.py`
-isolates these control effects. Current local rate/acceleration limits are
-125/115 degrees/s and 440/310 degrees/s²; this statement does not verify flash
-state. Solver-side slew parameters describe reachability and do not rate-limit
-the transmitted command.
+The updated solver attaches angular rates to the same atomic `AimSolution` as
+the absolute angles. Rates are derivatives of the production world-frame
+ballistic/intercept model, in radians/second, rather than image motion caused by
+camera panning. They require a continuous identity and selected armor slot,
+fresh measured 3D tracking, finite bounded velocity, and consistent command
+innovation. Acquisition, coasting, identity/slot changes, stale input, and
+invalid rates send zero rate without discarding an otherwise valid angle.
+The bridge also requires capture age at most 100 ms for rates. The existing
+29-byte SP packet carries these rates; acceleration fields remain zero.
 
-The next moving-follow candidate should:
+Sentry validates successive rate/angle samples against receipt time and the
+axis rate/acceleration budgets. Trusted rates predict the filtered target before
+its unchanged alpha-0.20 correction, and project at most 50 ms between packets.
+Braking limits relative closing motion instead of forcing a moving target's
+absolute speed toward zero. Missing or rejected rates retain stationary-target
+filtering/braking. SP has no source timestamp or identity, so this receipt guard
+cannot establish source-clock synchronization or independently detect identity.
 
-1. Restore detection continuity and verify synchronized, signed target velocity.
-   Reset velocity on identity changes, stale data and confirmed pose jumps.
-   Avoid extrapolation across prolonged loss or inventing velocity between plates.
-2. Respond faster to corroborated maneuvers using pose quality, measured noise,
-   and innovation, rather than reducing the velocity filter everywhere. Score
-   reversal response together with stationary jitter and false-pose rejection.
-3. Make MCU braking depend on relative closing velocity to a moving reference,
-   preserving speed, acceleration, travel and output budgets. First compare
-   stationary approaches and ramps using the actual production governor.
-4. Feed the final applied reference rate into both motor speed loops with
-   verified motor/IMU signs and explicit handling of derivative damping. Keep
-   static pitch support separate. Do not blindly enable the generic yaw gain.
-5. Reset prediction and dynamic feedforward on explicit mode 0, stop, stale
-   feedback and reacquisition. Preserve one-shot pose hold and independent
-   feedback expiry. Do not retain a lost target as a moving reference.
+Both motor speed loops now receive the final bounded reference rate, including
+the existing angle-derivative contribution. Gyro feedback supplies angle
+damping while vision is active, avoiding pulses from differentiating 5 ms
+angle updates in the 1 ms motor loop. Command feedforward expires independently
+after 20 ms; fresh IMU/CAN guards, RC/hold/stop/autotune transitions, travel
+limits, and composed output caps remain. Static pitch load support is separate
+and defaults disabled. See the Type C `application/gimbal/gimbal.md` for the
+control equation and fallback details.
+
+Rate/acceleration limits remain 125/115 degrees/s and 440/310 degrees/s².
+The Type C `scripts/tests/benchmark_vision_following.py` compares the original
+stationary governor with the production motion governor: ideal 30/60/100
+degrees/s ramps have under 0.001 degrees steady reference error with the new
+governor. Production fixtures test both motor loops, signs, travel limits,
+expiry, saturation, starts/stops/reversals, and mismatched loop cadences.
+These results isolate software behavior and do not verify physical tracking.
+Solver-side slew parameters describe reachability and do not rate-limit the
+transmitted command. Adaptive perception filtering remains future work; the
+global velocity filter and its reversal/noise tradeoff above are unchanged.
 
 Accept a candidate only after replay improves reversal following without
 worsening stationary aim jitter or outlier response, and tests preserve
@@ -422,7 +431,8 @@ existing `gimbal_*_target_deg_s` fields are speed-PID demands, not derivatives o
 the applied angle reference. Derive reference rate from MCU timestamps or add
 dedicated diagnostic fields; do not mislabel those demands as target velocity.
 
-These moving-follow changes are a plan, not deployed behavior. The present local
-patch adds bounded reacquisition/coasting, diagnostics and pitch output/freshness
-guards. It does not enable feedforward, increase limits, alter saved TX settings,
-or establish a new physical tracking guarantee.
+Apply both repository updates together: rebuild the ROS interfaces and runtime,
+then build and flash the Sentry firmware during a controlled hardware-safe
+procedure. An env-only restart cannot install either source update. Updating
+these changes does not edit saved TX, fire, model, calibration, or preview
+settings. Confirm actual deployed revisions before interpreting new logs.

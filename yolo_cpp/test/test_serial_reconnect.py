@@ -36,7 +36,7 @@ class SerialReconnectTest(unittest.TestCase):
         self.master = None
         self.send_valid_solution = True
         self.provisional = self._testMethodName.startswith("test_provisional_calibration_")
-        self.tx_enabled = self._testMethodName in ("test_provisional_calibration_respects_enabled_tx", "test_atomic_solution_rejects_stale_offset_and_replay")
+        self.tx_enabled = self._testMethodName in ("test_provisional_calibration_respects_enabled_tx", "test_atomic_solution_rejects_stale_offset_and_replay", "test_atomic_angular_rates_and_safe_zero_fallback")
         self.outbound = bytearray()
         self.samples = []
         self.log_path = self.root / "bridge.log"
@@ -98,6 +98,10 @@ class SerialReconnectTest(unittest.TestCase):
         solution.header.frame_id = "gimbal_inertial"
         solution.output_mode = "absolute"
         solution.has_solution = True
+        solution.used_3d = True
+        solution.has_angular_velocity = True
+        solution.yaw_velocity = 0.35
+        solution.pitch_velocity = -0.2
         solution.yaw = 0.2
         solution.pitch = 0.1
         if self.send_valid_solution:
@@ -260,6 +264,51 @@ class SerialReconnectTest(unittest.TestCase):
         self.assertEqual(
             self.outbound, b"", "diagnostic subscriptions must not enable TX"
         )
+
+    def test_atomic_angular_rates_and_safe_zero_fallback(self):
+        self.attach()
+        self.await_attitude(0.4, -0.1)
+        self.spin_for(0.2)
+        self.send_valid_solution = False
+        self.spin_for(0.05)
+
+        def send_case(**fields):
+            solution = AimSolution()
+            solution.header.stamp = self.node.get_clock().now().to_msg()
+            solution.header.frame_id = "gimbal_inertial"
+            solution.output_mode = "absolute"
+            solution.has_solution = True
+            solution.used_3d = True
+            solution.has_angular_velocity = True
+            solution.yaw, solution.pitch = 0.6, -0.15
+            solution.yaw_velocity, solution.pitch_velocity = 0.7, -0.4
+            for key, value in fields.items():
+                setattr(solution, key, value)
+            self.outbound.clear()
+            self.solutions.publish(solution)
+            self.spin_for(0.06)
+            packets = [self.outbound[i:i+29] for i in range(0, len(self.outbound)-28, 29)]
+            self.assertTrue(packets)
+            return solution, packets[-1], struct.unpack("<6f", packets[-1][3:27])
+
+        _, packet, values = send_case()
+        self.assertEqual(packet[2], 1)
+        for actual, expected in zip(values, (0.6, 0.7, 0, -0.15, -0.4, 0)):
+            self.assertAlmostEqual(actual, expected, places=5)
+        for fields in ({"has_angular_velocity": False}, {"used_3d": False},
+                       {"yaw_velocity": float("nan")}, {"pitch_velocity": 100.0}):
+            _, packet, values = send_case(**fields)
+            self.assertEqual(packet[2], 1, "invalid rate must retain valid position aiming")
+            self.assertEqual((values[1], values[2], values[4], values[5]), (0, 0, 0, 0))
+        solution, _, _ = send_case()
+        self.outbound.clear()
+        self.solutions.publish(solution)  # Replayed atomic solution clears rates and control.
+        self.spin_for(.06)
+        packets = [self.outbound[i:i+29] for i in range(0, len(self.outbound)-28, 29)]
+        self.assertTrue(packets)
+        self.assertEqual(packets[-1][2], 0)
+        values = struct.unpack("<6f", packets[-1][3:27])
+        self.assertEqual((values[1], values[4]), (0, 0))
 
     def test_atomic_solution_rejects_stale_offset_and_replay(self):
         self.attach()

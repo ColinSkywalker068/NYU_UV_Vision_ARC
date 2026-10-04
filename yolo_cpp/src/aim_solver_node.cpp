@@ -166,6 +166,7 @@ void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::Sha
   double yaw = std::atan2(inertial_ray.x, inertial_ray.z);
   double pitch = std::atan2(-inertial_ray.y, std::hypot(inertial_ray.x, inertial_ray.z));
   AimPredictionResult result;
+  AimAngularVelocity angular_velocity;
   const bool used_3d = use_3d_solution_ && msg->has_pose;
   if (used_3d) {
     AimPredictionInput input;
@@ -202,6 +203,11 @@ void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::Sha
     yaw = result.yaw;
     pitch = result.pitch;
     previous_slot_ = result.selected_slot;
+    angular_velocity = rate_estimator_.update(input, config, result, selected_identity,
+      output_mode_ == "absolute" && !msg->is_coasting &&
+      msg->state == cv_auto_aim_interfaces::msg::Target::TRACKING);
+  } else {
+    rate_estimator_.reset();
   }
   if (output_mode_ == "offset") {
     yaw = angle_difference(yaw, current->yaw);
@@ -232,6 +238,9 @@ void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::Sha
   solution.minimum_slew_s = result.minimum_slew_s;
   solution.reachable = result.reachable;
   solution.selected_slot = result.selected_slot;
+  solution.has_angular_velocity = angular_velocity.valid;
+  solution.yaw_velocity = angular_velocity.yaw_rad_s;
+  solution.pitch_velocity = angular_velocity.pitch_rad_s;
   solution.output_mode = output_mode_;
   solution.status = used_3d ? result.reason : "2d_preview";
   aim_solution_publisher_->publish(solution);
@@ -271,6 +280,7 @@ void AimSolverNode::handle_attitude_flags(const std_msgs::msg::Int32MultiArray::
 
 void AimSolverNode::publish_no_target(int image_width, int image_height, const char * reason)
 {
+  rate_estimator_.reset();
   previous_slot_ = -1;
   const int cx = std::max(0, image_width / 2);
   const int cy = std::max(0, image_height / 2);

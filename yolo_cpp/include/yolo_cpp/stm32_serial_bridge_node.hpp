@@ -98,6 +98,8 @@ private:
   int target_state_{0};
   float latest_yaw_{0.0F};
   float latest_pitch_{0.0F};
+  float latest_yaw_velocity_{0.0F};
+  float latest_pitch_velocity_{0.0F};
   std::chrono::steady_clock::time_point command_time_{};
   std::chrono::steady_clock::time_point override_time_{};
   bool have_command_{false};

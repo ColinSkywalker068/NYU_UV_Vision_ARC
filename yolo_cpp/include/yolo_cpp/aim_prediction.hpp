@@ -55,6 +55,36 @@ struct AimPredictionResult
   int selected_slot{-1};
 };
 
+struct AimAngularVelocity
+{
+  bool valid{false};
+  double yaw_rad_s{0.0};
+  double pitch_rad_s{0.0};
+};
+
+// Rates of the absolute ballistic aim point, never camera-relative pixel
+// motion. Differentiate the same world-motion/ballistic model over 10ms, then
+// require continuous measured identity/plate and bounded model/command
+// innovations. Invalid/unavailable rates are zero; they do not invalidate
+// position aiming.
+class AimRateEstimator
+{
+public:
+  AimAngularVelocity update(
+    const AimPredictionInput & input, const AimPredictionConfig & config,
+    const AimPredictionResult & solution, int identity, bool fresh_tracking);
+  void reset() { have_previous_ = false; }
+
+private:
+  bool have_previous_{false};
+  int identity_{-1};
+  int slot_{-1};
+  std::int64_t source_stamp_ns_{0};
+  std::int64_t evaluation_stamp_ns_{0};
+  double yaw_{0.0}, pitch_{0.0}, bullet_speed_{0.0};
+  AimAngularVelocity previous_rate_;
+};
+
 // Production solver core, shared by ROS and deterministic offline tests.
 // Positions and velocities are in fixed-orientation gimbal_inertial axes.
 AimPredictionResult predict_aim(

@@ -199,6 +199,23 @@ This update changes tracked ROS messages, so rebuild both active packages via
 `uv build yolo_cpp` before restarting; an env-only restart cannot apply source
 changes. Neither installing nor updating this code edits the live env.
 
+## Motion-aware tracking update
+
+The solver publishes bounded yaw/pitch angular rates with its absolute 3D
+command, and the bridge puts them in the existing SP velocity fields in
+radians/second. No extra env switch enables this: trusted rates require fresh,
+continuous measured tracking and become zero on acquisition, coasting, stale
+input, or identity/armor-slot changes. Angles remain usable when rates are
+unavailable. Sentry firmware validates those rates for motion-aware braking
+and feeds the final bounded reference rate into both motor speed loops.
+
+This requires `uv build yolo_cpp` (both active ROS packages), `cv restart`,
+and the matching built/flashed Type C Sentry firmware. Saved env-only changes
+still need only `cv restart`. The update preserves the env and existing rate,
+acceleration, travel and motor-output limits; `transmit_enable` remains the
+normal bridge TX switch. See [manual validation](../validation/autoaim-manual-checks.md#moving-target-following-motion-aware-braking-and-rate-feedforward)
+for limits, fallback behavior and commissioning checks.
+
 ## Keeping the example current
 
 When a setting should become the documented team default, update

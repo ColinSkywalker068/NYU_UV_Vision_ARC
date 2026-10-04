@@ -363,7 +363,8 @@ public:
     return true;
   }
 
-  bool send_vision_data(float pitch, float yaw, int fire_mode, int target_state, int target_type)
+  bool send_vision_data(float pitch, float yaw, float yaw_velocity, float pitch_velocity,
+    int fire_mode, int target_state, int target_type)
   {
     (void)target_type;
     if (!connected_ || fd_ < 0) {
@@ -372,7 +373,8 @@ public:
 
     const uint8_t mode =
       target_state == TARGET_STATE_NO_TARGET ? 0U : fire_mode_to_sp_mode(fire_mode);
-    const auto packet = build_sp_command_frame(mode, yaw, 0.0F, 0.0F, pitch, 0.0F, 0.0F);
+    const auto packet = build_sp_command_frame(mode, yaw, mode ? yaw_velocity : 0.0F, 0.0F,
+      pitch, mode ? pitch_velocity : 0.0F, 0.0F);
     const auto bytes_written =
       ::write(fd_, reinterpret_cast<const char*>(packet.data()), packet.size());
     if (bytes_written < 0) {
@@ -681,6 +683,7 @@ void STM32SerialBridgeNode::handle_angles(const std_msgs::msg::Float32MultiArray
     RCLCPP_WARN(this->get_logger(), "Received malformed angle message");
     return;
   }
+  latest_yaw_velocity_ = latest_pitch_velocity_ = 0.0F;
   latest_yaw_ = msg->data[0];
   latest_pitch_ = msg->data[1];
   command_time_ = std::chrono::steady_clock::now();
@@ -701,6 +704,14 @@ void STM32SerialBridgeNode::handle_solution(
   has_target_ = valid;
   have_command_ = valid;
   suggest_fire_ = valid && msg->suggest_fire;
+  // Rates share the exact angle solution and capture timestamp. Untrusted
+  // rate fields retain position-only behavior; wire rates always use radians.
+  const bool rates_valid = valid && msg->used_3d && msg->has_angular_velocity &&
+    !transmit_angles_in_degrees_ && age_ns <= 100000000 &&
+    std::isfinite(msg->yaw_velocity) && std::isfinite(msg->pitch_velocity) &&
+    std::abs(msg->yaw_velocity) <= 3.0F && std::abs(msg->pitch_velocity) <= 3.0F;
+  latest_yaw_velocity_ = rates_valid ? msg->yaw_velocity : 0.0F;
+  latest_pitch_velocity_ = rates_valid ? msg->pitch_velocity : 0.0F;
   if (valid) {
     last_solution_stamp_ns_ = stamp_ns;
     latest_yaw_ = msg->yaw;
@@ -790,7 +801,9 @@ void STM32SerialBridgeNode::maybe_send()
     FIRE_MODE_AUTO_AIM : fire_mode_;
   const int fire_mode = active ? configured_mode : FIRE_MODE_NO_FIRE;
   const bool success =
-    transport_->send_vision_data(pitch_tx, yaw_tx, fire_mode, target_state_, target_type_);
+    transport_->send_vision_data(pitch_tx, yaw_tx,
+      active ? latest_yaw_velocity_ : 0.0F, active ? latest_pitch_velocity_ : 0.0F,
+      fire_mode, target_state_, target_type_);
   log_tx_event(yaw_tx, pitch_tx, success, fire_mode);
 }
 
@@ -857,6 +870,8 @@ void STM32SerialBridgeNode::log_alignment(
        << " tx_enabled=" << transmit_enable_ << " status=" << std::quoted(msg.status)
        << " output_mode=" << std::quoted(msg.output_mode) << " used_3d=" << msg.used_3d
        << " command_yaw=" << msg.yaw << " command_pitch=" << msg.pitch
+       << " has_angular_velocity=" << msg.has_angular_velocity
+       << " command_yaw_rate=" << msg.yaw_velocity << " command_pitch_rate=" << msg.pitch_velocity
        << " bridge_frame_age_s="
        << (now_ns - rclcpp::Time(msg.header.stamp).nanoseconds()) * 1e-9
        << " frame_age_s=" << msg.frame_age_s << " measurement_age_s=" << msg.measurement_age_s
@@ -933,10 +948,15 @@ void STM32SerialBridgeNode::log_tracking_association(
 void STM32SerialBridgeNode::log_tx_event(float yaw, float pitch, bool success, int fire_mode)
 {
   const uint16_t flags_register = build_vision_flags(fire_mode, target_state_, target_type_);
+  const bool rates_active = target_state_ != TARGET_STATE_NO_TARGET &&
+    fire_mode_to_sp_mode(fire_mode) != 0U;
   std::ostringstream line;
   line << std::fixed << std::setprecision(6) << "kind=serial_tx ok=" << (success ? 1 : 0)
        << " angle_unit=" << (transmit_angles_in_degrees_ ? "degrees" : "radians") << " yaw=" << yaw
-       << " pitch=" << pitch << " fire_mode=" << fire_mode << " target_state=" << target_state_
+       << " pitch=" << pitch << " yaw_rate_rad_s="
+       << (rates_active ? latest_yaw_velocity_ : 0.0F)
+       << " pitch_rate_rad_s=" << (rates_active ? latest_pitch_velocity_ : 0.0F)
+       << " fire_mode=" << fire_mode << " target_state=" << target_state_
        << " target_type=" << target_type_ << " flags=0x" << std::uppercase << std::hex
        << std::setw(4) << std::setfill('0') << flags_register;
   write_runtime_log_line(line.str());

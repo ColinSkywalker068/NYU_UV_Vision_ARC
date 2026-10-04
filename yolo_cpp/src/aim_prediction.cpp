@@ -135,4 +135,78 @@ AimPredictionResult predict_aim(const AimPredictionInput & in, const AimPredicti
   out.reason = out.valid ? "ok" : "nonfinite_solution";
   return out;
 }
+
+AimAngularVelocity AimRateEstimator::update(
+  const AimPredictionInput & input, const AimPredictionConfig & config,
+  const AimPredictionResult & solution, int identity, bool fresh_tracking)
+{
+  AimAngularVelocity rate;
+  if (
+    !fresh_tracking || !solution.valid || !input.has_velocity ||
+    input.measurement_stamp_ns != input.frame_stamp_ns) {
+    reset();
+    return rate;
+  }
+  // Move the world model and both clocks together: this differentiates the
+  // predicted absolute aim point (including flight time/gravity/robot phase),
+  // without turning frame-age jitter or camera rotation into target velocity.
+  constexpr double step_s = 0.01;
+  auto next = input;
+  next.frame_stamp_ns += 10000000;
+  next.measurement_stamp_ns += 10000000;
+  next.now_ns += 10000000;
+  next.position += input.velocity * step_s;
+  if (input.has_robot_state) {
+    next.robot.center.x += input.robot.velocity.x * step_s;
+    next.robot.center.y += input.robot.velocity.y * step_s;
+    next.robot.center.z += input.robot.velocity.z * step_s;
+    next.robot.phase_rad += input.robot.angular_velocity_rad_s * step_s;
+  }
+  next.previous_slot = solution.selected_slot;
+  const auto future = predict_aim(next, config);
+  if (!future.valid || future.selected_slot != solution.selected_slot) {
+    reset();
+    return rate;
+  }
+  rate.yaw_rad_s = angle_difference(future.yaw, solution.yaw) / step_s;
+  rate.pitch_rad_s = (future.pitch - solution.pitch) / step_s;
+  // Plausibility bounds, not actuator commands or tuning gains. Type C applies
+  // its own lower per-axis reference speed/acceleration and receipt-age limits.
+  constexpr double max_rate = 3.0;
+  constexpr double max_rate_change = 20.0;
+  if (
+    !std::isfinite(rate.yaw_rad_s) || !std::isfinite(rate.pitch_rad_s) ||
+    std::abs(rate.yaw_rad_s) > max_rate || std::abs(rate.pitch_rad_s) > max_rate) {
+    reset();
+    return {};
+  }
+  const double source_dt = (input.frame_stamp_ns - source_stamp_ns_) * 1e-9;
+  const double evaluation_dt = (input.now_ns - evaluation_stamp_ns_) * 1e-9;
+  const bool continuous = have_previous_ && identity == identity_ &&
+                          slot_ == solution.selected_slot && source_dt >= .005 &&
+                          source_dt <= .10 && evaluation_dt >= .001 && evaluation_dt <= .15 &&
+                          std::abs(config.bullet_speed_mps - bullet_speed_) < .001;
+  if (continuous) {
+    const double tolerance = .02 + .5 * max_rate_change * evaluation_dt * evaluation_dt;
+    const double yaw_step = angle_difference(solution.yaw, yaw_);
+    const double pitch_step = solution.pitch - pitch_;
+    rate.valid =
+      std::abs(rate.yaw_rad_s - previous_rate_.yaw_rad_s) <= max_rate_change * source_dt &&
+      std::abs(rate.pitch_rad_s - previous_rate_.pitch_rad_s) <= max_rate_change * source_dt &&
+      std::abs(yaw_step - .5 * (rate.yaw_rad_s + previous_rate_.yaw_rad_s) * evaluation_dt) <=
+        tolerance &&
+      std::abs(pitch_step - .5 * (rate.pitch_rad_s + previous_rate_.pitch_rad_s) * evaluation_dt) <=
+        tolerance;
+  }
+  have_previous_ = true;
+  identity_ = identity;
+  slot_ = solution.selected_slot;
+  source_stamp_ns_ = input.frame_stamp_ns;
+  evaluation_stamp_ns_ = input.now_ns;
+  yaw_ = solution.yaw;
+  pitch_ = solution.pitch;
+  bullet_speed_ = config.bullet_speed_mps;
+  previous_rate_ = rate;
+  return rate.valid ? rate : AimAngularVelocity{};
+}
 }  // namespace yolo_cpp
