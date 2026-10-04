@@ -146,6 +146,7 @@ struct AttitudeFrame
   int flags_register{0};
   int command_id{0};
   int robot_id{0};
+  int controller_auto_aim{-1};
 };
 
 std::vector<uint8_t> build_sp_command_frame(
@@ -222,6 +223,7 @@ std::optional<AttitudeFrame> parse_st_frame(const std::vector<uint8_t>& frame)
   AttitudeFrame parsed;
   parsed.command_id = static_cast<int>((SP_HEADER_0 << 8U) | ST_HEADER_1);
   parsed.robot_id = static_cast<int>(frame[30]);
+  parsed.controller_auto_aim = decode_controller_auto_aim(frame[26]);
   // ST offset 33 is shooter heat, not bullet speed. Speed arrives in SP.
   parsed.bullet_speed = 0;
   const int team_color = static_cast<int>(frame[35]);  // 0=red, 1=blue.
@@ -467,6 +469,8 @@ public:
     return frames;
   }
 
+  bool connected() const { return connected_; }
+
   void close()
   {
     if (fd_ >= 0) {
@@ -633,6 +637,9 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
   attitude_flags_publisher_ =
     this->create_publisher<std_msgs::msg::Int32MultiArray>("attitude_flags", 10);
 
+  controller_status_publisher_ =
+    this->create_publisher<std_msgs::msg::Int8>("controller_auto_aim", 1);
+
   rx_timer_ = this->create_wall_timer(std::chrono::duration<double>(DEFAULT_RX_POLL_PERIOD_SECONDS),
     std::bind(&STM32SerialBridgeNode::handle_rx_poll, this));
   RCLCPP_INFO(this->get_logger(), "STM32 serial bridge ready. transmit_enable=%s, port=%s, baud=%ld",
@@ -724,7 +731,14 @@ void STM32SerialBridgeNode::handle_solution(
 
 void STM32SerialBridgeNode::handle_rx_poll()
 {
+  const auto status_now = controller_status_now_ns();
   if (!transport_) {
+    if (status_now - last_unknown_status_publish_ns_ >= 100000000) {
+      std_msgs::msg::Int8 status;
+      status.data = -1;
+      controller_status_publisher_->publish(status);
+      last_unknown_status_publish_ns_ = status_now;
+    }
     return;
   }
   const auto now = std::chrono::steady_clock::now();
@@ -737,10 +751,27 @@ void STM32SerialBridgeNode::handle_rx_poll()
   const auto frames = transport_->read_attitude_frames();
   const auto received = this->get_clock()->now();
   const AttitudeFrame * newest_sp = nullptr;
+  const AttitudeFrame * newest_st = nullptr;
   for (const auto & frame : frames) {
     if (frame.command_id == static_cast<int>((SP_HEADER_0 << 8U) | SP_HEADER_1)) {
       newest_sp = &frame;
+    } else if (frame.command_id == static_cast<int>((SP_HEADER_0 << 8U) | ST_HEADER_1)) {
+      newest_st = &frame;
     }
+  }
+  if (!transport_->connected()) {
+    controller_status_.update(-1, status_now);
+  } else if (newest_st) {
+    controller_status_.update(newest_st->controller_auto_aim, status_now);
+  }
+  // Publish known values only for a new valid ST packet. SP traffic cannot
+  // keep acceptance alive. Unknown heartbeat also covers RX-disabled startup.
+  if (newest_st || (controller_status_.value(status_now) < 0 &&
+      status_now - last_unknown_status_publish_ns_ >= 100000000)) {
+    std_msgs::msg::Int8 status;
+    status.data = controller_status_.value(status_now);
+    controller_status_publisher_->publish(status);
+    if (status.data < 0) {last_unknown_status_publish_ns_ = status_now;}
   }
   // The wire has no device clock. Discard older samples in a read batch instead
   // of assigning multiple historical poses the same receive timestamp.
@@ -779,7 +810,7 @@ void STM32SerialBridgeNode::handle_rx_poll()
       attitude_flags_publisher_->publish(flags_msg);
     }
     log_rx_event(frame.yaw, frame.pitch, frame.roll, frame.enemy_color, frame.work_mode,
-      frame.bullet_speed, frame.flags_register, frame.command_id);
+      frame.bullet_speed, frame.flags_register, frame.command_id, frame.controller_auto_aim);
   }
 }
 
@@ -963,14 +994,15 @@ void STM32SerialBridgeNode::log_tx_event(float yaw, float pitch, bool success, i
 }
 
 void STM32SerialBridgeNode::log_rx_event(float yaw, float pitch, float roll, int enemy_color,
-  int work_mode, int bullet_speed, int flags_register, int command_id)
+  int work_mode, int bullet_speed, int flags_register, int command_id, int controller_auto_aim)
 {
   std::ostringstream line;
   line << std::fixed << std::setprecision(6) << "kind=serial_rx"
        << " yaw=" << yaw << " pitch=" << pitch << " roll=" << roll << " enemy_color=" << enemy_color
        << " work_mode=" << work_mode << " bullet_speed=" << bullet_speed << " flags=0x"
        << std::uppercase << std::hex << std::setw(4) << std::setfill('0') << flags_register
-       << " cmd=0x" << std::setw(4) << command_id;
+       << " cmd=0x" << std::setw(4) << command_id
+       << std::dec << " controller_auto_aim=" << controller_auto_aim;
   write_runtime_log_line(line.str());
 }
 

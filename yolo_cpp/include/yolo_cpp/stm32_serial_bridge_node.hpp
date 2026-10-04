@@ -8,6 +8,8 @@
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/int8.hpp>
+#include "yolo_cpp/controller_auto_aim_status.hpp"
 #include <std_msgs/msg/int32_multi_array.hpp>
 #include <string>
 #include <vector>
@@ -64,7 +66,7 @@ private:
 
   /// Log one received attitude/status frame.
   void log_rx_event(float yaw, float pitch, float roll, int enemy_color, int work_mode,
-    int bullet_speed, int flags_register, int command_id);
+    int bullet_speed, int flags_register, int command_id, int controller_auto_aim);
 
   std::unique_ptr<SerialTransport> transport_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr override_subscription_;
@@ -80,6 +82,9 @@ private:
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::Target>::SharedPtr tracking_log_subscription_;
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::TrackedArmors>::SharedPtr association_log_subscription_;
   cv_auto_aim_interfaces::msg::GimbalAttitude latest_attitude_sample_;
+  rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr controller_status_publisher_;
+  ControllerAutoAimStatus controller_status_;
+  std::int64_t last_unknown_status_publish_ns_{0};
   bool tracking_log_enable_{true};
   std::int64_t runtime_log_max_bytes_{67108864};
   int runtime_log_backups_{3};

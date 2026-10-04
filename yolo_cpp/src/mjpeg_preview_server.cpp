@@ -152,6 +152,11 @@ bool MjpegPreviewServer::update_frame(const cv::Mat &frame_bgr,
   return true;
 }
 
+void MjpegPreviewServer::update_controller_status(int state) {
+  std::lock_guard<std::mutex> lock(frame_mutex_);
+  controller_status_.update(state, controller_status_now_ns());
+}
+
 std::string MjpegPreviewServer::url() const {
   const std::string host =
       config_.bind_address.empty() || config_.bind_address == "0.0.0.0"
@@ -247,6 +252,11 @@ bool MjpegPreviewServer::send_stats(int client_fd) {
   {
     std::lock_guard<std::mutex> lock(frame_mutex_);
     body = latest_stats_json_;
+    // The detector supplies an object; reject invalid outer framing cheaply.
+    if (body.size() < 2 || body.front() != '{' || body.back() != '}') {body = "{}";}
+    body.pop_back();  // Append live status fields, even when no frame has arrived.
+    if (body.size() > 1) {body += ",";}
+    body += controller_status_.json_fields(controller_status_now_ns()) + "}";
   }
   const std::string header =
       "HTTP/1.1 200 OK\r\n" +
@@ -391,6 +401,8 @@ std::string MjpegPreviewServer::index_html(const std::string &title) {
          ")+"
       << "row('candidates',s.candidates??0)+row('enemy',s.enemy_candidates??0)+"
       << "row('target',s.has_target?`#${s.target_track_id}`:'none')+"
+      << "row('auto aim (MCU)',(s.auto_aim_status??'unknown').toUpperCase())+"
+      << "row('TX configuration',s.transmit_enabled===true?'ENABLED':(s.transmit_enabled===false?'DISABLED':'UNKNOWN'))+"
       << "row('latency ms',(s.latency_ms??0).toFixed?.(1)??s.latency_ms);}"
       << "catch(e){stats.innerHTML=row('status','waiting');}}"
       << "tick();setInterval(tick,500);</script></body></html>";

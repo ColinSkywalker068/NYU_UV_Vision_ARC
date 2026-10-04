@@ -12,6 +12,7 @@
 #include <opencv2/core/mat.hpp>
 
 #include "yolo_cpp/visibility_control.hpp"
+#include "yolo_cpp/controller_auto_aim_status.hpp"
 
 namespace yolo_cpp {
 
@@ -41,6 +42,9 @@ public:
   bool update_frame(const cv::Mat &frame_bgr, const std::string &stats_json,
                     int jpeg_quality);
 
+  /// Update independently of camera frames so HTTP status also expires when video stops.
+  void update_controller_status(int state);
+
   /// Return the browser URL operators can open from the same robot network.
   std::string url() const;
 
@@ -69,6 +73,7 @@ private:
   std::condition_variable frame_cv_;
   std::vector<unsigned char> latest_jpeg_;
   std::string latest_stats_json_{"{}"};
+  ControllerAutoAimStatus controller_status_;
   std::uint64_t frame_sequence_{0};
 
   std::mutex clients_mutex_;

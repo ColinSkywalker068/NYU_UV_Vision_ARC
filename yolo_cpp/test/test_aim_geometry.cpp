@@ -5,6 +5,7 @@
 
 #include "yolo_cpp/aim_geometry.hpp"
 #include "yolo_cpp/aim_prediction.hpp"
+#include "yolo_cpp/controller_auto_aim_status.hpp"
 #include "yolo_cpp/preview_geometry.hpp"
 
 using namespace yolo_cpp;
@@ -300,4 +301,29 @@ TEST(AimRates, IncludesChangingBallisticDropAndRejectsPlateSwitches)
   in.robot.phase_rad += 1.57079632679;
   solution = predict_aim(in, config);
   EXPECT_FALSE(estimator.update(in, config, solution, 7, true).valid);
+}
+
+TEST(ControllerAutoAimStatus, RequiresMetadataAndExpiresOnMonotonicReceiptTime)
+{
+  EXPECT_EQ(decode_controller_auto_aim(0x08), -1);  // Legacy bit3 cannot claim acceptance.
+  EXPECT_EQ(decode_controller_auto_aim(0x07), -1);
+  EXPECT_EQ(decode_controller_auto_aim(0x87), 0);  // Referee power bits are independent.
+  EXPECT_EQ(decode_controller_auto_aim(0x8f), 1);
+  ControllerAutoAimStatus status;
+  EXPECT_EQ(status.value(1000000000), -1);
+  EXPECT_EQ(
+    status.json_fields(1000000000),
+    "\"auto_aim_status\":\"unknown\",\"auto_aim_status_age_ms\":null");
+  status.update(1, 1000000000);
+  EXPECT_EQ(status.value(1500000000), 1);
+  EXPECT_EQ(status.value(1500000001), -1);
+  EXPECT_STREQ(status.name(1500000001), "unknown");
+  EXPECT_EQ(status.value(999999999), -1);
+  EXPECT_DOUBLE_EQ(status.age_ms(1250000000), 250);
+  status.update(0, 1600000000);
+  EXPECT_EQ(status.value(1600000000), 0);
+  status.update(2, 1700000000);  // Malformed ROS scalar invalidates immediately.
+  EXPECT_EQ(status.value(1700000000), -1);
+  status.update(-1, 1800000000);  // Disconnect or legacy ST.
+  EXPECT_EQ(status.value(1800000000), -1);
 }

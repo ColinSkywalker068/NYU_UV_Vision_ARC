@@ -14,18 +14,29 @@ import unittest
 from pathlib import Path
 
 import rclpy
-from std_msgs.msg import Bool, Float32MultiArray
+from std_msgs.msg import Bool, Float32MultiArray, Int8
 from cv_auto_aim_interfaces.msg import AimSolution, Target, TrackedArmor, TrackedArmors
 
 
-def attitude_packet(yaw, pitch):
-    payload = b"SP\x01" + struct.pack("<4f5fH", 1, 0, 0, 0, yaw, 0, pitch, 0, 15, 0)
+def with_crc(payload):
     crc = 0xFFFF
     for byte in payload:
         crc ^= byte
         for _ in range(8):
             crc = (crc >> 1) ^ (0x8408 if crc & 1 else 0)
     return payload + struct.pack("<H", crc)
+
+
+def attitude_packet(yaw, pitch):
+    return with_crc(b"SP\x01" + struct.pack("<4f5fH", 1, 0, 0, 0, yaw, 0, pitch, 0, 15, 0))
+
+
+def status_packet(robot_status):
+    payload = bytearray(37)
+    payload[:2] = b"ST"
+    payload[26] = robot_status
+    payload[30] = 7
+    return with_crc(payload)
 
 
 class SerialReconnectTest(unittest.TestCase):
@@ -36,9 +47,10 @@ class SerialReconnectTest(unittest.TestCase):
         self.master = None
         self.send_valid_solution = True
         self.provisional = self._testMethodName.startswith("test_provisional_calibration_")
-        self.tx_enabled = self._testMethodName in ("test_provisional_calibration_respects_enabled_tx", "test_atomic_solution_rejects_stale_offset_and_replay", "test_atomic_angular_rates_and_safe_zero_fallback")
+        self.tx_enabled = self._testMethodName in ("test_provisional_calibration_respects_enabled_tx", "test_atomic_solution_rejects_stale_offset_and_replay", "test_atomic_angular_rates_and_safe_zero_fallback", "test_controller_status_independent_of_enabled_tx")
         self.outbound = bytearray()
         self.samples = []
+        self.controller_status = []
         self.log_path = self.root / "bridge.log"
         self.log_file = self.log_path.open("w")
         # A separate ROS graph and a PTY path prevent access to the real controller.
@@ -48,6 +60,9 @@ class SerialReconnectTest(unittest.TestCase):
         self.node = rclpy.create_node("serial_reconnect_test")
         self.sub = self.node.create_subscription(
             Float32MultiArray, "attitude_data", lambda msg: self.samples.append(msg.data), 10
+        )
+        self.status_sub = self.node.create_subscription(
+            Int8, "controller_auto_aim", lambda msg: self.controller_status.append(msg.data), 10
         )
         self.angles = self.node.create_publisher(Float32MultiArray, "bounding_box_angles", 10)
         self.solutions = self.node.create_publisher(AimSolution, "aim_solution", 10)
@@ -140,6 +155,54 @@ class SerialReconnectTest(unittest.TestCase):
                 return
         self.fail(f"no telemetry after attaching virtual controller yaw={yaw}\n"
                   + self.log_path.read_text()[-5000:])
+
+    def await_controller_status(self, expected, packet=None, timeout=3):
+        self.controller_status.clear()
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            self.step(packet)
+            if self.controller_status and self.controller_status[-1] == expected:
+                return
+        self.fail(f"controller status did not become {expected}: {self.controller_status}")
+
+    def check_controller_status(self):
+        self.await_controller_status(-1)  # Missing device at startup.
+        self.attach()
+        self.await_attitude(0.4, -0.1)
+        self.await_controller_status(1, status_packet(0x8f))
+        self.await_controller_status(0, status_packet(0x87))
+        self.assertEqual(bool(self.outbound), self.tx_enabled)
+        self.await_controller_status(-1, status_packet(0x08))  # Legacy; bit3 alone is not ON.
+        self.await_controller_status(1, status_packet(0x88))
+        corrupt = bytearray(status_packet(0x88))
+        corrupt[-1] ^= 0x80
+        # Valid SP mode1 plus bad ST cannot refresh the acceptance clock.
+        self.spin_for(.75, attitude_packet(0.4, -0.1) + bytes(corrupt))
+        self.assertEqual(self.controller_status[-1], -1)
+        self.await_controller_status(0, status_packet(0x80))
+        self.controller_status.clear()
+        self.spin_for(.2, bytes(corrupt))
+        self.assertNotIn(1, self.controller_status, "bad CRC revived ON")
+        for _ in range(2):
+            self.await_controller_status(1, status_packet(0x88))
+            self.detach()
+            self.await_controller_status(-1)
+            self.attach()
+            self.await_attitude(0.5, -.2)
+            self.assertEqual(self.controller_status[-1], -1, "SP mode1 revived acceptance")
+            self.await_controller_status(0, status_packet(0x80))
+        self.assertEqual(bool(self.outbound), self.tx_enabled)
+        log = "\n".join(path.read_text() for path in self.root.glob("vision_serial_runtime_*.log"))
+        self.assertIn("cmd=0x5354 controller_auto_aim=1", log)
+        self.assertIn("cmd=0x5354 controller_auto_aim=0", log)
+        self.assertIn("cmd=0x5354 controller_auto_aim=-1", log)
+        self.assertIn("cmd=0x5350 controller_auto_aim=-1", log)
+
+    def test_controller_status_independent_of_disabled_tx(self):
+        self.check_controller_status()
+
+    def test_controller_status_independent_of_enabled_tx(self):
+        self.check_controller_status()
 
     def test_missing_startup_repeated_unplug_and_no_tx(self):
         self.spin_for(1.3)  # Start with no device at all, as at Jetson boot.

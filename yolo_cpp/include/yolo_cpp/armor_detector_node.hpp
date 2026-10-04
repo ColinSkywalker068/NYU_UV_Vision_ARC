@@ -12,6 +12,8 @@
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/int8.hpp>
+#include "yolo_cpp/controller_auto_aim_status.hpp"
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/int32_multi_array.hpp>
@@ -194,6 +196,8 @@ private:
   std::chrono::steady_clock::time_point last_preview_render_time_{};
   bool have_last_preview_render_time_{false};
   std::mutex state_mutex_;
+  ControllerAutoAimStatus controller_status_;
+  rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr controller_status_subscription_;
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::AimSolution>::SharedPtr preview_command_subscription_;
   rclcpp::Subscription<cv_auto_aim_interfaces::msg::GimbalAttitude>::SharedPtr preview_attitude_subscription_;
   std::int64_t preview_command_stamp_ns_{0};

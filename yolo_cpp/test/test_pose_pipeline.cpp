@@ -1,4 +1,7 @@
 #include <gtest/gtest.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include <iomanip>
 #include <opencv2/calib3d.hpp>
@@ -9,6 +12,7 @@
 #include "yolo_cpp/armor_processor_node.hpp"
 #include "yolo_cpp/armor_tracker_node.hpp"
 #include "yolo_cpp/detection_postprocess.hpp"
+#include "yolo_cpp/mjpeg_preview_server.hpp"
 #include "yolo_cpp/pnp_solver.hpp"
 
 using namespace yolo_cpp;
@@ -273,4 +277,58 @@ TEST(ProductionPosePipeline, CameraPanDoesNotCreateTargetMotionOrChangeAbsoluteC
   RecordProperty("max_phantom_velocity_mps", precise(max_velocity));
   executor.cancel();
   rclcpp::shutdown();
+}
+
+TEST(ControllerPreview, HttpStatusExpiresWithoutCameraFrames)
+{
+  // Reserve an ephemeral loopback port. No hardware, host networking, or camera.
+  const int probe = ::socket(AF_INET, SOCK_STREAM, 0);
+  ASSERT_GE(probe, 0);
+  sockaddr_in address{};
+  address.sin_family = AF_INET;
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  ASSERT_EQ(::bind(probe, reinterpret_cast<sockaddr *>(&address), sizeof(address)), 0);
+  socklen_t address_size = sizeof(address);
+  ASSERT_EQ(::getsockname(probe, reinterpret_cast<sockaddr *>(&address), &address_size), 0);
+  ::close(probe);
+  MjpegPreviewServer server;
+  MjpegPreviewServer::Config config;
+  config.bind_address = "127.0.0.1";
+  config.port = ntohs(address.sin_port);
+  server.start(config);
+  auto stats = [&]() {
+    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+      return std::string();
+    }
+    timeval timeout{2, 0};
+    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    if (::connect(fd, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0) {
+      ::close(fd);
+      return std::string();
+    }
+    const std::string request = "GET /stats.json HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    ::send(fd, request.data(), request.size(), 0);
+    std::string response;
+    char buffer[1024];
+    ssize_t size;
+    while ((size = ::recv(fd, buffer, sizeof(buffer), 0)) > 0) {
+      response.append(buffer, size);
+    }
+    ::close(fd);
+    return response;
+  };
+  EXPECT_NE(stats().find("\"auto_aim_status\":\"unknown\""), std::string::npos);
+  server.update_controller_status(1);
+  EXPECT_NE(stats().find("\"auto_aim_status\":\"on\""), std::string::npos);
+  std::this_thread::sleep_for(std::chrono::milliseconds(550));
+  EXPECT_NE(stats().find("\"auto_aim_status\":\"unknown\""), std::string::npos);
+  server.update_controller_status(0);
+  EXPECT_NE(stats().find("\"auto_aim_status\":\"off\""), std::string::npos);
+  server.update_controller_status(7);
+  EXPECT_NE(stats().find("\"auto_aim_status\":\"unknown\""), std::string::npos);
+  ASSERT_TRUE(server.update_frame(cv::Mat(2, 2, CV_8UC3, cv::Scalar()), "not an object", 60));
+  const auto response = stats();
+  EXPECT_EQ(response.find("not an object"), std::string::npos);
+  EXPECT_NE(response.find("{\"auto_aim_status\":\"unknown\""), std::string::npos);
 }

@@ -445,6 +445,14 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions &options)
         preview_solver_status_ = msg->status;
         preview_command_stamp_ns_ = rclcpp::Time(msg->header.stamp).nanoseconds();
       });
+  controller_status_subscription_ = this->create_subscription<std_msgs::msg::Int8>(
+      "controller_auto_aim", 1, [this](const std_msgs::msg::Int8::SharedPtr msg) {
+        {
+          std::lock_guard<std::mutex> lock(state_mutex_);
+          controller_status_.update(msg->data, controller_status_now_ns());
+        }
+        if (preview_server_) {preview_server_->update_controller_status(msg->data);}
+      });
   preview_attitude_subscription_ =
       this->create_subscription<cv_auto_aim_interfaces::msg::GimbalAttitude>(
           "gimbal/attitude", 10,
@@ -1154,20 +1162,29 @@ void ArmorDetectorNode::render_preview(const FramePacket &packet,
     const std::string tx_label = effective_tx ? "TX CONFIG: ENABLED" : "TX CONFIG: DISABLED";
     cv::putText(preview, tx_label, cv::Point(12, 58),
                 cv::FONT_HERSHEY_SIMPLEX, 0.75, tx_color, 2, cv::LINE_AA);
+    const auto auto_aim = controller_status_.value(controller_status_now_ns());
+    const std::string auto_aim_label = auto_aim == 1
+        ? "AUTO AIM ON (MCU acceptance)"
+        : (auto_aim == 0 ? "AUTO AIM OFF (MCU acceptance)"
+                        : "AUTO AIM UNKNOWN (MCU status missing / stale / unsupported)");
+    cv::putText(preview, auto_aim_label, cv::Point(12, 88),
+                cv::FONT_HERSHEY_SIMPLEX, 0.75,
+                auto_aim == 1 ? cv::Scalar(0, 0, 255) :
+                  (auto_aim == 0 ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 255, 255)), 2, cv::LINE_AA);
     const std::string attitude_label = fresh_attitude
         ? cv::format("ATTITUDE LIVE: y=%+.3f p=%+.3f r=%+.3f rad | age %.0f ms (%s time)",
                      preview_attitude_yaw_, preview_attitude_pitch_, preview_attitude_roll_,
                      (now_ns - preview_attitude_stamp_ns_) * 1e-6,
                      preview_attitude_source_timestamped_ ? "MCU" : "host")
         : "ATTITUDE: missing / stale / invalid";
-    cv::putText(preview, attitude_label, cv::Point(12, 88),
+    cv::putText(preview, attitude_label, cv::Point(12, 118),
                 cv::FONT_HERSHEY_SIMPLEX, 0.85,
                 fresh_attitude ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
     if (calibration_provisional_ || !camera_calibration_.available) {
       cv::putText(preview, calibration_provisional_
                   ? "PROVISIONAL LENS VALUES: range and angles are estimates"
                   : "3D BLOCKED: camera calibration missing",
-                  cv::Point(12, 120), cv::FONT_HERSHEY_SIMPLEX, 0.85,
+                  cv::Point(12, 150), cv::FONT_HERSHEY_SIMPLEX, 0.85,
                   cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
     }
     cv::putText(preview, visual_label, cv::Point(12, preview.rows - 66),

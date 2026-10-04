@@ -117,6 +117,13 @@ ssh -N -o ExitOnForwardFailure=yes \
 
 Then open `http://127.0.0.1:18080/`.
 
+The overlay and browser sidebar show `AUTO AIM ON/OFF/UNKNOWN` from the MCU's
+logical vision acceptance gate, separately from `TX CONFIG`. ON means the gate
+is armed, not that a target is being followed or firing is allowed. UNKNOWN
+means missing, stale, or unsupported controller status. This needs the matching
+Type C status firmware; there is no new env toggle. See the
+[status contract](../../yolo_cpp/docs/interfaces.md#controller-auto-aim-acceptance).
+
 ## Transmission safety
 
 For safe preview, the launch arguments must include:
