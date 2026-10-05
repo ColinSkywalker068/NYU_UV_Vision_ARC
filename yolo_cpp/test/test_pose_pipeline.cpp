@@ -1,5 +1,9 @@
 #include <gtest/gtest.h>
+#include <rcl/time.h>
 
+#include <chrono>
+#include <cmath>
+#include <functional>
 #include <iomanip>
 #include <opencv2/calib3d.hpp>
 #include <sstream>
@@ -266,4 +270,168 @@ TEST(ProductionPosePipeline, CameraPanDoesNotCreateTargetMotionOrChangeAbsoluteC
   RecordProperty("max_phantom_velocity_mps", precise(max_velocity));
   executor.cancel();
   rclcpp::shutdown();
+}
+
+TEST(ProductionPosePipeline, FixedPlateWithOffsetUsesCaptureAttitudeAndRejectsStaleAttitude)
+{
+  rclcpp::init(0, nullptr);
+  struct ShutdownGuard
+  {
+    ~ShutdownGuard() { rclcpp::shutdown(); }
+  } shutdown_guard;
+  auto source = std::make_shared<rclcpp::Node>("frame_contract_test");
+  // Simulator camera_offset_m=(forward, left, up); CV uses (right, down, forward).
+  const cv::Point3d offset_link(0.12, 0.04, -0.02);
+  const cv::Point3d offset(-offset_link.y, -offset_link.z, offset_link.x);
+  rclcpp::NodeOptions tracker_options;
+  tracker_options.parameter_overrides({rclcpp::Parameter(
+    "camera_translation_m", std::vector<double>{offset.x, offset.y, offset.z})});
+  auto tracker = std::make_shared<ArmorTrackerNode>(tracker_options);
+  auto processor = std::make_shared<ArmorProcessorNode>();
+  rclcpp::NodeOptions solver_options;
+  solver_options.parameter_overrides(
+    {rclcpp::Parameter("target_topic", "processor/target"),
+     rclcpp::Parameter("output_mode", "absolute"),
+     rclcpp::Parameter("compensate_gravity", false)});
+  auto solver = std::make_shared<AimSolverNode>(solver_options);
+  rclcpp::executors::SingleThreadedExecutor executor;
+  const std::vector<rclcpp::Node::SharedPtr> nodes{source, tracker, processor, solver};
+  for (const auto & node : nodes) {
+    executor.add_node(node);
+    ASSERT_EQ(rcl_enable_ros_time_override(node->get_clock()->get_clock_handle()), RCL_RET_OK);
+  }
+  const auto set_time = [&](int64_t ns) {
+    for (const auto & node : nodes) {
+      EXPECT_EQ(rcl_set_ros_time_override(node->get_clock()->get_clock_handle(), ns), RCL_RET_OK);
+    }
+  };
+  set_time(100000000000);
+  auto attitudes = source->create_publisher<cv_auto_aim_interfaces::msg::GimbalAttitude>(
+    "gimbal/attitude", 100);
+  auto armors = source->create_publisher<cv_auto_aim_interfaces::msg::Armors>("detector/armors", 10);
+  std::vector<cv_auto_aim_interfaces::msg::Target> targets;
+  std::vector<cv_auto_aim_interfaces::msg::AimSolution> solutions;
+  int64_t observed_attitude_stamp = 0;
+  auto attitude_sub = source->create_subscription<cv_auto_aim_interfaces::msg::GimbalAttitude>(
+    "gimbal/attitude", 100, [&](cv_auto_aim_interfaces::msg::GimbalAttitude::SharedPtr msg) {
+      observed_attitude_stamp = rclcpp::Time(msg->header.stamp).nanoseconds();
+    });
+  auto target_sub = source->create_subscription<cv_auto_aim_interfaces::msg::Target>(
+    "processor/target", 100, [&](cv_auto_aim_interfaces::msg::Target::SharedPtr msg) {
+      targets.push_back(*msg);
+    });
+  auto solution_sub = source->create_subscription<cv_auto_aim_interfaces::msg::AimSolution>(
+    "aim_solution", 100, [&](cv_auto_aim_interfaces::msg::AimSolution::SharedPtr msg) {
+      solutions.push_back(*msg);
+    });
+  // Wall time is only a transport timeout; all algorithm time is explicitly controlled.
+  const auto wait_for = [&](const std::function<bool()> & ready) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    do {
+      executor.spin_some();
+      if (ready()) {
+        executor.spin_some();
+        return true;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    } while (std::chrono::steady_clock::now() < deadline);
+    return false;
+  };
+  ASSERT_TRUE(wait_for([&]() {
+    return attitudes->get_subscription_count() == 3 && armors->get_subscription_count() == 1 &&
+           target_sub->get_publisher_count() == 1 && solution_sub->get_publisher_count() == 1 &&
+           processor->count_subscribers("processor/target") == 2 &&
+           tracker->count_subscribers("tracker/tracked_armors") == 1;
+  }));
+  const auto publish_attitude = [&](const AttitudeSample & a) {
+    cv_auto_aim_interfaces::msg::GimbalAttitude msg;
+    msg.header.stamp = rclcpp::Time(a.stamp_ns);
+    msg.header.frame_id = "gimbal_inertial";
+    msg.valid = true;
+    msg.yaw = a.yaw;
+    msg.pitch = a.pitch;
+    attitudes->publish(msg);
+    return wait_for([&]() { return observed_attitude_stamp == a.stamp_ns; });
+  };
+  const cv::Point3d fixed(0.4, -0.1, 4.0);
+  const auto detection = [&](const AttitudeSample & a) {
+    const auto rotation = camera_to_inertial_rotation(a);
+    const auto point = rotate_point(rotation.t(), fixed - rotate_point(rotation, offset));
+    cv_auto_aim_interfaces::msg::Armor armor;
+    armor.has_pose = true;
+    armor.pose_camera.position.x = point.x;
+    armor.pose_camera.position.y = point.y;
+    armor.pose_camera.position.z = point.z;
+    const auto q = rotation_quaternion(rotation.t());
+    armor.pose_camera.orientation.x = q[0];
+    armor.pose_camera.orientation.y = q[1];
+    armor.pose_camera.orientation.z = q[2];
+    armor.pose_camera.orientation.w = q[3];
+    armor.is_enemy = true;
+    armor.confidence = 1.0;
+    armor.armor_number = 3;
+    armor.image_width = 640;
+    armor.image_height = 384;
+    armor.center_x = 320 + 600 * point.x / point.z;
+    armor.center_y = 192 + 600 * point.y / point.z;
+    const int x = static_cast<int>(armor.center_x), y = static_cast<int>(armor.center_y);
+    armor.bbox_xyxy = {x - 10, y - 4, x + 10, y + 4};
+    cv_auto_aim_interfaces::msg::Armors msg;
+    msg.header.stamp = rclcpp::Time(a.stamp_ns);
+    msg.header.frame_id = "camera_optical_frame";
+    msg.armors = {armor};
+    return msg;
+  };
+  const auto publish_detection = [&](const cv_auto_aim_interfaces::msg::Armors & msg) {
+    targets.clear();
+    solutions.clear();
+    armors->publish(msg);
+    return wait_for([&]() { return !targets.empty() && !solutions.empty(); });
+  };
+  int64_t delivery_ns = 0;
+  for (int frame = 0; frame < 24; ++frame) {
+    SCOPED_TRACE(frame);
+    const int64_t capture_ns = 100000000000 + frame * 100000000LL;
+    const AttitudeSample capture{
+      capture_ns, 0.15 * std::sin(frame * 0.4), 0.08 * std::cos(frame * 0.4), 0};
+    set_time(capture_ns);
+    ASSERT_TRUE(publish_attitude(capture));
+    auto msg = detection(capture);
+    delivery_ns = capture_ns + 50000000;  // Exactly 50 ms; keep the capture stamp.
+    set_time(delivery_ns);
+    ASSERT_TRUE(publish_attitude({delivery_ns, capture.yaw + 0.04, capture.pitch - 0.02, 0}));
+    ASSERT_TRUE(publish_detection(msg));
+    if (frame == 0) {
+      continue;  // Production track_min_hits=2.
+    }
+    const auto & target = targets.back();
+    ASSERT_TRUE(target.has_target);
+    ASSERT_TRUE(target.has_pose);
+    ASSERT_TRUE(target.camera_pose_valid);
+    ASSERT_TRUE(target.has_velocity);
+    EXPECT_EQ(target.header.frame_id, "gimbal_inertial");
+    EXPECT_EQ(rclcpp::Time(target.header.stamp).nanoseconds(), capture_ns);
+    EXPECT_EQ(target.measurement_stamp_ns, capture_ns);
+    EXPECT_NEAR(target.pose.position.x, fixed.x, 1e-6);
+    EXPECT_NEAR(target.pose.position.y, fixed.y, 1e-6);
+    EXPECT_NEAR(target.pose.position.z, fixed.z, 1e-6);
+    EXPECT_LT(cv::norm(cv::Point3d(target.velocity.x, target.velocity.y, target.velocity.z)), 1e-6);
+    const auto & solution = solutions.back();
+    ASSERT_TRUE(solution.has_solution);
+    ASSERT_TRUE(solution.used_3d);
+    EXPECT_NEAR(solution.yaw, std::atan2(fixed.x, fixed.z), 1e-6);
+    EXPECT_NEAR(solution.pitch, std::atan2(-fixed.y, std::hypot(fixed.x, fixed.z)), 1e-6);
+    EXPECT_NEAR(solution.frame_age_s, 0.05, 1e-7);
+    EXPECT_NEAR(solution.measurement_age_s, 0.05, 1e-7);
+  }
+  const int64_t stale_now = delivery_ns + 300000000;
+  set_time(stale_now);
+  // Fresh image, no new telemetry: the last attitude is exactly 300 ms old.
+  ASSERT_TRUE(publish_detection(detection({stale_now, -0.1, 0.05, 0})));
+  EXPECT_EQ(rclcpp::Time(targets.back().header.stamp).nanoseconds(), stale_now);
+  EXPECT_FALSE(targets.back().camera_pose_valid);
+  EXPECT_FALSE(targets.back().has_pose);
+  EXPECT_FALSE(solutions.back().has_solution);
+  EXPECT_FALSE(solutions.back().used_3d);
+  EXPECT_FALSE(solutions.back().suggest_fire);
 }

@@ -59,6 +59,41 @@ TEST(AimGeometry, StationaryPlateAndNormalStayFixedDuringPanPitchAndRoll)
   EXPECT_LT(up.y, 0);
 }
 
+TEST(AttitudeHistory, DelayedCaptureUsesHistoricalAttitude)
+{
+  AttitudeHistory history;
+  const AttitudeSample capture{1000000000, -0.2, 0.1, 0};
+  const AttitudeSample delivery{1050000000, 0.2, -0.1, 0};
+  ASSERT_TRUE(history.insert(capture));
+  ASSERT_TRUE(history.insert(delivery));
+  const auto matched = history.at(capture.stamp_ns, delivery.stamp_ns);
+  ASSERT_TRUE(matched);
+  EXPECT_EQ(matched->stamp_ns, capture.stamp_ns);
+  EXPECT_DOUBLE_EQ(matched->yaw, capture.yaw);
+  EXPECT_DOUBLE_EQ(matched->pitch, capture.pitch);
+  const cv::Point3d fixed(0.4, -0.1, 4.0), offset(-0.04, 0.02, 0.12);
+  const auto rotation = camera_to_inertial_rotation(capture);
+  const auto observed = rotate_point(rotation.t(), fixed - rotate_point(rotation, offset));
+  const auto historical = camera_to_inertial_rotation(*matched);
+  EXPECT_LT(cv::norm(rotate_point(historical, observed + offset) - fixed), 1e-12);
+  const auto latest = camera_to_inertial_rotation(delivery);
+  EXPECT_GT(cv::norm(rotate_point(latest, observed + offset) - fixed), 0.1);
+}
+
+TEST(AttitudeHistory, FreshDetectionCannotUseStaleAttitude)
+{
+  AttitudeHistory history;
+  ASSERT_TRUE(history.insert({1000000000, -0.2, 0.1, 0}));
+  const int64_t now = 1300000000;
+  // The detection is fresh; only telemetry is stale (300 ms).
+  EXPECT_FALSE(history.latest(now));
+  EXPECT_FALSE(history.at(now, now));
+  // Even an exact historical match cannot revive stale telemetry.
+  EXPECT_FALSE(history.at(1000000000, now));
+  ASSERT_TRUE(history.insert({now, 0.2, -0.1, 0}));
+  ASSERT_TRUE(history.at(now, now));
+}
+
 static AimPredictionInput input_at_4m()
 {
   AimPredictionInput in;
