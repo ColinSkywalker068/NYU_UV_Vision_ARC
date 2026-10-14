@@ -154,6 +154,34 @@ TEST(AimPrediction, InvalidConfigurationAndRobotStateNeverProduceCommands)
   EXPECT_TRUE(std::isinf(minimum_slew_time(.1, nan, 4)));
 }
 
+TEST(PreviewGeometry, DeepStreamBranchesKeepPixelsAlignedWithUprightDetections)
+{
+  cv::Mat upright(4, 6, CV_8UC3, cv::Scalar(0, 0, 0));
+  const cv::Rect detection_box(1, 0, 2, 2);
+  upright(detection_box).setTo(cv::Scalar(40, 90, 170));
+  cv::Mat raw;
+  cv::flip(upright, raw, -1);
+  struct Case
+  {
+    bool flip, cuda, source_flip;
+    const cv::Mat * input;
+  };
+  const Case cases[] = {
+    {false, false, false, &upright},  // No rotation requested.
+    {true, false, false, &raw},       // Only inference rotated after the tee.
+    {true, false, true, &upright},    // Source videoflip already corrected both.
+    {true, true, false, &upright}};   // CUDA Bayer already corrected both.
+  for (const auto & branch : cases) {
+    cv::Mat preview;
+    copy_deepstream_preview_frame(
+      *branch.input, preview, branch.flip, branch.cuda, branch.source_flip);
+    // The unchanged detection box/keypoints must cover the same upright pixels.
+    EXPECT_EQ(cv::norm(preview, upright, cv::NORM_INF), 0);
+    EXPECT_EQ(cv::norm(preview(detection_box), upright(detection_box), cv::NORM_INF), 0);
+    EXPECT_NE(preview.data, branch.input->data);  // Own pixels after GstBuffer unmap.
+  }
+}
+
 TEST(PreviewFreshness, RejectsQueuedStaleFutureAndMissingSamples)
 {
   EXPECT_TRUE(preview_sample_fresh(1000000000, 1010000000));

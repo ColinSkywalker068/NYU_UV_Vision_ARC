@@ -29,6 +29,7 @@
 #include "deepstream_runtime_helpers.hpp"
 #include "yolo_cpp/detection_postprocess.hpp"
 #include "yolo_cpp/gst_cuda_bayer_resize.hpp"
+#include "yolo_cpp/preview_geometry.hpp"
 #include "yolo_cpp/utils.hpp"
 
 #if defined(HAVE_GSTREAMER) && defined(HAVE_DEEPSTREAM)
@@ -1563,7 +1564,11 @@ struct DeepStreamRuntime::Impl
     const int height = static_cast<int>(GST_VIDEO_INFO_HEIGHT(&info));
     const int stride = GST_VIDEO_INFO_PLANE_STRIDE(&info, 0);
     cv::Mat wrapped(height, width, CV_8UC3, map_info.data, stride);
-    packet.frame = wrapped.clone();
+    copy_deepstream_preview_frame(wrapped, packet.frame, config.flip_source,
+      cuda_bayer_resizes_source, source_flip != nullptr);
+    // Pixels and detections now share upright coordinates. Do not ask the
+    // renderer to rotate boxes/keypoints again through FramePacket::flip_180.
+    packet.flip_180 = false;
     packet.pixel_format = PixelFormat::kBgr8;
     packet.storage_kind = BackingStoreKind::kHost;
     packet.capture_time_ns = static_cast<std::int64_t>(GST_BUFFER_PTS(buffer));
