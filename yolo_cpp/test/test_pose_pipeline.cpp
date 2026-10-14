@@ -151,6 +151,135 @@ TEST(ModelProfile, AruwDropsDuplicateQuadsButKeepsDistinctAdjacentPlates)
   EXPECT_EQ(result[1].bbox_model.x, 170);
 }
 
+TEST(ProductionPosePipeline, CameraPoseSurvivesMissingAttitudeButAbsoluteAimRequiresAlignment)
+{
+  // Use genuine ARUW keypoints and production PnP defaults, then exercise the
+  // tracker -> processor -> solver boundary that previously hid missing RX.
+  const auto detections = decode(project({0.1, -0.02, 1.0}, cv::Matx33d::eye()));
+  ASSERT_EQ(detections.size(), 1U);
+  const auto & detection = detections.front();
+  ArmorPnPSolver pnp({kCamera, {}}, 0.135, 0.055, 0.23, 0.055);
+  cv_auto_aim_interfaces::msg::Armor armor;
+  PoseQuality quality;
+  ASSERT_TRUE(pnp.solve(detection.corners_model, 0, armor.pose_camera, &quality));
+  armor.has_pose = true;
+  armor.pose_normal_reliable = quality.normal_reliable;
+  armor.reprojection_rms_px = quality.reprojection_rms_px;
+  armor.has_corners = armor.corners_are_keypoints = true;
+  armor.is_enemy = true;
+  armor.class_id = detection.class_id;
+  armor.armor_number = detection.armor_number;
+  armor.confidence = detection.confidence;
+  armor.image_width = 640;
+  armor.image_height = 384;
+  armor.bbox_xyxy = {detection.bbox_model.x, detection.bbox_model.y,
+    detection.bbox_model.x + detection.bbox_model.width,
+    detection.bbox_model.y + detection.bbox_model.height};
+  armor.center_x = detection.bbox_model.x + detection.bbox_model.width * 0.5;
+  armor.center_y = detection.bbox_model.y + detection.bbox_model.height * 0.5;
+
+  rclcpp::init(0, nullptr);
+  auto publisher = std::make_shared<rclcpp::Node>("pose_attitude_dependency_test");
+  auto tracker = std::make_shared<ArmorTrackerNode>();
+  auto processor = std::make_shared<ArmorProcessorNode>();
+  rclcpp::NodeOptions options;
+  options.parameter_overrides(
+    {rclcpp::Parameter("target_topic", "processor/target"),
+      rclcpp::Parameter("output_mode", "absolute"),
+      rclcpp::Parameter("compensate_gravity", false)});
+  auto solver = std::make_shared<AimSolverNode>(options);
+  rclcpp::executors::SingleThreadedExecutor executor;
+  for (const auto & node :
+    std::vector<rclcpp::Node::SharedPtr>{publisher, tracker, processor, solver})
+  {
+    executor.add_node(node);
+  }
+  auto attitudes = publisher->create_publisher<cv_auto_aim_interfaces::msg::GimbalAttitude>(
+    "gimbal/attitude", 100);
+  auto armors = publisher->create_publisher<cv_auto_aim_interfaces::msg::Armors>(
+    "detector/armors", 10);
+  std::vector<cv_auto_aim_interfaces::msg::AimSolution> solutions;
+  std::vector<cv_auto_aim_interfaces::msg::Target> targets;
+  std::vector<cv_auto_aim_interfaces::msg::TrackedArmors> tracks;
+  auto solution_sub = publisher->create_subscription<cv_auto_aim_interfaces::msg::AimSolution>(
+    "aim_solution", 100, [&](const cv_auto_aim_interfaces::msg::AimSolution::SharedPtr msg) {
+      solutions.push_back(*msg);
+      EXPECT_FALSE(msg->suggest_fire);
+      if (!msg->has_solution) {EXPECT_FALSE(msg->has_angular_velocity);}
+    });
+  auto target_sub = publisher->create_subscription<cv_auto_aim_interfaces::msg::Target>(
+    "processor/target", 100,
+    [&](const cv_auto_aim_interfaces::msg::Target::SharedPtr msg) {targets.push_back(*msg);});
+  auto track_sub = publisher->create_subscription<cv_auto_aim_interfaces::msg::TrackedArmors>(
+    "tracker/tracked_armors", 100,
+    [&](const cv_auto_aim_interfaces::msg::TrackedArmors::SharedPtr msg) {tracks.push_back(*msg);});
+  const auto spin = [&]() {
+      for (int i = 0; i < 20; ++i) {
+        executor.spin_some();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
+    };
+  spin();
+  const auto frame = [&](bool send_attitude, double capture_delay_s = 0.005) {
+      const auto now = publisher->now();
+      const auto stamp = now - rclcpp::Duration::from_seconds(capture_delay_s);
+      if (send_attitude) {
+        cv_auto_aim_interfaces::msg::GimbalAttitude telemetry;
+        telemetry.header.stamp = now;
+        telemetry.valid = true;
+        attitudes->publish(telemetry);
+        spin();
+      }
+      cv_auto_aim_interfaces::msg::Armors message;
+      message.header.stamp = stamp;
+      message.header.frame_id = "camera_optical_frame";
+      message.armors = {armor};
+      armors->publish(message);
+      spin();
+    };
+  const auto expect_state = [&](bool valid, const char * reason) {
+      EXPECT_FALSE(solutions.empty());
+      EXPECT_FALSE(targets.empty());
+      EXPECT_FALSE(tracks.empty());
+      if (solutions.empty() || targets.empty() || tracks.empty()) {return;}
+      EXPECT_EQ(solutions.back().has_solution, valid);
+      if (reason) {EXPECT_EQ(solutions.back().status, reason);}
+      EXPECT_TRUE(targets.back().has_target);
+      EXPECT_EQ(targets.back().has_pose, valid);
+      EXPECT_EQ(targets.back().camera_pose_valid, valid);
+      EXPECT_FALSE(targets.back().has_robot_state); // A single plate needs no robot model.
+      EXPECT_FALSE(tracks.back().tracks.empty());
+      for (const auto & track : tracks.back().tracks) {
+        EXPECT_TRUE(track.armor.has_pose); // Raw camera PnP remains available for diagnostics.
+        EXPECT_NEAR(track.armor.pose_camera.position.z, 1.0, 1e-4);
+        EXPECT_EQ(track.has_pose, valid);
+      }
+    };
+  for (int i = 0; i < 5; ++i) {
+    frame(false);
+  }
+  expect_state(false, "stale_or_missing_attitude");
+  for (int i = 0; i < 5; ++i) {
+    frame(true);
+  }
+  expect_state(true, nullptr);
+  std::this_thread::sleep_for(std::chrono::milliseconds(350));
+  for (int i = 0; i < 5; ++i) {
+    frame(false);
+  }
+  expect_state(false, "stale_or_missing_attitude");
+  // Fresh receipt cannot validate an older capture across a telemetry gap.
+  std::this_thread::sleep_for(std::chrono::milliseconds(120));
+  frame(true, 0.08);
+  expect_state(false, "capture_attitude_mismatch");
+  for (int i = 0; i < 5; ++i) {
+    frame(true);
+  }
+  expect_state(true, nullptr);
+  executor.cancel();
+  rclcpp::shutdown();
+}
+
 TEST(ProductionPosePipeline, CameraPanDoesNotCreateTargetMotionOrChangeAbsoluteCommand)
 {
   rclcpp::init(0, nullptr);

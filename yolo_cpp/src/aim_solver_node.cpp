@@ -133,10 +133,12 @@ void AimSolverNode::handle_target(const cv_auto_aim_interfaces::msg::Target::Sha
       attitude_sync_tolerance_ms_ / 1000.0, attitude_max_gap_ms_ / 1000.0);
   }
   const char * rejection = nullptr;
+  // Missing capture attitude also prevents the tracker from producing a world
+  // pose. Report that dependency before diagnosing the detector's 3D estimate.
   if (!msg->has_target) {rejection = "no_target";}
-  else if (use_3d_solution_ && !msg->has_pose) {rejection = "missing_3d_pose";}
   else if (!current) {rejection = "stale_or_missing_attitude";}
   else if (!capture || !msg->camera_pose_valid) {rejection = "capture_attitude_mismatch";}
+  else if (use_3d_solution_ && !msg->has_pose) {rejection = "missing_3d_pose";}
   else if (msg->header.frame_id != "gimbal_inertial") {rejection = "wrong_tracking_frame";}
   else if (stamp_ns <= 0 || stamp_ns > now_ns ||
     (now_ns - stamp_ns) * 1e-9 > prediction_config_.max_frame_age_s) {rejection = "invalid_frame_time";}
