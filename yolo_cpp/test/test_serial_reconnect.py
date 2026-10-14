@@ -15,7 +15,7 @@ from pathlib import Path
 
 import rclpy
 from std_msgs.msg import Bool, Float32MultiArray, Int8
-from cv_auto_aim_interfaces.msg import AimSolution, Target, TrackedArmor, TrackedArmors
+from cv_auto_aim_interfaces.msg import AimSolution, GimbalAttitude, Target, TrackedArmor, TrackedArmors
 
 
 def with_crc(payload):
@@ -45,11 +45,39 @@ class SerialReconnectTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.port = self.root / "controller"
         self.master = None
+        self.extra_masters = []
+        self.by_id = self.root / "by-id"
+        self.by_id.mkdir()
+        requested_port = str(self.port)
+        if self._testMethodName.startswith("test_auto_"):
+            requested_port = "auto"
+            self.port = self.by_id / "usb-NYUSH_Vision_Comm_port_208733A7374E-if00"
+        elif self._testMethodName == "test_stale_vision_id_falls_back_and_reconnects":
+            requested_port = str(self.by_id / "usb-NYUSH_Vision_Comm_port_316A32733034-if00")
+            self.port = self.by_id / "usb-NYUSH_Vision_Comm_port_208733A7374E-if00"
+        if self._testMethodName == "test_auto_ambiguous_boards_wait_until_unique":
+            self.attach()
+            self.extra_port = self.add_other_device("usb-NYUSH_Vision_Comm_port_ABC123-if00")
+        if self._testMethodName == "test_explicit_port_preferred_over_discovery":
+            self.attach()
+            self.add_other_device("usb-NYUSH_Vision_Comm_port_ABC123-if00")
+            self.add_other_device("usb-NYUSH_Vision_Comm_port_DEF456-if00")
+        if self._testMethodName in ("test_auto_ignores_unrelated_and_dead_devices",
+                                   "test_missing_custom_port_does_not_fall_back"):
+            names = ["usb-STMicroelectronics_STLINK-V3_123-if02", "ttyACM0",
+                     "usb-Basler_camera_123-if00", "usb-NYUSH_Vision_Comm_port_123-if01"]
+            if self._testMethodName == "test_missing_custom_port_does_not_fall_back":
+                names.append("usb-NYUSH_Vision_Comm_port_ABC123-if00")
+            for name in names:
+                self.add_other_device(name)
+            (self.by_id / "usb-NYUSH_Vision_Comm_port_DEAD-if00").symlink_to("/missing/device")
+            (self.by_id / "usb-NYUSH_Vision_Comm_port_FILE-if00").write_text("not a device")
         self.send_valid_solution = True
         self.provisional = self._testMethodName.startswith("test_provisional_calibration_")
         self.tx_enabled = self._testMethodName in ("test_provisional_calibration_respects_enabled_tx", "test_atomic_solution_rejects_stale_offset_and_replay", "test_atomic_angular_rates_and_safe_zero_fallback", "test_controller_status_independent_of_enabled_tx")
         self.outbound = bytearray()
         self.samples = []
+        self.stamped_samples = []
         self.controller_status = []
         self.log_path = self.root / "bridge.log"
         self.log_file = self.log_path.open("w")
@@ -64,13 +92,17 @@ class SerialReconnectTest(unittest.TestCase):
         self.status_sub = self.node.create_subscription(
             Int8, "controller_auto_aim", lambda msg: self.controller_status.append(msg.data), 10
         )
+        self.stamped_sub = self.node.create_subscription(
+            GimbalAttitude, "gimbal/attitude", lambda msg: self.stamped_samples.append(msg), 100
+        )
         self.angles = self.node.create_publisher(Float32MultiArray, "bounding_box_angles", 10)
         self.solutions = self.node.create_publisher(AimSolution, "aim_solution", 10)
         self.targets = self.node.create_publisher(Target, "processor/target", 10)
         self.associations = self.node.create_publisher(TrackedArmors, "tracker/tracked_armors", 10)
         self.override = self.node.create_publisher(Bool, "override", 10)
         self.bridge = subprocess.Popen(
-            [BRIDGE, "--ros-args", "-p", f"serial_port:={self.port}",
+            [BRIDGE, "--ros-args", "-p", f"serial_port:={requested_port}",
+             "-p", f"serial_by_id_directory:={self.by_id}",
              "-p", "receive_enable:=true", "-p", f"transmit_enable:={str(self.tx_enabled).lower()}",
              "-p", f"calibration_provisional:={str(self.provisional).lower()}",
              "-p", f"runtime_log_dir:={self.root}",
@@ -88,6 +120,8 @@ class SerialReconnectTest(unittest.TestCase):
             self.bridge.wait()
         if self.master is not None:
             os.close(self.master)
+        for master in self.extra_masters:
+            os.close(master)
         self.node.destroy_node()
         rclpy.shutdown()
         self.log_file.close()
@@ -101,10 +135,82 @@ class SerialReconnectTest(unittest.TestCase):
         os.close(slave)
         self.master = master
 
+    def add_other_device(self, name):
+        master, slave = os.openpty()
+        tty.setraw(slave)
+        os.set_blocking(master, False)
+        path = self.by_id / name
+        path.symlink_to(os.ttyname(slave))
+        os.close(slave)
+        self.extra_masters.append(master)
+        return path
+
     def detach(self):
         os.close(self.master)
         self.master = None
         self.port.unlink()
+
+    def test_auto_discovers_replacement_board_and_resets_rx(self):
+        self.check_replacement_board()
+
+    def test_stale_vision_id_falls_back_and_reconnects(self):
+        self.check_replacement_board()
+
+    def check_replacement_board(self):
+        self.await_controller_status(-1)
+        self.attach()
+        self.await_attitude(0.4, -0.1)
+        self.await_controller_status(1, status_packet(0x88))
+        # A fragment from the old board must not complete on the replacement.
+        partial = attitude_packet(0.9, 0.2)
+        self.spin_for(.1, partial[:12])
+        self.detach()
+        self.await_controller_status(-1)
+        # Separate ROS topics may arrive in either order; wait for the explicit
+        # invalidation rather than treating the status callback as a barrier.
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and (
+                not self.stamped_samples or self.stamped_samples[-1].valid):
+            self.step()
+        self.assertTrue(self.stamped_samples)
+        self.assertFalse(self.stamped_samples[-1].valid, "disconnect must invalidate old-board attitude")
+        self.samples.clear()
+        self.port = self.by_id / "usb-NYUSH_Vision_Comm_port_AABBCC112233-if00"
+        self.attach()
+        self.spin_for(1.3, partial[12:])
+        self.assertEqual(self.samples, [])
+        self.assertEqual(self.controller_status[-1], -1)
+        self.await_attitude(-0.2, 0.3)
+        self.await_controller_status(0, status_packet(0x80))
+        self.assertEqual(self.outbound, b"", "discovery must not enable TX")
+        self.assertIn(str(self.port), self.log_path.read_text())
+
+    def test_auto_ambiguous_boards_wait_until_unique(self):
+        self.spin_for(1.3, attitude_packet(0.4, -0.1))
+        self.assertEqual(self.samples, [])
+        self.assertIn("ambiguous Vision Comm controllers", self.log_path.read_text())
+        self.extra_port.unlink()
+        self.await_attitude(0.4, -0.1)
+        self.assertEqual(self.outbound, b"")
+
+    def test_auto_ignores_unrelated_and_dead_devices(self):
+        self.spin_for(1.3)
+        self.assertEqual(self.samples, [])
+        self.assertIn("no eligible NYUSH Vision Comm", self.log_path.read_text())
+        self.attach()
+        self.await_attitude(0.4, -0.1)
+        self.assertEqual(self.outbound, b"")
+
+    def test_explicit_port_preferred_over_discovery(self):
+        self.await_attitude(0.4, -0.1)
+        self.assertIn(f"STM32 serial connected: {self.port}", self.log_path.read_text())
+
+    def test_missing_custom_port_does_not_fall_back(self):
+        self.spin_for(1.3)
+        self.assertIn(f"Failed to open serial port {self.port}", self.log_path.read_text())
+        self.assertNotIn("STM32 serial connected", self.log_path.read_text())
+        self.attach()
+        self.await_attitude(0.4, -0.1)
 
     def step(self, packet=None):
         self.assertIsNone(self.bridge.poll(), "bridge exited during disconnect")

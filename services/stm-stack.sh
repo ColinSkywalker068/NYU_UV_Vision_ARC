@@ -9,6 +9,8 @@ while [ -L "$SOURCE" ]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck source=serial-port-selection.sh
+source "${SCRIPT_DIR}/serial-port-selection.sh"
 
 SERVICE_NAME="${CV_STM_SERVICE_NAME:-stm-stack.service}"
 SERVICE_SRC="${SCRIPT_DIR}/${SERVICE_NAME}"
@@ -368,7 +370,9 @@ run_yaw_smoke() {
   ensure_docker
   docker_cmd image inspect "$CV_STM_IMAGE" >/dev/null 2>&1 || die "Docker image is missing: ${CV_STM_IMAGE}"
 
-  local serial_port="${CV_STM_SERIAL_PORT:-/dev/ttyUSB0}"
+  local serial_port
+  serial_port=$(cv_resolve_serial_port "${CV_STM_SERIAL_PORT:-auto}" "${CV_STM_SERIAL_BY_ID_DIRECTORY:-/dev/serial/by-id}") ||
+    die "Cannot select the yaw smoke test controller"
   local yaw_rad="${CV_STM_YAW_SMOKE_RAD:-0.05}"
   local count="${CV_STM_YAW_SMOKE_COUNT:-20}"
   local interval_ms="${CV_STM_YAW_SMOKE_INTERVAL_MS:-50}"

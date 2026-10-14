@@ -2,6 +2,7 @@
 /// @brief Implements ROS-to-SP/ST USB CDC transport for the STM32 controller.
 
 #include "yolo_cpp/stm32_serial_bridge_node.hpp"
+#include "yolo_cpp/serial_port_selection.hpp"
 
 #include <fcntl.h>
 #include <poll.h>
@@ -301,8 +302,10 @@ speed_t baud_to_constant(int baudrate)
 class SerialTransport
 {
 public:
-  SerialTransport(rclcpp::Logger logger, std::string port, int baudrate, bool verbose)
-      : logger_(std::move(logger)), port_(std::move(port)), baudrate_(baudrate), verbose_(verbose)
+  SerialTransport(rclcpp::Logger logger, std::string port, std::string by_id_directory,
+    int baudrate, bool verbose)
+      : logger_(std::move(logger)), requested_port_(std::move(port)),
+        by_id_directory_(std::move(by_id_directory)), baudrate_(baudrate), verbose_(verbose)
   {
   }
 
@@ -315,6 +318,13 @@ public:
   {
     close();
     next_connect_attempt_ = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    const auto selection = select_serial_port(requested_port_, by_id_directory_);
+    if (selection.path.empty()) {
+      RCLCPP_WARN(logger_, "Serial discovery: %s. Retrying without opening a device.",
+        selection.error.c_str());
+      return false;
+    }
+    port_ = selection.path;
     // The bridge stays alive without a serial device so vision can be tested on dev machines.
     fd_ = ::open(port_.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (fd_ < 0) {
@@ -358,10 +368,12 @@ public:
     }
 
     connected_ = true;
+    ++connection_epoch_;
     last_valid_rx_ = std::chrono::steady_clock::now();
     next_rx_warning_ = last_valid_rx_ + std::chrono::seconds(2);
     session_rx_bytes_ = 0;
-    RCLCPP_INFO(logger_, "STM32 serial connected: %s @ %d baud", port_.c_str(), baudrate_);
+    RCLCPP_INFO(logger_, "STM32 serial connected: %s @ %d baud (configured: %s)",
+      port_.c_str(), baudrate_, requested_port_.c_str());
     return true;
   }
 
@@ -417,7 +429,7 @@ public:
     }
 
     // A removed USB device can keep a valid-looking fd with no available bytes.
-    // Check hangup/error events before FIONREAD, then reopen the stable by-id path.
+    // Check hangup/error before FIONREAD, then re-resolve the current by-id path.
     pollfd port_state{fd_, POLLIN, 0};
     const int poll_result = ::poll(&port_state, 1, 0);
     if (poll_result < 0) {
@@ -470,6 +482,7 @@ public:
   }
 
   bool connected() const { return connected_; }
+  std::uint64_t connection_epoch() const { return connection_epoch_; }
 
   void close()
   {
@@ -492,11 +505,14 @@ private:
   }
 
   rclcpp::Logger logger_;
+  std::string requested_port_;
+  std::string by_id_directory_;
   std::string port_;
   int baudrate_{115200};
   bool verbose_{false};
   int fd_{-1};
   bool connected_{false};
+  std::uint64_t connection_epoch_{0};
   int message_count_{0};
   std::vector<uint8_t> rx_buffer_;
   std::chrono::steady_clock::time_point next_connect_attempt_{};
@@ -555,7 +571,8 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
   }
   const bool receive_enable = this->declare_parameter<bool>("receive_enable", false);
   const auto command_mode = this->declare_parameter<std::string>("command_output_mode", "absolute");
-  this->declare_parameter<std::string>("serial_port", "/dev/ttyUSB0");
+  this->declare_parameter<std::string>("serial_port", "auto");
+  this->declare_parameter<std::string>("serial_by_id_directory", "/dev/serial/by-id");
   this->declare_parameter<int>("serial_baudrate", 115200);
   this->declare_parameter<bool>("serial_verbose", false);
   this->declare_parameter<std::string>("runtime_log_dir", "");
@@ -601,6 +618,7 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
   if (transmit_enable_ || receive_enable) {
     transport_ = std::make_unique<SerialTransport>(this->get_logger(),
       this->get_parameter("serial_port").as_string(),
+      this->get_parameter("serial_by_id_directory").as_string(),
       this->get_parameter("serial_baudrate").as_int(), serial_verbose_);
     transport_->connect();
   } else {
@@ -750,6 +768,21 @@ void STM32SerialBridgeNode::handle_rx_poll()
   }
   const auto frames = transport_->read_attitude_frames();
   const auto received = this->get_clock()->now();
+  if (transport_->connection_epoch() != serial_connection_epoch_ ||
+    (serial_was_connected_ && !transport_->connected()))
+  {
+    // A new USB session must not inherit old-board attitude or queued commands.
+    // Retain last_solution_stamp_ns_ so a replay cannot revive them either.
+    latest_attitude_sample_ = cv_auto_aim_interfaces::msg::GimbalAttitude();
+    latest_attitude_sample_.header.stamp = received;
+    latest_attitude_sample_.header.frame_id = "gimbal_inertial";
+    stamped_attitude_publisher_->publish(latest_attitude_sample_);
+    has_target_ = have_command_ = suggest_fire_ = false;
+    latest_yaw_velocity_ = latest_pitch_velocity_ = 0.0F;
+    controller_status_.update(-1, status_now);
+  }
+  serial_connection_epoch_ = transport_->connection_epoch();
+  serial_was_connected_ = transport_->connected();
   const AttitudeFrame * newest_sp = nullptr;
   const AttitudeFrame * newest_st = nullptr;
   for (const auto & frame : frames) {

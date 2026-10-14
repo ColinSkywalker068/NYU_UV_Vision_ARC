@@ -69,6 +69,8 @@ private:
     int bullet_speed, int flags_register, int command_id, int controller_auto_aim);
 
   std::unique_ptr<SerialTransport> transport_;
+  std::uint64_t serial_connection_epoch_{0};
+  bool serial_was_connected_{false};
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr override_subscription_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr suggest_fire_subscription_;
   rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr angle_subscription_;

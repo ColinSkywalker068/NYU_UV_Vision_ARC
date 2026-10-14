@@ -232,9 +232,19 @@ runtime source of truth for an individual robot.
 
 ## USB disconnect recovery
 
-Set `CV_STM_SERIAL_PORT` to the controller's `/dev/serial/by-id/...` path.
-A `/dev/ttyACM0` name can change after unplugging; the stable identity lets the
-bridge reopen the same controller even when Linux assigns a different number.
+Set `CV_STM_SERIAL_PORT=auto` to discover the single connected NYUSH Vision Comm
+controller, including after replacing it with a board whose USB serial differs.
+Discovery accepts live character-device symlinks named
+`usb-NYUSH_Vision_Comm_port_<serial>-if00` under `/dev/serial/by-id`; it never
+selects generic `ttyACM` devices, ST-LINK debug ports, or cameras. No candidate
+means wait and retry; multiple candidates mean refuse automatic selection and
+log their paths. Choose an explicit controller path when multiple boards are attached.
+
+An existing explicit path takes precedence. A missing Vision Comm by-id path
+can fall back to the unique eligible replacement; other missing explicit paths
+remain failures. The bridge resolves again on each reconnect instead of caching
+an old board identity. Its `serial_by_id_directory` ROS parameter defaults to
+`/dev/serial/by-id` (tests use a private directory containing disposable PTYs).
 The service mounts the host device directory so newly enumerated ports remain
 visible inside its container.
 

@@ -439,7 +439,7 @@ if(BUILD_TESTING)
   ament_add_test(serial_bridge_reconnect
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_serial_reconnect.py
       --bridge $<TARGET_FILE:stm32_serial_bridge>
-    TIMEOUT 60
+    TIMEOUT 120
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO
   )
 
