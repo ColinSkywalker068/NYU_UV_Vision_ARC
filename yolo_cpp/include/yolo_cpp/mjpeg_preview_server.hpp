@@ -5,20 +5,22 @@
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>
+#include <opencv2/core/mat.hpp>
 #include <string>
 #include <thread>
 #include <vector>
 
-#include <opencv2/core/mat.hpp>
-
 #include "yolo_cpp/visibility_control.hpp"
 
-namespace yolo_cpp {
+namespace yolo_cpp
+{
 
 /// Tiny HTTP server that exposes the detector preview as MJPEG plus JSON stats.
-class YOLO_CPP_PUBLIC MjpegPreviewServer {
+class YOLO_CPP_PUBLIC MjpegPreviewServer
+{
 public:
-  struct Config {
+  struct Config
+  {
     std::string bind_address{"0.0.0.0"};
     std::uint16_t port{8080};
     std::string title{"CV Detection Preview"};
@@ -27,8 +29,8 @@ public:
   MjpegPreviewServer() = default;
   ~MjpegPreviewServer();
 
-  MjpegPreviewServer(const MjpegPreviewServer &) = delete;
-  MjpegPreviewServer &operator=(const MjpegPreviewServer &) = delete;
+  MjpegPreviewServer(const MjpegPreviewServer&) = delete;
+  MjpegPreviewServer& operator=(const MjpegPreviewServer&) = delete;
 
   /// Start listening for HTTP clients. Throws std::runtime_error on bind/listen
   /// errors.
@@ -38,8 +40,7 @@ public:
   void stop();
 
   /// Encode and publish one JPEG frame for future HTTP clients.
-  bool update_frame(const cv::Mat &frame_bgr, const std::string &stats_json,
-                    int jpeg_quality);
+  bool update_frame(const cv::Mat& frame_bgr, const std::string& stats_json, int jpeg_quality);
 
   /// Return the browser URL operators can open from the same robot network.
   std::string url() const;
@@ -55,10 +56,9 @@ private:
   bool send_snapshot(int client_fd);
   bool send_stream(int client_fd);
 
-  static bool send_all(int fd, const char *data, std::size_t size);
-  static std::string content_length_header(const std::string &content_type,
-                                           std::size_t size);
-  static std::string index_html(const std::string &title);
+  static bool send_all(int fd, const char* data, std::size_t size);
+  static std::string content_length_header(const std::string& content_type, std::size_t size);
+  static std::string index_html(const std::string& title);
 
   Config config_{};
   std::atomic<bool> running_{false};
@@ -76,6 +76,6 @@ private:
   std::vector<int> active_clients_;
 };
 
-} // namespace yolo_cpp
+}  // namespace yolo_cpp
 
 #endif

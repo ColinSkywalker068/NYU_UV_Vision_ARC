@@ -222,17 +222,25 @@ bool looks_like_end2end_shape(const std::vector<int64_t>& shape, int num_classes
   if (shape.size() != 3U) {
     return false;
   }
-  if (export_includes_nms.has_value()) {
-    return *export_includes_nms;
+
+  const int expected_attrs = task_obb ? 7 : 6;
+  const int dim1 = static_cast<int>(shape[1]);
+  const int dim2 = static_cast<int>(shape[2]);
+  if (dim1 > expected_attrs && dim2 == expected_attrs) {
+    // YOLO26 end-to-end exports are row-major [1, max_det, attrs]. The export's
+    // `nms` metadata can still be false because the architecture is NMS-free,
+    // so this structural signal takes precedence over that flag.
+    return true;
   }
-  if (end2end_metadata) {
+  if (end2end_metadata || export_includes_nms.value_or(false)) {
     return true;
   }
 
-  const int expected_attrs = task_obb ? 7 : 6;
-  const int raw_attrs = 4 + std::max(1, num_classes) + (task_obb ? 1 : 0);
-  const int dim1 = static_cast<int>(shape[1]);
-  const int dim2 = static_cast<int>(shape[2]);
+  int effective_num_classes = std::max(1, num_classes);
+  if (task_obb && dim1 > 5 && dim1 <= 16) {
+    effective_num_classes = std::max(effective_num_classes, dim1 - 5);
+  }
+  const int raw_attrs = 4 + effective_num_classes + (task_obb ? 1 : 0);
   const bool matches_raw_shape = (dim1 == raw_attrs) || (dim2 == raw_attrs);
   const bool matches_end2end_shape = (dim1 > expected_attrs && dim2 == expected_attrs)
                                      || (dim2 > expected_attrs && dim1 == expected_attrs);
@@ -249,8 +257,7 @@ bool looks_like_end2end_shape(const std::vector<int64_t>& shape, int num_classes
     return true;
   }
 
-  // Ambiguous shapes like [1, 7, N] for 2-class OBB models should default to
-  // raw output parsing unless the engine metadata explicitly says export NMS was enabled.
+  // Ambiguous channel-first shapes like [1, 7, N] default to raw two-class OBB.
   return false;
 }
 
@@ -289,14 +296,28 @@ std::vector<Detection> parse_end2end_output_tensor(const float* tensor_data,
       return tensor_data[static_cast<std::size_t>((attr * num_detections) + i)];
     };
 
+    const float value0 = at(0);
+    const float value1 = at(1);
+    const float value2 = at(2);
+    const float value3 = at(3);
+    if (!std::isfinite(value0) || !std::isfinite(value1) || !std::isfinite(value2)
+        || !std::isfinite(value3) || (task_obb && (value2 <= 0.0F || value3 <= 0.0F))
+        || (!task_obb && (value2 <= value0 || value3 <= value1)))
+    {
+      continue;
+    }
+
     float angle = 0.0F;
     float confidence = at(4);
-    int class_id = std::max(0, static_cast<int>(std::lround(at(5))));
+    int class_id = 0;
+    if (std::isfinite(at(5))) {
+      class_id = std::max(0, static_cast<int>(std::lround(at(5))));
+    }
     if (task_obb) {
       const auto is_class_like = [&](float value) {
         const float rounded = std::round(value);
         return std::isfinite(value) && std::abs(value - rounded) < 1e-3F && rounded >= 0.0F
-               && rounded < static_cast<float>(std::max(1, num_classes));
+               && rounded < static_cast<float>(std::max(2, num_classes));
       };
       const bool attr5_is_class = is_class_like(at(5));
       const bool attr6_is_class = is_class_like(at(6));
@@ -312,22 +333,24 @@ std::vector<Detection> parse_end2end_output_tensor(const float* tensor_data,
         angle = at(6);
       }
     }
-    if (!std::isfinite(confidence) || confidence < conf_threshold) {
+    if (!std::isfinite(confidence) || confidence < conf_threshold || confidence > 1.0F
+        || (task_obb && !std::isfinite(angle)))
+    {
       continue;
     }
 
-    const float x1f = task_obb ? clamp_value(
-      at(0) - (at(2) * 0.5F), 0.0F, static_cast<float>(img_w - 1))
-                               : clamp_value(at(0), 0.0F, static_cast<float>(img_w - 1));
-    const float y1f = task_obb ? clamp_value(
-      at(1) - (at(3) * 0.5F), 0.0F, static_cast<float>(img_h - 1))
-                               : clamp_value(at(1), 0.0F, static_cast<float>(img_h - 1));
-    const float x2f = task_obb ? clamp_value(
-      at(0) + (at(2) * 0.5F), 0.0F, static_cast<float>(img_w - 1))
-                               : clamp_value(at(2), 0.0F, static_cast<float>(img_w - 1));
-    const float y2f = task_obb ? clamp_value(
-      at(1) + (at(3) * 0.5F), 0.0F, static_cast<float>(img_h - 1))
-                               : clamp_value(at(3), 0.0F, static_cast<float>(img_h - 1));
+    const float x1f = task_obb
+                        ? clamp_value(at(0) - (at(2) * 0.5F), 0.0F, static_cast<float>(img_w - 1))
+                        : clamp_value(at(0), 0.0F, static_cast<float>(img_w - 1));
+    const float y1f = task_obb
+                        ? clamp_value(at(1) - (at(3) * 0.5F), 0.0F, static_cast<float>(img_h - 1))
+                        : clamp_value(at(1), 0.0F, static_cast<float>(img_h - 1));
+    const float x2f = task_obb
+                        ? clamp_value(at(0) + (at(2) * 0.5F), 0.0F, static_cast<float>(img_w - 1))
+                        : clamp_value(at(2), 0.0F, static_cast<float>(img_w - 1));
+    const float y2f = task_obb
+                        ? clamp_value(at(1) + (at(3) * 0.5F), 0.0F, static_cast<float>(img_h - 1))
+                        : clamp_value(at(3), 0.0F, static_cast<float>(img_h - 1));
     const int x1 = static_cast<int>(std::floor(std::min(x1f, x2f)));
     const int y1 = static_cast<int>(std::floor(std::min(y1f, y2f)));
     const int x2 = static_cast<int>(std::ceil(std::max(x1f, x2f)));
@@ -414,16 +437,26 @@ std::vector<Detection> parse_yolo_output_tensor(const float* tensor_data,
         best_cls = cls;
       }
     }
-    if (best_conf < conf_threshold) {
+    const float cx = at(0);
+    const float cy = at(1);
+    const float width = at(2);
+    const float height = at(3);
+    if (!std::isfinite(best_conf) || best_conf < conf_threshold || best_conf > 1.0F
+        || !std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(width)
+        || !std::isfinite(height) || width <= 0.0F || height <= 0.0F)
+    {
       continue;
     }
 
     ParsedCandidate candidate{};
-    candidate.cx = at(0);
-    candidate.cy = at(1);
-    candidate.width = at(2);
-    candidate.height = at(3);
+    candidate.cx = cx;
+    candidate.cy = cy;
+    candidate.width = width;
+    candidate.height = height;
     candidate.angle = (extras > 0) ? at(4 + nc) : 0.0F;
+    if (!std::isfinite(candidate.angle)) {
+      continue;
+    }
     candidate.confidence = best_conf;
     candidate.class_id = best_cls;
     parsed.push_back(candidate);

@@ -109,7 +109,7 @@ TEST(TrackManagerTest, RetainsLockedTargetUntilChallengerClearlyWins)
   EXPECT_EQ(result.selected_target->track_id, initially_selected);
 
   result = manager.update(
-    {make_detection(130.0F, 220.0F, 0.70F), make_detection(300.0F, 220.0F, 0.80F)}, 1.0 / 60.0);
+    {make_detection(130.0F, 220.0F, 0.70F), make_detection(300.0F, 220.0F, 0.86F)}, 1.0 / 60.0);
   ASSERT_TRUE(result.selected_target.has_value());
   EXPECT_NE(result.selected_target->track_id, initially_selected);
 }

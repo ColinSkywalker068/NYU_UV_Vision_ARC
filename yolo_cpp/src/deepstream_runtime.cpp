@@ -763,7 +763,7 @@ struct DeepStreamRuntime::Impl
     std::string config_text = read_text_file(config.config_template_path);
     const auto model_source_config = path_has_extension(config.model_path, ".onnx")
                                        ? ("onnx-file=" + config.model_path
-                                           + "\nmodel-engine-file=" + config.model_path + ".engine")
+                                          + "\nmodel-engine-file=" + config.model_path + ".engine")
                                        : ("model-engine-file=" + config.model_path);
     replace_all(config_text, "__MODEL_SOURCE_CONFIG__", model_source_config);
     replace_all(config_text, "__MODEL_ENGINE_FILE__", config.model_path);
@@ -887,17 +887,17 @@ struct DeepStreamRuntime::Impl
   {
     if (auto fps =
           get_child_proxy_numeric_if_present(source, "cam::BslResultingAcquisitionFrameRate");
-      fps.has_value() && *fps > 0.0)
+        fps.has_value() && *fps > 0.0)
     {
       return fps;
     }
     if (auto fps = get_child_proxy_numeric_if_present(source, "cam::ResultingFrameRate");
-      fps.has_value() && *fps > 0.0)
+        fps.has_value() && *fps > 0.0)
     {
       return fps;
     }
     if (auto fps = get_child_proxy_numeric_if_present(source, "cam::ResultingFrameRateAbs");
-      fps.has_value() && *fps > 0.0)
+        fps.has_value() && *fps > 0.0)
     {
       return fps;
     }
@@ -1631,7 +1631,7 @@ struct DeepStreamRuntime::Impl
       return std::nullopt;
     }
     for (NvDsMetaList* user_meta = frame_meta->frame_user_meta_list; user_meta != nullptr;
-      user_meta = user_meta->next)
+         user_meta = user_meta->next)
     {
       auto* meta = static_cast<NvDsUserMeta*>(user_meta->data);
       if (meta == nullptr || meta->base_meta.meta_type != NVDSINFER_TENSOR_OUTPUT_META) {
@@ -1691,7 +1691,7 @@ struct DeepStreamRuntime::Impl
     }
 
     for (NvDsMetaList* frame_list = batch_meta->frame_meta_list; frame_list != nullptr;
-      frame_list = frame_list->next)
+         frame_list = frame_list->next)
     {
       auto* frame_meta = static_cast<NvDsFrameMeta*>(frame_list->data);
       if (frame_meta == nullptr) {
@@ -1713,8 +1713,7 @@ struct DeepStreamRuntime::Impl
 
       Result result{};
       if (config.enable_color_verification || config.debug_publish_image_raw
-          || config.preview_frame)
-      {
+          || config.preview_frame) {
         const auto pts =
           frame_meta->buf_pts != GST_CLOCK_TIME_NONE ? frame_meta->buf_pts : GST_BUFFER_PTS(buffer);
         if (pts != GST_CLOCK_TIME_NONE) {

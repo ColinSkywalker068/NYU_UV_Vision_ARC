@@ -199,8 +199,7 @@ TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& de
       tracks_[track_index].tracker.width(), tracks_[track_index].tracker.height(),
       tracks_[track_index].observation.image_width, tracks_[track_index].observation.image_height);
     for (std::size_t detection_index = 0; detection_index < enemy_detections.size();
-      ++detection_index)
-    {
+         ++detection_index) {
       const auto& detection = enemy_detections[detection_index];
       if (tracks_[track_index].has_3d_state && detection.has_pose) {
         const double position_distance =
@@ -287,8 +286,7 @@ TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& de
   }
 
   for (std::size_t detection_index = 0; detection_index < enemy_detections.size();
-    ++detection_index)
-  {
+       ++detection_index) {
     if (detection_used[detection_index]) {
       continue;
     }

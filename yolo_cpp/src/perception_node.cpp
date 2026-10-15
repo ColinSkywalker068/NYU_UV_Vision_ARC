@@ -56,9 +56,8 @@ std::string normalize_show_mode(const rclcpp::Parameter& parameter, const rclcpp
       return "false";
   }
 
-  std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char ch) {
-    return static_cast<char>(std::tolower(ch));
-  });
+  std::transform(mode.begin(), mode.end(), mode.begin(),
+    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
   if (mode == "true") {
     RCLCPP_WARN(logger, "show:=true is deprecated; use show:=gui or show:=web.");
     return "gui";
@@ -74,8 +73,8 @@ std::string normalize_show_mode(const rclcpp::Parameter& parameter, const rclcpp
     return mode;
   }
 
-  RCLCPP_WARN(
-    logger, "Invalid show mode '%s'; disabling preview. Use one of: false, gui, web.", mode.c_str());
+  RCLCPP_WARN(logger, "Invalid show mode '%s'; disabling preview. Use one of: false, gui, web.",
+    mode.c_str());
   return "false";
 }
 
@@ -125,6 +124,9 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions& options)
   this->declare_parameter<int>("pre_mux_height", 0);
   this->declare_parameter<bool>("deepstream_profile_stages", false);
   this->declare_parameter<int>("deepstream_profile_stage_interval", 300);
+  this->declare_parameter<bool>("tensorrt_layer_profile", false);
+  this->declare_parameter<std::string>("tensorrt_layer_profile_path", "");
+  this->declare_parameter<int>("tensorrt_layer_profile_interval", 1);
   this->declare_parameter<std::string>("bayer_conversion_backend", "cuda");
   this->declare_parameter<int>("stage_log_interval", 300);
   this->declare_parameter<double>("preview_max_fps", 60.0);
@@ -171,6 +173,11 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions& options)
   deepstream_profile_stages_ = this->get_parameter("deepstream_profile_stages").as_bool();
   deepstream_profile_stage_interval_ = std::max(
     1, static_cast<int>(this->get_parameter("deepstream_profile_stage_interval").as_int()));
+  tensorrt_layer_profile_ = this->get_parameter("tensorrt_layer_profile").as_bool();
+  tensorrt_layer_profile_path_ =
+    this->get_parameter("tensorrt_layer_profile_path").as_string();
+  tensorrt_layer_profile_interval_ = std::max(
+    1, static_cast<int>(this->get_parameter("tensorrt_layer_profile_interval").as_int()));
   bayer_conversion_backend_ = this->get_parameter("bayer_conversion_backend").as_string();
   stage_log_interval_ =
     std::max(1, static_cast<int>(this->get_parameter("stage_log_interval").as_int()));
@@ -186,6 +193,12 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions& options)
       this->get_logger(), "Failed to open runtime vision log file: %s", runtime_log_path_.c_str());
   } else {
     RCLCPP_INFO(this->get_logger(), "Runtime logs: %s", runtime_log_path_.c_str());
+  }
+  if (tensorrt_layer_profile_ && tensorrt_layer_profile_path_.empty()) {
+    tensorrt_layer_profile_path_ =
+      (std::filesystem::path(runtime_log_path_).parent_path()
+        / ("tensorrt_layers_" + vision_node_helpers::timestamp_now_compact() + ".csv"))
+        .string();
   }
 
   target_class_ = (target_color_ == "red") ? RED_CLASS : BLUE_CLASS;
@@ -206,6 +219,11 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions& options)
   }
 
   if (detector_backend_kind_ == "deepstream") {
+    if (tensorrt_layer_profile_) {
+      RCLCPP_WARN(this->get_logger(),
+        "tensorrt_layer_profile requires detector_backend:=native_tensorrt; DeepStream nvinfer "
+        "only supports the existing pipeline-stage profiler.");
+    }
     try {
       initialize_deepstream_runtime();
     } catch (const std::exception& exc) {
@@ -309,7 +327,8 @@ void PerceptionNode::initialize_native_pipeline()
   fps_ = camera_backend_->actual_fps() > 0.0 ? camera_backend_->actual_fps() : 60.0;
 
   detector_backend_ =
-    create_detector_backend(detector_backend_kind_, model_path_, task_, model_type_, half_, conf_);
+    create_detector_backend(detector_backend_kind_, model_path_, task_, model_type_, half_, conf_,
+      tensorrt_layer_profile_, tensorrt_layer_profile_path_, tensorrt_layer_profile_interval_);
   timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / std::max(1.0, fps_)),
     std::bind(&PerceptionNode::timer_callback, this));
 }
@@ -827,8 +846,7 @@ void PerceptionNode::log_runtime_fps_once_per_second()
 
   std::ostringstream line;
   line << std::fixed << std::setprecision(2)
-       << "fps_scope=" << (deepstream_runtime_ != nullptr ? "deepstream_result" : "frame")
-       << ' '
+       << "fps_scope=" << (deepstream_runtime_ != nullptr ? "deepstream_result" : "frame") << ' '
        << "fps=" << preview_fps_;
   write_runtime_log_line(line.str());
 }
@@ -843,14 +861,13 @@ void PerceptionNode::log_runtime_opponent_event(
 
   std::ostringstream line;
   line << std::fixed << std::setprecision(2)
-       << "fps_scope=" << (deepstream_runtime_ != nullptr ? "deepstream_result" : "frame")
-       << ' '
-       << "fps=" << preview_fps_ << ' ' << "bbox=" << x1 << ',' << y1 << ',' << x2 << ','
-       << y2 << ' ';
+       << "fps_scope=" << (deepstream_runtime_ != nullptr ? "deepstream_result" : "frame") << ' '
+       << "fps=" << preview_fps_ << ' ' << "bbox=" << x1 << ',' << y1 << ',' << x2 << ',' << y2
+       << ' ';
   line << std::setprecision(3) << "conf=" << target.confidence << ' '
        << "color_pass=" << (color_pass ? 1 : 0) << ' ';
-  line << "latency_scope="
-       << (deepstream_runtime_ != nullptr ? "post_infer" : "capture_to_publish") << ' ';
+  line << "latency_scope=" << (deepstream_runtime_ != nullptr ? "post_infer" : "capture_to_publish")
+       << ' ';
   line << std::setprecision(2) << "latency_ms=" << latency_ms;
   write_runtime_log_line(line.str());
 }

@@ -1,5 +1,13 @@
+#!/usr/bin/env bash
+
 HOME_DIR=$HOME
-CV_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"
+DEFAULT_CV_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-cplusplus-pylon"
+R39_CV_IMAGE="cv-detection-cplusplus-r39:local"
+if [[ -z "${CV_IMAGE:-}" ]] && grep -q '^# R39 ' /etc/nv_tegra_release 2>/dev/null; then
+  CV_IMAGE="$R39_CV_IMAGE"
+else
+  CV_IMAGE="${CV_IMAGE:-$DEFAULT_CV_IMAGE}"
+fi
 CV_PYTHON_IMAGE="nyuultraviolet/cv-dockerfile:jp60-pytorch21-humble-tensorrt-realsense-wrapper-ultra"
 
 # Resolve symlink to find the actual scripts directory
@@ -11,6 +19,25 @@ while [ -L "$SOURCE" ]; do
 done
 SCRIPTS_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
 
+find_workspace_root() {
+  local candidate
+  candidate="$(pwd -P)"
+
+  while [[ "$candidate" != "/" ]]; do
+    if [[ -d "$candidate/src" ]] && find "$candidate/src" -name package.xml -print -quit | grep -q .; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+    if find "$candidate" -mindepth 2 -maxdepth 2 -name package.xml -print -quit | grep -q .; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+    candidate="$(dirname "$candidate")"
+  done
+
+  return 1
+}
+
 # Check if the script is running in the background
 IS_BACKGROUND=false
 PROCESS_STAT="$(ps -o stat= -p $$ 2>/dev/null || true)"
@@ -20,11 +47,10 @@ fi
 
 # Switch to ROS2 workspace and start Docker container if running ROS2 command
 if [[ ($1 == "run" && $# -ge 3) || $1 == "build" || $1 == "topic" || $1 == "executables" ]]; then
-  # Change directory if user is not in ROS2 workspace and this is not ran in the background
+  # Use the enclosing workspace so sibling packages are available to colcon.
   if [[ $IS_BACKGROUND = false ]]; then
-    if ! (([ -d src ] && find src -name "package.xml" -print | grep -q .) || find * -maxdepth 1 -name package.xml -print | grep -q .); then
-      cd $HOME_DIR/CV_Detection
-    fi
+    workspace_root="$(find_workspace_root || true)"
+    cd "${workspace_root:-$HOME_DIR/CV_Detection}"
   fi
   # Start Docker container if the host does not have ROS2 installed
   source /opt/ros/humble/setup.bash 2> /dev/null || source /opt/ros/humble/install/setup.bash 2> /dev/null

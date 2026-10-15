@@ -1,8 +1,6 @@
 /// @file stm32_yaw_packet_smoke.cpp
 /// @brief Manual hardware smoke test that sends one yaw-only Seasky vision packet.
 
-#include "yolo_cpp/seasky_protocol.hpp"
-
 #include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
@@ -20,6 +18,8 @@
 #include <thread>
 #include <vector>
 
+#include "yolo_cpp/seasky_protocol.hpp"
+
 namespace
 {
 
@@ -36,27 +36,27 @@ struct Options
   bool allow_large_yaw{false};
 };
 
-void print_usage(const char * program)
+void print_usage(const char* program)
 {
-  std::cout
-    << "Usage: " << program << " [options]\n"
-    << "\n"
-    << "Sends pitch=0 and yaw_rad as a Seasky cmd 0x0001 vision packet.\n"
-    << "Use this only with the robot in a safe test stance.\n"
-    << "\n"
-    << "Options:\n"
-    << "  --port PATH           Serial device path (default: /dev/ttyUSB0)\n"
-    << "  --baud RATE           Baud rate (default: 115200)\n"
-    << "  --yaw-rad VALUE       Yaw error in radians; positive turns one direction (default: 0.05)\n"
-    << "  --count N             Number of packets to send (default: 20)\n"
-    << "  --interval-ms N       Delay between packets when count > 1 (default: 50)\n"
-    << "  --target-state N      1=converging, 2=ready-to-fire (default: 1)\n"
-    << "  --target-type N       Controls target type enum value (default: 0 unknown)\n"
-    << "  --allow-large-yaw     Allow |yaw| > 0.35 rad\n"
-    << "  --help                Show this help\n";
+  std::cout << "Usage: " << program << " [options]\n"
+            << "\n"
+            << "Sends pitch=0 and yaw_rad as a Seasky cmd 0x0001 vision packet.\n"
+            << "Use this only with the robot in a safe test stance.\n"
+            << "\n"
+            << "Options:\n"
+            << "  --port PATH           Serial device path (default: /dev/ttyUSB0)\n"
+            << "  --baud RATE           Baud rate (default: 115200)\n"
+            << "  --yaw-rad VALUE       Yaw error in radians; positive turns one direction "
+               "(default: 0.05)\n"
+            << "  --count N             Number of packets to send (default: 20)\n"
+            << "  --interval-ms N       Delay between packets when count > 1 (default: 50)\n"
+            << "  --target-state N      1=converging, 2=ready-to-fire (default: 1)\n"
+            << "  --target-type N       Controls target type enum value (default: 0 unknown)\n"
+            << "  --allow-large-yaw     Allow |yaw| > 0.35 rad\n"
+            << "  --help                Show this help\n";
 }
 
-int parse_int(const std::string & value, const std::string & name)
+int parse_int(const std::string& value, const std::string& name)
 {
   try {
     std::size_t parsed = 0;
@@ -65,12 +65,12 @@ int parse_int(const std::string & value, const std::string & name)
       throw std::invalid_argument("trailing characters");
     }
     return result;
-  } catch (const std::exception & error) {
+  } catch (const std::exception& error) {
     throw std::runtime_error("Invalid " + name + " value '" + value + "': " + error.what());
   }
 }
 
-float parse_float(const std::string & value, const std::string & name)
+float parse_float(const std::string& value, const std::string& name)
 {
   try {
     std::size_t parsed = 0;
@@ -79,17 +79,17 @@ float parse_float(const std::string & value, const std::string & name)
       throw std::invalid_argument("trailing characters");
     }
     return result;
-  } catch (const std::exception & error) {
+  } catch (const std::exception& error) {
     throw std::runtime_error("Invalid " + name + " value '" + value + "': " + error.what());
   }
 }
 
-Options parse_args(int argc, char ** argv)
+Options parse_args(int argc, char** argv)
 {
   Options options;
   for (int i = 1; i < argc; ++i) {
     const std::string arg(argv[i]);
-    auto require_value = [&](const std::string & name) -> std::string {
+    auto require_value = [&](const std::string& name) -> std::string {
       if (i + 1 >= argc) {
         throw std::runtime_error(name + " requires a value");
       }
@@ -165,7 +165,7 @@ speed_t baud_to_constant(int baudrate)
 class SerialPort
 {
 public:
-  SerialPort(const std::string & port, int baudrate)
+  SerialPort(const std::string& port, int baudrate)
   {
     fd_ = ::open(port.c_str(), O_RDWR | O_NOCTTY);
     if (fd_ < 0) {
@@ -205,10 +205,10 @@ public:
     }
   }
 
-  SerialPort(const SerialPort &) = delete;
-  SerialPort & operator=(const SerialPort &) = delete;
+  SerialPort(const SerialPort&) = delete;
+  SerialPort& operator=(const SerialPort&) = delete;
 
-  void write_packet(const std::vector<uint8_t> & packet)
+  void write_packet(const std::vector<uint8_t>& packet)
   {
     std::size_t written = 0;
     while (written < packet.size()) {
@@ -225,7 +225,7 @@ private:
   int fd_{-1};
 };
 
-std::string hex_dump(const std::vector<uint8_t> & packet)
+std::string hex_dump(const std::vector<uint8_t>& packet)
 {
   std::ostringstream out;
   for (std::size_t i = 0; i < packet.size(); ++i) {
@@ -239,7 +239,7 @@ std::string hex_dump(const std::vector<uint8_t> & packet)
 
 }  // namespace
 
-int main(int argc, char ** argv)
+int main(int argc, char** argv)
 {
   try {
     const Options options = parse_args(argc, argv);
@@ -263,7 +263,7 @@ int main(int argc, char ** argv)
     }
     std::cout << "Done.\n";
     return 0;
-  } catch (const std::exception & error) {
+  } catch (const std::exception& error) {
     std::cerr << "stm32_yaw_packet_smoke: " << error.what() << "\n";
     std::cerr << "Run with --help for usage.\n";
     return 1;

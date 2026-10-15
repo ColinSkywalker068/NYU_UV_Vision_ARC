@@ -154,6 +154,7 @@ private:
   std::string model_type_;
   std::string detector_backend_kind_;
   std::string deepstream_config_path_;
+  std::string tensorrt_layer_profile_path_;
   std::string inference_mode_;
   std::string runtime_log_dir_;
   std::string runtime_log_path_;
@@ -162,6 +163,7 @@ private:
   std::string vis_window_name_;
   std::string bayer_conversion_backend_;
   bool allow_native_tensorrt_fallback_{false};
+  bool tensorrt_layer_profile_{false};
   bool half_{true};
   bool show_{false};
   bool show_gui_{false};
@@ -179,6 +181,7 @@ private:
   int pre_mux_width_{0};
   int pre_mux_height_{0};
   int deepstream_profile_stage_interval_{300};
+  int tensorrt_layer_profile_interval_{1};
   int tracker_timeout_{15};
   int max_hsv_candidates_{3};
   int max_coast_frames_{3};

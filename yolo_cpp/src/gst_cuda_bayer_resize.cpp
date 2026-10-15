@@ -247,9 +247,9 @@ GstFlowReturn gst_yolo_cuda_bayer_resize_transform(
   const guint64 frame_id = ++self->frame_count;
   const cudaError_t prior_cuda_error = cudaGetLastError();
   if (prior_cuda_error != cudaSuccess) {
-    GST_WARNING_OBJECT(self, "CUDA Bayer frame=%" G_GUINT64_FORMAT
-                             " prior CUDA error before transform: %s",
-      frame_id, cudaGetErrorString(prior_cuda_error));
+    GST_WARNING_OBJECT(self,
+      "CUDA Bayer frame=%" G_GUINT64_FORMAT " prior CUDA error before transform: %s", frame_id,
+      cudaGetErrorString(prior_cuda_error));
   }
   if (self->cuda_context == nullptr) {
     self->cuda_context = yolo_cuda_bayer_resize_create();
@@ -283,8 +283,8 @@ GstFlowReturn gst_yolo_cuda_bayer_resize_transform(
       const char* allocator_type = G_OBJECT_TYPE_NAME(input_memory->allocator);
       const char* allocator_name = GST_OBJECT_NAME(input_memory->allocator);
       if (allocator_name != nullptr && allocator_name[0] != '\0') {
-        input_allocator = std::string(allocator_type != nullptr ? allocator_type : "unknown")
-                          + ":" + allocator_name;
+        input_allocator = std::string(allocator_type != nullptr ? allocator_type : "unknown") + ":"
+                          + allocator_name;
       } else {
         input_allocator = allocator_type != nullptr ? allocator_type : "unknown";
       }
@@ -318,8 +318,8 @@ GstFlowReturn gst_yolo_cuda_bayer_resize_transform(
 
   const gsize minimum_input_size =
     static_cast<gsize>(self->input_width) * static_cast<gsize>(self->input_height);
-  const gsize minimum_output_size = static_cast<gsize>(self->output_width)
-                                    * static_cast<gsize>(self->output_height) * 4U;
+  const gsize minimum_output_size =
+    static_cast<gsize>(self->output_width) * static_cast<gsize>(self->output_height) * 4U;
   if (in_map.size < minimum_input_size || out_map.size < minimum_output_size) {
     gst_buffer_unmap(outbuf, &out_map);
     gst_buffer_unmap(inbuf, &in_map);
@@ -347,9 +347,9 @@ GstFlowReturn gst_yolo_cuda_bayer_resize_transform(
     gst_buffer_unmap(outbuf, &out_map);
     gst_buffer_unmap(inbuf, &in_map);
     GST_ELEMENT_ERROR(GST_ELEMENT(self), RESOURCE, FAILED,
-      ("CUDA Bayer resize stride exceeds mapped buffer: input_stride=%d input_size=%"
-       G_GSIZE_FORMAT " required_input=%" G_GSIZE_FORMAT
-       " output_stride=%d output_size=%" G_GSIZE_FORMAT " required_output=%" G_GSIZE_FORMAT,
+      ("CUDA Bayer resize stride exceeds mapped buffer: input_stride=%d input_size=%" G_GSIZE_FORMAT
+       " required_input=%" G_GSIZE_FORMAT " output_stride=%d output_size=%" G_GSIZE_FORMAT
+       " required_output=%" G_GSIZE_FORMAT,
         input_stride, in_map.size, required_input_size, output_stride, out_map.size,
         required_output_size),
       (nullptr));

@@ -38,7 +38,22 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "Path to YOLO weights (.pt / .engine / .onnx); empty uses the package default resolver",
         ),
         ("task", "obb", "YOLO task: detect, obb, segment"),
-        ("conf", "0.30", "Confidence threshold"),
+        ("conf", "0.65", "Confidence threshold"),
+        (
+            "tensorrt_layer_profile",
+            "true",
+            "Write native TensorRT optimized YOLO layer/block latency CSV (enabled by default)",
+        ),
+        (
+            "tensorrt_layer_profile_path",
+            "",
+            "Optional TensorRT layer latency CSV path; empty writes under vision_logs",
+        ),
+        (
+            "tensorrt_layer_profile_interval",
+            "1",
+            "Profile one native TensorRT inference every N frames",
+        ),
         (
             "use_model_color_classes",
             "true",
@@ -192,6 +207,11 @@ def make_detector_node() -> Node:
                 "model_path": launch_config("model_path"),
                 "task": launch_config("task"),
                 "conf": launch_config("conf"),
+                "tensorrt_layer_profile": launch_config("tensorrt_layer_profile"),
+                "tensorrt_layer_profile_path": launch_config("tensorrt_layer_profile_path"),
+                "tensorrt_layer_profile_interval": launch_config(
+                    "tensorrt_layer_profile_interval"
+                ),
                 "use_model_color_classes": launch_config("use_model_color_classes"),
                 "enable_color_verification": launch_config("enable_color_verification"),
                 "target_color": launch_config("target_color"),

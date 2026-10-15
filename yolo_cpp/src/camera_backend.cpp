@@ -24,6 +24,11 @@
 #endif
 
 #ifdef HAVE_PYLON
+// librealsense and Pylon both define this generic helper macro. Pylon owns the
+// active definition below; clearing RealSense's copy avoids a noisy redefinition.
+#ifdef STRINGIFY
+#undef STRINGIFY
+#endif
 #if __has_include(<pylon/PylonIncludes.h>)
 #include <pylon/PylonIncludes.h>
 #elif __has_include(<PylonIncludes.h>)
@@ -139,7 +144,7 @@ public:
     packet.capture_time_ns =
       static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now().time_since_epoch())
-          .count());
+                                  .count());
     packet.source_id = source_id_;
 
     if (stream_format_ == RS2_FORMAT_BGR8) {
@@ -209,8 +214,7 @@ private:
             continue;
           }
           if (video.width() != config_.realsense_width
-              || video.height() != config_.realsense_height)
-          {
+              || video.height() != config_.realsense_height) {
             continue;
           }
           const int fps = video.fps();
@@ -429,7 +433,7 @@ public:
       packet.capture_time_ns =
         static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now().time_since_epoch())
-            .count());
+                                    .count());
       packet.source_id = source_id_;
       packet.owner = owner;
       packet.flip_180 = config_.basler_flip;
@@ -461,7 +465,7 @@ public:
     packet.capture_time_ns =
       static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now().time_since_epoch())
-          .count());
+                                  .count());
     packet.source_id = source_id_;
     packet.owner = image;
     if (config_.basler_flip) {
@@ -510,8 +514,8 @@ private:
     try {
       stop_grabbing_locked();
       start_grabbing_locked();
-      RCLCPP_WARN_THROTTLE(
-        logger_, steady_clock_, 2000, "Recovered Basler grab loop after stale RetrieveResult waiter");
+      RCLCPP_WARN_THROTTLE(logger_, steady_clock_, 2000,
+        "Recovered Basler grab loop after stale RetrieveResult waiter");
 #ifdef HAVE_PYLON
     } catch (const Pylon::GenericException& exc) {
       RCLCPP_WARN_THROTTLE(
@@ -551,8 +555,8 @@ private:
         if (entry && GenApi::IsReadable(entry)) {
           node->SetIntValue(entry->GetValue());
           if (std::string(candidate) != value) {
-            RCLCPP_INFO(logger_, "Basler %s using enum value %s for requested %s", name, candidate,
-              value);
+            RCLCPP_INFO(
+              logger_, "Basler %s using enum value %s for requested %s", name, candidate, value);
           }
           return;
         }
@@ -635,8 +639,8 @@ private:
       }
       node->SetValue(std::max(node->GetMin(), std::min(node->GetMax(), value)));
     } catch (const std::exception& exc) {
-      RCLCPP_WARN(logger_, "Could not set Basler %s=%ld: %s", name, static_cast<long>(requested),
-        exc.what());
+      RCLCPP_WARN(
+        logger_, "Could not set Basler %s=%ld: %s", name, static_cast<long>(requested), exc.what());
     }
   }
 

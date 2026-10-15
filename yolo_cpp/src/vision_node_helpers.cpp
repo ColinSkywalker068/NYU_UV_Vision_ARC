@@ -3,9 +3,8 @@
 
 #include "vision_node_helpers.hpp"
 
-#include <ament_index_cpp/get_package_share_directory.hpp>
-
 #include <algorithm>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstddef>

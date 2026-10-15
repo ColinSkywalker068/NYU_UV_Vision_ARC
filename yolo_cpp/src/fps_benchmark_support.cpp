@@ -450,9 +450,8 @@ void print_detector_stage_summary(const std::vector<TimedSample>& samples)
     detections += sample.detections;
   }
   const double n = static_cast<double>(samples.size());
-  const bool has_core_detector_timings =
-    totals.preprocess_ms > 0.0 || totals.upload_ms > 0.0 ||
-    totals.inference_ms > 0.0 || totals.download_ms > 0.0;
+  const bool has_core_detector_timings = totals.preprocess_ms > 0.0 || totals.upload_ms > 0.0
+                                         || totals.inference_ms > 0.0 || totals.download_ms > 0.0;
   if (!has_core_detector_timings) {
     std::cout << std::fixed << std::setprecision(3)
               << "  result_avg_ms parse=" << totals.parse_ms / n

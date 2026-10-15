@@ -34,8 +34,8 @@ def argument_specs() -> list[tuple[str, Any, str]]:
         ),
         (
             "detector_backend",
-            "deepstream",
-            "Detector backend: deepstream or native_tensorrt",
+            "native_tensorrt",
+            "Detector backend: native_tensorrt (default, required for layer profiling) or deepstream",
         ),
         (
             "allow_native_tensorrt_fallback",
@@ -52,6 +52,7 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             EnvironmentVariable("CV_STM_MODEL_PATH", default_value=""),
             "Path to YOLO weights (.pt / .engine / .onnx); empty uses the package default resolver",
         ),
+        ("conf", "0.65", "Confidence threshold"),
         ("serial_port", "/dev/ttyUSB0", "Serial port for STM32 connection"),
         ("serial_baudrate", "115200", "Baud rate for STM32 serial"),
         ("serial_verbose", "false", "Enable verbose serial logging"),
@@ -107,6 +108,21 @@ def argument_specs() -> list[tuple[str, Any, str]]:
             "deepstream_profile_stage_interval",
             "300",
             "Frames between DeepStream stage-profile log summaries",
+        ),
+        (
+            "tensorrt_layer_profile",
+            "true",
+            "Write native TensorRT optimized YOLO layer/block latency CSV (enabled by default)",
+        ),
+        (
+            "tensorrt_layer_profile_path",
+            "",
+            "Optional TensorRT layer latency CSV path; empty writes under vision_logs",
+        ),
+        (
+            "tensorrt_layer_profile_interval",
+            "1",
+            "Profile one native TensorRT inference every N frames",
         ),
         (
             "bayer_conversion_backend",
@@ -312,6 +328,7 @@ def make_detector_node() -> Node:
                     "allow_native_tensorrt_fallback"
                 ),
                 "model_path": launch_config("model_path"),
+                "conf": launch_config("conf"),
                 "deepstream_config_path": launch_config("deepstream_config_path"),
                 "imgsz_width": launch_config("basler_width"),
                 "imgsz_height": launch_config("basler_height"),
@@ -329,6 +346,11 @@ def make_detector_node() -> Node:
                 "deepstream_profile_stages": launch_config("deepstream_profile_stages"),
                 "deepstream_profile_stage_interval": launch_config(
                     "deepstream_profile_stage_interval"
+                ),
+                "tensorrt_layer_profile": launch_config("tensorrt_layer_profile"),
+                "tensorrt_layer_profile_path": launch_config("tensorrt_layer_profile_path"),
+                "tensorrt_layer_profile_interval": launch_config(
+                    "tensorrt_layer_profile_interval"
                 ),
                 "bayer_conversion_backend": launch_config("bayer_conversion_backend"),
                 "basler_exposure_us": launch_config("basler_exposure_us"),

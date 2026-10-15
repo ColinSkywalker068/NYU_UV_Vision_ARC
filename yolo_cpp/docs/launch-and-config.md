@@ -38,6 +38,8 @@ The launch files expose the settings that matter most during bring-up:
 - DeepStream full-FOV resize through `pre_mux_resize`, `pre_mux_width`, and `pre_mux_height`
 - DeepStream Bayer conversion through `bayer_conversion_backend`; `cuda` is the default and falls back to `cpu`/`bayer2rgb` when unavailable
 - DeepStream conversion profiling through `deepstream_profile_stages` and `deepstream_profile_stage_interval`
+- native TensorRT YOLO layer/block profiling through `tensorrt_layer_profile`,
+  `tensorrt_layer_profile_path`, and `tensorrt_layer_profile_interval`
 - detector backend selection through `detector_backend`
 - fallback control through `allow_native_tensorrt_fallback`
 - default enemy color through `target_color` until STM or robot-id feedback overrides it
@@ -54,6 +56,29 @@ The launch files expose the settings that matter most during bring-up:
 - STM command units through `transmit_angles_in_degrees`
 
 The DeepStream template shipped with the package lives at [`config/deepstream_bestmerge_nvinfer.txt`](../config/deepstream_bestmerge_nvinfer.txt).
+
+## TensorRT YOLO Layer Latency Log
+
+The auto-aim launch files use native TensorRT layer profiling by default. TensorRT reports the
+optimized engine's layers, which may be fused blocks rather than one row per original
+YOLO/PyTorch module. The CSV has `timestamp`, `frame`, `layer`, and `latency_ms` columns; every
+inference pass appends one indexed group of layer rows. Its default output path is a timestamped
+`vision_logs/tensorrt_layers_*.csv` file. Disable it for normal maximum-throughput operation with
+`tensorrt_layer_profile:=false`.
+
+```bash
+uv run yolo_cpp realsense.launch.py
+```
+
+The Basler auto-aim stack defaults to the native backend so its standard command records the
+latency log:
+
+```bash
+uv run yolo_cpp basler.launch.py
+```
+
+`deepstream_profile_stages` remains the appropriate tool for DeepStream conversion and
+pipeline-stage timing. DeepStream's `nvinfer` path does not expose TensorRT per-layer callbacks.
 
 The default tracker profile is tuned for fast rotating armor plates: `track_min_hits:=1`, `track_max_coast_frames:=1`, `track_drop_frames:=4`, `association_max_center_distance_ratio:=0.30`, `association_min_iou:=0.0`, `target_switch_min_score_delta:=0.02`, and `target_lock_hysteresis_frames:=0`. Increase the coast, lock, and score-delta values when you want steadier lock over faster switching.
 

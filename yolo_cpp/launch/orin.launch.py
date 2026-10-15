@@ -9,11 +9,15 @@ from pathlib import Path
 from typing import Any
 
 from launch import LaunchDescription
+from launch.substitutions import EnvironmentVariable
 
 
 ORIN_DEFAULTS = {
     "detector_backend": "native_tensorrt",
-    "model_path": "/home/ultraviolet/CV_Detection/yolo_cpp/models/kushalv2-nano.engine",
+    # Let ArmorDetectorNode resolve the model from the current checkout when
+    # CV_STM_MODEL_PATH is unset.  The former absolute path only worked for
+    # the robot's historical /home/ultraviolet/CV_Detection checkout.
+    "model_path": EnvironmentVariable("CV_STM_MODEL_PATH", default_value=""),
     "basler_pixel_format": "bayer_rggb8",
     "basler_use_full_sensor": "true",
     "basler_source_width": "1920",

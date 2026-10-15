@@ -81,7 +81,8 @@ class NativeTensorRTBackend final : public DetectorBackend
 public:
   /// Configure a native TensorRT backend.
   NativeTensorRTBackend(std::string model_path, std::string task, std::string model_type, bool half,
-    float conf_threshold);
+    float conf_threshold, bool layer_profile_enabled = false,
+    std::string layer_profile_path = "", int layer_profile_interval = 1);
   ~NativeTensorRTBackend() override;
 
   DetectionBatch infer(const FramePacket& packet, const rclcpp::Logger& logger,
@@ -99,6 +100,9 @@ private:
   std::string model_type_;
   bool half_{true};
   float conf_threshold_{0.25F};
+  bool layer_profile_enabled_{false};
+  std::string layer_profile_path_;
+  int layer_profile_interval_{1};
   bool warned_unavailable_{false};
   bool initialized_{false};
   bool end2end_{false};
@@ -116,7 +120,8 @@ class DeepStreamBackend final : public DetectorBackend
 public:
   /// Configure a DeepStream-backed detector.
   DeepStreamBackend(std::string model_path, std::string task, std::string model_type, bool half,
-    float conf_threshold);
+    float conf_threshold, bool layer_profile_enabled = false,
+    std::string layer_profile_path = "", int layer_profile_interval = 1);
 
   DetectionBatch infer(const FramePacket& packet, const rclcpp::Logger& logger,
     DetectorStageTimings* timings = nullptr) override;
@@ -132,7 +137,8 @@ private:
 /// Create a detector backend from a launch/configured backend kind.
 std::unique_ptr<DetectorBackend> create_detector_backend(const std::string& backend_kind,
   const std::string& model_path, const std::string& task, const std::string& model_type, bool half,
-  float conf_threshold);
+  float conf_threshold, bool layer_profile_enabled = false,
+  const std::string& layer_profile_path = "", int layer_profile_interval = 1);
 
 }  // namespace yolo_cpp
 
