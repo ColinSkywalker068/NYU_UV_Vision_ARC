@@ -159,12 +159,16 @@ can remain visible while 3D solving is blocked; it is not a controller command.
 
 ## Brief detection gaps and smoothing
 
-The tracker confirms after two hits, predicts through at most six missed frames
-**and** 120 ms, and retains an unmatched identity for at most 16 frames and
-350 ms so short gaps can reacquire the same ID. The first limit reached wins.
+The tracker confirms after two hits, predicts through at most 120 ms, and
+retains an unmatched identity for at most 350 ms so short gaps can reacquire
+the same ID. `track_max_coast_frames:=0` and `track_drop_frames:=0` use these
+time limits alone, independent of frame rate. Positive frame caps add the
+legacy frame limits: the first time/frame limit reached wins. Existing saved
+env overrides such as `track_max_coast_frames:=6` remain effective until edited.
 `target_lock_hysteresis_frames:=6` and `target_switch_min_score_delta:=0.08`
-reduce switches caused by small confidence fluctuations. Color and armor-number
-association checks remain in effect.
+reduce switches caused by small confidence fluctuations. A confirmed measured
+plate takes priority over a coasting plate during spin transitions. Color and
+armor-number association checks remain in effect.
 
 Tune `track_max_coast_frames`, `track_max_coast_s`, `track_drop_frames`, and
 `track_drop_s` in `CV_STM_EXTRA_LAUNCH_ARGS`, then `cv restart`. The independent
@@ -176,6 +180,15 @@ and coasted targets cannot recommend fire.
 measurements with time-based gains. Larger values smooth more but add lag;
 zero disables that filter. Velocity uses successive real measurements over
 their actual interval, including missed frames, to avoid a reacquisition kick.
+
+`pose_innovation_confirm_m:=0.20` requires a second consistent observation for
+an unusually large position correction. Confirmed discontinuities reset plate
+velocity rather than interpreting a position jump as instantaneous motion.
+`pose_max_reprojection_rms_px:=5.0` rejects poor PnP fits; zero disables that
+residual cutoff, while finite-value checks remain. Weak fits use a smaller
+confirmation threshold. These defaults require field validation with the actual
+camera calibration. This is a bounded reacquisition check, not another low-pass
+filter or permission to extrapolate through long disappearances.
 
 The preview retains predicted targets in amber with **COASTING** and the age of
 the real measurement. Raw detection boxes/keypoints still represent real model
@@ -281,7 +294,7 @@ interlocks, real transport timing, and joint stops remain hardware validation.
 
 Update this guide when launch names, model contracts, frame conventions, firmware
 limits, or safety defaults change. Run the launch-parameter and production pipeline
-tests; verify every linked path. Last updated: 2026-10-01.
+tests; verify every linked path. Last updated: 2026-10-03.
 
 ## Recording command/attitude alignment
 
@@ -295,6 +308,12 @@ TX. Save the env and run `cv restart` to change the setting.
   measured attitude and its timestamps, freshness, and wrapped yaw error.
 - `tracking_target`: the same frame timestamp plus target ID, coasting state,
   confidence, image center, inertial pose/velocity and camera orientation.
+- `tracking_association`: detector/enemy/posed/matched counts, rejected-quality
+  and rejected-innovation counts, and bounded per-track summaries containing
+  association reason, missed frames, real measurement age, and innovation.
+  `*_pnp_rms_px` describes the last accepted observation, not the rejected
+  candidate. These rows are copied by the existing session recorder. Logging
+  shares `tracking_log_enable` and never enables transmission.
 - `serial_tx`: actual write result. A successful write does not prove that the
   MCU accepted the command or that an actuator moved.
 - `serial_rx`: raw SP/ST feedback. All records now include a Jetson ROS timestamp
@@ -318,5 +337,102 @@ python3 tools/analyze-tracking-alignment.py 'vision_logs/vision_serial_runtime_*
 Use the actual log directory printed at startup if it differs. Copy all files
 from the relevant run, including rotated backups, for later analysis. The
 summary reports errors and timing, not a diagnosis of motor PID stability.
-The commissioning yaw reference limit is now 60 degrees/s; pitch remains
-60 degrees/s, with yaw/pitch acceleration caps unchanged at 360/240 degrees/s².
+The recorded reference fixture above retains its historical 60 degrees/s and
+360/240 degrees/s² profile. It does not represent later tuning or establish
+which firmware is installed on a connected controller.
+
+## Moving-target following: motion-aware braking and rate feedforward
+
+The October 3 offline review separates three errors: detection/estimate versus
+the real target, received command versus the MCU's applied reference, and
+applied reference versus measured gimbal angle. A high packet rate does not
+establish accurate following. Keep firing disabled for all commissioning below.
+
+The saved moving-plate interval had median capture-to-bridge age 45.9 ms and
+p95 59.4 ms, but 32 disabled episodes totaling 5.51 seconds and a 1.45-second
+maximum accepted-command gap. Time-based coasting helps short gaps within its
+120 ms bound; it cannot cover these long losses. Record the new association
+counts/reasons to distinguish missing candidates, rejected poses, and identity
+loss before changing motion gains. MCU source-clock synchronization remains
+unproven by these host timestamps.
+
+Reproduce the perception response benchmark on a host device with Docker:
+
+```bash
+bash tools/benchmark-moving-following.sh
+```
+
+It uses production tracker and prediction cores in the existing local test
+image, without networking or hardware. Results are saved to ignored
+`.local-test-output/moving-following-benchmark.txt`. It compares 30/60/90/120 FPS
+and velocity filter time constants of 100/50/35 ms. At 60 FPS, a direct plate
+4 m away reversing instantaneously from +2 to -2 m/s, with 46 ms frame age and
+18 m/s projectile speed, produced:
+
+| Velocity filter | Estimated velocity reverses sign | Reaches 95% reversed speed | Stationary pose noise: aim RMS |
+|---|---:|---:|---:|
+| Current 100 ms | 83 ms | 300 ms | 0.61 degrees |
+| Experimental 50 ms | 50 ms | 150 ms | 1.17 degrees |
+| Experimental 35 ms | 33 ms | 117 ms | 1.63 degrees |
+
+The noise trial alternates +/-15 mm pose error; this is a stress model, not a
+measurement of the Basler's noise. Steady constant-velocity prediction is very
+accurate in the ideal trial, while abrupt reversals retain stale velocity lead.
+Globally lowering smoothing trades that reversal lag for substantially more
+jitter. The benchmark changes no runtime defaults and validates no physical
+motor response or camera calibration.
+
+The updated solver attaches angular rates to the same atomic `AimSolution` as
+the absolute angles. Rates are derivatives of the production world-frame
+ballistic/intercept model, in radians/second, rather than image motion caused by
+camera panning. They require a continuous identity and selected armor slot,
+fresh measured 3D tracking, finite bounded velocity, and consistent command
+innovation. Acquisition, coasting, identity/slot changes, stale input, and
+invalid rates send zero rate without discarding an otherwise valid angle.
+The bridge also requires capture age at most 100 ms for rates. The existing
+29-byte SP packet carries these rates; acceleration fields remain zero.
+
+Sentry validates successive rate/angle samples against receipt time and the
+axis rate/acceleration budgets. Trusted rates predict the filtered target before
+its unchanged alpha-0.20 correction, and project at most 50 ms between packets.
+Braking limits relative closing motion instead of forcing a moving target's
+absolute speed toward zero. Missing or rejected rates retain stationary-target
+filtering/braking. SP has no source timestamp or identity, so this receipt guard
+cannot establish source-clock synchronization or independently detect identity.
+
+Both motor speed loops now receive the final bounded reference rate, including
+the existing angle-derivative contribution. Gyro feedback supplies angle
+damping while vision is active, avoiding pulses from differentiating 5 ms
+angle updates in the 1 ms motor loop. Command feedforward expires independently
+after 20 ms; fresh IMU/CAN guards, RC/hold/stop/autotune transitions, travel
+limits, and composed output caps remain. Static pitch load support is separate
+and defaults disabled. See the Type C `application/gimbal/gimbal.md` for the
+control equation and fallback details.
+
+Rate/acceleration limits remain 125/115 degrees/s and 440/310 degrees/s².
+The Type C `scripts/tests/benchmark_vision_following.py` compares the original
+stationary governor with the production motion governor: ideal 30/60/100
+degrees/s ramps have under 0.001 degrees steady reference error with the new
+governor. Production fixtures test both motor loops, signs, travel limits,
+expiry, saturation, starts/stops/reversals, and mismatched loop cadences.
+These results isolate software behavior and do not verify physical tracking.
+Solver-side slew parameters describe reachability and do not rate-limit the
+transmitted command. Adaptive perception filtering remains future work; the
+global velocity filter and its reversal/noise tradeoff above are unchanged.
+
+Accept a candidate only after replay improves reversal following without
+worsening stationary aim jitter or outlier response, and tests preserve
+stationary-plate camera-pan compensation, spinning/non-spinning multiple plates,
+bounded coasting and no-target hold. Then use supervised constant-rate plate
+motion in both axes, followed by reversals and all approach directions. Measure
+received-command-to-reference and reference-to-actual errors separately,
+reference velocity, actual velocity, command age/gaps and saturation. Type C's
+existing `gimbal_*_target_deg_s` fields are speed-PID demands, not derivatives of
+the applied angle reference. Derive reference rate from MCU timestamps or add
+dedicated diagnostic fields; do not mislabel those demands as target velocity.
+
+Apply both repository updates together: rebuild the ROS interfaces and runtime,
+then build and flash the Sentry firmware during a controlled hardware-safe
+procedure. An env-only restart cannot install either source update. Updating
+these changes does not edit saved TX, fire, model, calibration, or preview
+settings. Confirm actual deployed revisions before interpreting new logs.

@@ -2,6 +2,7 @@
 /// @brief Implements ROS-to-SP/ST USB CDC transport for the STM32 controller.
 
 #include "yolo_cpp/stm32_serial_bridge_node.hpp"
+#include "yolo_cpp/serial_port_selection.hpp"
 
 #include <fcntl.h>
 #include <poll.h>
@@ -146,6 +147,7 @@ struct AttitudeFrame
   int flags_register{0};
   int command_id{0};
   int robot_id{0};
+  int controller_auto_aim{-1};
 };
 
 std::vector<uint8_t> build_sp_command_frame(
@@ -195,15 +197,17 @@ std::optional<AttitudeFrame> parse_sp_frame(const std::vector<uint8_t>& frame)
       !std::isfinite(speed) || speed < 0.0F || speed > 100.0F) {
     return std::nullopt;
   }
-  // SP already includes the controller's wxyz quaternion. Older test/firmware
-  // streams may leave it zero; yaw and pitch remain authoritative in that case.
+  // SP scalar yaw/pitch are authoritative. The Type C wxyz quaternion uses
+  // Rz(yaw) * Ry(roll) * Rx(pitch), so its named roll is the Y Euler angle.
+  // Older test/firmware streams may leave the quaternion zero (roll stays zero).
   const double w = read_float_le(frame, 3), x = read_float_le(frame, 7);
   const double y = read_float_le(frame, 11), z = read_float_le(frame, 15);
   const double qnorm2 = w*w + x*x + y*y + z*z;
   if (!std::isfinite(qnorm2)) {return std::nullopt;}
   if (qnorm2 > 1e-12) {
     if (qnorm2 < 0.25 || qnorm2 > 4.0) {return std::nullopt;}
-    parsed.roll = static_cast<float>(std::atan2(2.0*(w*x+y*z), qnorm2-2.0*(x*x+y*y)));
+    const double sin_roll = 2.0 * (w * y - x * z) / qnorm2;
+    parsed.roll = static_cast<float>(std::asin(std::clamp(sin_roll, -1.0, 1.0)));
   }
   parsed.bullet_speed = static_cast<int>(speed);
   parsed.flags_register = (parsed.work_mode & 0x0003) | ((parsed.bullet_speed & 0x00FF) << 8);
@@ -220,6 +224,7 @@ std::optional<AttitudeFrame> parse_st_frame(const std::vector<uint8_t>& frame)
   AttitudeFrame parsed;
   parsed.command_id = static_cast<int>((SP_HEADER_0 << 8U) | ST_HEADER_1);
   parsed.robot_id = static_cast<int>(frame[30]);
+  parsed.controller_auto_aim = decode_controller_auto_aim(frame[26]);
   // ST offset 33 is shooter heat, not bullet speed. Speed arrives in SP.
   parsed.bullet_speed = 0;
   const int team_color = static_cast<int>(frame[35]);  // 0=red, 1=blue.
@@ -297,8 +302,10 @@ speed_t baud_to_constant(int baudrate)
 class SerialTransport
 {
 public:
-  SerialTransport(rclcpp::Logger logger, std::string port, int baudrate, bool verbose)
-      : logger_(std::move(logger)), port_(std::move(port)), baudrate_(baudrate), verbose_(verbose)
+  SerialTransport(rclcpp::Logger logger, std::string port, std::string by_id_directory,
+    int baudrate, bool verbose)
+      : logger_(std::move(logger)), requested_port_(std::move(port)),
+        by_id_directory_(std::move(by_id_directory)), baudrate_(baudrate), verbose_(verbose)
   {
   }
 
@@ -311,6 +318,13 @@ public:
   {
     close();
     next_connect_attempt_ = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    const auto selection = select_serial_port(requested_port_, by_id_directory_);
+    if (selection.path.empty()) {
+      RCLCPP_WARN(logger_, "Serial discovery: %s. Retrying without opening a device.",
+        selection.error.c_str());
+      return false;
+    }
+    port_ = selection.path;
     // The bridge stays alive without a serial device so vision can be tested on dev machines.
     fd_ = ::open(port_.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (fd_ < 0) {
@@ -354,14 +368,17 @@ public:
     }
 
     connected_ = true;
+    ++connection_epoch_;
     last_valid_rx_ = std::chrono::steady_clock::now();
     next_rx_warning_ = last_valid_rx_ + std::chrono::seconds(2);
     session_rx_bytes_ = 0;
-    RCLCPP_INFO(logger_, "STM32 serial connected: %s @ %d baud", port_.c_str(), baudrate_);
+    RCLCPP_INFO(logger_, "STM32 serial connected: %s @ %d baud (configured: %s)",
+      port_.c_str(), baudrate_, requested_port_.c_str());
     return true;
   }
 
-  bool send_vision_data(float pitch, float yaw, int fire_mode, int target_state, int target_type)
+  bool send_vision_data(float pitch, float yaw, float yaw_velocity, float pitch_velocity,
+    int fire_mode, int target_state, int target_type)
   {
     (void)target_type;
     if (!connected_ || fd_ < 0) {
@@ -370,7 +387,8 @@ public:
 
     const uint8_t mode =
       target_state == TARGET_STATE_NO_TARGET ? 0U : fire_mode_to_sp_mode(fire_mode);
-    const auto packet = build_sp_command_frame(mode, yaw, 0.0F, 0.0F, pitch, 0.0F, 0.0F);
+    const auto packet = build_sp_command_frame(mode, yaw, mode ? yaw_velocity : 0.0F, 0.0F,
+      pitch, mode ? pitch_velocity : 0.0F, 0.0F);
     const auto bytes_written =
       ::write(fd_, reinterpret_cast<const char*>(packet.data()), packet.size());
     if (bytes_written < 0) {
@@ -411,7 +429,7 @@ public:
     }
 
     // A removed USB device can keep a valid-looking fd with no available bytes.
-    // Check hangup/error events before FIONREAD, then reopen the stable by-id path.
+    // Check hangup/error before FIONREAD, then re-resolve the current by-id path.
     pollfd port_state{fd_, POLLIN, 0};
     const int poll_result = ::poll(&port_state, 1, 0);
     if (poll_result < 0) {
@@ -463,6 +481,9 @@ public:
     return frames;
   }
 
+  bool connected() const { return connected_; }
+  std::uint64_t connection_epoch() const { return connection_epoch_; }
+
   void close()
   {
     if (fd_ >= 0) {
@@ -484,11 +505,14 @@ private:
   }
 
   rclcpp::Logger logger_;
+  std::string requested_port_;
+  std::string by_id_directory_;
   std::string port_;
   int baudrate_{115200};
   bool verbose_{false};
   int fd_{-1};
   bool connected_{false};
+  std::uint64_t connection_epoch_{0};
   int message_count_{0};
   std::vector<uint8_t> rx_buffer_;
   std::chrono::steady_clock::time_point next_connect_attempt_{};
@@ -547,7 +571,8 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
   }
   const bool receive_enable = this->declare_parameter<bool>("receive_enable", false);
   const auto command_mode = this->declare_parameter<std::string>("command_output_mode", "absolute");
-  this->declare_parameter<std::string>("serial_port", "/dev/ttyUSB0");
+  this->declare_parameter<std::string>("serial_port", "auto");
+  this->declare_parameter<std::string>("serial_by_id_directory", "/dev/serial/by-id");
   this->declare_parameter<int>("serial_baudrate", 115200);
   this->declare_parameter<bool>("serial_verbose", false);
   this->declare_parameter<std::string>("runtime_log_dir", "");
@@ -593,6 +618,7 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
   if (transmit_enable_ || receive_enable) {
     transport_ = std::make_unique<SerialTransport>(this->get_logger(),
       this->get_parameter("serial_port").as_string(),
+      this->get_parameter("serial_by_id_directory").as_string(),
       this->get_parameter("serial_baudrate").as_int(), serial_verbose_);
     transport_->connect();
   } else {
@@ -619,12 +645,18 @@ STM32SerialBridgeNode::STM32SerialBridgeNode(const rclcpp::NodeOptions& options)
     tracking_log_subscription_ = this->create_subscription<cv_auto_aim_interfaces::msg::Target>(
       "processor/target", 100, std::bind(&STM32SerialBridgeNode::log_tracking_target, this,
       std::placeholders::_1));
+    association_log_subscription_ = this->create_subscription<cv_auto_aim_interfaces::msg::TrackedArmors>(
+      "tracker/tracked_armors", rclcpp::SensorDataQoS(),
+      std::bind(&STM32SerialBridgeNode::log_tracking_association, this, std::placeholders::_1));
   }
   stamped_attitude_publisher_ =
     this->create_publisher<cv_auto_aim_interfaces::msg::GimbalAttitude>("gimbal/attitude", 100);
   robot_id_publisher_ = this->create_publisher<std_msgs::msg::Int32>("robot_id", 10);
   attitude_flags_publisher_ =
     this->create_publisher<std_msgs::msg::Int32MultiArray>("attitude_flags", 10);
+
+  controller_status_publisher_ =
+    this->create_publisher<std_msgs::msg::Int8>("controller_auto_aim", 1);
 
   rx_timer_ = this->create_wall_timer(std::chrono::duration<double>(DEFAULT_RX_POLL_PERIOD_SECONDS),
     std::bind(&STM32SerialBridgeNode::handle_rx_poll, this));
@@ -676,6 +708,7 @@ void STM32SerialBridgeNode::handle_angles(const std_msgs::msg::Float32MultiArray
     RCLCPP_WARN(this->get_logger(), "Received malformed angle message");
     return;
   }
+  latest_yaw_velocity_ = latest_pitch_velocity_ = 0.0F;
   latest_yaw_ = msg->data[0];
   latest_pitch_ = msg->data[1];
   command_time_ = std::chrono::steady_clock::now();
@@ -696,6 +729,14 @@ void STM32SerialBridgeNode::handle_solution(
   has_target_ = valid;
   have_command_ = valid;
   suggest_fire_ = valid && msg->suggest_fire;
+  // Rates share the exact angle solution and capture timestamp. Untrusted
+  // rate fields retain position-only behavior; wire rates always use radians.
+  const bool rates_valid = valid && msg->used_3d && msg->has_angular_velocity &&
+    !transmit_angles_in_degrees_ && age_ns <= 100000000 &&
+    std::isfinite(msg->yaw_velocity) && std::isfinite(msg->pitch_velocity) &&
+    std::abs(msg->yaw_velocity) <= 3.0F && std::abs(msg->pitch_velocity) <= 3.0F;
+  latest_yaw_velocity_ = rates_valid ? msg->yaw_velocity : 0.0F;
+  latest_pitch_velocity_ = rates_valid ? msg->pitch_velocity : 0.0F;
   if (valid) {
     last_solution_stamp_ns_ = stamp_ns;
     latest_yaw_ = msg->yaw;
@@ -708,7 +749,14 @@ void STM32SerialBridgeNode::handle_solution(
 
 void STM32SerialBridgeNode::handle_rx_poll()
 {
+  const auto status_now = controller_status_now_ns();
   if (!transport_) {
+    if (status_now - last_unknown_status_publish_ns_ >= 100000000) {
+      std_msgs::msg::Int8 status;
+      status.data = -1;
+      controller_status_publisher_->publish(status);
+      last_unknown_status_publish_ns_ = status_now;
+    }
     return;
   }
   const auto now = std::chrono::steady_clock::now();
@@ -720,11 +768,43 @@ void STM32SerialBridgeNode::handle_rx_poll()
   }
   const auto frames = transport_->read_attitude_frames();
   const auto received = this->get_clock()->now();
+  if (transport_->connection_epoch() != serial_connection_epoch_ ||
+    (serial_was_connected_ && !transport_->connected()))
+  {
+    // A new USB session must not inherit old-board attitude or queued commands.
+    // Retain last_solution_stamp_ns_ so a replay cannot revive them either.
+    latest_attitude_sample_ = cv_auto_aim_interfaces::msg::GimbalAttitude();
+    latest_attitude_sample_.header.stamp = received;
+    latest_attitude_sample_.header.frame_id = "gimbal_inertial";
+    stamped_attitude_publisher_->publish(latest_attitude_sample_);
+    has_target_ = have_command_ = suggest_fire_ = false;
+    latest_yaw_velocity_ = latest_pitch_velocity_ = 0.0F;
+    controller_status_.update(-1, status_now);
+  }
+  serial_connection_epoch_ = transport_->connection_epoch();
+  serial_was_connected_ = transport_->connected();
   const AttitudeFrame * newest_sp = nullptr;
+  const AttitudeFrame * newest_st = nullptr;
   for (const auto & frame : frames) {
     if (frame.command_id == static_cast<int>((SP_HEADER_0 << 8U) | SP_HEADER_1)) {
       newest_sp = &frame;
+    } else if (frame.command_id == static_cast<int>((SP_HEADER_0 << 8U) | ST_HEADER_1)) {
+      newest_st = &frame;
     }
+  }
+  if (!transport_->connected()) {
+    controller_status_.update(-1, status_now);
+  } else if (newest_st) {
+    controller_status_.update(newest_st->controller_auto_aim, status_now);
+  }
+  // Publish known values only for a new valid ST packet. SP traffic cannot
+  // keep acceptance alive. Unknown heartbeat also covers RX-disabled startup.
+  if (newest_st || (controller_status_.value(status_now) < 0 &&
+      status_now - last_unknown_status_publish_ns_ >= 100000000)) {
+    std_msgs::msg::Int8 status;
+    status.data = controller_status_.value(status_now);
+    controller_status_publisher_->publish(status);
+    if (status.data < 0) {last_unknown_status_publish_ns_ = status_now;}
   }
   // The wire has no device clock. Discard older samples in a read batch instead
   // of assigning multiple historical poses the same receive timestamp.
@@ -763,7 +843,7 @@ void STM32SerialBridgeNode::handle_rx_poll()
       attitude_flags_publisher_->publish(flags_msg);
     }
     log_rx_event(frame.yaw, frame.pitch, frame.roll, frame.enemy_color, frame.work_mode,
-      frame.bullet_speed, frame.flags_register, frame.command_id);
+      frame.bullet_speed, frame.flags_register, frame.command_id, frame.controller_auto_aim);
   }
 }
 
@@ -785,7 +865,9 @@ void STM32SerialBridgeNode::maybe_send()
     FIRE_MODE_AUTO_AIM : fire_mode_;
   const int fire_mode = active ? configured_mode : FIRE_MODE_NO_FIRE;
   const bool success =
-    transport_->send_vision_data(pitch_tx, yaw_tx, fire_mode, target_state_, target_type_);
+    transport_->send_vision_data(pitch_tx, yaw_tx,
+      active ? latest_yaw_velocity_ : 0.0F, active ? latest_pitch_velocity_ : 0.0F,
+      fire_mode, target_state_, target_type_);
   log_tx_event(yaw_tx, pitch_tx, success, fire_mode);
 }
 
@@ -829,7 +911,12 @@ void STM32SerialBridgeNode::write_runtime_log_line(const std::string& line)
     runtime_log_stream_.open(runtime_log_path_, std::ios::trunc);
     if (!runtime_log_stream_.is_open()) {return;}
   }
-  runtime_log_stream_ << "ros_ns=" << this->now().nanoseconds() << " ts=" << timestamp_now_iso8601_ms() << ' ' << line << '\n';
+  const auto steady_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+    std::chrono::steady_clock::now().time_since_epoch()).count();
+  // Same-host interval clock only; neither UTC nor an MCU source timestamp.
+  runtime_log_stream_ << "steady_ns=" << steady_ns
+                     << " ros_ns=" << this->now().nanoseconds()
+                     << " ts=" << timestamp_now_iso8601_ms() << ' ' << line << '\n';
   runtime_log_stream_.flush();
 }
 
@@ -847,6 +934,10 @@ void STM32SerialBridgeNode::log_alignment(
        << " tx_enabled=" << transmit_enable_ << " status=" << std::quoted(msg.status)
        << " output_mode=" << std::quoted(msg.output_mode) << " used_3d=" << msg.used_3d
        << " command_yaw=" << msg.yaw << " command_pitch=" << msg.pitch
+       << " has_angular_velocity=" << msg.has_angular_velocity
+       << " command_yaw_rate=" << msg.yaw_velocity << " command_pitch_rate=" << msg.pitch_velocity
+       << " bridge_frame_age_s="
+       << (now_ns - rclcpp::Time(msg.header.stamp).nanoseconds()) * 1e-9
        << " frame_age_s=" << msg.frame_age_s << " measurement_age_s=" << msg.measurement_age_s
        << " prediction_horizon_s=" << msg.prediction_horizon_s << " range_m=" << msg.range
        << " selected_slot=" << msg.selected_slot << " suggest_fire=" << msg.suggest_fire
@@ -854,7 +945,8 @@ void STM32SerialBridgeNode::log_alignment(
        << " attitude_stamp_ns=" << rclcpp::Time(a.header.stamp).nanoseconds()
        << " attitude_receive_ns=" << a.receive_stamp_ns << " attitude_age_s=" << age_ns * 1e-9
        << " source_timestamped=" << a.source_timestamped
-       << " measured_yaw=" << a.yaw << " measured_pitch=" << a.pitch;
+       << " measured_yaw=" << a.yaw << " measured_pitch=" << a.pitch
+       << " measured_yaw_rate=" << a.yaw_rate << " measured_pitch_rate=" << a.pitch_rate;
   if (fresh && accepted) {
     line << " yaw_error=" << std::remainder(msg.yaw - a.yaw, 6.283185307179586)
          << " pitch_error=" << msg.pitch - a.pitch;
@@ -884,27 +976,66 @@ void STM32SerialBridgeNode::log_tracking_target(
   write_runtime_log_line(line.str());
 }
 
+void STM32SerialBridgeNode::log_tracking_association(
+  const cv_auto_aim_interfaces::msg::TrackedArmors::SharedPtr msg)
+{
+  // One bounded summary per detector frame, including misses. The existing
+  // session recorder copies this rotating log without a second ROS capture.
+  std::ostringstream line;
+  line << std::setprecision(8) << "kind=tracking_association frame_ns="
+       << rclcpp::Time(msg->header.stamp).nanoseconds()
+       << " source_id=" << std::quoted(msg->source_id)
+       << " selected_track_id=" << msg->selected_track_id
+       << " camera_pose_valid=" << msg->camera_pose_valid
+       << " raw_count=" << msg->raw_count << " enemy_count=" << msg->enemy_count
+       << " posed_count=" << msg->posed_count << " matched_count=" << msg->matched_count
+       << " quality_rejected_count=" << msg->quality_rejected_count
+       << " innovation_rejected_count=" << msg->innovation_rejected_count
+       << " track_count=" << msg->tracks.size();
+  std::size_t logged = 0;
+  for (const auto& track : msg->tracks) {
+    // Always include the selected track; bound other records to four.
+    if (logged >= 4 && track.track_id != msg->selected_track_id) {continue;}
+    line << " track" << logged << "_id=" << track.track_id
+         << " track" << logged << "_reason=" << std::quoted(track.association_reason)
+         << " track" << logged << "_lost_frames=" << track.lost_frames
+         << " track" << logged << "_measurement_ns=" << track.measurement_stamp_ns
+         << " track" << logged << "_real_age_s=" << track.real_measurement_age_s
+         << " track" << logged << "_innovation_m=" << track.innovation_m
+         << " track" << logged << "_pnp_rms_px=" << track.armor.reprojection_rms_px;
+    ++logged;
+  }
+  line << " logged_tracks=" << logged;
+  write_runtime_log_line(line.str());
+}
+
 void STM32SerialBridgeNode::log_tx_event(float yaw, float pitch, bool success, int fire_mode)
 {
   const uint16_t flags_register = build_vision_flags(fire_mode, target_state_, target_type_);
+  const bool rates_active = target_state_ != TARGET_STATE_NO_TARGET &&
+    fire_mode_to_sp_mode(fire_mode) != 0U;
   std::ostringstream line;
   line << std::fixed << std::setprecision(6) << "kind=serial_tx ok=" << (success ? 1 : 0)
        << " angle_unit=" << (transmit_angles_in_degrees_ ? "degrees" : "radians") << " yaw=" << yaw
-       << " pitch=" << pitch << " fire_mode=" << fire_mode << " target_state=" << target_state_
+       << " pitch=" << pitch << " yaw_rate_rad_s="
+       << (rates_active ? latest_yaw_velocity_ : 0.0F)
+       << " pitch_rate_rad_s=" << (rates_active ? latest_pitch_velocity_ : 0.0F)
+       << " fire_mode=" << fire_mode << " target_state=" << target_state_
        << " target_type=" << target_type_ << " flags=0x" << std::uppercase << std::hex
        << std::setw(4) << std::setfill('0') << flags_register;
   write_runtime_log_line(line.str());
 }
 
 void STM32SerialBridgeNode::log_rx_event(float yaw, float pitch, float roll, int enemy_color,
-  int work_mode, int bullet_speed, int flags_register, int command_id)
+  int work_mode, int bullet_speed, int flags_register, int command_id, int controller_auto_aim)
 {
   std::ostringstream line;
   line << std::fixed << std::setprecision(6) << "kind=serial_rx"
        << " yaw=" << yaw << " pitch=" << pitch << " roll=" << roll << " enemy_color=" << enemy_color
        << " work_mode=" << work_mode << " bullet_speed=" << bullet_speed << " flags=0x"
        << std::uppercase << std::hex << std::setw(4) << std::setfill('0') << flags_register
-       << " cmd=0x" << std::setw(4) << command_id;
+       << " cmd=0x" << std::setw(4) << command_id
+       << std::dec << " controller_auto_aim=" << controller_auto_aim;
   write_runtime_log_line(line.str());
 }
 

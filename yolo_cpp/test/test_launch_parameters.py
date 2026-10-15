@@ -61,9 +61,9 @@ class LaunchParameters(unittest.TestCase):
         self.assertEqual(solver["yaw_max_slew_deg_s"], 60.0)
         self.assertEqual(solver["pitch_max_accel_deg_s2"], 240.0)
         self.assertEqual(tracker["camera_translation_m"], (0.0, 0.0, 0.0))
-        self.assertEqual(tracker["track_max_coast_frames"], 6)
+        self.assertEqual(tracker["track_max_coast_frames"], 0)
         self.assertEqual(tracker["track_max_coast_s"], 0.12)
-        self.assertEqual(tracker["track_drop_frames"], 16)
+        self.assertEqual(tracker["track_drop_frames"], 0)
         self.assertEqual(tracker["velocity_filter_tau_s"], 0.10)
 
 

@@ -49,6 +49,23 @@ swapping devices. Do not disable SSH host-key checks. See the
 
 ### Edit the live env and start a safe preview
 
+For the browser preview, keep an SSH tunnel open **on your host device**:
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -L 127.0.0.1:18080:127.0.0.1:8080 ultraviolet@192.168.55.1
+```
+
+Open **http://127.0.0.1:18080/**. For Wi-Fi, replace the USB IP with the
+verified Jetson hostname/IP. Alternatively, from a host-side clone run
+`bash services/preview-tunnel.sh YOUR_SSH_ALIAS`. If your SSH alias already
+forwards port 18080, use that connection instead of starting a second tunnel.
+The tunnel survives `cv restart`; reconnect it after unplugging USB or losing
+the SSH connection. A Jetson-side command cannot establish host-side forwarding.
+
+`cv start` and `cv restart` now check advancing preview frames when the saved
+mode is `web`. `cv preview-check` repeats only that read-only check and prints
+the forwarding instructions. A preview check failure does not stop CV or alter TX.
+
 On the **Jetson**, open your CV checkout from the table above. The live settings
 are in **`services/stm-stack.env` inside that checkout**. The `.env.example`
 file is only a template; editing it does not change the running service.
@@ -127,6 +144,27 @@ ssh -N -o ExitOnForwardFailure=yes \
 For Orin2, substitute `rm-orin2.local`; USB uses `192.168.55.1`. In VS Code,
 use **Remote-SSH: Connect to Host**, connect to the same SSH target, open the
 checkout from the table, then use **File: Open File** to open the live env.
+
+### Switching detector models
+
+Older models are retained: `yolo_cpp/models/` includes Kushal and Nitish engines
+and `latest_best.pt` / `latest_best.onnx`; `legacy/models/` contains earlier
+weights, ONNX exports, and engines. ARUW support does not remove the YOLO parser.
+
+To evaluate another model, keep TX/fire disabled and edit `CV_STM_MODEL_PATH`
+in the live env to the compatible engine's absolute path. In the existing
+`CV_STM_EXTRA_LAUNCH_ARGS`, match `model_type` and `task` to the export:
+`model_type:=yolo` with the appropriate `task:=obb`, `detect`, or `pose`, versus
+`model_type:=aruw_2026_pose task:=pose` for the ARUW export. Also verify input
+size, class/color mapping, and calibration/pose requirements. A box-only model
+may show detections without supplying the geometry needed for 3D commands.
+
+Old `.engine` files are not universally portable: regenerate from the matching
+source export for the target Jetson/TensorRT runtime when necessary. `.pt`
+weights are not a drop-in runtime engine. Run `cv preflight`, then `cv restart`
+and check the preview/logs before considering movement. See the
+[model evaluation guide](tools/model-eval/README.md) and
+[manual configuration checks](docs/validation/autoaim-manual-checks.md).
 
 ## For Readers
 

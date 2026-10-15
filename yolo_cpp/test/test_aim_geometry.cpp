@@ -5,6 +5,7 @@
 
 #include "yolo_cpp/aim_geometry.hpp"
 #include "yolo_cpp/aim_prediction.hpp"
+#include "yolo_cpp/controller_auto_aim_status.hpp"
 #include "yolo_cpp/preview_geometry.hpp"
 
 using namespace yolo_cpp;
@@ -153,6 +154,34 @@ TEST(AimPrediction, InvalidConfigurationAndRobotStateNeverProduceCommands)
   EXPECT_TRUE(std::isinf(minimum_slew_time(.1, nan, 4)));
 }
 
+TEST(PreviewGeometry, DeepStreamBranchesKeepPixelsAlignedWithUprightDetections)
+{
+  cv::Mat upright(4, 6, CV_8UC3, cv::Scalar(0, 0, 0));
+  const cv::Rect detection_box(1, 0, 2, 2);
+  upright(detection_box).setTo(cv::Scalar(40, 90, 170));
+  cv::Mat raw;
+  cv::flip(upright, raw, -1);
+  struct Case
+  {
+    bool flip, cuda, source_flip;
+    const cv::Mat * input;
+  };
+  const Case cases[] = {
+    {false, false, false, &upright},  // No rotation requested.
+    {true, false, false, &raw},       // Only inference rotated after the tee.
+    {true, false, true, &upright},    // Source videoflip already corrected both.
+    {true, true, false, &upright}};   // CUDA Bayer already corrected both.
+  for (const auto & branch : cases) {
+    cv::Mat preview;
+    copy_deepstream_preview_frame(
+      *branch.input, preview, branch.flip, branch.cuda, branch.source_flip);
+    // The unchanged detection box/keypoints must cover the same upright pixels.
+    EXPECT_EQ(cv::norm(preview, upright, cv::NORM_INF), 0);
+    EXPECT_EQ(cv::norm(preview(detection_box), upright(detection_box), cv::NORM_INF), 0);
+    EXPECT_NE(preview.data, branch.input->data);  // Own pixels after GstBuffer unmap.
+  }
+}
+
 TEST(PreviewFreshness, RejectsQueuedStaleFutureAndMissingSamples)
 {
   EXPECT_TRUE(preview_sample_fresh(1000000000, 1010000000));
@@ -160,4 +189,169 @@ TEST(PreviewFreshness, RejectsQueuedStaleFutureAndMissingSamples)
   EXPECT_FALSE(preview_sample_fresh(1000000000, 1250000001));
   EXPECT_FALSE(preview_sample_fresh(1000000001, 1000000000));
   EXPECT_FALSE(preview_sample_fresh(0, 0));
+}
+
+namespace
+{
+void advance_rate_input(AimPredictionInput & in, double seconds = .02)
+{
+  const auto delta = static_cast<std::int64_t>(std::llround(seconds * 1e9));
+  in.frame_stamp_ns += delta;
+  in.measurement_stamp_ns += delta;
+  in.now_ns += delta;
+  in.position += in.velocity * seconds;
+  in.robot.center.x += in.robot.velocity.x * seconds;
+  in.robot.center.y += in.robot.velocity.y * seconds;
+  in.robot.center.z += in.robot.velocity.z * seconds;
+  in.robot.phase_rad += in.robot.angular_velocity_rad_s * seconds;
+}
+}  // namespace
+
+TEST(AimRates, WorldMotionHasCorrectSignsAndIgnoresCameraPanAndArrivalJitter)
+{
+  auto in = input_at_4m();
+  in.has_velocity = true;
+  in.velocity = {1, -.5, 0};
+  AimPredictionConfig config;
+  config.compensate_gravity = false;
+  config.bullet_speed_mps = 18;
+  AimRateEstimator estimator;
+  EXPECT_FALSE(estimator.update(in, config, predict_aim(in, config), 7, true).valid);
+  for (int frame = 0; frame < 20; ++frame) {
+    advance_rate_input(in);
+    // Source dt stays20ms; arrival age alternates45/55ms. No spurious angular
+    // velocity from camera yaw/pitch or receive-time jitter enters the model.
+    in.now_ns = in.frame_stamp_ns + (frame % 2 ? 55000000 : 45000000);
+    in.current_attitude = {in.now_ns, frame * .03, frame * -.01, 0};
+    const auto rate = estimator.update(in, config, predict_aim(in, config), 7, true);
+    ASSERT_TRUE(rate.valid);
+    EXPECT_GT(rate.yaw_rad_s, .23);
+    EXPECT_LT(rate.yaw_rad_s, .26);
+    EXPECT_GT(rate.pitch_rad_s, .11);
+    EXPECT_LT(rate.pitch_rad_s, .13);
+  }
+  in.velocity = {0, 0, 0};
+  estimator.reset();
+  estimator.update(in, config, predict_aim(in, config), 7, true);
+  advance_rate_input(in);
+  in.current_attitude = {in.now_ns, -1.2, .7, .1};
+  const auto stationary = estimator.update(in, config, predict_aim(in, config), 7, true);
+  ASSERT_TRUE(stationary.valid);
+  EXPECT_DOUBLE_EQ(stationary.yaw_rad_s, 0);
+  EXPECT_DOUBLE_EQ(stationary.pitch_rad_s, 0);
+}
+
+TEST(AimRates, AcquisitionIdentityCoastingStaleAndBadCadenceClearRates)
+{
+  auto in = input_at_4m();
+  in.has_velocity = true;
+  in.velocity = {1, 0, 0};
+  AimPredictionConfig config;
+  AimRateEstimator estimator;
+  auto update = [&](int id = 7, bool fresh = true) {
+    return estimator.update(in, config, predict_aim(in, config), id, fresh);
+  };
+  EXPECT_FALSE(update().valid);
+  advance_rate_input(in);
+  EXPECT_TRUE(update().valid);
+  advance_rate_input(in);
+  EXPECT_FALSE(update(8).valid);
+  advance_rate_input(in);
+  EXPECT_TRUE(update(8).valid);
+  EXPECT_FALSE(update(8).valid);  // Replayed source frame.
+  advance_rate_input(in);
+  EXPECT_FALSE(update(8, false).valid);  // Coasting/2D/offset/quality-loss eligibility.
+  advance_rate_input(in);
+  EXPECT_FALSE(update(8).valid);  // First reacquired measurement.
+  advance_rate_input(in);
+  EXPECT_TRUE(update(8).valid);
+  advance_rate_input(in, .12);
+  EXPECT_FALSE(update(8).valid);
+  in.now_ns += 200000000;
+  EXPECT_FALSE(update(8).valid);
+}
+
+TEST(AimRates, PoseJumpExcessRateAccelerationAndBulletChangeFallBackToZero)
+{
+  auto in = input_at_4m();
+  in.has_velocity = true;
+  in.velocity = {1, 0, 0};
+  AimPredictionConfig config;
+  AimRateEstimator estimator;
+  estimator.update(in, config, predict_aim(in, config), 7, true);
+  advance_rate_input(in);
+  ASSERT_TRUE(estimator.update(in, config, predict_aim(in, config), 7, true).valid);
+  advance_rate_input(in);
+  in.position.x += .8;
+  const auto jump = estimator.update(in, config, predict_aim(in, config), 7, true);
+  EXPECT_FALSE(jump.valid);
+  EXPECT_DOUBLE_EQ(jump.yaw_rad_s, 0);
+  advance_rate_input(in);
+  EXPECT_TRUE(estimator.update(in, config, predict_aim(in, config), 7, true).valid);
+  advance_rate_input(in);
+  config.bullet_speed_mps += 1;
+  EXPECT_FALSE(estimator.update(in, config, predict_aim(in, config), 7, true).valid);
+  advance_rate_input(in);
+  in.velocity.x = -4;
+  EXPECT_FALSE(estimator.update(in, config, predict_aim(in, config), 7, true).valid);
+  in.velocity.x = std::numeric_limits<double>::quiet_NaN();
+  EXPECT_FALSE(estimator.update(in, config, predict_aim(in, config), 7, true).valid);
+}
+
+TEST(AimRates, IncludesChangingBallisticDropAndRejectsPlateSwitches)
+{
+  auto in = input_at_4m();
+  in.has_velocity = true;
+  in.velocity = {0, 0, -1};
+  AimPredictionConfig config;
+  config.bullet_speed_mps = 18;
+  AimRateEstimator estimator;
+  estimator.update(in, config, predict_aim(in, config), 7, true);
+  advance_rate_input(in);
+  const auto radial = estimator.update(in, config, predict_aim(in, config), 7, true);
+  ASSERT_TRUE(radial.valid);
+  EXPECT_DOUBLE_EQ(radial.yaw_rad_s, 0);
+  EXPECT_LT(radial.pitch_rad_s,
+            -.01);  // Less flight time/drop when approaching.
+  in.has_robot_state = true;
+  in.robot.center = {0, 0, 4};
+  in.robot.phase_rad = 0;
+  in.robot.angular_velocity_rad_s = 1;
+  in.velocity = {0, 0, 0};
+  estimator.reset();
+  estimator.update(in, config, predict_aim(in, config), 7, true);
+  advance_rate_input(in);
+  auto solution = predict_aim(in, config);
+  const auto spinning = estimator.update(in, config, solution, 7, true);
+  EXPECT_TRUE(spinning.valid);
+  EXPECT_GT(std::abs(spinning.yaw_rad_s), .03);
+  advance_rate_input(in);
+  in.robot.phase_rad += 1.57079632679;
+  solution = predict_aim(in, config);
+  EXPECT_FALSE(estimator.update(in, config, solution, 7, true).valid);
+}
+
+TEST(ControllerAutoAimStatus, RequiresMetadataAndExpiresOnMonotonicReceiptTime)
+{
+  EXPECT_EQ(decode_controller_auto_aim(0x08), -1);  // Legacy bit3 cannot claim acceptance.
+  EXPECT_EQ(decode_controller_auto_aim(0x07), -1);
+  EXPECT_EQ(decode_controller_auto_aim(0x87), 0);  // Referee power bits are independent.
+  EXPECT_EQ(decode_controller_auto_aim(0x8f), 1);
+  ControllerAutoAimStatus status;
+  EXPECT_EQ(status.value(1000000000), -1);
+  EXPECT_EQ(
+    status.json_fields(1000000000),
+    "\"auto_aim_status\":\"unknown\",\"auto_aim_status_age_ms\":null");
+  status.update(1, 1000000000);
+  EXPECT_EQ(status.value(1500000000), 1);
+  EXPECT_EQ(status.value(1500000001), -1);
+  EXPECT_STREQ(status.name(1500000001), "unknown");
+  EXPECT_EQ(status.value(999999999), -1);
+  EXPECT_DOUBLE_EQ(status.age_ms(1250000000), 250);
+  status.update(0, 1600000000);
+  EXPECT_EQ(status.value(1600000000), 0);
+  status.update(2, 1700000000);  // Malformed ROS scalar invalidates immediately.
+  EXPECT_EQ(status.value(1700000000), -1);
+  status.update(-1, 1800000000);  // Disconnect or legacy ST.
+  EXPECT_EQ(status.value(1800000000), -1);
 }

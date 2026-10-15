@@ -30,6 +30,8 @@ STM yaw/pitch feedback from `attitude_data` is interpreted as radians. Set `outp
 
 `STM32SerialBridgeNode` is the serial boundary to the controller. It publishes and consumes compact protocol data rather than full perception messages, which keeps the handoff predictable for the embedded side. It publishes STM RX attitude in radians on `attitude_data`, publishes flags on `attitude_flags`, and sends solver yaw/pitch radians to STM by default. Keep `transmit_angles_in_degrees:=false` for the current controls firmware; only enable degree conversion for an alternate controller contract.
 
+SP scalar yaw and pitch remain authoritative. Roll comes from the SP `wxyz` quaternion using the Type C convention `Rz(yaw) * Ry(roll) * Rx(pitch)`: decode its Y Euler angle with `asin(clamp(2*(w*y-x*z)/norm_squared, -1, 1))`. The X Euler angle is the controller's named pitch. Zero quaternions retain the legacy zero-roll fallback; nonfinite or out-of-range nonzero quaternion norms reject the frame.
+
 ## PerceptionNode
 
 `PerceptionNode` is the older combined runtime path. It still matters because it preserves an end-to-end implementation in one place and is used by the zero-copy launch setup, but it is an experiment/reference path rather than the active field stack.

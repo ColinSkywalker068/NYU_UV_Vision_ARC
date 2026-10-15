@@ -117,6 +117,13 @@ ssh -N -o ExitOnForwardFailure=yes \
 
 Then open `http://127.0.0.1:18080/`.
 
+The overlay and browser sidebar show `AUTO AIM ON/OFF/UNKNOWN` from the MCU's
+logical vision acceptance gate, separately from `TX CONFIG`. ON means the gate
+is armed, not that a target is being followed or firing is allowed. UNKNOWN
+means missing, stale, or unsupported controller status. This needs the matching
+Type C status firmware; there is no new env toggle. See the
+[status contract](../../yolo_cpp/docs/interfaces.md#controller-auto-aim-acceptance).
+
 ## Transmission safety
 
 For safe preview, the launch arguments must include:
@@ -176,6 +183,46 @@ just flash pyocd sentry --serial 032200157416303030303032
 Editing the Jetson env does not rebuild or flash the STM32. Editing Type C
 firmware does not take effect until that firmware is built and flashed.
 
+## Bounded tracking gaps and reacquisition
+
+After building the updated workspace, the tracker defaults to time-based
+coasting/identity retention. Optional settings in `CV_STM_EXTRA_LAUNCH_ARGS`:
+
+```text
+track_max_coast_frames:=0 track_max_coast_s:=0.12
+track_drop_frames:=0 track_drop_s:=0.35
+pose_innovation_confirm_m:=0.20 pose_max_reprojection_rms_px:=5.0
+```
+
+Zero frame caps make the time budgets authoritative; positive caps retain the
+legacy additional frame limit. Saved positive overrides are preserved; remove
+or deliberately change them to use the new policy. The solver's independent
+150 ms last-real-measurement limit remains, including pipeline latency.
+Increasing coasting does not make old data fresh. Fire remains disabled on
+coasted targets and opt-in overall. See [manual validation](../validation/autoaim-manual-checks.md#brief-detection-gaps-and-smoothing)
+for quality gates, spin transitions and diagnostic interpretation.
+
+This update changes tracked ROS messages, so rebuild both active packages via
+`uv build yolo_cpp` before restarting; an env-only restart cannot apply source
+changes. Neither installing nor updating this code edits the live env.
+
+## Motion-aware tracking update
+
+The solver publishes bounded yaw/pitch angular rates with its absolute 3D
+command, and the bridge puts them in the existing SP velocity fields in
+radians/second. No extra env switch enables this: trusted rates require fresh,
+continuous measured tracking and become zero on acquisition, coasting, stale
+input, or identity/armor-slot changes. Angles remain usable when rates are
+unavailable. Sentry firmware validates those rates for motion-aware braking
+and feeds the final bounded reference rate into both motor speed loops.
+
+This requires `uv build yolo_cpp` (both active ROS packages), `cv restart`,
+and the matching built/flashed Type C Sentry firmware. Saved env-only changes
+still need only `cv restart`. The update preserves the env and existing rate,
+acceleration, travel and motor-output limits; `transmit_enable` remains the
+normal bridge TX switch. See [manual validation](../validation/autoaim-manual-checks.md#moving-target-following-motion-aware-braking-and-rate-feedforward)
+for limits, fallback behavior and commissioning checks.
+
 ## Keeping the example current
 
 When a setting should become the documented team default, update
@@ -185,9 +232,19 @@ runtime source of truth for an individual robot.
 
 ## USB disconnect recovery
 
-Set `CV_STM_SERIAL_PORT` to the controller's `/dev/serial/by-id/...` path.
-A `/dev/ttyACM0` name can change after unplugging; the stable identity lets the
-bridge reopen the same controller even when Linux assigns a different number.
+Set `CV_STM_SERIAL_PORT=auto` to discover the single connected NYUSH Vision Comm
+controller, including after replacing it with a board whose USB serial differs.
+Discovery accepts live character-device symlinks named
+`usb-NYUSH_Vision_Comm_port_<serial>-if00` under `/dev/serial/by-id`; it never
+selects generic `ttyACM` devices, ST-LINK debug ports, or cameras. No candidate
+means wait and retry; multiple candidates mean refuse automatic selection and
+log their paths. Choose an explicit controller path when multiple boards are attached.
+
+An existing explicit path takes precedence. A missing Vision Comm by-id path
+can fall back to the unique eligible replacement; other missing explicit paths
+remain failures. The bridge resolves again on each reconnect instead of caching
+an old board identity. Its `serial_by_id_directory` ROS parameter defaults to
+`/dev/serial/by-id` (tests use a private directory containing disposable PTYs).
 The service mounts the host device directory so newly enumerated ports remain
 visible inside its container.
 

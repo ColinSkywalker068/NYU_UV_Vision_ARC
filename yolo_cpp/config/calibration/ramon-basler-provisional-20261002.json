@@ -1,0 +1,27 @@
+{
+  "status": "provisional_not_calibrated_values_deployed_20261002",
+  "device": "rm-orin-nano-55306",
+  "scope": "Only the Basler/lens/full-sensor setup recorded in session 20261002T202333Z-a2367adc. Do not reuse on another lens or Jetson without checking the camera.",
+  "basis": "Conditional fixed-target camera-motion fit across one pitch and two yaw windows; shared focal multiplier 3.15. No lens distortion, principal point, extrinsics, or metric range calibration performed.",
+  "launch_arguments": {
+    "camera_fx": 3655.3880664,
+    "camera_fy": 3655.3880664,
+    "camera_cx": 960.0,
+    "camera_cy": 600.0,
+    "camera_calibration_width": 1920,
+    "camera_calibration_height": 1200,
+    "camera_distortion": [0.0, 0.0, 0.0, 0.0, 0.0],
+    "hfov_degrees": 29.4301167223,
+    "vfov_degrees": 18.6429606067,
+    "calibration_provisional": true,
+    "enable_fire_recommendation": false,
+    "transmit_enable": false
+  },
+  "previous_camera_values": {
+    "camera_fx": 1160.440656,
+    "camera_fy": 1160.440656,
+    "hfov_degrees": 79.2,
+    "vfov_degrees": 54.681993
+  },
+  "application": "This file is inert: cv start/restart does not load it. Merge the launch arguments into the existing saved env only when approved; do not replace unrelated settings. Begin with TX false. Env changes require a restart, not a rebuild."
+}

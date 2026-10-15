@@ -156,7 +156,11 @@ void TrackManager::set_config(const TrackConfig& config)
   if (!std::isfinite(config.track_max_coast_s) || config.track_max_coast_s < 0 ||
       !std::isfinite(config.track_drop_s) || config.track_drop_s < config.track_max_coast_s ||
       !std::isfinite(config.position_filter_tau_s) || config.position_filter_tau_s < 0 ||
-      !std::isfinite(config.velocity_filter_tau_s) || config.velocity_filter_tau_s < 0) {
+      !std::isfinite(config.velocity_filter_tau_s) || config.velocity_filter_tau_s < 0 ||
+      config.track_max_coast_frames < 0 || config.track_drop_frames < 0 ||
+      !std::isfinite(config.association_max_3d_distance_m) || config.association_max_3d_distance_m <= 0 ||
+      !std::isfinite(config.pose_innovation_confirm_m) || config.pose_innovation_confirm_m <= 0 ||
+      !std::isfinite(config.pose_max_reprojection_rms_px) || config.pose_max_reprojection_rms_px < 0) {
     throw std::invalid_argument("Invalid tracker coast/drop/filter time constants");
   }
   config_ = config;
@@ -176,17 +180,34 @@ void TrackManager::reset()
 
 TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& detections, double dt)
 {
+  if (!std::isfinite(dt) || dt <= 0) {throw std::invalid_argument("Tracker dt must be finite and positive");}
   const double dt_safe = std::max(dt, kMinimumDt);
+  TrackingFrameResult result;
+  result.raw_count = static_cast<std::uint32_t>(detections.size());
   std::vector<TrackObservation> enemy_detections;
   enemy_detections.reserve(detections.size());
   for (const auto& detection : detections) {
-    if (detection.is_enemy) {
-      enemy_detections.push_back(detection);
+    if (!detection.is_enemy) {continue;}
+    ++result.enemy_count;
+    if (detection.has_pose) {
+      ++result.posed_count;
+      if (!std::isfinite(detection.position.x) || !std::isfinite(detection.position.y) ||
+          !std::isfinite(detection.position.z) || !std::isfinite(detection.reprojection_rms_px) ||
+          detection.reprojection_rms_px < 0 ||
+          (config_.pose_max_reprojection_rms_px > 0 &&
+           detection.reprojection_rms_px > config_.pose_max_reprojection_rms_px)) {
+        ++result.quality_rejected_count;
+        continue;
+      }
     }
+    enemy_detections.push_back(detection);
   }
 
   for (auto& track : tracks_) {
     ++track.age;
+    track.innovation_m = -1.0;
+    track.association_reason = result.quality_rejected_count ? "pose_quality" : "no_detection";
+    track.pending_age_s += dt_safe;
     track.detection_age_s += dt_safe;
     track.pose_measurement_age_s += dt_safe;
     const auto predicted = track.tracker.predict(dt_safe);
@@ -201,6 +222,12 @@ TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& de
     }
   }
 
+  // Expire before association: a late real detection must not revive an
+  // identity whose wall-clock retention deadline already passed.
+  tracks_.erase(std::remove_if(tracks_.begin(), tracks_.end(), [this](const TrackRecord& track) {
+    return track.detection_age_s > config_.track_drop_s + 1e-9;
+  }), tracks_.end());
+
   std::vector<std::vector<double>> cost_matrix(
     tracks_.size(), std::vector<double>(enemy_detections.size(), kInvalidAssignmentCost));
   for (std::size_t track_index = 0; track_index < tracks_.size(); ++track_index) {
@@ -214,11 +241,24 @@ TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& de
       const auto & prior_observation = tracks_[track_index].observation;
       if (prior_observation.class_id != detection.class_id ||
         (prior_observation.armor_number >= 0 && detection.armor_number >= 0 &&
-         prior_observation.armor_number != detection.armor_number)) {continue;}
+         prior_observation.armor_number != detection.armor_number)) {
+        tracks_[track_index].association_reason = "identity_gate";
+        continue;
+      }
       if (tracks_[track_index].has_3d_state && detection.has_pose) {
         const double position_distance =
           distance_3d(tracks_[track_index].predicted_position, detection.position);
         if (position_distance > config_.association_max_3d_distance_m) {
+          // A nearby image candidate outside the 3D gate may be a PnP flip or
+          // a different plate. Give it a two-observation probation, below,
+          // rather than letting one bad pose immediately become a new target.
+          if (normalized_center_distance(tracks_[track_index].predicted_center,
+              detection.center, detection.image_width, detection.image_height) >
+              config_.association_max_center_distance_ratio) {
+            tracks_[track_index].association_reason = "distance_gate";
+            continue;
+          }
+          cost_matrix[track_index][detection_index] = 10.0 + position_distance;
           continue;
         }
         cost_matrix[track_index][detection_index] =
@@ -243,12 +283,51 @@ TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& de
 
   for (std::size_t track_index = 0; track_index < tracks_.size(); ++track_index) {
     const int detection_index = track_index < assignments.size() ? assignments[track_index] : -1;
-    if (detection_index >= 0 && static_cast<std::size_t>(detection_index) < enemy_detections.size()
+    auto& candidate_track = tracks_[track_index];
+    bool accept = true;
+    bool confirmed_jump = false;
+    if (detection_index >= 0 &&
+        cost_matrix[track_index][static_cast<std::size_t>(detection_index)] < kInvalidAssignmentCost) {
+      const auto& candidate = enemy_detections[static_cast<std::size_t>(detection_index)];
+      if (candidate_track.has_3d_state && candidate.has_pose) {
+        candidate_track.innovation_m = distance_3d(candidate_track.predicted_position, candidate.position);
+        // Weak PnP fits need confirmation for smaller jumps. Zero residual is
+        // treated as unknown/nominal, not proof of a reliable normal.
+        const double threshold = config_.pose_innovation_confirm_m *
+          (config_.pose_max_reprojection_rms_px > 0 &&
+           candidate.reprojection_rms_px > config_.pose_max_reprojection_rms_px * 0.5 ? 0.5 : 1.0);
+        if (candidate_track.innovation_m > std::min(threshold, config_.association_max_3d_distance_m)) {
+          confirmed_jump = candidate_track.pending_position &&
+            candidate_track.pending_age_s <= config_.track_max_coast_s &&
+            distance_3d(*candidate_track.pending_position, candidate.position) <=
+              config_.association_max_3d_distance_m;
+          if (!confirmed_jump) {
+            accept = false;
+            candidate_track.pending_position = candidate.position;
+            candidate_track.pending_age_s = 0.0;
+            candidate_track.association_reason = "innovation_pending";
+            ++result.innovation_rejected_count;
+            detection_used[static_cast<std::size_t>(detection_index)] = true;
+          } else if (candidate_track.innovation_m > config_.association_max_3d_distance_m) {
+            // Confirmed new plate outside the identity gate starts with zero
+            // velocity and a new ID instead of inventing inter-plate velocity.
+            accept = false;
+            candidate_track.association_reason = "new_plate_confirmed";
+            candidate_track.pending_position.reset();
+          }
+        }
+      }
+    }
+    if (accept && detection_index >= 0 && static_cast<std::size_t>(detection_index) < enemy_detections.size()
         && cost_matrix[track_index][static_cast<std::size_t>(detection_index)]
              < kInvalidAssignmentCost)
     {
       auto& track = tracks_[track_index];
       const auto& detection = enemy_detections[static_cast<std::size_t>(detection_index)];
+      ++result.matched_count;
+      track.association_reason = confirmed_jump ? "innovation_confirmed" :
+        (detection.has_pose ? "matched_3d" : "matched_2d");
+      track.pending_position.reset();
       track.tracker.update(static_cast<double>(detection.center.x),
         static_cast<double>(detection.center.y), static_cast<double>(detection.bbox.width),
         static_cast<double>(detection.bbox.height));
@@ -268,9 +347,12 @@ TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& de
             ? -std::expm1(-pose_dt / config_.velocity_filter_tau_s) : 1.0;
           const double position_gain = config_.position_filter_tau_s > 0
             ? -std::expm1(-pose_dt / config_.position_filter_tau_s) : 1.0;
-          track.velocity = (1 - velocity_gain) * track.velocity + velocity_gain * measured_velocity;
-          track.position = (1 - position_gain) * track.predicted_position +
-            position_gain * detection.position;
+          // A confirmed position discontinuity is not a measured velocity.
+          // Resume velocity estimation from this real observation next frame.
+          track.velocity = confirmed_jump ? cv::Vec3d(0, 0, 0) :
+            (1 - velocity_gain) * track.velocity + velocity_gain * measured_velocity;
+          track.position = confirmed_jump ? detection.position :
+            (1 - position_gain) * track.predicted_position + position_gain * detection.position;
         } else {
           track.position = detection.position;
           track.velocity = cv::Vec3d(0.0, 0.0, 0.0);
@@ -336,13 +418,12 @@ TrackingFrameResult TrackManager::update(const std::vector<TrackObservation>& de
 
   tracks_.erase(std::remove_if(tracks_.begin(), tracks_.end(),
                   [this](const TrackRecord& track) {
-                    return track.lost_frames
-                           > static_cast<std::uint32_t>(config_.track_drop_frames) ||
-                           track.detection_age_s > config_.track_drop_s;
+                    return (config_.track_drop_frames > 0 && track.lost_frames
+                           > static_cast<std::uint32_t>(config_.track_drop_frames)) ||
+                           track.detection_age_s > config_.track_drop_s + 1e-9;
                   }),
     tracks_.end());
 
-  TrackingFrameResult result;
   result.tracks.reserve(tracks_.size());
   for (const auto& track : tracks_) {
     result.tracks.push_back(make_snapshot(track));
@@ -367,6 +448,9 @@ TrackSnapshot TrackManager::make_snapshot(const TrackRecord& track) const
   snapshot.age = track.age;
   snapshot.hit_streak = track.hit_streak;
   snapshot.lost_frames = track.lost_frames;
+  snapshot.real_measurement_age_s = track.has_3d_state ? track.pose_measurement_age_s : track.detection_age_s;
+  snapshot.innovation_m = track.innovation_m;
+  snapshot.association_reason = track.association_reason;
   snapshot.observation = track.observation;
   if (track.has_3d_state) {
     snapshot.has_pose = true;
@@ -401,8 +485,9 @@ bool TrackManager::is_selectable(const TrackRecord& track) const
     case TrackState::kDetecting:
       return track.lost_frames == 0U;
     case TrackState::kCoasting:
-      return track.lost_frames <= static_cast<std::uint32_t>(config_.track_max_coast_frames) &&
-             track.detection_age_s <= config_.track_max_coast_s;
+      return (config_.track_max_coast_frames == 0 ||
+              track.lost_frames <= static_cast<std::uint32_t>(config_.track_max_coast_frames)) &&
+             track.detection_age_s <= config_.track_max_coast_s + 1e-9;
   }
   return false;
 }
@@ -469,7 +554,11 @@ std::optional<int> TrackManager::choose_selected_track_id(const std::vector<Trac
         const bool challenger_is_better =
           ranked.front().selection_score >=
           locked_score + config_.target_switch_min_score_delta;
-        if (!locked_exceeded_coast && !challenger_is_better) {
+        // A confirmed, currently measured plate outranks an old prediction.
+        // Frame hysteresis must not hide live plates during spin transitions.
+        const bool challenger_is_measured = selected->state == TrackState::kTracking &&
+          locked->state == TrackState::kCoasting;
+        if (!locked_exceeded_coast && !challenger_is_better && !challenger_is_measured) {
           selected = locked;
         }
       }

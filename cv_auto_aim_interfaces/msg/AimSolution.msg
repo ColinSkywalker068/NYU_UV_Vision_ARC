@@ -31,3 +31,10 @@ float32 prediction_horizon_s
 float32 minimum_slew_s
 bool reachable
 int32 selected_slot
+
+# Atomic rates of the absolute ballistic aim point in gimbal_inertial (rad/s).
+# False/zero for acquisition, identity/plate changes, coasting, stale/invalid
+# input, 2D/offset preview, or rate/innovation guards. Zero also means stationary.
+bool has_angular_velocity
+float32 yaw_velocity
+float32 pitch_velocity

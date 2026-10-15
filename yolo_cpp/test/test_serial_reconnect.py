@@ -14,12 +14,11 @@ import unittest
 from pathlib import Path
 
 import rclpy
-from std_msgs.msg import Bool, Float32MultiArray
-from cv_auto_aim_interfaces.msg import AimSolution, Target
+from std_msgs.msg import Bool, Float32MultiArray, Int8
+from cv_auto_aim_interfaces.msg import AimSolution, GimbalAttitude, Target, TrackedArmor, TrackedArmors
 
 
-def attitude_packet(yaw, pitch):
-    payload = b"SP\x01" + struct.pack("<4f5fH", 1, 0, 0, 0, yaw, 0, pitch, 0, 15, 0)
+def with_crc(payload):
     crc = 0xFFFF
     for byte in payload:
         crc ^= byte
@@ -28,17 +27,58 @@ def attitude_packet(yaw, pitch):
     return payload + struct.pack("<H", crc)
 
 
+def attitude_packet(yaw, pitch):
+    return with_crc(b"SP\x01" + struct.pack("<4f5fH", 1, 0, 0, 0, yaw, 0, pitch, 0, 15, 0))
+
+
+def status_packet(robot_status):
+    payload = bytearray(37)
+    payload[:2] = b"ST"
+    payload[26] = robot_status
+    payload[30] = 7
+    return with_crc(payload)
+
+
 class SerialReconnectTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="cv-serial-reconnect-")
         self.root = Path(self.temp.name)
         self.port = self.root / "controller"
         self.master = None
+        self.extra_masters = []
+        self.by_id = self.root / "by-id"
+        self.by_id.mkdir()
+        requested_port = str(self.port)
+        if self._testMethodName.startswith("test_auto_"):
+            requested_port = "auto"
+            self.port = self.by_id / "usb-NYUSH_Vision_Comm_port_208733A7374E-if00"
+        elif self._testMethodName == "test_stale_vision_id_falls_back_and_reconnects":
+            requested_port = str(self.by_id / "usb-NYUSH_Vision_Comm_port_316A32733034-if00")
+            self.port = self.by_id / "usb-NYUSH_Vision_Comm_port_208733A7374E-if00"
+        if self._testMethodName == "test_auto_ambiguous_boards_wait_until_unique":
+            self.attach()
+            self.extra_port = self.add_other_device("usb-NYUSH_Vision_Comm_port_ABC123-if00")
+        if self._testMethodName == "test_explicit_port_preferred_over_discovery":
+            self.attach()
+            self.add_other_device("usb-NYUSH_Vision_Comm_port_ABC123-if00")
+            self.add_other_device("usb-NYUSH_Vision_Comm_port_DEF456-if00")
+        if self._testMethodName in ("test_auto_ignores_unrelated_and_dead_devices",
+                                   "test_missing_custom_port_does_not_fall_back"):
+            names = ["usb-STMicroelectronics_STLINK-V3_123-if02", "ttyACM0",
+                     "usb-Basler_camera_123-if00", "usb-NYUSH_Vision_Comm_port_123-if01"]
+            if self._testMethodName == "test_missing_custom_port_does_not_fall_back":
+                names.append("usb-NYUSH_Vision_Comm_port_ABC123-if00")
+            for name in names:
+                self.add_other_device(name)
+            (self.by_id / "usb-NYUSH_Vision_Comm_port_DEAD-if00").symlink_to("/missing/device")
+            (self.by_id / "usb-NYUSH_Vision_Comm_port_FILE-if00").write_text("not a device")
         self.send_valid_solution = True
         self.provisional = self._testMethodName.startswith("test_provisional_calibration_")
-        self.tx_enabled = self._testMethodName in ("test_provisional_calibration_respects_enabled_tx", "test_atomic_solution_rejects_stale_offset_and_replay")
+        self.tx_enabled = self._testMethodName in ("test_provisional_calibration_respects_enabled_tx", "test_atomic_solution_rejects_stale_offset_and_replay", "test_atomic_angular_rates_and_safe_zero_fallback", "test_controller_status_independent_of_enabled_tx")
         self.outbound = bytearray()
         self.samples = []
+        self.stamped_samples = []
+        self.controller_status = []
         self.log_path = self.root / "bridge.log"
         self.log_file = self.log_path.open("w")
         # A separate ROS graph and a PTY path prevent access to the real controller.
@@ -49,12 +89,20 @@ class SerialReconnectTest(unittest.TestCase):
         self.sub = self.node.create_subscription(
             Float32MultiArray, "attitude_data", lambda msg: self.samples.append(msg.data), 10
         )
+        self.status_sub = self.node.create_subscription(
+            Int8, "controller_auto_aim", lambda msg: self.controller_status.append(msg.data), 10
+        )
+        self.stamped_sub = self.node.create_subscription(
+            GimbalAttitude, "gimbal/attitude", lambda msg: self.stamped_samples.append(msg), 100
+        )
         self.angles = self.node.create_publisher(Float32MultiArray, "bounding_box_angles", 10)
         self.solutions = self.node.create_publisher(AimSolution, "aim_solution", 10)
         self.targets = self.node.create_publisher(Target, "processor/target", 10)
+        self.associations = self.node.create_publisher(TrackedArmors, "tracker/tracked_armors", 10)
         self.override = self.node.create_publisher(Bool, "override", 10)
         self.bridge = subprocess.Popen(
-            [BRIDGE, "--ros-args", "-p", f"serial_port:={self.port}",
+            [BRIDGE, "--ros-args", "-p", f"serial_port:={requested_port}",
+             "-p", f"serial_by_id_directory:={self.by_id}",
              "-p", "receive_enable:=true", "-p", f"transmit_enable:={str(self.tx_enabled).lower()}",
              "-p", f"calibration_provisional:={str(self.provisional).lower()}",
              "-p", f"runtime_log_dir:={self.root}",
@@ -72,6 +120,8 @@ class SerialReconnectTest(unittest.TestCase):
             self.bridge.wait()
         if self.master is not None:
             os.close(self.master)
+        for master in self.extra_masters:
+            os.close(master)
         self.node.destroy_node()
         rclpy.shutdown()
         self.log_file.close()
@@ -85,10 +135,82 @@ class SerialReconnectTest(unittest.TestCase):
         os.close(slave)
         self.master = master
 
+    def add_other_device(self, name):
+        master, slave = os.openpty()
+        tty.setraw(slave)
+        os.set_blocking(master, False)
+        path = self.by_id / name
+        path.symlink_to(os.ttyname(slave))
+        os.close(slave)
+        self.extra_masters.append(master)
+        return path
+
     def detach(self):
         os.close(self.master)
         self.master = None
         self.port.unlink()
+
+    def test_auto_discovers_replacement_board_and_resets_rx(self):
+        self.check_replacement_board()
+
+    def test_stale_vision_id_falls_back_and_reconnects(self):
+        self.check_replacement_board()
+
+    def check_replacement_board(self):
+        self.await_controller_status(-1)
+        self.attach()
+        self.await_attitude(0.4, -0.1)
+        self.await_controller_status(1, status_packet(0x88))
+        # A fragment from the old board must not complete on the replacement.
+        partial = attitude_packet(0.9, 0.2)
+        self.spin_for(.1, partial[:12])
+        self.detach()
+        self.await_controller_status(-1)
+        # Separate ROS topics may arrive in either order; wait for the explicit
+        # invalidation rather than treating the status callback as a barrier.
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and (
+                not self.stamped_samples or self.stamped_samples[-1].valid):
+            self.step()
+        self.assertTrue(self.stamped_samples)
+        self.assertFalse(self.stamped_samples[-1].valid, "disconnect must invalidate old-board attitude")
+        self.samples.clear()
+        self.port = self.by_id / "usb-NYUSH_Vision_Comm_port_AABBCC112233-if00"
+        self.attach()
+        self.spin_for(1.3, partial[12:])
+        self.assertEqual(self.samples, [])
+        self.assertEqual(self.controller_status[-1], -1)
+        self.await_attitude(-0.2, 0.3)
+        self.await_controller_status(0, status_packet(0x80))
+        self.assertEqual(self.outbound, b"", "discovery must not enable TX")
+        self.assertIn(str(self.port), self.log_path.read_text())
+
+    def test_auto_ambiguous_boards_wait_until_unique(self):
+        self.spin_for(1.3, attitude_packet(0.4, -0.1))
+        self.assertEqual(self.samples, [])
+        self.assertIn("ambiguous Vision Comm controllers", self.log_path.read_text())
+        self.extra_port.unlink()
+        self.await_attitude(0.4, -0.1)
+        self.assertEqual(self.outbound, b"")
+
+    def test_auto_ignores_unrelated_and_dead_devices(self):
+        self.spin_for(1.3)
+        self.assertEqual(self.samples, [])
+        self.assertIn("no eligible NYUSH Vision Comm", self.log_path.read_text())
+        self.attach()
+        self.await_attitude(0.4, -0.1)
+        self.assertEqual(self.outbound, b"")
+
+    def test_explicit_port_preferred_over_discovery(self):
+        self.await_attitude(0.4, -0.1)
+        self.assertIn(f"STM32 serial connected: {self.port}", self.log_path.read_text())
+
+    def test_missing_custom_port_does_not_fall_back(self):
+        self.spin_for(1.3)
+        self.assertIn(f"Failed to open serial port {self.port}", self.log_path.read_text())
+        self.assertNotIn("STM32 serial connected", self.log_path.read_text())
+        self.attach()
+        self.await_attitude(0.4, -0.1)
 
     def step(self, packet=None):
         self.assertIsNone(self.bridge.poll(), "bridge exited during disconnect")
@@ -97,6 +219,10 @@ class SerialReconnectTest(unittest.TestCase):
         solution.header.frame_id = "gimbal_inertial"
         solution.output_mode = "absolute"
         solution.has_solution = True
+        solution.used_3d = True
+        solution.has_angular_velocity = True
+        solution.yaw_velocity = 0.35
+        solution.pitch_velocity = -0.2
         solution.yaw = 0.2
         solution.pitch = 0.1
         if self.send_valid_solution:
@@ -135,6 +261,54 @@ class SerialReconnectTest(unittest.TestCase):
                 return
         self.fail(f"no telemetry after attaching virtual controller yaw={yaw}\n"
                   + self.log_path.read_text()[-5000:])
+
+    def await_controller_status(self, expected, packet=None, timeout=3):
+        self.controller_status.clear()
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            self.step(packet)
+            if self.controller_status and self.controller_status[-1] == expected:
+                return
+        self.fail(f"controller status did not become {expected}: {self.controller_status}")
+
+    def check_controller_status(self):
+        self.await_controller_status(-1)  # Missing device at startup.
+        self.attach()
+        self.await_attitude(0.4, -0.1)
+        self.await_controller_status(1, status_packet(0x8f))
+        self.await_controller_status(0, status_packet(0x87))
+        self.assertEqual(bool(self.outbound), self.tx_enabled)
+        self.await_controller_status(-1, status_packet(0x08))  # Legacy; bit3 alone is not ON.
+        self.await_controller_status(1, status_packet(0x88))
+        corrupt = bytearray(status_packet(0x88))
+        corrupt[-1] ^= 0x80
+        # Valid SP mode1 plus bad ST cannot refresh the acceptance clock.
+        self.spin_for(.75, attitude_packet(0.4, -0.1) + bytes(corrupt))
+        self.assertEqual(self.controller_status[-1], -1)
+        self.await_controller_status(0, status_packet(0x80))
+        self.controller_status.clear()
+        self.spin_for(.2, bytes(corrupt))
+        self.assertNotIn(1, self.controller_status, "bad CRC revived ON")
+        for _ in range(2):
+            self.await_controller_status(1, status_packet(0x88))
+            self.detach()
+            self.await_controller_status(-1)
+            self.attach()
+            self.await_attitude(0.5, -.2)
+            self.assertEqual(self.controller_status[-1], -1, "SP mode1 revived acceptance")
+            self.await_controller_status(0, status_packet(0x80))
+        self.assertEqual(bool(self.outbound), self.tx_enabled)
+        log = "\n".join(path.read_text() for path in self.root.glob("vision_serial_runtime_*.log"))
+        self.assertIn("cmd=0x5354 controller_auto_aim=1", log)
+        self.assertIn("cmd=0x5354 controller_auto_aim=0", log)
+        self.assertIn("cmd=0x5354 controller_auto_aim=-1", log)
+        self.assertIn("cmd=0x5350 controller_auto_aim=-1", log)
+
+    def test_controller_status_independent_of_disabled_tx(self):
+        self.check_controller_status()
+
+    def test_controller_status_independent_of_enabled_tx(self):
+        self.check_controller_status()
 
     def test_missing_startup_repeated_unplug_and_no_tx(self):
         self.spin_for(1.3)  # Start with no device at all, as at Jetson boot.
@@ -213,6 +387,97 @@ class SerialReconnectTest(unittest.TestCase):
         self.assertTrue(all(p.stat().st_size < 6000 for p in logs))
         self.assertNotIn("kind=serial_tx", content)
         self.assertEqual(self.outbound, b"")
+
+    def test_association_logging_without_tx(self):
+        self.attach()
+        self.await_attitude(0.4, -0.1)
+        frame = TrackedArmors()
+        frame.source_id = "test_camera"
+        frame.selected_track_id = 99
+        frame.raw_count = 3
+        frame.enemy_count = 2
+        frame.posed_count = 1
+        frame.matched_count = 0
+        frame.innovation_rejected_count = 1
+        for index in range(9):
+            track = TrackedArmor()
+            track.track_id = 99 if index == 8 else index
+            track.association_reason = "innovation_pending"
+            track.lost_frames = 3
+            track.real_measurement_age_s = 0.05
+            track.innovation_m = 0.3
+            track.armor.reprojection_rms_px = 1.2
+            frame.tracks.append(track)
+        end = time.monotonic() + 0.8
+        while time.monotonic() < end:
+            frame.header.stamp = self.node.get_clock().now().to_msg()
+            self.associations.publish(frame)
+            self.step(attitude_packet(0.4, -0.1))
+        content = "\n".join(
+            p.read_text() for p in self.root.glob("vision_serial_runtime_*")
+        )
+        rows = [
+            line
+            for line in content.splitlines()
+            if "kind=tracking_association " in line
+        ]
+        self.assertTrue(rows, content[-4000:])
+        self.assertIn(
+            "raw_count=3 enemy_count=2 posed_count=1 matched_count=0", rows[-1]
+        )
+        self.assertIn("innovation_rejected_count=1", rows[-1])
+        self.assertIn("track4_id=99", rows[-1])
+        self.assertIn('track4_reason="innovation_pending"', rows[-1])
+        self.assertIn("logged_tracks=5", rows[-1])
+        self.assertNotIn("track5_", rows[-1])
+        self.assertEqual(
+            self.outbound, b"", "diagnostic subscriptions must not enable TX"
+        )
+
+    def test_atomic_angular_rates_and_safe_zero_fallback(self):
+        self.attach()
+        self.await_attitude(0.4, -0.1)
+        self.spin_for(0.2)
+        self.send_valid_solution = False
+        self.spin_for(0.05)
+
+        def send_case(**fields):
+            solution = AimSolution()
+            solution.header.stamp = self.node.get_clock().now().to_msg()
+            solution.header.frame_id = "gimbal_inertial"
+            solution.output_mode = "absolute"
+            solution.has_solution = True
+            solution.used_3d = True
+            solution.has_angular_velocity = True
+            solution.yaw, solution.pitch = 0.6, -0.15
+            solution.yaw_velocity, solution.pitch_velocity = 0.7, -0.4
+            for key, value in fields.items():
+                setattr(solution, key, value)
+            self.outbound.clear()
+            self.solutions.publish(solution)
+            self.spin_for(0.06)
+            packets = [self.outbound[i:i+29] for i in range(0, len(self.outbound)-28, 29)]
+            self.assertTrue(packets)
+            return solution, packets[-1], struct.unpack("<6f", packets[-1][3:27])
+
+        _, packet, values = send_case()
+        self.assertEqual(packet[2], 1)
+        for actual, expected in zip(values, (0.6, 0.7, 0, -0.15, -0.4, 0)):
+            self.assertAlmostEqual(actual, expected, places=5)
+        for fields in ({"has_angular_velocity": False}, {"used_3d": False},
+                       {"yaw_velocity": float("nan")}, {"pitch_velocity": 100.0}):
+            _, packet, values = send_case(**fields)
+            self.assertEqual(packet[2], 1, "invalid rate must retain valid position aiming")
+            self.assertEqual((values[1], values[2], values[4], values[5]), (0, 0, 0, 0))
+        solution, _, _ = send_case()
+        self.outbound.clear()
+        self.solutions.publish(solution)  # Replayed atomic solution clears rates and control.
+        self.spin_for(.06)
+        packets = [self.outbound[i:i+29] for i in range(0, len(self.outbound)-28, 29)]
+        self.assertTrue(packets)
+        self.assertEqual(packets[-1][2], 0)
+        values = struct.unpack("<6f", packets[-1][3:27])
+        self.assertEqual((values[1], values[4]), (0, 0))
 
     def test_atomic_solution_rejects_stale_offset_and_replay(self):
         self.attach()

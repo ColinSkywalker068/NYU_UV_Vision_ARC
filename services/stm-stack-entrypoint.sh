@@ -6,6 +6,8 @@ DEFAULT_MODEL_PATH_FILE_RELATIVE="yolo_cpp/config/default_model_path.txt"
 
 REPO_ROOT="${CV_STM_REPO_ROOT:-${DEFAULT_REPO_ROOT}}"
 MODE="${1:-run}"
+# shellcheck source=serial-port-selection.sh
+source "$(dirname "${BASH_SOURCE[0]}")/serial-port-selection.sh"
 
 log() {
   printf '[stm-stack] %s\n' "$*"
@@ -193,7 +195,7 @@ detector_backend() {
 }
 
 serial_port() {
-  printf '%s' "${CV_STM_SERIAL_PORT:-/dev/ttyUSB0}"
+  printf '%s' "${CV_STM_SERIAL_PORT:-auto}"
 }
 
 serial_required() {
@@ -245,10 +247,17 @@ run_preflight() {
     fi
   fi
 
-  if is_true "$(serial_required)"; then
-    require_file "$(serial_port)"
-  elif [ ! -e "$(serial_port)" ]; then
-    log "Serial path $(serial_port) is missing, but serial is not required for this profile"
+  local resolved_serial
+  if resolved_serial=$(cv_resolve_serial_port "$(serial_port)" "${CV_STM_SERIAL_BY_ID_DIRECTORY:-/dev/serial/by-id}"); then
+    if is_true "$(serial_required)"; then
+      require_file "$resolved_serial"
+    elif [ ! -e "$resolved_serial" ]; then
+      log "Serial path $resolved_serial is missing; the bridge will retry while preview runs"
+    fi
+  elif is_true "$(serial_required)"; then
+    die "Required serial controller could not be selected"
+  else
+    log "Serial controller unavailable; the bridge will retry while preview runs"
   fi
 
   log "Preflight OK for $(launch_profile): package, model, camera/inference prerequisites, and profile-specific serial policy are ready"
@@ -289,6 +298,7 @@ run_launch() {
         "serial_verbose:=${CV_STM_SERIAL_VERBOSE:-false}"
         "serial_port:=$(serial_port)"
       )
+      append_optional_launch_arg CV_STM_SERIAL_BY_ID_DIRECTORY serial_by_id_directory
       append_optional_launch_arg CV_STM_BASLER_EXPOSURE_US basler_exposure_us
       append_optional_launch_arg CV_STM_BASLER_GAIN_DB basler_gain_db
       append_optional_launch_arg CV_STM_BASLER_FPS basler_fps

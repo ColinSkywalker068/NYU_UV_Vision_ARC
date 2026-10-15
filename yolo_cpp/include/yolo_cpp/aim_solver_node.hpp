@@ -75,6 +75,7 @@ private:
   double attitude_sync_tolerance_ms_{30.0};
   double attitude_max_gap_ms_{50.0};
   AimPredictionConfig prediction_config_;
+  AimRateEstimator rate_estimator_;
   int previous_slot_{-1};
   int previous_track_id_{-1};
   float hfov_rad_{0.0F};

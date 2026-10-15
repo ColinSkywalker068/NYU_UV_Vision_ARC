@@ -9,6 +9,8 @@ while [ -L "$SOURCE" ]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck source=serial-port-selection.sh
+source "${SCRIPT_DIR}/serial-port-selection.sh"
 
 SERVICE_NAME="${CV_STM_SERVICE_NAME:-stm-stack.service}"
 SERVICE_SRC="${SCRIPT_DIR}/${SERVICE_NAME}"
@@ -338,6 +340,12 @@ run_health() {
     bash -lc "cd '${CV_STM_REPO_ROOT}' && exec ./services/stm-stack-entrypoint.sh health"
 }
 
+preview_health() {
+  CV_STM_SHOW="${CV_STM_SHOW:-false}" \
+  CV_STM_EXTRA_LAUNCH_ARGS="${CV_STM_EXTRA_LAUNCH_ARGS:-}" \
+    python3 "${SCRIPT_DIR}/preview-health.py"
+}
+
 start_checked() {
   systemctl_action "$1"
   ensure_docker
@@ -349,17 +357,22 @@ start_checked() {
     sleep 1
   done
   log "Service started; waiting for ROS readiness and fresh Type C telemetry"
+  local health_status=0 preview_status=0
   if ! run_health "${CV_STM_STARTUP_TIMEOUT_S:-45}"; then
     log "Service was left running, but readiness did not pass. Check 'cv logs' and retry 'cv health'. First-time model builds can exceed the readiness timeout."
-    return 1
+    health_status=1
   fi
+  preview_health || preview_status=$?
+  return "$((health_status || preview_status))"
 }
 
 run_yaw_smoke() {
   ensure_docker
   docker_cmd image inspect "$CV_STM_IMAGE" >/dev/null 2>&1 || die "Docker image is missing: ${CV_STM_IMAGE}"
 
-  local serial_port="${CV_STM_SERIAL_PORT:-/dev/ttyUSB0}"
+  local serial_port
+  serial_port=$(cv_resolve_serial_port "${CV_STM_SERIAL_PORT:-auto}" "${CV_STM_SERIAL_BY_ID_DIRECTORY:-/dev/serial/by-id}") ||
+    die "Cannot select the yaw smoke test controller"
   local yaw_rad="${CV_STM_YAW_SMOKE_RAD:-0.05}"
   local count="${CV_STM_YAW_SMOKE_COUNT:-20}"
   local interval_ms="${CV_STM_YAW_SMOKE_INTERVAL_MS:-50}"
@@ -415,6 +428,8 @@ Commands:
   start      Start ${SERVICE_NAME}, then check ROS and live Type C telemetry.
   stop       Stop ${SERVICE_NAME}.
   restart    Restart ${SERVICE_NAME}, then check ROS and live Type C telemetry.
+  preview-check
+             Check HTTP preview freshness and show forwarding instructions; no restart.
   preview-gui
              Persist CV_STM_SHOW=gui and restart ${SERVICE_NAME}.
   preview-web
@@ -448,6 +463,7 @@ main() {
     start) start_checked start ;;
     stop) systemctl_action stop ;;
     restart) start_checked restart ;;
+    preview-check) preview_health ;;
     preview-gui) set_preview gui gui ;;
     preview-web) set_preview web web ;;
     preview-on) set_preview gui gui ;;

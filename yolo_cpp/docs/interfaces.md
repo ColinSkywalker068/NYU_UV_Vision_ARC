@@ -81,11 +81,45 @@ The tracker publishes a 2D-compatible target on `tracker/target`. The processor 
 
 ## AimSolution
 
-`AimSolution.msg` is the solver debug output:
+`AimSolution.msg` is the atomic solver output consumed by the STM bridge:
 
 - `has_solution`, `used_3d`, `suggest_fire`
 - yaw and pitch in radians plus degree copies for inspection
 - estimated `flight_time`, `range`, and `bullet_speed`
+- `has_angular_velocity`, `yaw_velocity`, `pitch_velocity`: rates in rad/s of
+  the same absolute ballistic aim point, sharing its capture timestamp and
+  `gimbal_inertial` frame; zero on acquisition, identity/slot changes, coasting,
+  stale/invalid input, 2D/offset mode, or rate/innovation guard failure
+
+Unavailable rates do not invalidate an otherwise valid angle solution. The
+bridge requires rate capture age at most 100 ms and maps the rates to existing
+SP velocity fields; acceleration fields remain zero. A zero wire rate can mean
+stationary or unavailable, since the wire format has no rate-valid flag.
+Rebuild both active ROS packages after changing this message.
+
+## Controller auto aim acceptance
+
+`controller_auto_aim` (`std_msgs/msg/Int8`) is `1` for ON, `0` for OFF, and
+`-1` for UNKNOWN. It comes only from a CRC-valid 39-byte MCU ST packet:
+`robot_status` at byte offset 26 has bit 7 (`0x80`) marking this metadata as
+supported and bit 3 (`0x08`) reporting the effective logical auto aim gate.
+Bits 0–2 retain referee power status. Without bit 7, the status is UNKNOWN;
+SP mode, vision transmission, target detection, and referee power never imply ON.
+
+The bridge expires ST status after 500 ms using monotonic receipt time and
+clears it on disconnect. The detector separately expires ROS status after
+500 ms; invalid scalar values become UNKNOWN. Bad CRC packets and SP attitude
+traffic cannot refresh acceptance. This requires direct CDC or a link forwarding
+ST intact; the legacy Sentry bridge path that discards `robot_status` cannot
+provide it and remains UNKNOWN.
+
+The preview displays `AUTO AIM ON/OFF/UNKNOWN` separately from `TX CONFIG`.
+ON means the controller reports its logical gate armed; it does not prove target
+tracking, motor power/motion, packet acceptance, or firing. `/stats.json` exposes
+`auto_aim_status` (`on`, `off`, `unknown`) and `auto_aim_status_age_ms` (age of the
+last received ROS status, `null` before any message). HTTP freshness is evaluated
+when requested, even if camera frames stop. An already displayed frozen image
+cannot repaint itself; use the live sidebar/status endpoint for current status.
 
 ## How the Interfaces Fit Together
 
